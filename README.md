@@ -27,6 +27,13 @@ npm run dev
 ## Сборки
 
 ```bash
+npm run build:single
+```
+
+Собирает всю игру в один файл `dist-single/breathtaking-floors.html` (около 3.4 МБ, графика внутри).
+Его можно открыть двойным щелчком без сервера или переслать кому-нибудь.
+
+```bash
 npm run build:yandex
 ```
 

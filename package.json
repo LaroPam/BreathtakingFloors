@@ -14,6 +14,7 @@
     "build": "npm run bake && tsc --noEmit && vite build",
     "build:yandex": "npm run bake && tsc --noEmit && vite build --mode yandex && node tools/zip.mjs dist-yandex",
     "build:youtube": "npm run bake && tsc --noEmit && vite build --mode youtube && node tools/zip.mjs dist-youtube",
+    "build:single": "npm run bake && tsc --noEmit && vite build --mode single && node tools/single.mjs",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "fx": "node pixelfx/tools/render.mjs",

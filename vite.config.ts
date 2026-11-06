@@ -23,14 +23,17 @@ function platformHtml(target: Target): Plugin {
 
 export default defineConfig(({ mode }) => {
   const target: Target = mode === "yandex" || mode === "youtube" ? mode : "local";
+  // `--mode single`: a plain web page with every asset inlined, which tools/single.mjs folds into one HTML file
+  const single = mode === "single";
   return {
     base: "./",
     define: { __PLATFORM__: JSON.stringify(target) },
     plugins: [platformHtml(target)],
     build: {
-      outDir: target === "local" ? "dist" : `dist-${target}`,
+      outDir: single ? "dist-single-tmp" : target === "local" ? "dist" : `dist-${target}`,
       target: "es2022",
-      assetsInlineLimit: 0,
+      assetsInlineLimit: single ? 64 * 1024 * 1024 : 0,
+      chunkSizeWarningLimit: single ? 8192 : 600,
       chunkSizeWarningLimit: 600,
       reportCompressedSize: true,
     },

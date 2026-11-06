@@ -315,13 +315,12 @@ export class Renderer {
     let done = 0;
     await Promise.all(
       PAGE_URLS.map(async (url, i) => {
-        const res = await fetch(url);
-        const blob = await res.blob();
-        const bmp = await createImageBitmap(blob, { premultiplyAlpha: "none", colorSpaceConversion: "none" });
+        const img = await decodePage(url);
         gl.bindTexture(gl.TEXTURE_2D_ARRAY, this.texArray);
         gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
-        gl.texSubImage3D(gl.TEXTURE_2D_ARRAY, 0, 0, 0, i, PAGE_SIZE, PAGE_SIZE, 1, gl.RGBA, gl.UNSIGNED_BYTE, bmp);
-        bmp.close();
+        gl.pixelStorei(gl.UNPACK_COLORSPACE_CONVERSION_WEBGL, gl.NONE);
+        gl.texSubImage3D(gl.TEXTURE_2D_ARRAY, 0, 0, 0, i, PAGE_SIZE, PAGE_SIZE, 1, gl.RGBA, gl.UNSIGNED_BYTE, img);
+        if ("close" in img) img.close();
         onProgress(++done / PAGE_URLS.length);
       }),
     );
@@ -454,6 +453,23 @@ export class Renderer {
     gl.bindVertexArray(this.quadVao);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     gl.bindVertexArray(null);
+  }
+}
+
+/**
+ * Decode an atlas page. Files are fetched; pages inlined as data: URLs (the single-file build) go through an
+ * <img>, because strict hosts block fetch() of data: URLs but allow them as images.
+ */
+async function decodePage(url: string): Promise<ImageBitmap | HTMLImageElement> {
+  const opts: ImageBitmapOptions = { premultiplyAlpha: "none", colorSpaceConversion: "none" };
+  if (!url.startsWith("data:")) return createImageBitmap(await (await fetch(url)).blob(), opts);
+  const img = new Image();
+  img.src = url;
+  await img.decode();
+  try {
+    return await createImageBitmap(img, opts);
+  } catch {
+    return img;
   }
 }
 
