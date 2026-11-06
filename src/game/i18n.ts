@@ -1,0 +1,132 @@
+// Every word the game shows, in Russian and English. Text is drawn in capitals by the pixel font.
+
+export type Lang = "ru" | "en";
+
+const RU = {
+  title: "BREATHTAKING FLOORS",
+  subtitle: "СПУСК В БАШНЮ БЕЗ СВЕТА",
+  play: "ИГРАТЬ",
+  forge: "КУЗНИЦА",
+  language: "ЯЗЫК: РУССКИЙ",
+  sound: "ЗВУК",
+  on: "ВКЛ",
+  off: "ВЫКЛ",
+  embers: "УГЛИ",
+  best: "РЕКОРД",
+  floor: "ЭТАЖ",
+  level: "УР",
+  kills: "УБИТО",
+  paused: "ПАУЗА",
+  resume: "ПРОДОЛЖИТЬ",
+  codex: "РЕАКЦИИ",
+  quit: "СДАТЬСЯ",
+  back: "НАЗАД",
+  levelUp: "НОВЫЙ УРОВЕНЬ",
+  chooseOne: "ВЫБЕРИ ОДНО",
+  chest: "СУНДУК",
+  new: "НОВОЕ",
+  lv: "УР.",
+  max: "МАКС",
+  died: "СВЕТ ПОГАС",
+  reached: "ДОСТИГНУТ ЭТАЖ",
+  time: "ВРЕМЯ",
+  earned: "ПОЛУЧЕНО УГЛЕЙ",
+  revive: "ВОЗРОДИТЬСЯ ЗА РЕКЛАМУ",
+  again: "ЕЩЁ РАЗ",
+  menu: "В МЕНЮ",
+  stairs: "ВЫБЕРИ ЛЕСТНИЦУ",
+  lightBraziers: "ЗАЖГИ ЖАРОВНИ",
+  portalOpen: "ПОРТАЛ ОТКРЫТ",
+  bossAwakes: "ОКО ПРОБУДИЛОСЬ",
+  overdrive: "ВЫБРОС",
+  overdriveReady: "ВЫБРОС ГОТОВ",
+  dash: "РЫВОК",
+  surge: "ТЬМА НАСТУПАЕТ",
+  elite: "ЭЛИТА",
+  hint: "WASD - ХОДИТЬ  МЫШЬ - ЦЕЛИТЬСЯ И СТРЕЛЯТЬ  ПРОБЕЛ - РЫВОК  E - ВЫБРОС",
+  hintTouch: "ЛЕВЫЙ ПАЛЕЦ - ХОДИТЬ  ПРАВЫЙ - ЦЕЛИТЬСЯ",
+  hintGraze: "ПРОНОСИСЬ РЫВКОМ СКВОЗЬ ПУЛИ, ЧТОБЫ КОПИТЬ ВЫБРОС",
+  autofire: "АВТООГОНЬ",
+  discovered: "ОТКРЫТА РЕАКЦИЯ",
+  notDiscovered: "???",
+  forgeTitle: "КУЗНИЦА: ВЕЧНЫЕ УЛУЧШЕНИЯ",
+  buy: "КУПИТЬ",
+  owned: "КУПЛЕНО",
+  tapToStart: "НАЖМИ, ЧТОБЫ НАЧАТЬ",
+  cleared: "ЭТАЖ ПРОЙДЕН",
+  reward: "НАГРАДА",
+  risk: "РИСК",
+};
+
+type Strings = typeof RU;
+
+const EN: Strings = {
+  title: "BREATHTAKING FLOORS",
+  subtitle: "DOWN A TOWER WITHOUT LIGHT",
+  play: "PLAY",
+  forge: "FORGE",
+  language: "LANGUAGE: ENGLISH",
+  sound: "SOUND",
+  on: "ON",
+  off: "OFF",
+  embers: "EMBERS",
+  best: "BEST",
+  floor: "FLOOR",
+  level: "LV",
+  kills: "KILLS",
+  paused: "PAUSED",
+  resume: "RESUME",
+  codex: "REACTIONS",
+  quit: "GIVE UP",
+  back: "BACK",
+  levelUp: "LEVEL UP",
+  chooseOne: "CHOOSE ONE",
+  chest: "CHEST",
+  new: "NEW",
+  lv: "LV",
+  max: "MAX",
+  died: "YOUR LIGHT WENT OUT",
+  reached: "REACHED FLOOR",
+  time: "TIME",
+  earned: "EMBERS EARNED",
+  revive: "REVIVE FOR AN AD",
+  again: "AGAIN",
+  menu: "MENU",
+  stairs: "CHOOSE THE STAIRS",
+  lightBraziers: "LIGHT THE BRAZIERS",
+  portalOpen: "THE PORTAL IS OPEN",
+  bossAwakes: "THE EYE AWAKENS",
+  overdrive: "OVERDRIVE",
+  overdriveReady: "OVERDRIVE READY",
+  dash: "DASH",
+  surge: "THE DARK SURGES",
+  elite: "ELITE",
+  hint: "WASD MOVE  MOUSE AIM AND FIRE  SPACE DASH  E OVERDRIVE",
+  hintTouch: "LEFT THUMB MOVES  RIGHT THUMB AIMS",
+  hintGraze: "DASH THROUGH BULLETS TO CHARGE OVERDRIVE",
+  autofire: "AUTOFIRE",
+  discovered: "REACTION DISCOVERED",
+  notDiscovered: "???",
+  forgeTitle: "FORGE: PERMANENT UPGRADES",
+  buy: "BUY",
+  owned: "OWNED",
+  tapToStart: "TAP TO START",
+  cleared: "FLOOR CLEARED",
+  reward: "REWARD",
+  risk: "RISK",
+};
+
+let lang: Lang = "ru";
+export const setLang = (l: Lang): void => {
+  lang = l;
+};
+export const getLang = (): Lang => lang;
+/** Pick the language for a platform code: Russian for the CIS, English for everyone else. */
+export const langFor = (code: string): Lang => (["ru", "be", "kk", "uk", "uz", "ky", "tg", "hy", "az"].includes(code) ? "ru" : "en");
+
+export function t(key: keyof Strings): string {
+  return (lang === "ru" ? RU : EN)[key];
+}
+/** A pair of strings, one per language, for content defined next to its data. */
+export type Text = { ru: string; en: string };
+export const tx = (s: Text): string => s[lang];

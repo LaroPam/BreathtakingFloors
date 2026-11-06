@@ -1,0 +1,27 @@
+{
+  "name": "breathtaking-floors",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A pixel-art roguelite: survivors-style hordes, twin-stick guns, light as territory and elemental reactions. Runs in the browser (Yandex Games, YouTube Playables).",
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "bake": "node tools/bake/bake.mjs",
+    "dev": "npm run bake && vite",
+    "build": "npm run bake && tsc --noEmit && vite build",
+    "build:yandex": "npm run bake && tsc --noEmit && vite build --mode yandex && node tools/zip.mjs dist-yandex",
+    "build:youtube": "npm run bake && tsc --noEmit && vite build --mode youtube && node tools/zip.mjs dist-youtube",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "fx": "node pixelfx/tools/render.mjs",
+    "fx:check": "node pixelfx/tools/check.mjs",
+    "art": "node tools/art.mjs"
+  },
+  "devDependencies": {
+    "typescript": "6.0.3",
+    "vite": "8.3.4"
+  }
+}
