@@ -7,13 +7,13 @@ import { Batch, rgba, rgbaf, withAlpha, type Lighting, type Renderer } from "../
 import { anim, DUMMY, frameAt, icon } from "../engine/atlas";
 import { measure, text, wrap } from "../engine/text";
 import type { Platform } from "../platform/platform";
-import { bossOf, EL_COLOR, EL_NAME, FLOORS, FORGE, HEROES, PALETTE_KEYS, WEAPONS, MODIFIERS, NO_MODIFIER, REACTIONS, RELIC_MAX, RELIC_SLOTS, RELICS, STATS, type Modifier, type Reaction, type RelicKind, type StatId } from "./defs";
+import { bossOf, EL_COLOR, EL_NAME, ENEMIES, FLOORS, FORGE, HEROES, PALETTE_KEYS, WEAPONS, weaponName, MODIFIERS, NO_MODIFIER, REACTIONS, RELIC_MAX, RELIC_SLOTS, RELICS, STATS, type Modifier, type Reaction, type RelicKind, type StatId } from "./defs";
 import { drawWorld, Scene } from "./draw";
 import { getLang, langFor, setLang, t, tx, type Lang } from "./i18n";
 import { Rng } from "./rng";
 import { defaultSave, sanitize, type SaveData } from "./save";
 import { button, C, drawHud, drawPointers, drawTouch, fmtTime, Menu, panel, para } from "./ui";
-import { World } from "./world";
+import { CINE_DUR, World } from "./world";
 
 type State = "title" | "heroes" | "forge" | "card" | "play" | "spin" | "pause" | "codex" | "stairs" | "dead" | "won";
 type Choice = { type: "relic"; kind: RelicKind; level: number } | { type: "stat"; id: StatId };
@@ -102,7 +102,7 @@ export class Game {
       floorCleared: () => this.onFloorCleared(),
       reaction: (r) => this.onReaction(r),
       banner: (text, color) => this.showBanner(text, color),
-      weapon: (id) => this.showBanner(tx(WEAPONS[id].name), C.gold),
+      weapon: (id, el) => this.showBanner(tx(weaponName(id, el)), el || WEAPONS[id].el ? rgba(EL_COLOR[el || WEAPONS[id].el!]) : C.gold),
     }, NO_MODIFIER);
   }
 
@@ -338,7 +338,7 @@ export class Game {
   /** Start the next roulette if the world has one waiting. */
   private nextSpin(): void {
     const w = this.world;
-    if (w.hero.dead) return;
+    if (w.hero.dead || w.cine) return;
     if (w.pendingChests > 0 && this.startSpins > 0) {
       this.startSpins--;
       this.startSpin("start");
@@ -420,10 +420,12 @@ export class Game {
   }
 
   private updateCamera(dt: number): void {
-    const w = this.world, h = w.hero, W = this.r.w, H = this.r.h;
+    const w = this.world, h = w.hero, W = this.r.w, H = this.r.h, c = w.cine;
     const lead = this.state === "play" ? 18 : 0;
-    const tx = h.x + h.aimX * lead - W / 2, ty = h.y - 20 + h.aimY * lead - H / 2;
-    const k = 1 - Math.exp(-dt * 8);
+    // during a boss's entrance the camera goes to it and holds, then comes back
+    const look = c && c.t < CINE_DUR - 0.45;
+    const tx = look ? c.x - W / 2 : h.x + h.aimX * lead - W / 2, ty = look ? c.y - 30 - H / 2 : h.y - 20 + h.aimY * lead - H / 2;
+    const k = 1 - Math.exp(-dt * (c ? 4.5 : 8));
     this.camX += (tx - this.camX) * k;
     this.camY += (ty - this.camY) * k;
     // keep the floor's edges in view without showing more void than needed
@@ -452,6 +454,11 @@ export class Game {
       tintK: w.flash > 0 ? w.flash * 0.25 : dim ? 0.55 : 0,
     };
     if (this.state === "title") light.tintK = 0.2;
+    if (w.cine) {
+      // the room darkens around the newcomer
+      const u = Math.min(1, w.cine.t / 0.5) * Math.min(1, (CINE_DUR - w.cine.t) / 0.5);
+      light.tintK = Math.max(light.tintK, 0.3 * u);
+    }
 
     switch (this.state) {
       case "title": this.drawTitle(); break;
@@ -459,6 +466,11 @@ export class Game {
       case "card": this.drawCard(); break;
       case "forge": this.drawForge(); break;
       case "play":
+        if (w.cine) {
+          this.drawCine();
+          this.input.zones = [];
+          break;
+        }
         drawPointers(ui, w, cx, cy, W, H, this.now);
         drawHud(ui, w, W, H, this.now, this.banner, this.touch, false);
         if (this.touch) drawTouch(ui, this.input, w, W, H, this.now);
@@ -544,7 +556,8 @@ export class Game {
     ui.pal = 0;
     if (hero.light === "wisp") {
       const wf = anim("wisp_light"), r = wf.frames[frameAt(wf, now)][0]!;
-      ui.image(r, cx - 30, cy - 105 + Math.sin(now * 2.6) * 6, 2, 2, 0, hero.id === "reaper" ? rgba("#9affb0") : 0xffffffff);
+      const tint = hero.id === "mage" ? 0xffffffff : rgbaf(lr, lg, lb, 1);
+      ui.image(r, cx - 30, cy - 105 + Math.sin(now * 2.6) * 6, 2, 2, 0, tint);
     }
     if (button(ui, this.menu, now, cx - 112, cy - 56, 20, 30, "<")) pick(-1);
     if (button(ui, this.menu, now, cx + 92, cy - 56, 20, 30, ">")) pick(1);
@@ -583,10 +596,28 @@ export class Game {
     if (button(ui, this.menu, now, Math.round(W / 2 + 6), by, bw, 18, t("back")) || input.pressed("back")) this.setState("title");
   }
 
+  /** A boss enters: black bars close in, its name lands with a thud, the line under it fades in. */
+  private drawCine(): void {
+    const c = this.world.cine!, ui = this.ui, W = this.r.w, H = this.r.h, d = ENEMIES[c.type];
+    const inK = Math.min(1, c.t / 0.35), outK = Math.min(1, (CINE_DUR - c.t) / 0.35), k = Math.min(inK, outK);
+    const bar = Math.round(H * 0.13 * (1 - (1 - k) ** 3));
+    ui.rect(0, 0, W, bar, rgba("#000000"));
+    ui.rect(0, H - bar, W, bar, rgba("#000000"));
+    if (c.t < 0.9) return;
+    // the name slams in from big to its size, then the title under it
+    const u = Math.min(1, (c.t - 0.9) / 0.18), sc = W >= 420 ? 3 : 2, a = Math.min(1, (c.t - 0.9) * 6) * outK;
+    const col = rgba(d.glow || "#f53cd1"), y = Math.round(H - bar - 16 - 8 * sc);
+    const pop = 1 + (1 - u) * 1.2;
+    text(ui, tx(d.name), W / 2, y - (pop - 1) * 6, { align: "center", scale: Math.max(sc, Math.round(sc * pop)), color: withAlpha(col, a), shadow: withAlpha(rgba("#0b0a12"), a), outline: true });
+    const lw = Math.round(Math.min(W - 40, 240) * Math.min(1, (c.t - 1.0) * 3));
+    if (lw > 0) ui.rect(Math.round(W / 2 - lw / 2), y + 7 * sc + 4, lw, 1, withAlpha(col, a * 0.8));
+    if (d.title && c.t > 1.25) text(ui, tx(d.title), W / 2, y + 7 * sc + 9, { font: "mini", align: "center", color: withAlpha(C.text, Math.min(1, (c.t - 1.25) * 3) * outK) });
+  }
+
   /** The floor's title card: its number, its biome, a line about it, and where it sits in the run. */
   private drawCard(): void {
     const ui = this.ui, W = this.r.w, H = this.r.h, w = this.world, B = w.biome, a = Math.min(1, this.cardT * 3);
-    ui.rect(0, 0, W, H, rgba("#07060c"));
+    this.drawCardBack();
     const cy = Math.round(H * 0.38);
     text(ui, `${t("floor")} ${w.floor}`, W / 2, cy - 30, { align: "center", scale: 3, color: withAlpha(C.gold, a), outline: true, shadow: rgba("#3a1a10") });
     text(ui, tx(B.name), W / 2, cy + 2, { align: "center", scale: 2, color: withAlpha(C.text, a) });
@@ -599,6 +630,52 @@ export class Game {
       if (boss) ui.image(icon("hud", "boss"), x, y, 1, 1, 0, k <= w.floor ? 0xffffffff : rgbaf(0.35, 0.35, 0.4, 1));
       else ui.disc(x, y, 3, 3, k < w.floor ? C.goldDim : k === w.floor ? C.gold : rgba("#2a2438"));
       if (k === w.floor) ui.rect(x - 4, y + 8, 9, 1, C.gold);
+    }
+  }
+
+  /**
+   * Behind the floor card, the biome is alive: its air (dust, fireflies, snow) drifts past, two of its torches burn
+   * either side of the name and throw their glow on the dark.
+   */
+  private drawCardBack(): void {
+    const ui = this.ui, W = this.r.w, H = this.r.h, B = this.world.biome, now = this.now, cy = Math.round(H * 0.38);
+    ui.rect(0, 0, W, H, rgba("#07060c"));
+    // a faint glow of the biome's light from below
+    const [ar, ag, ab] = B.ambient;
+    for (let k = 0; k < 8; k++) ui.rect(0, Math.round(H * (0.55 + k * 0.06)), W, Math.ceil(H * 0.06), rgbaf(ar * 0.12, ag * 0.12, ab * 0.16, 0.04 + k * 0.025));
+    // the torches
+    const torch = anim(B.torch), tc = rgba(B.torchLight), gap = Math.min(170, Math.round(W * 0.38));
+    for (const side of [-1, 1]) {
+      const x = Math.round(W / 2 + side * gap), y = cy - 4, f = 1 + Math.sin(now * 9 + side) * 0.06 + Math.sin(now * 23 + side * 3) * 0.04;
+      ui.disc(x, y - 22, 46 * f, 40 * f, withAlpha(tc, 0.07));
+      ui.disc(x, y - 22, 26 * f, 22 * f, withAlpha(tc, 0.1));
+      const fr = torch.frames[frameAt(torch, now + side * 0.3)][0];
+      if (fr) ui.image(fr, x, y, 2, 2);
+      // sparks rising off it
+      for (let q = 0; q < 6; q++) {
+        const ph = (now * 0.7 + q / 6 + (side > 0 ? 0.37 : 0)) % 1, sx = x + Math.sin(q * 5.3 + now * 2) * 4 * ph * 3;
+        ui.rect(Math.round(sx), Math.round(y - 30 - ph * 60), 1, 1, withAlpha(tc, (1 - ph) * 0.9));
+      }
+    }
+    // the air
+    for (let k = 0; k < 46; k++) {
+      const hx = (Math.sin(k * 12.9898) * 43758.5453) % 1, hy = (Math.sin(k * 78.233) * 12345.678) % 1, h0 = Math.abs(hx), h1 = Math.abs(hy);
+      let x: number, y: number, col: number;
+      if (B.motes === "snow") {
+        x = (h0 * W + now * (8 + h1 * 10) + Math.sin(now + k) * 6) % W;
+        y = (h1 * H + now * (14 + h0 * 16)) % H;
+        col = rgbaf(0.85, 0.92, 1, 0.5 + 0.3 * h0);
+      } else if (B.motes === "fireflies") {
+        x = h0 * W + Math.sin(now * 0.6 + k) * 30;
+        y = h1 * H + Math.cos(now * 0.5 + k * 2) * 20;
+        const blink = Math.max(0, Math.sin(now * 2 + k * 3));
+        col = rgbaf(0.8, 1, 0.45, blink * 0.9);
+      } else {
+        x = (h0 * W + Math.sin(now * 0.3 + k) * 20) % W;
+        y = (h1 * H - now * (3 + h0 * 5) + H * 4) % H;
+        col = rgbaf(0.8, 0.75, 0.9, 0.2 + 0.2 * Math.sin(now + k));
+      }
+      ui.rect(Math.round(x), Math.round(y), 1, 1, col);
     }
   }
 

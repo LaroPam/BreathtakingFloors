@@ -9,7 +9,7 @@ export const IDS = [
   // the sword, the body, the light
   "edge", "haste", "reach", "wave", "parry", "speed", "maxhp", "magnet", "dashcd", "overdrive", "crit", "lantern",
   // weapons
-  "w_sword", "w_hammer", "w_spear", "w_scythe", "w_daggers", "w_bow", "w_spell",
+  "w_sword", "w_hammer", "w_spear", "w_scythe", "w_daggers", "w_bow", "w_spell", "w_greatsword", "w_claws", "w_whip",
 ];
 
 export const meta = {
@@ -39,6 +39,7 @@ const KIND = {
   edge: "gold", haste: "gold", reach: "gold", wave: "gold", parry: "steel", speed: "steel", maxhp: "life",
   magnet: "steel", dashcd: "steel", overdrive: "holy", crit: "gold", lantern: "holy",
   w_sword: "arms", w_hammer: "arms", w_spear: "arms", w_scythe: "arms", w_daggers: "arms", w_bow: "arms", w_spell: "arms",
+  w_greatsword: "arms", w_claws: "arms", w_whip: "arms",
 };
 
 function badge(p, [dark, mid, rim]) {
@@ -245,6 +246,30 @@ const SYMBOLS = {
 
 // the weapons: drawn bigger than the upgrades' symbols, corner to corner
 Object.assign(SYMBOLS, {
+  w_greatsword(p) {
+    outlined(p, (ink) => {
+      p.poly([[-5, 4], [6, -7], [8, -9], [7, -6], [-4, 5]], pick(ink, "#e8edf6"));
+      p.poly([[-5, 4], [6, -7], [7, -6], [-4, 5]], pick(ink, "#a4afc6"));
+      p.line(-8, 1, -2, 7, pick(ink, "#ffd84a"));
+      p.line(-8, 8, -5, 5, pick(ink, "#7a3a2a"));
+    });
+    p.line(-1, 0, 5, -6, H("#ffffff")); p.px(-9, 9, H("#ffd84a"));
+  },
+  w_claws(p) {
+    outlined(p, (ink) => {
+      p.rect(-6, 2, 8, 5, pick(ink, "#6a3aa8"));
+      for (const x of [-5, -2, 1]) p.poly([[x, 2], [x + 2, 2], [x + 6, -8], [x + 5, -8]], pick(ink, "#e8edf6"));
+    });
+    p.line(-4, 3, 0, 3, H("#a06ae0")); p.px(1, -8, H("#ffffff")); p.px(4, -8, H("#ffffff")); p.px(7, -8, H("#ffffff"));
+  },
+  w_whip(p) {
+    outlined(p, (ink) => {
+      p.line(-7, 7, -4, 4, pick(ink, "#7a3a2a"));
+      p.arc(1, -1, 6, () => 1.2, -Math.PI * 1.1, Math.PI * 0.55, () => pick(ink, "#b47c40"));
+      p.line(4, 4, 8, 6, pick(ink, "#b47c40"));
+    });
+    p.px(8, 6, H("#ffe26b")); p.px(9, 7, H("#ff8a2a")); p.px(-8, 8, H("#ffd84a"));
+  },
   w_sword: SYMBOLS.edge,
   w_hammer(p) {
     outlined(p, (ink) => {

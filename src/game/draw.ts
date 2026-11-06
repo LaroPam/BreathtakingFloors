@@ -1,11 +1,12 @@
 // Turning the world into sprites: the room (floor, walls, torches, columns, things lying about), everything standing
 // sorted by its feet, light into the illumination layer, the baked pixelfx glow into the glow layer, numbers in front.
 
-import { anim, frameAt, icon, type Anim } from "../engine/atlas";
+import { anim, frameAt, hasAnim, icon, type Anim } from "../engine/atlas";
 import { Batch, rgba, rgbaf, SOFT, withAlpha } from "../engine/renderer";
 import { text } from "../engine/text";
-import { AI, ENEMIES, HEROES, RelicKind, WEAPONS } from "./defs";
-import { BULLET_ANIMS, B_CRESCENT, D_CHEST, D_GREEN, D_HEART, D_RED, TILE, type World } from "./world";
+import { AI, EL_COLOR, ENEMIES, HEROES, RelicKind, WEAPONS, weaponName } from "./defs";
+import { tx } from "./i18n";
+import { BULLET_ANIMS, B_CRESCENT, B_FIREBALL, B_LANCE, CINE_DUR, D_CHEST, D_GREEN, D_HEART, D_RED, TILE, type World } from "./world";
 
 export class Scene {
   back = new Batch();
@@ -71,6 +72,15 @@ const hash = (x: number, y: number) => {
 };
 
 const C_SHADOW = rgba("#000000", 0.38);
+/** The colour an enemy's tell glows in, by the look of its bullets. */
+const TELL = [0, 0, 0, 0, 0, 0].map((_, k) => {
+  const c = ["#ff5a6a", "#ff5a6a", "#ff5a6a", "#c684ff", "#8ad83a", "#78ccf4"][k];
+  // [the glow's colour, the spark's: the same hue run toward white]
+  const v = parseInt(c.slice(1), 16), m = (x: number) => (x / 255) * 0.4 + 0.6;
+  return [rgba(c), rgbaf(m((v >> 16) & 255), m((v >> 8) & 255), m(v & 255), 1)] as const;
+});
+/** Dash after-images, per hero. */
+const GHOST_TINT: Record<string, [number, number, number]> = { shadow: [0.75, 0.4, 1], berserker: [1, 0.45, 0.3], reaper: [0.45, 1, 0.6] };
 const STATUS_TINT = {
   frozen: rgba("#a8e8ff"),
   burn: rgba("#ffb080"),
@@ -201,6 +211,12 @@ export function drawWorld(s: Scene, w: World, camX: number, camY: number, viewW:
     }
   }
 
+  // ---- the boss's entrance: a shaft of its light falls where it rises
+  if (w.cine) {
+    const c = w.cine, d = ENEMIES[c.type], u = Math.min(1, c.t / 0.6) * Math.min(1, (CINE_DUR - c.t) / 0.5);
+    s.illum.light(c.x, c.y - 20, 120 * u, 100 * u, withAlpha(rgba(d.glow || "#f53cd1"), 0.7 * u));
+  }
+
   // ---- the portal
   if (w.portal) {
     const p = w.portal, grow = Math.min(1, p.t * 1.5);
@@ -242,8 +258,22 @@ export function drawWorld(s: Scene, w: World, camX: number, camY: number, viewW:
     if (d.ai === AI.Phantom && !w.inLight(x, y)) alpha = 0.35;
     // newborn: they grow out of the floor with a little overshoot; struck: they squash for a beat
     const age = E.age[i], grow = age < 0.3 ? easeOutBack(age / 0.3) : 1, hit = E.flash[i] > 0 ? 1 : 0;
-    drawAnim(s, anim(d.anim), E.t[i], x, y, { sx: E.face[i] * d.scale * (1 + 0.14 * hit) * grow, sy: d.scale * (1 - 0.12 * hit) * grow, tint, alpha, flash: hit, key: y, glow: 0.55 * alpha });
+    // the tell before a shot: the last moment before it fires, the body flickers white
+    const telling = (d.ai === AI.Shooter || d.ai === AI.Turret) && E.cd[i] < 0.45 && E.cd[i] > 0 && (h.x - x) ** 2 + (h.y - y) ** 2 < 270 * 270 && !h.dead;
+    const tk = telling ? 1 - E.cd[i] / 0.45 : 0, tellFlash = tk > 0.55 && Math.sin(time * 45) > 0 ? 0.55 : 0;
+    drawAnim(s, anim(d.anim), E.t[i], x, y, { sx: E.face[i] * d.scale * (1 + 0.14 * hit + 0.06 * tk) * grow, sy: d.scale * (1 - 0.12 * hit + 0.06 * tk) * grow, tint, alpha, flash: Math.max(hit, tellFlash), key: y, glow: 0.55 * alpha });
     if (d.glow) s.illum.light(w.bx, w.by, 20 * d.scale, 16 * d.scale, withAlpha(rgba(d.glow), 0.22));
+    // ...and light gathers into it: bright sparks spiral in from outside the body
+    if (telling) {
+      const k = tk, col = TELL[d.ai === AI.Turret ? 2 : d.shot] ?? TELL[2];
+      const n = d.ai === AI.Turret ? 8 : 5, r = Math.max(w.brx, w.bry) + 3 + (1 - k) * 18;
+      for (let q = 0; q < n; q++) {
+        const a = (q / n) * Math.PI * 2 + time * 7, px = Math.round(w.bx + Math.cos(a) * r), py = Math.round(w.by + Math.sin(a) * r * 0.8);
+        s.front.rect(px, py, 2, 2, withAlpha(col[1], 0.6 + 0.4 * k));
+        s.glow.rect(px - 1, py - 1, 4, 4, withAlpha(col[0], 0.7 * k));
+      }
+      s.illum.light(w.bx, w.by, 20 + 30 * k, 16 + 24 * k, withAlpha(col[0], 0.45 * k));
+    }
     if (d.elite && d.scale === 1 && E.hp[i] < E.maxHp[i]) {
       const bw = 20, bx = Math.round(w.bx - bw / 2), by = Math.round(w.by - w.bry - 8);
       s.front.rect(bx - 1, by - 1, bw + 2, 4, rgba("#0b0a12"));
@@ -255,9 +285,10 @@ export function drawWorld(s: Scene, w: World, camX: number, camY: number, viewW:
   // ---- the hero: body and weapon recoloured into the hero's palette, and the light they carry
   const wid = h.weapon, pal = HEROES.findIndex((q) => q.id === h.def.id) + 1;
   const run = anim(`${wid}_run`), idle = anim(`${wid}_idle`), dash = anim(`${wid}_dash`), hurt = anim(`${wid}_hurt`);
+  const [gr, gg, gb] = GHOST_TINT[h.def.id] ?? [0.48, 0.82, 1];
   for (const g of w.ghosts) {
-    drawAnim(s, dash, 0, g.x, g.y, { sx: g.flip, key: g.y - 0.5, tint: rgba("#7ad0ff"), alpha: (g.life / 0.22) * 0.7, glow: 0, pal });
-    s.glow.image(dash.frames[0][0]!, g.x, g.y, g.flip, 1, 0, rgbaf(0.2, 0.5, 1, g.life * 1.2));
+    drawAnim(s, dash, 0, g.x, g.y, { sx: g.flip, key: g.y - 0.5, tint: rgbaf(gr, gg, gb, 1), alpha: (g.life / 0.22) * 0.7, glow: 0, pal });
+    s.glow.image(dash.frames[0][0]!, g.x, g.y, g.flip, 1, 0, rgbaf(gr * 0.4, gg * 0.6, gb, g.life * 1.2));
   }
   let lightX = h.x, lightY = h.y - 14;
   if (h.dead) {
@@ -307,6 +338,17 @@ export function drawWorld(s: Scene, w: World, camX: number, camY: number, viewW:
     }
     // the light: a lantern in the free hand or at the belt, swinging; or a wisp floating at the shoulder
     const hand = a.hands?.[fi] ?? [8, -20, 5, -15];
+    // the weapon hand, for the world to throw an element's sparks from; the element glows there
+    h.handX = h.x + hand[0] * h.face;
+    h.handY = h.y + hand[1];
+    const el = w.weaponEl;
+    if (el && show) {
+      const c = rgba(EL_COLOR[el]), p = 0.75 + 0.25 * Math.sin(time * 8);
+      s.glow.light(h.handX, h.handY, 5 * p, 5 * p, withAlpha(c, 0.45));
+      s.illum.light(h.handX, h.handY, 34 * p, 28 * p, withAlpha(c, 0.3));
+    }
+    const fury = w.fury;
+    if (fury > 1.2 && show) s.illum.light(h.x, h.y - 16, 40 * fury, 34 * fury, rgbaf(1, 0.25, 0.15, (fury - 1) * 0.6 * (0.8 + 0.2 * Math.sin(time * 10))));
     if (h.def.light === "lantern") {
       const free = WEAPONS[wid].oneHand;
       const lx = free ? h.x + hand[2] * h.face : h.x - h.face * 4, ly = free ? h.y + hand[3] : h.y - 15;
@@ -316,7 +358,9 @@ export function drawWorld(s: Scene, w: World, camX: number, camY: number, viewW:
     } else {
       lightX = h.x - h.face * 11 + Math.sin(time * 1.7) * 2;
       lightY = h.y - 36 + Math.sin(time * 2.6) * 2.5;
-      if (show && h.exitT < 0) drawAnim(s, anim("wisp_light"), time, lightX, lightY, { key: h.y + 0.5, glow: 1, tint: h.def.id === "reaper" ? rgba("#9affb0") : 0xffffffff });
+      // the wisp burns in the hero's own light (the sorceress's stays its natural blue)
+      const [wr, wg, wb] = h.def.lightColor, tint = h.def.id === "mage" ? 0xffffffff : rgbaf(wr, wg, wb, 1);
+      if (show && h.exitT < 0) drawAnim(s, anim("wisp_light"), time, lightX, lightY, { key: h.y + 0.5, glow: 1, tint });
     }
     if (w.debug) {
       s.front.disc(h.x, h.y - 12, 5, 5, rgba("#40ff60", 0.4));
@@ -339,9 +383,22 @@ export function drawWorld(s: Scene, w: World, camX: number, camY: number, viewW:
     if (!inView(r.x, r.y, 40)) continue;
     s.back.disc(r.x, r.y, 15, 4, C_SHADOW);
     drawAnim(s, rackA, time, r.x, r.y, { key: r.y, glow: 0.9 });
-    const bob = Math.sin(time * 2.2) * 2;
-    s.color.image(icon("icons", `w_${r.weapon}`), r.x, r.y - 30 + bob, 1, 1, 0, 0xffffffff, 0, r.y + 0.5);
-    s.illum.light(r.x, r.y - 24, 40, 32, rgbaf(0.7, 0.5, 1, 0.5));
+    const bob = Math.sin(time * 2.2) * 2, model = `model_${r.weapon}`, el = r.el || WEAPONS[r.weapon].el || 0;
+    const col = el ? rgba(EL_COLOR[el]) : rgbaf(0.7, 0.5, 1, 1);
+    // the weapon itself turns slowly in the air over the stone (the book and the whip show their badge)
+    if (hasAnim(model)) drawAnim(s, anim(model), time * 0.8 + r.x * 0.01, r.x, r.y - 40 + bob, { key: r.y + 0.5, glow: 0 });
+    else s.color.image(icon("icons", `w_${r.weapon}`), r.x, r.y - 36 + bob, 1, 1, 0, 0xffffffff, 0, r.y + 0.5);
+    s.glow.light(r.x, r.y - 40 + bob, 10, 16, withAlpha(col, el ? 0.35 : 0.18));
+    s.illum.light(r.x, r.y - 28, 46, 36, withAlpha(col, 0.5));
+    // its name when the hero comes close
+    const near = (h.x - r.x) ** 2 + (h.y - r.y) ** 2;
+    if (near < 80 * 80 && !h.dead) {
+      const a = Math.min(1, (80 - Math.sqrt(near)) / 25);
+      // (in the glow layer as well, so it reads in the dark above the stone)
+      const name = tx(weaponName(r.weapon, r.el)), nc = el ? col : rgba("#e8dcff");
+      text(s.front, name, r.x, r.y - 72 + bob, { font: "mini", align: "center", color: withAlpha(nc, a), shadow: withAlpha(rgba("#0b0a12"), a) });
+      text(s.glow, name, r.x, r.y - 72 + bob, { font: "mini", align: "center", color: withAlpha(nc, a * 0.7) });
+    }
     if (r.progress > 0) {
       const n = 20;
       for (let k = 0; k < n; k++) {
@@ -385,12 +442,18 @@ export function drawWorld(s: Scene, w: World, camX: number, camY: number, viewW:
   for (let i = 0; i < Bu.n; i++) {
     const x = Bu.x[i], y = Bu.y[i];
     if (!inView(x, y, 20)) continue;
-    const k = Bu.kind[i], a = banims[k], orb = k >= 2;
+    const k = Bu.kind[i], a = banims[k], orb = k >= 2 && k <= 5;
     drawAnim(s, a, Bu.t[i], x, y, { rot: orb ? 0 : Math.atan2(Bu.vy[i], Bu.vx[i]), key: y + 14, glow: 0.9, alpha: k === B_CRESCENT ? Math.min(1, Bu.life[i] * 5) : 1 });
     if (orb) {
       s.back.disc(x, y + 14, 3, 1, rgba("#000000", 0.25));
       s.illum.light(x, y, 16, 14, k === 2 ? rgbaf(1, 0.2, 0.3, 0.35) : k === 3 ? rgbaf(0.6, 0.3, 1, 0.35) : k === 4 ? rgbaf(0.4, 1, 0.3, 0.35) : rgbaf(0.3, 0.6, 1, 0.35));
-    } else s.illum.light(x, y, 18, 14, rgbaf(1, 0.75, 0.4, 0.35));
+    } else {
+      // a streak behind what the hero throws: the eye reads speed and direction from it
+      const len = k === B_CRESCENT ? 0.025 : 0.045, el = Bu.el[i];
+      const col = k === B_FIREBALL ? rgbaf(1, 0.55, 0.2, 0.6) : k === B_LANCE ? rgbaf(0.6, 0.85, 1, 0.6) : el ? withAlpha(rgba(EL_COLOR[el as keyof typeof EL_COLOR]), 0.6) : rgbaf(1, 0.9, 0.7, 0.45);
+      s.glow.line(x - Bu.vx[i] * len, y - Bu.vy[i] * len, x, y, k === B_FIREBALL ? 3 : 1, col);
+      s.illum.light(x, y, k === B_FIREBALL ? 34 : 18, k === B_FIREBALL ? 28 : 14, k === B_FIREBALL ? rgbaf(1, 0.55, 0.2, 0.55) : rgbaf(1, 0.75, 0.4, 0.35));
+    }
   }
 
   // ---- effects

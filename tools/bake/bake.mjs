@@ -20,6 +20,7 @@ import { loadEffect, edgeFade, isScreen } from "../../pixelfx/tools/lib/fxlib.mj
 import { encodePNG } from "../../pixelfx/tools/lib/png.mjs";
 import { ANIMS } from "./manifest.mjs";
 import { fontGlyphs } from "./font.mjs";
+import { weaponModelFrames } from "./weapons.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const PFX_DIR = join(ROOT, "pixelfx", "src", "fx"), ART_DIR = join(ROOT, "art", "fx");
@@ -128,6 +129,24 @@ function bodyOf(img) {
   return [Math.round((x0 + x1) / 2), Math.round((y0 + y1) / 2), Math.max(3, Math.round((x1 - x0) * 0.5)), Math.max(3, Math.round((y1 - y0) * 0.5))];
 }
 
+/** A weapon model turning in 3D (see weapons.mjs): its pixels only, centred on its own middle. */
+function renderModel(e) {
+  const frames = weaponModelFrames(e.model, e.count ?? 12), out = [];
+  for (const f of frames) {
+    if (!f.n) {
+      out.push({ color: null, light: null });
+      continue;
+    }
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (let i = 0; i < f.n; i++) (x0 = Math.min(x0, f.xs[i]), x1 = Math.max(x1, f.xs[i]), y0 = Math.min(y0, f.ys[i]), y1 = Math.max(y1, f.ys[i]));
+    const W = x1 - x0 + 1, H = y1 - y0 + 1, buf = new Uint32Array(W * H);
+    for (let i = 0; i < f.n; i++) buf[(f.ys[i] - y0) * W + (f.xs[i] - x0)] = f.color[i] >>> 0;
+    // anchor at the middle of the blade's box, so it turns in place
+    out.push({ color: trim(buf, W, H, Math.round(W / 2), Math.round(H / 2), hasColor), light: null });
+  }
+  return { fps: e.fps ?? 10, loop: true, frames: out, cut: false };
+}
+
 // ---------------------------------------------------------------------------------------------------- packing
 const images = [], byHash = new Map();
 /** Register an image for packing, sharing identical ones. Returns its index. */
@@ -172,6 +191,7 @@ for (const e of ANIMS) {
   if (only && !e.name.includes(only)) continue;
   let parts = [];
   if (e.rig) parts = [renderRig(e)];
+  else if (e.model) parts = [renderModel(e)];
   else {
     const fx = await loadEffect(e.fx ?? e.art, e.fx ? PFX_DIR : ART_DIR);
     if (e.variants) {

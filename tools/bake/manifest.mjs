@@ -10,7 +10,7 @@
 // hitbox for every frame from the art itself), variants ({ option: [values] }: one frame per value).
 
 import { PAL } from "../../pixelfx/src/core/color.js";
-import { weaponAnims, DEATH } from "./weapons.mjs";
+import { weaponAnims, DEATH, MODEL_WEAPONS } from "./weapons.mjs";
 import { IDS as UPGRADE_ICONS } from "../../art/fx/icons/upgrades.js";
 import { IDS as HUD_ICONS } from "../../art/fx/icons/hud.js";
 
@@ -37,6 +37,8 @@ const WALL = {
 export const ANIMS = [
   ...weaponAnims({ thr: 6, k: 0.85 }),
   { name: "hero_death", rig: DEATH, fps: 8, loop: false },
+  // the weapons on their own, turning in 3D, for the altars
+  ...Object.entries(MODEL_WEAPONS).map(([id, rigWeapon]) => ({ name: `model_${id}`, model: rigWeapon, fps: 10 })),
 
   // ---- the heroes' gear, their shots and spells
   { name: "lantern", art: "gear/lantern", fps: 10 },

@@ -21,6 +21,10 @@ import { act as ARROW } from "../../pixelfx/src/fx/moves/arrow-shot.js";
 import { act as FIREBALL } from "../../pixelfx/src/fx/moves/fireball-throw.js";
 import { act as ICELANCE } from "../../pixelfx/src/fx/moves/ice-lance-throw.js";
 import { act as LIGHTNING } from "../../pixelfx/src/fx/moves/lightning-call.js";
+import { act as CLAW } from "../../pixelfx/src/fx/melee/claw-swipe.js";
+import { act as UPPERCUT } from "../../pixelfx/src/fx/melee/uppercut.js";
+import { act as WHIP } from "../../pixelfx/src/fx/melee/whip-crack.js";
+import { posedParts } from "../../pixelfx/src/core/rig.js";
 
 /** The legs (and bob) of the run cycle at phase k of 8. */
 export function runLegs(k) {
@@ -78,6 +82,29 @@ export const WEAPONS = {
       { act: FLURRY, times: [-0.14, -0.03, 0.0, 0.06, 0.11, 0.17, 0.22, 0.28, 0.33, 0.37, 0.45], hits: [3, 4, 5, 6, 7, 8, 9], fx: "melee/dagger-flurry", maxT: 0.55 },
     ],
   },
+  greatsword: {
+    guard: { ...READY, weapon: "greatsword", two: true, fx: 11, fy: -21, bx: 9, by: -21, sa: -1, turn: 0.3 },
+    oneHand: false,
+    attacks: [
+      { act: CLEAVE, times: [-0.3, -0.12, 0.05, 0.2, 0.28, 0.335, 0.6, 0.9], hits: [5], fx: "melee/heavy-cleave", maxT: 0.6, opts: { palette: BLADE } },
+      { act: SPIN, times: [-0.2, -0.08, 0.0, 0.05, 0.09, 0.13, 0.17, 0.4], hits: [6], fx: "melee/spin-slash", maxT: 0.45, opts: { palette: BLADE }, weapon: "greatsword" },
+    ],
+  },
+  claws: {
+    guard: { ...READY, weapon: "claw", offWeapon: "claw", fx: 14, fy: -21, bx: 8, by: -25, sa: -0.4, sb: -0.9, turn: 0.3 },
+    oneHand: false,
+    attacks: [
+      { act: CLAW, times: [-0.2, -0.05, 0.0, 0.04, 0.08, 0.12, 0.25, 0.42], hits: [3, 4, 5], fx: "melee/claw-swipe", maxT: 0.45, opts: { palette: ["#1a0a2a", "#3e1e6a", "#6a3aa8", "#a06ae0", "#e0b0ff", "#ffffff"] } },
+      { act: UPPERCUT, times: [-0.16, -0.06, 0.0, 0.04, 0.08, 0.18, 0.3, 0.5], hits: [4], fx: "melee/uppercut", maxT: 0.5, weapon: "claw", extra: { offWeapon: "claw", sb: -0.9 } },
+    ],
+  },
+  whip: {
+    guard: { ...READY, weapon: "handle", fx: 13, fy: -21, bx: 7, by: -18, sa: -0.3, turn: 0.3 },
+    oneHand: true,
+    attacks: [
+      { act: WHIP, times: [-0.22, -0.08, 0.02, 0.06, 0.12, 0.17, 0.21, 0.26, 0.44, 0.7], hits: [6], fx: "melee/whip-crack", maxT: 0.55, opts: { length: 64 } },
+    ],
+  },
   bow: {
     guard: { ...READY, weapon: "bow", fx: 12, fy: -20, bx: 6, by: -17, sa: -0.4, turn: 0.3 },
     oneHand: false,
@@ -102,6 +129,7 @@ function attackPoses(w, a, legs) {
     p.x = Math.max(-5, Math.min(5, (p.x ?? 0) - x0));
     if (a.weapon) p.weapon = a.weapon;
     else if (w.guard.weapon && !p.weapon) p.weapon = w.guard.weapon;
+    if (a.extra) Object.assign(p, a.extra);
     delete p.ghost;
     if (legs) Object.assign(p, { ffx: legs.ffx, ffy: legs.ffy, fbx: legs.fbx, fby: legs.fby, crouch: Math.max(p.crouch ?? 0, legs.crouch), x: 0 });
     return p;
@@ -147,3 +175,19 @@ export const DEATH = [
   { ...READY, lean: 9, crouch: 13, turn: 0.3, fx: 10, fy: -6, bx: 9, by: -6, ffx: 6, ffy: -1, fbx: -8, fby: -1 },
   { ...READY, lean: 12, crouch: 15, turn: 0.2, fx: 12, fy: -3, bx: 10, by: -3, ffx: 7, ffy: -1, fbx: -9, fby: -1 },
 ];
+
+/**
+ * A weapon on its own, turning in 3D: the stock figure holds it upright and turns round (yaw), and only the weapon's
+ * pixels are kept, recentred. The altars float these over their stone.
+ */
+export const MODEL_WEAPONS = { sword: "sword", hammer: "hammer", spear: "spear", scythe: "scythe", daggers: "dagger", greatsword: "greatsword", claws: "claw", bow: "bow" };
+export function weaponModelFrames(rigWeapon, n = 12) {
+  const frames = [];
+  for (let k = 0; k < n; k++) {
+    const yaw = (k / n) * Math.PI * 2;
+    const parts = posedParts({ ...READY, weapon: rigWeapon, fx: 8, fy: -20, sa: -Math.PI / 2 + 0.25, yaw, bx: 6, by: -16 });
+    const wp = parts.find((p) => p.name === "weapon");
+    frames.push(wp ? { xs: wp.xs, ys: wp.ys, color: wp.color, n: wp.n } : { xs: [], ys: [], color: [], n: 0 });
+  }
+  return frames;
+}

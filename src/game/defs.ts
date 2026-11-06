@@ -96,6 +96,8 @@ export interface EnemyDef {
   every: number;
   /** Its bullets' look: an index into BULLET_ANIMS. */
   shot: number;
+  /** Bosses: the line under their name when they enter. */
+  title?: Text;
 }
 type Def = Omit<EnemyDef, "id">;
 const E = (d: Partial<Def> & Pick<Def, "key" | "name" | "anim" | "ai" | "hp" | "speed" | "xp">): Def => ({ glow: "", scale: 1, elite: false, every: 0, shot: 2, ...d });
@@ -117,9 +119,9 @@ const DEFS: Def[] = [
   E({ key: "skull_ice", name: { ru: "ХЛАДНЫЙ ЧЕРЕП", en: "COLD SKULL" }, anim: "skull_ice", ai: AI.Shooter, hp: 50, speed: 40, xp: 4, glow: "#78ccf4", every: 2.4, shot: 5 }),
   E({ key: "slime_elite", name: { ru: "КРОВАВЫЙ СЛИЗЕНЬ", en: "BLOOD SLIME" }, anim: "slime_elite", ai: AI.Chase, hp: 150, speed: 36, xp: 15, glow: "#ff3a3a", elite: true }),
   E({ key: "skull_elite", name: { ru: "ЧЕРЕП-КОЛДУН", en: "HEX SKULL" }, anim: "skull_elite", ai: AI.Shooter, hp: 200, speed: 42, xp: 20, glow: "#c684ff", elite: true, every: 1.9, shot: 3 }),
-  E({ key: "eye_boss", name: { ru: "ВЕЛИКОЕ ОКО", en: "THE GREAT EYE" }, anim: "eye_boss", ai: AI.Boss, hp: 1700, speed: 22, xp: 100, glow: "#f53cd1", scale: 2, elite: true }),
-  E({ key: "frog_king", name: { ru: "ЖАБИЙ КОРОЛЬ", en: "THE TOAD KING" }, anim: "frog_king", ai: AI.BossFrog, hp: 2800, speed: 0, xp: 140, glow: "#ff8a2a", scale: 2.2, elite: true }),
-  E({ key: "eye_void", name: { ru: "ОКО ПУСТОТЫ", en: "THE VOID EYE" }, anim: "eye_void", ai: AI.Boss, hp: 4600, speed: 26, xp: 200, glow: "#78ccf4", scale: 2.3, elite: true }),
+  E({ key: "eye_boss", name: { ru: "ВЕЛИКОЕ ОКО", en: "THE GREAT EYE" }, anim: "eye_boss", ai: AI.Boss, hp: 1700, speed: 22, xp: 100, glow: "#f53cd1", scale: 2, elite: true, title: { ru: "ХРАНИТЕЛЬ СКЛЕПА, ЧТО НЕ СМЫКАЕТ ВЕК", en: "WARDEN OF THE CRYPT, WHO NEVER BLINKS" } }),
+  E({ key: "frog_king", name: { ru: "ЖАБИЙ КОРОЛЬ", en: "THE TOAD KING" }, anim: "frog_king", ai: AI.BossFrog, hp: 2800, speed: 0, xp: 140, glow: "#ff8a2a", scale: 2.2, elite: true, title: { ru: "ВЛАДЫКА ТОПКОГО САДА", en: "LORD OF THE SUNKEN GARDEN" } }),
+  E({ key: "eye_void", name: { ru: "ОКО ПУСТОТЫ", en: "THE VOID EYE" }, anim: "eye_void", ai: AI.Boss, hp: 4600, speed: 26, xp: 200, glow: "#78ccf4", scale: 2.3, elite: true, title: { ru: "ТО, ЧТО СМОТРИТ ИЗ-ПОД БАШНИ", en: "WHAT WATCHES FROM BENEATH THE TOWER" } }),
 ];
 export const ENEMIES: EnemyDef[] = DEFS.map((d, id) => ({ ...d, id }));
 const id = (key: string) => ENEMIES.findIndex((e) => e.key === key);
@@ -305,7 +307,7 @@ export const FORGE: ForgeItem[] = [
 ];
 
 // ------------------------------------------------------------------------------------------------ weapons
-export type WeaponId = "sword" | "hammer" | "spear" | "scythe" | "daggers" | "bow" | "spell";
+export type WeaponId = "sword" | "hammer" | "spear" | "scythe" | "daggers" | "greatsword" | "claws" | "whip" | "bow" | "spell";
 /**
  * One blow of a weapon's combo. Its animation is `${weapon}_a${index}` in the atlas, which also says on which frames
  * it lands (tools/bake/weapons.mjs). What landing does depends on its kind:
@@ -329,8 +331,12 @@ export interface Blow {
 export interface WeaponDef {
   id: WeaponId;
   name: Text;
+  /** Grammatical gender of the Russian name (for "Пламенный меч", "Ледяная коса"...). */
+  g: "m" | "f" | "n" | "pl";
   desc: Text;
   blows: Blow[];
+  /** An element every blow carries, whatever the altar gave (the fire whip). */
+  el?: El;
   /** How fast its animations play (1 = 20 fps). */
   speed: number;
   /** The far hand is free: the lantern hangs from it rather than from the belt. */
@@ -341,7 +347,7 @@ export interface WeaponDef {
 }
 export const WEAPONS: Record<WeaponId, WeaponDef> = {
   sword: {
-    id: "sword", name: { ru: "МЕЧ", en: "SWORD" }, desc: { ru: "ТРИ УДАРА: РУБЯЩИЙ, ОБРАТНЫЙ, ВЫПАД", en: "THREE BLOWS: CUT, BACKCUT, THRUST" },
+    id: "sword", name: { ru: "МЕЧ", en: "SWORD" }, g: "m", desc: { ru: "ТРИ УДАРА: РУБЯЩИЙ, ОБРАТНЫЙ, ВЫПАД", en: "THREE BLOWS: CUT, BACKCUT, THRUST" },
     speed: 1, oneHand: true, ranged: false, range: 58,
     blows: [
       { kind: "arc", dmg: 12, reach: 46, arc: 1.25, push: 70, fxMode: "rotate" },
@@ -350,7 +356,7 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     ],
   },
   hammer: {
-    id: "hammer", name: { ru: "БОЕВОЙ МОЛОТ", en: "WARHAMMER" }, desc: { ru: "МЕДЛЕННО, НО ОГЛУШАЕТ И РАСКИДЫВАЕТ", en: "SLOW, BUT STUNS AND SCATTERS" },
+    id: "hammer", name: { ru: "БОЕВОЙ МОЛОТ", en: "WARHAMMER" }, g: "m", desc: { ru: "МЕДЛЕННО, НО ОГЛУШАЕТ И РАСКИДЫВАЕТ", en: "SLOW, BUT STUNS AND SCATTERS" },
     speed: 0.8, oneHand: false, ranged: false, range: 62,
     blows: [
       { kind: "front", dmg: 34, reach: 36, arc: 30, push: 190, stun: 0.6, fxMode: "flip" },
@@ -358,7 +364,7 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     ],
   },
   spear: {
-    id: "spear", name: { ru: "КОПЬЁ", en: "SPEAR" }, desc: { ru: "ДАЛЬНИЙ ВЫПАД И ШИРОКИЙ ВЗМАХ", en: "A LONG THRUST AND A WIDE SWEEP" },
+    id: "spear", name: { ru: "КОПЬЁ", en: "SPEAR" }, g: "n", desc: { ru: "ДАЛЬНИЙ ВЫПАД И ШИРОКИЙ ВЗМАХ", en: "A LONG THRUST AND A WIDE SWEEP" },
     speed: 0.95, oneHand: true, ranged: false, range: 76,
     blows: [
       { kind: "arc", dmg: 17, reach: 76, arc: 0.32, push: 90, fxMode: "rotate" },
@@ -366,7 +372,7 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     ],
   },
   scythe: {
-    id: "scythe", name: { ru: "КОСА", en: "SCYTHE" }, desc: { ru: "ЖАТВА ДУГОЙ И ВРАЩЕНИЕ НА ВСЕ СТОРОНЫ", en: "A REAPING ARC AND A SPIN ALL ROUND" },
+    id: "scythe", name: { ru: "КОСА", en: "SCYTHE" }, g: "f", desc: { ru: "ЖАТВА ДУГОЙ И ВРАЩЕНИЕ НА ВСЕ СТОРОНЫ", en: "A REAPING ARC AND A SPIN ALL ROUND" },
     speed: 0.85, oneHand: false, ranged: false, range: 56,
     blows: [
       { kind: "arc", dmg: 18, reach: 56, arc: 1.6, push: 80, fxMode: "rotate" },
@@ -374,17 +380,38 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     ],
   },
   daggers: {
-    id: "daggers", name: { ru: "ПАРНЫЕ КИНЖАЛЫ", en: "TWIN DAGGERS" }, desc: { ru: "ВИХРЬ ИЗ СЕМИ БЫСТРЫХ УДАРОВ", en: "A FLURRY OF SEVEN QUICK STABS" },
+    id: "daggers", name: { ru: "ПАРНЫЕ КИНЖАЛЫ", en: "TWIN DAGGERS" }, g: "pl", desc: { ru: "ВИХРЬ ИЗ СЕМИ БЫСТРЫХ УДАРОВ", en: "A FLURRY OF SEVEN QUICK STABS" },
     speed: 1.1, oneHand: false, ranged: false, range: 40,
     blows: [{ kind: "arc", dmg: 6, reach: 38, arc: 0.95, push: 22, fxMode: "rotate" }],
   },
+  greatsword: {
+    id: "greatsword", name: { ru: "ДВУРУЧНЫЙ МЕЧ", en: "GREATSWORD" }, g: "m", desc: { ru: "ТЯЖЁЛЫЙ РАЗРУБ И ВИХРЬ НА ВСЕ СТОРОНЫ", en: "A HEAVY CLEAVE AND A WHIRL ALL ROUND" },
+    speed: 0.82, oneHand: false, ranged: false, range: 62,
+    blows: [
+      { kind: "arc", dmg: 30, reach: 62, arc: 1.4, push: 170, stun: 0.25, fxMode: "rotate" },
+      { kind: "around", dmg: 22, reach: 60, arc: 0, push: 140, fxMode: "flip" },
+    ],
+  },
+  claws: {
+    id: "claws", name: { ru: "КОГТИ", en: "CLAWS" }, g: "pl", desc: { ru: "ТРИ БЫСТРЫХ ВЗМАХА И АПЕРКОТ В ПРЫЖКЕ", en: "THREE QUICK RAKES AND A LEAPING UPPERCUT" },
+    speed: 1.15, oneHand: false, ranged: false, range: 42,
+    blows: [
+      { kind: "arc", dmg: 8, reach: 40, arc: 1.1, push: 30, fxMode: "rotate" },
+      { kind: "arc", dmg: 20, reach: 44, arc: 0.8, push: 160, stun: 0.3, fxMode: "flip" },
+    ],
+  },
+  whip: {
+    id: "whip", name: { ru: "ОГНЕННЫЙ КНУТ", en: "FIRE WHIP" }, g: "m", desc: { ru: "ДЛИННЫЙ ЩЕЛЧОК, ЖЖЁТ ВСЕХ НА ЛИНИИ", en: "A LONG CRACK THAT BURNS ALL ALONG IT" },
+    speed: 1, oneHand: true, ranged: false, range: 84, el: El.Fire,
+    blows: [{ kind: "arc", dmg: 15, reach: 84, arc: 0.22, push: 60, fxMode: "rotate" }],
+  },
   bow: {
-    id: "bow", name: { ru: "ДЛИННЫЙ ЛУК", en: "LONGBOW" }, desc: { ru: "СТРЕЛЫ ПРОБИВАЮТ ВРАГОВ НАСКВОЗЬ", en: "ARROWS GO STRAIGHT THROUGH" },
+    id: "bow", name: { ru: "ДЛИННЫЙ ЛУК", en: "LONGBOW" }, g: "m", desc: { ru: "СТРЕЛЫ ПРОБИВАЮТ ВРАГОВ НАСКВОЗЬ", en: "ARROWS GO STRAIGHT THROUGH" },
     speed: 1.15, oneHand: false, ranged: true, range: 250,
     blows: [{ kind: "arrow", dmg: 16, reach: 0, arc: 0, push: 50 }],
   },
   spell: {
-    id: "spell", name: { ru: "КНИГА СТИХИЙ", en: "BOOK OF ELEMENTS" }, desc: { ru: "ОГОНЬ, ЛЁД И МОЛНИЯ ПО ОЧЕРЕДИ", en: "FIRE, ICE AND LIGHTNING IN TURN" },
+    id: "spell", name: { ru: "КНИГА СТИХИЙ", en: "BOOK OF ELEMENTS" }, g: "f", desc: { ru: "ОГОНЬ, ЛЁД И МОЛНИЯ ПО ОЧЕРЕДИ", en: "FIRE, ICE AND LIGHTNING IN TURN" },
     speed: 0.9, oneHand: false, ranged: true, range: 220,
     blows: [
       { kind: "fire", dmg: 14, reach: 26, arc: 0, push: 70 },
@@ -395,8 +422,24 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
 };
 export const WEAPON_IDS = Object.keys(WEAPONS) as WeaponId[];
 
+/** Weapons found deeper down can carry an element: their blows apply it (and set off reactions). */
+const EL_ADJ: Partial<Record<El, { m: string; f: string; n: string; pl: string; en: string }>> = {
+  [El.Fire]: { m: "ПЛАМЕННЫЙ", f: "ПЛАМЕННАЯ", n: "ПЛАМЕННОЕ", pl: "ПЛАМЕННЫЕ", en: "BLAZING" },
+  [El.Frost]: { m: "ЛЕДЯНОЙ", f: "ЛЕДЯНАЯ", n: "ЛЕДЯНОЕ", pl: "ЛЕДЯНЫЕ", en: "FROST" },
+  [El.Storm]: { m: "ГРОЗОВОЙ", f: "ГРОЗОВАЯ", n: "ГРОЗОВОЕ", pl: "ГРОЗОВЫЕ", en: "STORM" },
+  [El.Venom]: { m: "ЯДОВИТЫЙ", f: "ЯДОВИТАЯ", n: "ЯДОВИТОЕ", pl: "ЯДОВИТЫЕ", en: "VENOM" },
+  [El.Holy]: { m: "СВЯТОЙ", f: "СВЯТАЯ", n: "СВЯТОЕ", pl: "СВЯТЫЕ", en: "HOLY" },
+  [El.Void]: { m: "ПУСТОТНЫЙ", f: "ПУСТОТНАЯ", n: "ПУСТОТНОЕ", pl: "ПУСТОТНЫЕ", en: "VOID" },
+};
+/** "ЛЕДЯНОЕ КОПЬЁ" / "FROST SPEAR": a weapon's name with its element, if it has one. */
+export function weaponName(id: WeaponId, el: El): Text {
+  const W = WEAPONS[id], a = EL_ADJ[el];
+  if (!a) return W.name;
+  return { ru: `${a[W.g]} ${W.name.ru}`, en: `${a.en} ${W.name.en}` };
+}
+
 // ------------------------------------------------------------------------------------------------ heroes
-export type HeroId = "knight" | "ranger" | "mage" | "reaper";
+export type HeroId = "knight" | "ranger" | "mage" | "reaper" | "berserker" | "shadow";
 export interface HeroDef {
   id: HeroId;
   name: Text;
@@ -438,6 +481,18 @@ export const HEROES: HeroDef[] = [
     perk: { ru: "ЖАТВА: КАЖДЫЕ 25 УБИЙСТВ ВОЗВРАЩАЮТ СЕРДЦЕ", en: "HARVEST: EVERY 25 KILLS GIVE A HEART BACK" },
     weapon: "scythe", hearts: 5, speed: 0.95, dashCd: 1.1, dashes: 1, lantern: 1, light: "wisp", lightColor: [0.55, 1, 0.6],
     palette: { k: "#0a0910", A: "#7a7688", B: "#4e4a5c", C: "#33303e", D: "#22202a", E: "#2e7a52", F: "#1c5238", G: "#0f3022", J: "#08140e", m: "#7ee88a" },
+  },
+  {
+    id: "berserker", name: { ru: "БЕРСЕРК", en: "BERSERKER" }, title: { ru: "БРОНЗА, МЕХ И ЯРОСТЬ", en: "BRONZE, FUR AND FURY" },
+    perk: { ru: "ЯРОСТЬ: ЧЕМ МЕНЬШЕ СЕРДЕЦ, ТЕМ СИЛЬНЕЕ УДАРЫ (ДО +70%)", en: "FURY: THE FEWER HEARTS, THE HARDER THE BLOWS (UP TO +70%)" },
+    weapon: "greatsword", hearts: 7, speed: 0.95, dashCd: 1.15, dashes: 1, lantern: 0.95, light: "lantern", lightColor: [1, 0.7, 0.45],
+    palette: { k: "#0a0910", A: "#e0b078", B: "#b07a44", C: "#7e4e2a", D: "#52301a", E: "#7a3424", F: "#54200f", G: "#341208", J: "#1c0804", m: "#ff8a2a" },
+  },
+  {
+    id: "shadow", name: { ru: "ТЕНЬ", en: "SHADE" }, title: { ru: "КОГТИ ИЗ СУМРАКА", en: "CLAWS OUT OF THE DUSK" },
+    perk: { ru: "+20% КРИТА, РЫВОК РЕЖЕТ ВСЕХ НА ПУТИ", en: "+20% CRIT, THE DASH CUTS ALL IN ITS WAY" },
+    weapon: "claws", hearts: 4, speed: 1.15, dashCd: 0.8, dashes: 2, lantern: 0.9, light: "wisp", lightColor: [0.8, 0.5, 1],
+    palette: { k: "#0a0910", A: "#6a6a8e", B: "#46466a", C: "#2c2c48", D: "#1a1a30", E: "#a06ae0", F: "#6a3aa8", G: "#3e1e6a", J: "#0c0a18", m: "#e05aff" },
   },
 ];
 export const heroDef = (id: string): HeroDef => HEROES.find((h) => h.id === id) ?? HEROES[0];

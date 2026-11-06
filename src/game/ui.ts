@@ -6,7 +6,7 @@ import type { Audio } from "../engine/audio";
 import type { Input } from "../engine/input";
 import { Batch, rgba, rgbaf, withAlpha } from "../engine/renderer";
 import { measure, text, wrap } from "../engine/text";
-import { ENEMIES } from "./defs";
+import { EL_COLOR, ENEMIES } from "./defs";
 import { t, tx } from "./i18n";
 import type { World } from "./world";
 
@@ -136,19 +136,34 @@ export function drawHud(b: Batch, w: World, W: number, H: number, time: number, 
     b.image(icon("hud", "heart"), 10, heartsY);
     text(b, `${h.hp}/${h.maxHp}`, 17, heartsY - 3, { color: C.text, outline: true });
   }
+  // the Berserker's fury, while it burns
+  const fury = w.fury;
+  if (fury > 1.01) text(b, `+${Math.round((fury - 1) * 100)}%`, 10 + Math.min(12, h.maxHp) * 10, heartsY - 3, { font: "mini", color: rgbaf(1, 0.4 + 0.15 * Math.sin(time * 10), 0.25, 1), outline: true });
 
   // ---- stamina (the dash) and overdrive
   const ready = h.dashCharge >= 1, sk = ready ? 1 : h.dashTimer / w.stats.dashCd;
   b.image(icon("hud", "stamina"), 10, 36, 1, 1, 0, ready ? 0xffffffff : rgbaf(0.55, 0.55, 0.6, 1));
   bar(b, 17, 34, 44, 4, sk, ready ? rgba("#4aa8e8") : rgba("#3a4a68"), ready ? rgba("#c8ecff") : rgba("#5a6a88"));
+  // more than one dash: a pip per charge
+  if (h.dashMax > 1) for (let k = 0; k < h.dashMax; k++) b.rect(64 + k * 5, 34, 3, 4, k < h.dashCharge ? rgba("#c8ecff") : rgba("#2a3448"));
   const full = h.od >= 100, pulse = 0.6 + 0.4 * Math.sin(time * 8);
   b.image(icon("hud", "overdrive"), 10, 47);
   bar(b, 17, 45, 60, 5, h.od / 100, full ? rgbaf(1, 0.75 + 0.2 * pulse, 0.3 + 0.3 * pulse, 1) : rgba("#c8862a"), full ? rgba("#fff6c4") : rgba("#ffd27a"), rgba("#141220"), full ? time * 0.8 : -1);
   if (full) text(b, touch ? t("overdriveReady") : t("overdriveReady") + "  E", 81, 44, { font: "mini", color: withAlpha(C.gold, 0.6 + 0.4 * pulse) });
 
-  // ---- relics: their badges, a pip for each level
+  // ---- the weapon in hand (its element as a gem in the corner), then the relics with a pip for each level
+  const el = w.weaponEl;
+  b.rect(5, 55, 22, 22, rgba("#141220", 0.85));
+  b.rect(5, 55, 22, 1, el ? rgba(EL_COLOR[el]) : C.goldDim);
+  b.rect(5, 76, 22, 1, el ? rgba(EL_COLOR[el]) : C.goldDim);
+  b.image(icon("icons", `w_${h.weapon}`), 16, 66);
+  if (el) {
+    const ec = rgba(EL_COLOR[el]);
+    b.rect(22, 70, 3, 5, ec);
+    b.rect(21, 71, 5, 3, ec);
+  }
   w.relics.forEach((r, k) => {
-    const x = 16 + k * 23, y = 66;
+    const x = 42 + k * 23, y = 66;
     b.image(icon("icons", ["orbit", "lance", "coil", "flask", "halo", "void"][r.kind]), x, y);
     for (let q = 0; q < 5; q++) b.rect(x - 7 + q * 3, y + 12, 2, 2, q < r.level ? C.gold : rgba("#2a2438"));
   });
