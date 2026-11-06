@@ -1,0 +1,149 @@
+// The weapons as animations: for each, the hero's stance, run, dash and hurt holding it, and its blows sampled from
+// pixelfx's acted effects (wind-up, release, follow-through), standing and over each of the run cycle's 8 phases
+// (the legs run while the arms strike). Everything is baked in the stock dummy's colours; the game recolours the
+// body into each hero's palette in the shader, so one set of frames serves every hero.
+//
+// An attack lists the act it comes from, the act-times to sample (a frame each), and which of those frames land a
+// blow (`hits`). The game reads `hits` from the atlas, so the numbers live in one place.
+
+import { READY } from "../../pixelfx/src/core/poses.js";
+import { poseAt } from "../../pixelfx/src/core/act.js";
+import { act as SLASH } from "../../pixelfx/src/fx/melee/sword-slash.js";
+import { act as DOUBLE } from "../../pixelfx/src/fx/melee/double-slash.js";
+import { act as THRUST } from "../../pixelfx/src/fx/melee/thrust.js";
+import { act as HAMMER } from "../../pixelfx/src/fx/melee/hammer-smash.js";
+import { act as CLEAVE } from "../../pixelfx/src/fx/melee/heavy-cleave.js";
+import { act as SWEEP } from "../../pixelfx/src/fx/melee/spear-sweep.js";
+import { act as REAP } from "../../pixelfx/src/fx/melee/scythe-reap.js";
+import { act as SPIN } from "../../pixelfx/src/fx/melee/spin-slash.js";
+import { act as FLURRY } from "../../pixelfx/src/fx/melee/dagger-flurry.js";
+import { act as ARROW } from "../../pixelfx/src/fx/moves/arrow-shot.js";
+import { act as FIREBALL } from "../../pixelfx/src/fx/moves/fireball-throw.js";
+import { act as ICELANCE } from "../../pixelfx/src/fx/moves/ice-lance-throw.js";
+import { act as LIGHTNING } from "../../pixelfx/src/fx/moves/lightning-call.js";
+
+/** The legs (and bob) of the run cycle at phase k of 8. */
+export function runLegs(k) {
+  const th = (k / 8) * Math.PI * 2, c = Math.cos(th), s = Math.sin(th);
+  return { crouch: 1 + 1.5 * Math.abs(c), ffx: 1 + 6 * c, ffy: -4 - Math.max(0, -s) * 5, fbx: 1 - 6 * c, fby: -4 - Math.max(0, s) * 5, bob: 1.5 * Math.abs(c), c };
+}
+
+// warm light for blades, cold for the spear's steel, sickly green for the scythe
+const BLADE = ["#3a1a0a", "#8a3a12", "#d8701c", "#ffb43a", "#ffe08a", "#fff6d0", "#ffffff"];
+const STEEL = ["#1a2030", "#34405a", "#5a6a8a", "#8aa0c4", "#c4d4ec", "#eef4ff", "#ffffff"];
+const SOUL = ["#0c1e14", "#14402a", "#1f6a3e", "#3aa060", "#7ee88a", "#c8ffc4", "#ffffff"];
+
+/**
+ * Each weapon: its stance (`guard`, what the hands hold), whether the far hand is free for a lantern, and its blows.
+ * A blow: act and sample times, hit frames, its effect (pixelfx id, options, how long to bake it).
+ */
+export const WEAPONS = {
+  sword: {
+    guard: { ...READY, weapon: "sword", fx: 12, fy: -21, sa: -0.85, bx: 5, by: -15, turn: 0.35 },
+    oneHand: true,
+    attacks: [
+      { act: SLASH, times: [-0.3, -0.16, -0.06, 0, 0.06, 0.22, 0.45], hits: [3], fx: "melee/sword-slash", opts: { palette: BLADE } },
+      { act: DOUBLE, times: [-0.18, -0.08, -0.02, 0, 0.06, 0.17, 0.4], hits: [3], fx: "melee/double-slash", opts: { palette: BLADE } },
+      { act: THRUST, times: [-0.24, -0.12, -0.04, 0, 0.07, 0.3, 0.55], hits: [3], fx: "melee/thrust", opts: { reach: 46 } },
+    ],
+  },
+  hammer: {
+    guard: { ...READY, weapon: "hammer", two: true, fx: 11, fy: -21, bx: 9, by: -21, sa: 0.62, turn: 0.3 },
+    oneHand: false,
+    attacks: [
+      { act: HAMMER, times: [-0.44, -0.3, -0.18, -0.06, 0.06, 0.15, 0.4, 0.7], hits: [5], fx: "melee/hammer-smash", maxT: 0.7 },
+      { act: CLEAVE, times: [-0.3, -0.12, 0.05, 0.2, 0.28, 0.335, 0.6, 0.9], hits: [5], fx: "melee/heavy-cleave", maxT: 0.6, weapon: "hammer" },
+    ],
+  },
+  spear: {
+    guard: { ...READY, weapon: "spear", fx: 11, fy: -21, bx: 7, by: -16, sa: -1.42, turn: 0.3 },
+    oneHand: true,
+    attacks: [
+      { act: THRUST, times: [-0.24, -0.12, -0.04, 0, 0.07, 0.3, 0.55], hits: [3], fx: "melee/thrust", opts: { reach: 66, palette: STEEL }, weapon: "spear" },
+      { act: SWEEP, times: [-0.34, -0.2, -0.08, 0.02, 0.06, 0.1, 0.35, 0.62], hits: [5], fx: "melee/spear-sweep", maxT: 0.5 },
+    ],
+  },
+  scythe: {
+    guard: { ...READY, weapon: "scythe", fx: 11, fy: -22, bx: 7, by: -16, sa: -1.5, turn: 0.3 },
+    oneHand: false,
+    attacks: [
+      { act: REAP, times: [-0.26, -0.1, 0.0, 0.08, 0.14, 0.2, 0.3, 0.45], hits: [4], fx: "melee/scythe-reap", maxT: 0.55, opts: { palette: SOUL } },
+      { act: SPIN, times: [-0.2, -0.08, 0.0, 0.05, 0.09, 0.13, 0.17, 0.4], hits: [6], fx: "melee/spin-slash", maxT: 0.45, opts: { palette: SOUL }, weapon: "scythe" },
+    ],
+  },
+  daggers: {
+    guard: { ...READY, weapon: "dagger", offWeapon: "dagger", fx: 12, fy: -22, bx: 9, by: -22, sa: -0.5, sb: -0.9, turn: 0.3 },
+    oneHand: false,
+    attacks: [
+      { act: FLURRY, times: [-0.14, -0.03, 0.0, 0.06, 0.11, 0.17, 0.22, 0.28, 0.33, 0.37, 0.45], hits: [3, 4, 5, 6, 7, 8, 9], fx: "melee/dagger-flurry", maxT: 0.55 },
+    ],
+  },
+  bow: {
+    guard: { ...READY, weapon: "bow", fx: 12, fy: -20, bx: 6, by: -17, sa: -0.4, turn: 0.3 },
+    oneHand: false,
+    attacks: [{ act: ARROW, times: [-0.14, 0.02, 0.18, 0.36, 0.5, 0.56, 0.72, 1.0], hits: [5] }],
+  },
+  spell: {
+    guard: { ...READY, fx: 10, fy: -20, bx: 8, by: -21, turn: 0.35 },
+    oneHand: false,
+    attacks: [
+      { act: FIREBALL, times: [0.5, 0.7, 0.85, 0.92, 0.95, 1.05, 1.25, 1.39], hits: [4] },
+      { act: ICELANCE, times: [0.4, 0.6, 0.7, 0.77, 0.8, 0.9, 1.1, 1.3], hits: [4] },
+      { act: LIGHTNING, times: [0.26, 0.5, 0.66, 0.72, 0.76, 0.86, 1.0, 1.3], hits: [4] },
+    ],
+  },
+};
+
+function attackPoses(w, a, legs) {
+  // the frame of the blow is where the feet stand; the body steps a little either side of it
+  const hitT = a.times[a.hits[0]], x0 = poseAt(a.act.poses, hitT).x ?? 0;
+  return a.times.map((t) => {
+    const p = { ...poseAt(a.act.poses, t) };
+    p.x = Math.max(-5, Math.min(5, (p.x ?? 0) - x0));
+    if (a.weapon) p.weapon = a.weapon;
+    else if (w.guard.weapon && !p.weapon) p.weapon = w.guard.weapon;
+    delete p.ghost;
+    if (legs) Object.assign(p, { ffx: legs.ffx, ffy: legs.ffy, fbx: legs.fbx, fby: legs.fby, crouch: Math.max(p.crouch ?? 0, legs.crouch), x: 0 });
+    return p;
+  });
+}
+
+/** The atlas entries for every weapon: the hero holding it, and its blows' effects. */
+export function weaponAnims(light) {
+  const out = [];
+  for (const [id, w] of Object.entries(WEAPONS)) {
+    const G = w.guard, lantern = (p) => (w.oneHand ? { ...p, bx: 5, by: -15 } : p);
+    const run = [0, 1, 2, 3, 4, 5, 6, 7].map((k) => {
+      const L = runLegs(k);
+      return lantern({ ...G, lean: 3, crouch: L.crouch, ffx: L.ffx, ffy: L.ffy, fbx: L.fbx, fby: L.fby, fy: G.fy + L.bob * 0.5, ...(w.oneHand ? { bx: 4 + 2 * L.c, by: -15 } : { by: G.by + L.bob * 0.5 }) });
+    });
+    const idle = [0, 1, 2, 1].map((k) => lantern({ ...G, crouch: 3 + k * 0.6, fy: G.fy + k * 0.4, by: G.by + k * 0.3 }));
+    const dash = [
+      { ...G, lean: 9, crouch: 4, fx: 4, fy: -18, bx: -4, by: -18, ffx: 7, ffy: -6, fbx: -8, fby: -5, y: -1, ...(G.weapon ? { sa: 2.6 } : {}) },
+      { ...G, lean: 7, crouch: 3, fx: 5, fy: -18, bx: -2, by: -18, ffx: 4, ffy: -4, fbx: -6, fby: -7, y: -2, ...(G.weapon ? { sa: 2.7 } : {}) },
+    ];
+    const hurt = [{ ...G, lean: -5, crouch: 3, turn: 0.6, fx: 2, fy: -26, bx: 8, by: -24, ffx: -4, fbx: 5, ...(G.weapon ? { sa: -1.6 } : {}) }];
+    out.push({ name: `${id}_idle`, rig: idle, fps: 5, loop: true });
+    out.push({ name: `${id}_run`, rig: run, fps: 14, loop: true });
+    out.push({ name: `${id}_dash`, rig: dash, fps: 12, loop: true });
+    out.push({ name: `${id}_hurt`, rig: hurt, fps: 1, loop: true });
+    w.attacks.forEach((a, k) => {
+      out.push({ name: `${id}_a${k}`, rig: attackPoses(w, a, null), fps: 20, loop: false, hits: a.hits });
+      // frame-major over the run's phases: index = frame * 8 + phase
+      const per = [0, 1, 2, 3, 4, 5, 6, 7].map((q) => attackPoses(w, a, runLegs(q))), grid = [];
+      for (let f = 0; f < a.times.length; f++) for (let q = 0; q < 8; q++) grid.push(per[q][f]);
+      out.push({ name: `${id}_a${k}_run`, rig: grid, fps: 20, loop: false, hits: a.hits });
+      if (a.fx) out.push({ name: `fx_${id}_${k}`, fx: a.fx, fps: 24, maxT: a.maxT ?? 0.42, light, opts: a.opts ?? {} });
+    });
+  }
+  return out;
+}
+
+/** The hero falling: a stagger, the knees give, he folds forward onto the floor. No weapon: it has been dropped. */
+export const DEATH = [
+  { ...READY, lean: -6, crouch: 2, turn: 0.6, fx: -4, fy: -28, bx: 10, by: -26, ffx: -5, fbx: 6 },
+  { ...READY, lean: -3, crouch: 6, turn: 0.5, fx: 2, fy: -22, bx: 8, by: -20, ffx: -3, fbx: 6 },
+  { ...READY, lean: 4, crouch: 10, turn: 0.4, fx: 6, fy: -12, bx: 8, by: -12, ffx: 4, ffy: -2, fbx: -6, fby: -2 },
+  { ...READY, lean: 9, crouch: 13, turn: 0.3, fx: 10, fy: -6, bx: 9, by: -6, ffx: 6, ffy: -1, fbx: -8, fby: -1 },
+  { ...READY, lean: 12, crouch: 15, turn: 0.2, fx: 12, fy: -3, bx: 10, by: -3, ffx: 7, ffy: -1, fbx: -9, fby: -1 },
+];

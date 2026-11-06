@@ -139,6 +139,8 @@ export const EN = {
 export interface Biome {
   id: "crypt" | "garden" | "frost";
   name: Text;
+  /** A line under the floor's title card. */
+  lore: Text;
   floor: string;
   wall: string;
   pillar: string;
@@ -150,9 +152,9 @@ export interface Biome {
   motes: "dust" | "fireflies" | "snow";
 }
 export const BIOMES: Biome[] = [
-  { id: "crypt", name: { ru: "СКЛЕП", en: "THE CRYPT" }, floor: "floor_crypt", wall: "wall_crypt", pillar: "pillar_crypt", torch: "torch", ambient: [0.95, 0.88, 1.15], torchLight: "#ff9a40", motes: "dust" },
-  { id: "garden", name: { ru: "ЗАБЫТЫЙ САД", en: "THE LOST GARDEN" }, floor: "floor_garden", wall: "wall_garden", pillar: "pillar_garden", torch: "torch", ambient: [0.82, 1.08, 0.9], torchLight: "#ffb050", motes: "fireflies" },
-  { id: "frost", name: { ru: "ЛЕДЯНЫЕ ЗАЛЫ", en: "THE FROZEN HALLS" }, floor: "floor_frost", wall: "wall_frost", pillar: "pillar_frost", torch: "torch_blue", ambient: [0.8, 0.95, 1.3], torchLight: "#6ab8ff", motes: "snow" },
+  { id: "crypt", name: { ru: "СКЛЕП", en: "THE CRYPT" }, lore: { ru: "ЗДЕСЬ ЛЕЖАТ ТЕ, КТО НЁС СВЕТ ВНИЗ ДО ТЕБЯ", en: "HERE LIE THOSE WHO CARRIED LIGHT DOWN BEFORE YOU" }, floor: "floor_crypt", wall: "wall_crypt", pillar: "pillar_crypt", torch: "torch", ambient: [0.95, 0.88, 1.15], torchLight: "#ff9a40", motes: "dust" },
+  { id: "garden", name: { ru: "ЗАБЫТЫЙ САД", en: "THE LOST GARDEN" }, lore: { ru: "САД РОС БЕЗ СОЛНЦА И НАУЧИЛСЯ СВЕТИТЬСЯ САМ", en: "THE GARDEN GREW WITHOUT A SUN AND LEARNED TO GLOW" }, floor: "floor_garden", wall: "wall_garden", pillar: "pillar_garden", torch: "torch", ambient: [0.82, 1.08, 0.9], torchLight: "#ffb050", motes: "fireflies" },
+  { id: "frost", name: { ru: "ЛЕДЯНЫЕ ЗАЛЫ", en: "THE FROZEN HALLS" }, lore: { ru: "ХОЛОД ПОДНИМАЕТСЯ С САМОГО ДНА БАШНИ", en: "THE COLD RISES FROM THE TOWER'S VERY BOTTOM" }, floor: "floor_frost", wall: "wall_frost", pillar: "pillar_frost", torch: "torch_blue", ambient: [0.8, 0.95, 1.3], torchLight: "#6ab8ff", motes: "snow" },
 ];
 export const FLOORS = 9;
 export const biomeOf = (floor: number): Biome => BIOMES[Math.min(BIOMES.length - 1, Math.floor((floor - 1) / 3))];
@@ -247,10 +249,10 @@ export interface StatDef {
   weight: number;
 }
 export const STATS: StatDef[] = [
-  { id: "edge", name: { ru: "ЗАТОЧКА", en: "HONED EDGE" }, desc: { ru: "+20% УРОНА МЕЧА", en: "+20% SWORD DAMAGE" }, max: 8, weight: 10 },
-  { id: "haste", name: { ru: "ЛЁГКАЯ РУКА", en: "LIGHT HAND" }, desc: { ru: "+12% СКОРОСТИ УДАРОВ", en: "+12% ATTACK SPEED" }, max: 6, weight: 9 },
-  { id: "reach", name: { ru: "ДЛИННЫЙ КЛИНОК", en: "LONG BLADE" }, desc: { ru: "+15% ДАЛЬНОСТИ И ШИРИНЫ УДАРА", en: "+15% REACH AND ARC" }, max: 4, weight: 7 },
-  { id: "wave", name: { ru: "ВОЛНА СВЕТА", en: "WAVE OF LIGHT" }, desc: { ru: "КАЖДЫЙ УДАР ПУСКАЕТ СВЕТОВОЙ СЕРП", en: "EVERY BLOW THROWS A CRESCENT OF LIGHT" }, max: 3, weight: 6 },
+  { id: "edge", name: { ru: "ЗАТОЧКА", en: "HONED EDGE" }, desc: { ru: "+20% УРОНА ОРУЖИЯ", en: "+20% WEAPON DAMAGE" }, max: 8, weight: 10 },
+  { id: "haste", name: { ru: "ЛЁГКАЯ РУКА", en: "LIGHT HAND" }, desc: { ru: "+12% СКОРОСТИ АТАК", en: "+12% ATTACK SPEED" }, max: 6, weight: 9 },
+  { id: "reach", name: { ru: "ДЛИННЫЙ КЛИНОК", en: "LONG BLADE" }, desc: { ru: "+15% ДАЛЬНОСТИ: ШИРЕ УДАРЫ, БЫСТРЕЕ СНАРЯДЫ", en: "+15% REACH: WIDER BLOWS, FASTER SHOTS" }, max: 4, weight: 7 },
+  { id: "wave", name: { ru: "ВОЛНА СВЕТА", en: "WAVE OF LIGHT" }, desc: { ru: "УДАР ПУСКАЕТ СВЕТОВОЙ СЕРП, ВЫСТРЕЛ - ЕЩЁ ОДИН СНАРЯД", en: "BLOWS THROW A CRESCENT, SHOTS ONE MORE MISSILE" }, max: 3, weight: 6 },
   { id: "parry", name: { ru: "ОТРАЖЕНИЕ", en: "DEFLECT" }, desc: { ru: "РАЗРУБЛЕННЫЕ ПУЛИ ЛЕТЯТ ОБРАТНО", en: "BULLETS YOU CUT FLY BACK" }, max: 1, weight: 4 },
   { id: "speed", name: { ru: "ЛЁГКИЕ САПОГИ", en: "LIGHT BOOTS" }, desc: { ru: "+8% СКОРОСТИ", en: "+8% MOVE SPEED" }, max: 4, weight: 6 },
   { id: "maxhp", name: { ru: "ЗАКАЛЁННОЕ СЕРДЦЕ", en: "TEMPERED HEART" }, desc: { ru: "+1 СЕРДЦЕ И ЛЕЧЕНИЕ", en: "+1 HEART, AND HEAL" }, max: 4, weight: 5 },
@@ -301,3 +303,143 @@ export const FORGE: ForgeItem[] = [
   { id: "reach", name: { ru: "ПРИТЯЖЕНИЕ", en: "PULL" }, desc: { ru: "+25% РАДИУС СБОРА", en: "+25% PICKUP RANGE" }, costs: [25, 70] },
   { id: "start", name: { ru: "НАСЛЕДИЕ", en: "LEGACY" }, desc: { ru: "ВТОРАЯ РЕЛИКВИЯ НА СТАРТЕ", en: "A SECOND RELIC AT THE START" }, costs: [100] },
 ];
+
+// ------------------------------------------------------------------------------------------------ weapons
+export type WeaponId = "sword" | "hammer" | "spear" | "scythe" | "daggers" | "bow" | "spell";
+/**
+ * One blow of a weapon's combo. Its animation is `${weapon}_a${index}` in the atlas, which also says on which frames
+ * it lands (tools/bake/weapons.mjs). What landing does depends on its kind:
+ *   arc     everything in a sector in front, turned to the aim
+ *   around  everything in a circle round the hero (spins)
+ *   front   everything in a circle at a point in front (ground smashes)
+ *   arrow / fire / frost   a projectile from the hand
+ *   storm   lightning out of the sky onto the enemy nearest the aim
+ */
+export interface Blow {
+  kind: "arc" | "around" | "front" | "arrow" | "fire" | "frost" | "storm";
+  dmg: number;
+  reach: number;
+  /** Half-angle of an arc, or how far in front a smash lands. */
+  arc: number;
+  push: number;
+  stun?: number;
+  /** The effect: turned to the aim around the chest ("rotate") or only mirrored left and right ("flip"). */
+  fxMode?: "rotate" | "flip";
+}
+export interface WeaponDef {
+  id: WeaponId;
+  name: Text;
+  desc: Text;
+  blows: Blow[];
+  /** How fast its animations play (1 = 20 fps). */
+  speed: number;
+  /** The far hand is free: the lantern hangs from it rather than from the belt. */
+  oneHand: boolean;
+  ranged: boolean;
+  /** How close something must be for the weapon to swing by itself. */
+  range: number;
+}
+export const WEAPONS: Record<WeaponId, WeaponDef> = {
+  sword: {
+    id: "sword", name: { ru: "МЕЧ", en: "SWORD" }, desc: { ru: "ТРИ УДАРА: РУБЯЩИЙ, ОБРАТНЫЙ, ВЫПАД", en: "THREE BLOWS: CUT, BACKCUT, THRUST" },
+    speed: 1, oneHand: true, ranged: false, range: 58,
+    blows: [
+      { kind: "arc", dmg: 12, reach: 46, arc: 1.25, push: 70, fxMode: "rotate" },
+      { kind: "arc", dmg: 11, reach: 46, arc: 1.25, push: 60, fxMode: "rotate" },
+      { kind: "arc", dmg: 20, reach: 58, arc: 0.5, push: 150, fxMode: "rotate" },
+    ],
+  },
+  hammer: {
+    id: "hammer", name: { ru: "БОЕВОЙ МОЛОТ", en: "WARHAMMER" }, desc: { ru: "МЕДЛЕННО, НО ОГЛУШАЕТ И РАСКИДЫВАЕТ", en: "SLOW, BUT STUNS AND SCATTERS" },
+    speed: 0.8, oneHand: false, ranged: false, range: 62,
+    blows: [
+      { kind: "front", dmg: 34, reach: 36, arc: 30, push: 190, stun: 0.6, fxMode: "flip" },
+      { kind: "arc", dmg: 26, reach: 56, arc: 1.5, push: 150, stun: 0.3, fxMode: "rotate" },
+    ],
+  },
+  spear: {
+    id: "spear", name: { ru: "КОПЬЁ", en: "SPEAR" }, desc: { ru: "ДАЛЬНИЙ ВЫПАД И ШИРОКИЙ ВЗМАХ", en: "A LONG THRUST AND A WIDE SWEEP" },
+    speed: 0.95, oneHand: true, ranged: false, range: 76,
+    blows: [
+      { kind: "arc", dmg: 17, reach: 76, arc: 0.32, push: 90, fxMode: "rotate" },
+      { kind: "arc", dmg: 13, reach: 62, arc: 1.5, push: 110, fxMode: "rotate" },
+    ],
+  },
+  scythe: {
+    id: "scythe", name: { ru: "КОСА", en: "SCYTHE" }, desc: { ru: "ЖАТВА ДУГОЙ И ВРАЩЕНИЕ НА ВСЕ СТОРОНЫ", en: "A REAPING ARC AND A SPIN ALL ROUND" },
+    speed: 0.85, oneHand: false, ranged: false, range: 56,
+    blows: [
+      { kind: "arc", dmg: 18, reach: 56, arc: 1.6, push: 80, fxMode: "rotate" },
+      { kind: "around", dmg: 15, reach: 54, arc: 0, push: 110, fxMode: "flip" },
+    ],
+  },
+  daggers: {
+    id: "daggers", name: { ru: "ПАРНЫЕ КИНЖАЛЫ", en: "TWIN DAGGERS" }, desc: { ru: "ВИХРЬ ИЗ СЕМИ БЫСТРЫХ УДАРОВ", en: "A FLURRY OF SEVEN QUICK STABS" },
+    speed: 1.1, oneHand: false, ranged: false, range: 40,
+    blows: [{ kind: "arc", dmg: 6, reach: 38, arc: 0.95, push: 22, fxMode: "rotate" }],
+  },
+  bow: {
+    id: "bow", name: { ru: "ДЛИННЫЙ ЛУК", en: "LONGBOW" }, desc: { ru: "СТРЕЛЫ ПРОБИВАЮТ ВРАГОВ НАСКВОЗЬ", en: "ARROWS GO STRAIGHT THROUGH" },
+    speed: 1.15, oneHand: false, ranged: true, range: 250,
+    blows: [{ kind: "arrow", dmg: 16, reach: 0, arc: 0, push: 50 }],
+  },
+  spell: {
+    id: "spell", name: { ru: "КНИГА СТИХИЙ", en: "BOOK OF ELEMENTS" }, desc: { ru: "ОГОНЬ, ЛЁД И МОЛНИЯ ПО ОЧЕРЕДИ", en: "FIRE, ICE AND LIGHTNING IN TURN" },
+    speed: 0.9, oneHand: false, ranged: true, range: 220,
+    blows: [
+      { kind: "fire", dmg: 14, reach: 26, arc: 0, push: 70 },
+      { kind: "frost", dmg: 12, reach: 0, arc: 0, push: 40 },
+      { kind: "storm", dmg: 18, reach: 24, arc: 0, push: 30 },
+    ],
+  },
+};
+export const WEAPON_IDS = Object.keys(WEAPONS) as WeaponId[];
+
+// ------------------------------------------------------------------------------------------------ heroes
+export type HeroId = "knight" | "ranger" | "mage" | "reaper";
+export interface HeroDef {
+  id: HeroId;
+  name: Text;
+  title: Text;
+  perk: Text;
+  weapon: WeaponId;
+  hearts: number;
+  speed: number;
+  dashCd: number;
+  dashes: number;
+  lantern: number;
+  /** What lights the way: a lantern in the hand (or at the belt), or a wisp at the shoulder. */
+  light: "lantern" | "wisp";
+  lightColor: [number, number, number];
+  /** The stock dummy's colours (k A B C D E F G J m) recoloured: plates lit to dark, cloth, seams, the mark. */
+  palette: Record<string, string>;
+}
+export const HEROES: HeroDef[] = [
+  {
+    id: "knight", name: { ru: "РЫЦАРЬ ФОНАРЯ", en: "LANTERN KNIGHT" }, title: { ru: "СТАЛЬ И ТЁПЛЫЙ СВЕТ", en: "STEEL AND WARM LIGHT" },
+    perk: { ru: "+1 СЕРДЦЕ, ФОНАРЬ СВЕТИТ НА 20% ШИРЕ", en: "+1 HEART, A LANTERN 20% WIDER" },
+    weapon: "sword", hearts: 6, speed: 1, dashCd: 1, dashes: 1, lantern: 1.2, light: "lantern", lightColor: [1, 0.82, 0.58],
+    palette: { k: "#0a0910", A: "#d4deea", B: "#8e9cb6", C: "#5c6a8a", D: "#3c4662", E: "#c8344c", F: "#922238", G: "#5c1428", J: "#3a0c1c", m: "#ffd04a" },
+  },
+  {
+    id: "ranger", name: { ru: "СЛЕДОПЫТ", en: "RANGER" }, title: { ru: "ЛУК, КОЖА И ЛЁГКИЙ ШАГ", en: "BOW, LEATHER, A LIGHT STEP" },
+    perk: { ru: "ДВА РЫВКА ПОДРЯД, БЕГАЕТ БЫСТРЕЕ, СТРЕЛЫ ПРОБИВАЮТ +1", en: "TWO DASHES, FASTER FEET, ARROWS PIERCE +1" },
+    weapon: "bow", hearts: 4, speed: 1.12, dashCd: 0.85, dashes: 2, lantern: 1, light: "lantern", lightColor: [1, 0.85, 0.6],
+    palette: { k: "#0a0910", A: "#d8c08a", B: "#a8864e", C: "#765a32", D: "#4e3a20", E: "#4e8a3a", F: "#36612a", G: "#22401c", J: "#16281a", m: "#ffe060" },
+  },
+  {
+    id: "mage", name: { ru: "ЧАРОДЕЙКА", en: "SORCERESS" }, title: { ru: "ОГОНЬ, ЛЁД И ГРОЗА", en: "FIRE, ICE AND STORM" },
+    perk: { ru: "ЗАКЛИНАНИЯ ЧЕРЕДУЮТ СТИХИИ И САМИ ВЫЗЫВАЮТ РЕАКЦИИ", en: "HER SPELLS TAKE TURNS AND SET OFF REACTIONS" },
+    weapon: "spell", hearts: 4, speed: 0.98, dashCd: 1, dashes: 1, lantern: 1, light: "wisp", lightColor: [0.55, 0.85, 1],
+    palette: { k: "#0a0910", A: "#c8b8f0", B: "#9480d0", C: "#64509e", D: "#40306e", E: "#e8c860", F: "#b8902e", G: "#7a5a1a", J: "#2a1a44", m: "#7ad0ff" },
+  },
+  {
+    id: "reaper", name: { ru: "ЖНЕЦ", en: "REAPER" }, title: { ru: "КОСА И ЗЕЛЁНЫЙ ОГОНЬ ДУШ", en: "A SCYTHE AND GREEN SOUL-FIRE" },
+    perk: { ru: "ЖАТВА: КАЖДЫЕ 25 УБИЙСТВ ВОЗВРАЩАЮТ СЕРДЦЕ", en: "HARVEST: EVERY 25 KILLS GIVE A HEART BACK" },
+    weapon: "scythe", hearts: 5, speed: 0.95, dashCd: 1.1, dashes: 1, lantern: 1, light: "wisp", lightColor: [0.55, 1, 0.6],
+    palette: { k: "#0a0910", A: "#7a7688", B: "#4e4a5c", C: "#33303e", D: "#22202a", E: "#2e7a52", F: "#1c5238", G: "#0f3022", J: "#08140e", m: "#7ee88a" },
+  },
+];
+export const heroDef = (id: string): HeroDef => HEROES.find((h) => h.id === id) ?? HEROES[0];
+/** The order of palette roles the shader swaps. */
+export const PALETTE_KEYS = ["k", "A", "B", "C", "D", "E", "F", "G", "J", "m"];

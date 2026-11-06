@@ -1,12 +1,12 @@
 // One floor of the tower and everything on it: the hero and his sword, the horde, bullets, relics, braziers, columns,
 // the portal. The simulation runs in steps of at most 1/60 s; drawing lives in draw.ts.
 
-import { anim, frameAt, type Anim } from "../engine/atlas";
+import { anim, frameAt, hasAnim, type Anim } from "../engine/atlas";
 import type { Audio } from "../engine/audio";
 import { rgba } from "../engine/renderer";
 import {
-  AI, biomeOf, bossOf, El, EL_COLOR, EN, ENEMIES, FLOORS, RelicKind, reactionFor, roster,
-  type Biome, type Modifier, type Reaction, type StatId,
+  AI, biomeOf, bossOf, El, EL_COLOR, EN, ENEMIES, FLOORS, heroDef, RelicKind, reactionFor, roster, WEAPON_IDS, WEAPONS,
+  type Biome, type Blow, type HeroDef, type Modifier, type Reaction, type StatId, type WeaponId,
 } from "./defs";
 import { getLang, t as tr, tx } from "./i18n";
 import { Bullets, Drops, Enemies, Grid, Particles, TEAM_FOE, TEAM_HERO } from "./pools";
@@ -18,13 +18,9 @@ export const B_CRESCENT = 0, B_LANCE = 1, B_ORB_RED = 2, B_ORB_VIOLET = 3, B_ORB
 export const BULLET_ANIMS = ["crescent", "ice_lance", "orb_red", "orb_violet", "orb_green", "orb_blue"];
 // drop kinds
 export const D_BLUE = 0, D_GREEN = 1, D_RED = 2, D_HEART = 3, D_CHEST = 4;
-// the sword: three blows in a combo, as baked in tools/bake/manifest.mjs (7 frames at 20 fps, contact on frame 3)
-export const ATTACKS = [
-  { anim: "hero_slash", fx: "fx_slash", dmg: 12, reach: 46, arc: 1.25, push: 70 },
-  { anim: "hero_backslash", fx: "fx_backslash", dmg: 11, reach: 46, arc: 1.25, push: 60 },
-  { anim: "hero_thrust", fx: "fx_thrust", dmg: 20, reach: 58, arc: 0.5, push: 150 },
-];
-const ATK_FPS = 20, ATK_FRAMES = 7, ATK_CONTACT = 3;
+export const B_ARROW = 6, B_FIREBALL = 7;
+BULLET_ANIMS.push("arrow", "fireball");
+const ATK_FPS = 20;
 
 export interface Fx {
   anim: string;
@@ -117,6 +113,25 @@ export interface Decor {
   flat: boolean;
   phase: number;
 }
+/** An enemy's last frame, flashing white and squashing away as it dies. */
+export interface Corpse {
+  anim: string;
+  frame: number;
+  x: number;
+  y: number;
+  flip: number;
+  scale: number;
+  t: number;
+}
+/** A weapon waiting on an altar: stand on it a moment to swap it for your own. */
+export interface Rack {
+  x: number;
+  y: number;
+  weapon: WeaponId;
+  progress: number;
+  /** The hero must step off before swapping again. */
+  armed: boolean;
+}
 export interface Mote {
   x: number;
   y: number;
@@ -148,6 +163,7 @@ export interface WorldEvents {
   floorCleared(): void;
   victory(): void;
   reaction(r: Reaction): void;
+  weapon(id: WeaponId): void;
   banner(text: string, color?: number): void;
 }
 
@@ -189,6 +205,18 @@ export class Hero {
   lanternA = 0;
   lanternV = 0;
   dead = false;
+  /** Who, with what, how many dashes. */
+  def: HeroDef = heroDef("knight");
+  weapon: WeaponId = "sword";
+  dashMax = 1;
+  /** Seconds since death (the fall plays out), since arriving on a floor, since stepping into the portal (-1: not). */
+  deathT = 0;
+  arriveT = 9;
+  exitT = -1;
+  /** Kills toward the Reaper's next heart. */
+  harvest = 0;
+  /** Which hit frames of the current blow have landed. */
+  hitsDone = 0;
 }
 
 export class World {
@@ -244,6 +272,8 @@ export class World {
   seen = new Set<number>();
   /** Draw hitboxes (H). */
   debug = false;
+  corpses: Corpse[] = [];
+  racks: Rack[] = [];
   moveX = 0;
   moveY = 0;
   private spawnAcc = 0;
@@ -295,8 +325,13 @@ export class World {
     h.x = this.w / 2;
     h.y = this.h / 2;
     h.dead = false;
-    h.invuln = 1.5;
+    h.invuln = 1.6;
     h.atk = -1;
+    h.arriveT = 0;
+    h.exitT = -1;
+    h.vx = h.vy = 0;
+    this.corpses = [];
+    this.addFx("beam", h.x, h.y, { glow: 1, key: 2 });
     if (mod.heal) h.hp = h.maxHp;
     if (mod.chest) this.pendingChests++;
     this.layout();
@@ -334,6 +369,15 @@ export class World {
       if (!clear(x, y, 4) && R.chance(0.8)) continue;
       this.decor.push({ anim: name, x: Math.round(x), y: Math.round(y), frame: R.int(0, frames - 1), flip: R.chance(0.5) ? -1 : 1, flat, phase: R.range(0, 5) });
     }
+    // a weapon altar on every floor, away from the start, with something other than what the hero holds
+    this.racks = [];
+    for (let tries = 0; tries < 60; tries++) {
+      const x = R.range(60, W - 60), y = R.range(70, H - 40);
+      if (!clear(x, y, 14)) continue;
+      const pool = WEAPON_IDS.filter((id) => id !== this.hero.weapon);
+      this.racks.push({ x: Math.round(x), y: Math.round(y), weapon: R.pick(pool), progress: 0, armed: true });
+      break;
+    }
     this.motes = [];
     for (let k = 0; k < 70; k++) this.motes.push({ x: R.range(0, W), y: R.range(-40, H), vx: R.range(-1, 1), vy: R.range(-1, 1), ph: R.range(0, 6.3) });
   }
@@ -357,6 +401,20 @@ export class World {
   }
   levelNeed(level = this.hero.level): number {
     return Math.round(4 + level * 4 + level * level * 0.7);
+  }
+
+  /** Set the hero up for a run: who, their weapon, hearts, speed, dashes, light. */
+  setHero(def: HeroDef): void {
+    const h = this.hero, s = this.stats;
+    h.def = def;
+    h.weapon = def.weapon;
+    h.maxHp = def.hearts;
+    h.hp = def.hearts;
+    h.dashMax = def.dashes;
+    h.dashCharge = def.dashes;
+    s.speed = def.speed;
+    s.dashCd = def.dashCd;
+    s.lantern = def.lantern;
   }
 
   // ============================================================================================ helpers
@@ -469,6 +527,14 @@ export class World {
     this.popups = this.popups.filter((p) => p.t < (p.big ? 1.1 : 0.7));
     for (const g of this.ghosts) g.life -= dt;
     this.ghosts = this.ghosts.filter((g) => g.life > 0);
+    for (const c of this.corpses) c.t += dt;
+    this.corpses = this.corpses.filter((c) => c.t < 0.2);
+    const h = this.hero;
+    if (h.dead) {
+      const was = h.deathT;
+      h.deathT += dt;
+      if (was < 0.65 && h.deathT >= 0.65) this.addFx("soul", h.x, h.y, { glow: 1, key: 3 });
+    }
   }
 
   // ============================================================================================ hero
@@ -478,13 +544,28 @@ export class World {
     h.invuln = Math.max(0, h.invuln - dt);
     h.hurtT = Math.max(0, h.hurtT - dt);
     h.comboT -= dt;
-    if (h.dashCharge < 1) {
+    if (h.dashCharge < h.dashMax) {
       h.dashTimer += dt;
       if (h.dashTimer >= s.dashCd) {
-        h.dashCharge = 1;
+        h.dashCharge++;
         h.dashTimer = 0;
       }
     }
+    // arriving on a floor: a moment in the beam; stepping into the portal: drawn in, then gone
+    h.arriveT += dt;
+    if (h.exitT >= 0) {
+      h.exitT += dt;
+      if (this.portal) {
+        h.x += (this.portal.x - h.x) * Math.min(1, dt * 6);
+        h.y += (this.portal.y - 6 - h.y) * Math.min(1, dt * 6);
+      }
+      if (h.exitT > 0.9 && !this.cleared) {
+        this.cleared = true;
+        this.ev.floorCleared();
+      }
+      return;
+    }
+    if (h.arriveT < 0.55) return;
     // aim: the mouse, a stick, or the nearest enemy
     const chestY = h.y - 18;
     this.autoTarget = false;
@@ -495,12 +576,12 @@ export class World {
         h.aimY = dy / d;
       }
     }
-    const reach = this.reach(0);
-    const near = this.nearestEnemy(h.x, chestY, this.autoAim ? 240 : reach + 16);
+    const W = WEAPONS[h.weapon], reach = W.ranged ? W.range : W.range * s.reach;
+    const near = this.nearestEnemy(h.x, chestY, this.autoAim ? Math.max(240, reach) : reach + 16);
     if (near >= 0) {
       this.body(near);
       const dx = this.bx - h.x, dy = this.by - chestY, d = Math.hypot(dx, dy) || 1;
-      this.autoTarget = d < reach + Math.max(this.brx, this.bry) + 6;
+      this.autoTarget = d < reach + Math.max(this.brx, this.bry) * (W.ranged ? 0 : 1) + 6;
       if (this.autoAim) {
         h.aimX = dx / d;
         h.aimY = dy / d;
@@ -513,7 +594,7 @@ export class World {
     if (Math.abs(h.aimX) > 0.05 && h.atk < 0) h.face = h.aimX < 0 ? -1 : 1;
 
     // dash: a burst of speed with invulnerability, leaving after-images; it cancels a blow
-    if (h.wantDash && h.dashCharge >= 1 && h.dashT <= 0) {
+    if (h.wantDash && h.dashCharge >= 1 && h.dashT <= 0.06) {
       let dx = h.vx, dy = h.vy;
       const d = Math.hypot(dx, dy);
       if (d < 1) (dx = h.aimX, dy = h.aimY);
@@ -521,8 +602,8 @@ export class World {
       h.dashDx = dx;
       h.dashDy = dy;
       h.dashT = 0.2;
-      h.dashCharge = 0;
-      h.dashTimer = 0;
+      if (h.dashCharge >= h.dashMax) h.dashTimer = 0;
+      h.dashCharge--;
       h.atk = -1;
       h.invuln = Math.max(h.invuln, 0.26);
       this.audio.play("dash");
@@ -555,7 +636,8 @@ export class World {
     h.lanternV += ((target - h.lanternA) * 60 - h.lanternV * 7) * dt;
     h.lanternA += h.lanternV * dt;
 
-    this.updateSword(dt);
+    this.updateWeapon(dt);
+    this.updateRacks(dt);
 
     // overdrive: the lantern bursts, burning everything near and erasing enemy bullets
     if (h.wantUlt && h.od >= 100) {
@@ -592,19 +674,15 @@ export class World {
     }
   }
 
-  private reach(kind: number): number {
-    return ATTACKS[kind].reach * this.stats.reach;
-  }
-
-  /** The sword: blows start when something is in reach (or the player asks), land on frame 3, chain into a combo. */
-  private updateSword(dt: number): void {
-    const h = this.hero, s = this.stats, speed = s.haste;
+  /** The weapon: blows start when something is in range (or the player asks), land on the frames the bake marked, chain into a combo. */
+  private updateWeapon(dt: number): void {
+    const h = this.hero, s = this.stats, W = WEAPONS[h.weapon];
     if (h.dashT > 0) return;
     if (h.atk < 0) {
-      // something to cut: a foe in reach, a bullet about to land, or the player swinging at will
+      // something to hit: a foe in range, a bullet about to land (melee cuts them), or the player attacking at will
       let cause = h.attacking || this.autoTarget;
-      if (!cause) {
-        const B = this.bullets, R = this.reach(0) * 0.9;
+      if (!cause && !W.ranged) {
+        const B = this.bullets, R = W.blows[0].reach * s.reach * 0.9;
         for (let i = 0; i < B.n; i++)
           if (B.team[i] === TEAM_FOE && (B.x[i] - h.x) ** 2 + (B.y[i] - h.y + 18) ** 2 < R * R) {
             const dx = B.x[i] - h.x, dy = B.y[i] - h.y + 18, d = Math.hypot(dx, dy) || 1;
@@ -614,85 +692,195 @@ export class World {
           }
       }
       if (!cause) return;
-      h.atk = h.comboT > 0 ? h.combo : 0;
+      h.atk = h.comboT > 0 ? h.combo % W.blows.length : 0;
       h.atkT = 0;
-      h.atkHit = false;
+      h.hitsDone = 0;
       h.atkDir = Math.atan2(h.aimY, h.aimX);
       h.face = Math.cos(h.atkDir) < 0 ? -1 : 1;
-      this.audio.play("dash", 1.8);
+      this.audio.play("dash", W.ranged ? 2.2 : 1.8);
     }
-    h.atkT += dt * speed;
-    if (!h.atkHit && h.atkT >= ATK_CONTACT / ATK_FPS) {
-      h.atkHit = true;
-      this.strike(h.atk);
+    const a = anim(`${h.weapon}_a${h.atk}`), hits = a.hits ?? [3];
+    h.atkT += dt * s.haste * W.speed;
+    const frame = Math.floor(h.atkT * ATK_FPS);
+    while (h.hitsDone < hits.length && frame >= hits[h.hitsDone]) {
+      this.land(W.blows[h.atk], h.atk, h.hitsDone, hits.length);
+      h.hitsDone++;
     }
-    if (h.atkT >= ATK_FRAMES / ATK_FPS) {
-      h.combo = (h.atk + 1) % ATTACKS.length;
-      h.comboT = 0.45;
+    if (frame >= a.frames.length) {
+      h.combo = (h.atk + 1) % W.blows.length;
+      h.comboT = 0.5;
       h.atk = -1;
     }
   }
 
-  /** A blow lands: everything in its arc is hit, enemy bullets in it are cut, its effect plays. */
-  private strike(kind: number): void {
-    const h = this.hero, A = ATTACKS[kind], s = this.stats, E = this.enemies;
-    const cx = h.x, cy = h.y - 18, dir = h.atkDir, R = A.reach * s.reach, arc = A.arc * (0.85 + 0.15 * s.reach);
-    // the effect, turned to the blow around the chest; mirrored when it goes left so its crescent stays upright
-    const sy = Math.cos(dir) < 0 ? -1 : 1, c = Math.cos(dir), sn = Math.sin(dir), lx = 0, ly = -22 * sy;
-    this.addFx(A.fx, cx - (lx * c - ly * sn), cy - (lx * sn + ly * c), { rot: dir, sy, front: false, key: 3, glow: 0.9, sx: 0.9 + 0.1 * s.reach });
+  /** Where the blow comes from: the chest, or for shots and spells the casting hand at this frame. */
+  private handPos(): [number, number] {
+    const h = this.hero, a = anim(`${h.weapon}_a${Math.max(0, h.atk)}`), f = Math.min(a.frames.length - 1, Math.floor(h.atkT * ATK_FPS));
+    const hand = a.hands?.[f];
+    return hand ? [h.x + hand[0] * h.face, h.y + hand[1]] : [h.x + h.face * 10, h.y - 20];
+  }
+
+  /** A blow lands. Melee hits what is in its shape and cuts bullets; shots and spells leave the hand. */
+  private land(B: Blow, k: number, hit: number, of: number): void {
+    const h = this.hero, s = this.stats, dir = h.atkDir, W = WEAPONS[h.weapon];
+    const dmg = B.dmg * s.edge * s.might;
+    const cx = h.x, cy = h.y - 18;
+    if (B.kind === "arrow" || B.kind === "fire" || B.kind === "frost") {
+      const [hx, hy] = this.handPos(), n = 1 + s.wave, spread = B.kind === "arrow" ? 0.1 : 0.22;
+      const speed = (B.kind === "arrow" ? 380 : B.kind === "fire" ? 230 : 300) * (0.9 + 0.1 * s.reach);
+      const kind = B.kind === "arrow" ? B_ARROW : B.kind === "fire" ? B_FIREBALL : B_LANCE;
+      const el = B.kind === "fire" ? El.Fire : B.kind === "frost" ? El.Frost : El.None;
+      const pierce = B.kind === "arrow" ? 1 + (h.def.id === "ranger" ? 1 : 0) : B.kind === "frost" ? 2 : 0;
+      for (let q = 0; q < n; q++) {
+        const a = dir + (q - (n - 1) / 2) * spread;
+        this.bullets.add(TEAM_HERO, kind, hx, hy, Math.cos(a) * speed, Math.sin(a) * speed, 0.95, dmg, B.kind === "fire" ? 5 : 3.5, el, pierce);
+      }
+      this.audio.play(B.kind === "arrow" ? "shoot" : B.kind === "fire" ? "ignite" : "freeze", B.kind === "arrow" ? 0.6 : 1.3);
+      this.burst(hx, hy, 4, B.kind === "fire" ? rgba("#ffae35") : B.kind === "frost" ? rgba("#9bdcff") : rgba("#e8e4f0"), 50, 0.25);
+      return;
+    }
+    if (B.kind === "storm") {
+      // lightning out of the sky onto the foe nearest where the hero aims
+      const ax = h.x + Math.cos(dir) * 90, ay = cy + Math.sin(dir) * 90;
+      for (let q = 0; q <= s.wave; q++) {
+        const j = this.nearestEnemy(ax, ay, 170);
+        let tx = ax + this.rng.range(-30, 30) * q, ty = ay + 18 + this.rng.range(-20, 20) * q;
+        if (j >= 0 && q === 0) (this.body(j), tx = this.bx, ty = this.enemies.y[j]);
+        this.addFx("lightning", tx, ty, { sx: 0.55, sy: 0.55, glow: 0.9, key: 4 });
+        this.arcs.push({ pts: [tx, ty - 120, tx + this.rng.range(-8, 8), ty - 60, tx, ty - 8], life: 0.12, color: rgba("#fff08a") });
+        this.blast(tx, ty - 8, B.reach * (0.9 + 0.1 * s.reach), dmg, El.Storm, B.push);
+      }
+      this.audio.play("zap", 0.8);
+      this.shake = Math.max(this.shake, 0.18);
+      return;
+    }
+    // ---- melee
+    const R = B.reach * s.reach, arc = B.arc * (0.85 + 0.15 * s.reach), fxName = `fx_${h.weapon}_${k}`;
+    if (hit === 0 && hasAnim(fxName)) {
+      if (B.fxMode === "flip") this.addFx(fxName, h.x, h.y + 1, { sx: h.face * (0.9 + 0.1 * s.reach), front: false, key: 3, glow: 0.9 });
+      else {
+        // turned to the blow around the chest; mirrored when it goes left so its crescent stays upright
+        const sy = Math.cos(dir) < 0 ? -1 : 1, c = Math.cos(dir), sn = Math.sin(dir), ly = -22 * sy;
+        this.addFx(fxName, cx + ly * sn, cy - ly * c, { rot: dir, sy, front: false, key: 3, glow: 0.9, sx: 0.9 + 0.1 * s.reach });
+      }
+    }
     let hits = 0;
-    const dmg = A.dmg * s.edge * s.might;
-    this.grid.query(cx, cy + 16, R + 30, (i) => {
+    const E = this.enemies, fx = h.x + h.face * B.arc, fy = h.y - 8;
+    this.grid.query(cx, cy + 16, R + 50, (i) => {
       this.body(i);
       const dx = this.bx - cx, dy = this.by - cy, d = Math.hypot(dx, dy) || 1, r = (this.brx + this.bry) / 2;
-      if (d - r > R) return;
-      let da = Math.atan2(dy, dx) - dir;
-      da = Math.atan2(Math.sin(da), Math.cos(da));
-      if (Math.abs(da) > arc + Math.asin(Math.min(1, r / d))) return;
+      if (B.kind === "front") {
+        if ((this.bx - fx) ** 2 + (this.by - fy) ** 2 > (R + r) ** 2) return;
+      } else if (B.kind === "around") {
+        if (d - r > R) return;
+      } else {
+        if (d - r > R) return;
+        let da = Math.atan2(dy, dx) - dir;
+        da = Math.atan2(Math.sin(da), Math.cos(da));
+        if (Math.abs(da) > arc + Math.asin(Math.min(1, r / d))) return;
+      }
       const crit = this.rng.chance(s.crit), ex = this.bx, ey = this.by;
       if (ENEMIES[E.type[i]].ai < AI.Boss) {
-        E.kx[i] += (dx / d) * A.push;
-        E.ky[i] += (dy / d) * A.push;
+        const ox = B.kind === "front" ? fx : cx, oy = B.kind === "front" ? fy : cy, dd = Math.hypot(this.bx - ox, this.by - oy) || 1;
+        E.kx[i] += ((this.bx - ox) / dd) * B.push;
+        E.ky[i] += ((this.by - oy) / dd) * B.push;
+        if (B.stun) E.stun[i] = Math.max(E.stun[i], B.stun);
       }
       this.damage(i, dmg * (crit ? 2 : 1), El.None, { crit });
-      this.addFx(crit ? "crit" : "hit_spark", ex, ey + 10, { rot: dir, sx: 0.55, sy: 0.55, glow: 0.7, key: 2 });
+      if (hits < 6) this.addFx(crit ? "crit" : "hit_spark", ex, ey + 10, { rot: Math.atan2(ey - cy, ex - cx), sx: 0.55, sy: 0.55, glow: 0.7, key: 2 });
       hits++;
     });
-    // cut the enemy bullets in the arc; with Deflect they fly back
+    if (B.kind === "front" && hit === 0) {
+      this.addFx("slam", fx, h.y + 2, { sx: 0.6, sy: 0.6, glow: 0.8 });
+      this.shake = Math.max(this.shake, 0.4);
+      this.audio.play("boom", 1.4);
+    }
+    // melee cuts the enemy bullets in reach; with Deflect they fly back
     let cut = 0;
-    const B = this.bullets;
-    for (let i = B.n - 1; i >= 0; i--) {
-      if (B.team[i] !== TEAM_FOE) continue;
-      const dx = B.x[i] - cx, dy = B.y[i] - cy, d = Math.hypot(dx, dy);
+    const Bu = this.bullets;
+    for (let i = Bu.n - 1; i >= 0; i--) {
+      if (Bu.team[i] !== TEAM_FOE) continue;
+      const dx = Bu.x[i] - cx, dy = Bu.y[i] - cy, d = Math.hypot(dx, dy);
       if (d > R + 6) continue;
-      let da = Math.atan2(dy, dx) - dir;
-      da = Math.atan2(Math.sin(da), Math.cos(da));
-      if (Math.abs(da) > arc + 0.3) continue;
+      if (B.kind === "arc") {
+        let da = Math.atan2(dy, dx) - dir;
+        da = Math.atan2(Math.sin(da), Math.cos(da));
+        if (Math.abs(da) > arc + 0.3) continue;
+      }
       cut++;
-      if (cut <= 3) this.addFx("parry", B.x[i], B.y[i] + 6, { sx: 0.5, sy: 0.5, glow: 0.8, key: 4 });
+      if (cut <= 3) this.addFx("parry", Bu.x[i], Bu.y[i] + 6, { sx: 0.5, sy: 0.5, glow: 0.8, key: 4 });
       if (s.parry) {
-        const sp = Math.hypot(B.vx[i], B.vy[i]) * 1.6 + 60;
-        B.team[i] = TEAM_HERO;
-        B.vx[i] = Math.cos(dir) * sp;
-        B.vy[i] = Math.sin(dir) * sp;
-        B.dmg[i] = 14 * s.might;
-        B.life[i] = 1.2;
-        B.pierce[i] = 1;
-      } else B.remove(i);
+        const sp = Math.hypot(Bu.vx[i], Bu.vy[i]) * 1.6 + 60, a = Math.atan2(dy, dx);
+        Bu.team[i] = TEAM_HERO;
+        Bu.vx[i] = Math.cos(a) * sp;
+        Bu.vy[i] = Math.sin(a) * sp;
+        Bu.dmg[i] = 14 * s.might;
+        Bu.life[i] = 1.2;
+        Bu.pierce[i] = 1;
+      } else Bu.remove(i);
     }
     if (cut) {
       this.gainOd(2.5 * cut);
       this.audio.play("graze", 0.8);
     }
-    // waves of light: crescents thrown along the blow
-    for (let k = 0; k < s.wave; k++) {
-      const a = dir + (k - (s.wave - 1) / 2) * 0.28;
-      this.bullets.add(TEAM_HERO, B_CRESCENT, cx + Math.cos(a) * 14, cy + Math.sin(a) * 14, Math.cos(a) * 250, Math.sin(a) * 250, 0.55, dmg * 0.6, 8, El.None, 3);
-    }
+    // waves of light: crescents thrown along the blow (once per blow)
+    if (hit === of - 1)
+      for (let q = 0; q < s.wave; q++) {
+        const a = dir + (q - (s.wave - 1) / 2) * 0.28;
+        this.bullets.add(TEAM_HERO, B_CRESCENT, cx + Math.cos(a) * 14, cy + Math.sin(a) * 14, Math.cos(a) * 250, Math.sin(a) * 250, 0.55, B.dmg * s.edge * s.might * 0.6, 8, El.None, 3);
+      }
     if (hits) {
-      this.hitstop = Math.max(this.hitstop, kind === 2 ? 0.045 : 0.025);
-      this.shake = Math.max(this.shake, kind === 2 ? 0.22 : 0.12);
-      this.audio.play("hit", kind === 2 ? 0.7 : 1);
+      const heavy = B.push >= 140;
+      this.hitstop = Math.max(this.hitstop, heavy ? 0.05 : of > 3 ? 0.012 : 0.025);
+      this.shake = Math.max(this.shake, heavy ? 0.25 : 0.1);
+      this.audio.play("hit", heavy ? 0.6 : 1);
+    }
+    void W;
+  }
+
+  /** Damage everything in a circle (spells, fireballs bursting). */
+  private blast(x: number, y: number, r: number, dmg: number, el: El, push: number): void {
+    const E = this.enemies, hit: number[] = [];
+    this.grid.query(x, y + 10, r + 24, (i) => {
+      this.body(i);
+      if ((this.bx - x) ** 2 + (this.by - y) ** 2 < (r + (this.brx + this.bry) / 2) ** 2) hit.push(E.uid[i]);
+    });
+    for (const u of hit) {
+      const j = this.indexOf(u);
+      if (j < 0) continue;
+      if (ENEMIES[E.type[j]].ai < AI.Boss) {
+        const dx = E.x[j] - x, dy = E.y[j] - y, d = Math.hypot(dx, dy) || 1;
+        E.kx[j] += (dx / d) * push;
+        E.ky[j] += (dy / d) * push;
+      }
+      this.damage(j, dmg, el, { crit: this.rng.chance(this.stats.crit) });
+    }
+  }
+
+  /** Weapon altars: stand on one for a moment and the weapons change hands. */
+  private updateRacks(dt: number): void {
+    const h = this.hero;
+    for (const r of this.racks) {
+      const near = (h.x - r.x) ** 2 + (h.y - r.y) ** 2 < 20 * 20;
+      if (!near) {
+        r.armed = true;
+        r.progress = Math.max(0, r.progress - dt * 2);
+        continue;
+      }
+      if (!r.armed) continue;
+      r.progress += dt / 0.8;
+      if (r.progress >= 1) {
+        const old = h.weapon;
+        h.weapon = r.weapon;
+        r.weapon = old;
+        r.progress = 0;
+        r.armed = false;
+        h.atk = -1;
+        h.comboT = 0;
+        this.addFx("blink", h.x, h.y, { glow: 0.9, key: 2 });
+        this.audio.play("chest");
+        this.ev.weapon(h.weapon);
+      }
     }
   }
 
@@ -723,7 +911,10 @@ export class World {
     for (let i = B.n - 1; i >= 0; i--) if (B.team[i] === TEAM_FOE && (B.x[i] - h.x) ** 2 + (B.y[i] - h.y + 10) ** 2 < 60 * 60) B.remove(i);
     if (h.hp <= 0) {
       h.dead = true;
-      this.addFx("poof", h.x, h.y, { front: true, sx: 1.4, sy: 1.4 });
+      h.deathT = 0;
+      h.atk = -1;
+      this.hitstop = 0.2;
+      this.flash = 1;
       this.addFx("heal_ring", h.x, h.y, { tint: rgba("#ff8a9a"), glow: 0.6 });
       this.ev.died();
     }
@@ -903,6 +1094,19 @@ export class World {
     const cx = this.bx, cy = this.by;
     this.kills++;
     this.gainOd(0.45);
+    const a = this.enemyAnims[type];
+    if (this.corpses.length < 40) this.corpses.push({ anim: d.anim, frame: frameAt(a, E.t[i]), x, y, flip: E.face[i], scale: d.scale, t: 0 });
+    // the Reaper takes a heart back for every 25 souls
+    const h = this.hero;
+    if (h.def.id === "reaper" && !h.dead && ++h.harvest >= 25) {
+      h.harvest = 0;
+      if (h.hp < h.maxHp) {
+        h.hp++;
+        this.popup(h.x, h.y - 40, "+1", rgba("#7ee88a"), true);
+        this.addFx("heal_ring", h.x, h.y, { tint: rgba("#7ee88a"), glow: 0.6, sx: 0.6, sy: 0.6 });
+        this.audio.play("heal");
+      }
+    }
     this.audio.play("kill", d.elite ? 0.6 : 1);
     this.addFx("poof", cx, cy + this.bry, { sx: d.scale * (d.elite ? 1.2 : 0.8), sy: d.scale * (d.elite ? 1.2 : 0.8), glow: 0.5 });
     this.burst(cx, cy, d.elite ? 18 : 6, rgba(d.glow || "#c8c0d8"), 70, 0.45, 120);
@@ -1122,6 +1326,7 @@ export class World {
     const E = this.enemies, h = this.hero;
     for (let i = E.n - 1; i >= 0; i--) {
       const d = ENEMIES[E.type[i]];
+      E.age[i] += dt;
       const held = E.frozen[i] > 0 || E.stun[i] > 0 || h.dead;
       if (!held || d.ai >= AI.Boss) E.t[i] += dt;
       E.flash[i] = Math.max(0, E.flash[i] - dt);
@@ -1509,6 +1714,14 @@ export class World {
             E.ky[j] += (B.vy[i] / sp) * 40;
           }
           const ex = this.bx, ey = this.by;
+          if (B.kind[i] === B_FIREBALL) {
+            // a fireball bursts on the first thing it meets
+            this.addFx("explosion", ex, ey + this.bry, { sx: 0.35, sy: 0.35, glow: 0.8 });
+            this.blast(ex, ey, 26, B.dmg[i], El.Fire, 70);
+            this.audio.play("boom", 1.6);
+            gone = true;
+            return true;
+          }
           const dead = this.damage(j, B.dmg[i] * (crit ? 2 : 1), B.el[i] as El, { crit });
           this.addFx(B.kind[i] === B_LANCE ? "hit_frost" : crit ? "crit" : "hit_spark", ex, ey + 10, { rot: Math.atan2(-B.vy[i], -B.vx[i]), sx: 0.6, sy: 0.6, glow: 0.7 });
           this.audio.play("hit", dead ? 0.8 : 1);
@@ -1627,10 +1840,13 @@ export class World {
     }
     if (this.portal) {
       this.portal.t += dt;
-      if (!h.dead && !this.cleared && this.portal.t > 0.8 && (h.x - this.portal.x) ** 2 + (h.y - this.portal.y) ** 2 < 18 * 18) {
-        this.cleared = true;
+      if (!h.dead && h.exitT < 0 && this.portal.t > 0.8 && (h.x - this.portal.x) ** 2 + (h.y - this.portal.y) ** 2 < 18 * 18) {
+        h.exitT = 0;
+        h.atk = -1;
+        h.invuln = 9;
         this.audio.play("portal");
-        this.ev.floorCleared();
+        this.addFx("blink", h.x, h.y, { glow: 1, key: 3 });
+        this.flash = 0.4;
       }
     }
   }
@@ -1700,7 +1916,7 @@ export class World {
    * runs away: few at a floor's start, more with each brazier lit, a slow rise the longer the floor takes.
    */
   private director(dt: number): void {
-    if (this.hero.dead || this.cleared || this.won) return;
+    if (this.hero.dead || this.cleared || this.won || this.hero.exitT >= 0) return;
     const E = this.enemies, phase = this.phase, boss = this.bossIndex() >= 0;
     const target = Math.min(90, Math.round((4 + this.floor * 2.2) * (1 + 0.5 * phase) * this.mod.spawn * (1 + Math.min(0.5, this.time / 240)) * (boss ? 0.45 : this.portal ? 0.5 : 1)));
     this.spawnAcc += dt;

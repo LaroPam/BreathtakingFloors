@@ -12,7 +12,7 @@
 
 import { PAGE_SIZE, PAGE_URLS, type Rect } from "./atlas";
 
-const FLOATS = 14; // per instance: pos(2) off(2) size(2) uv(2) scale(2) rot layer color(packed) flash
+const FLOATS = 15; // per instance: pos(2) off(2) size(2) uv(2) scale(2) rot layer color(packed) flash palette
 const BYTES = FLOATS * 4;
 
 /** Procedural "layers": shapes the shader draws without a texture. */
@@ -27,6 +27,7 @@ layout(location=2) in vec4 a_sizeUv;
 layout(location=3) in vec4 a_scaleRotLayer;
 layout(location=4) in vec4 a_color;
 layout(location=5) in float a_flash;
+layout(location=6) in float a_pal;
 uniform vec2 u_camDev;
 uniform vec2 u_res;
 uniform float u_scale;
@@ -36,7 +37,9 @@ out vec2 v_local;
 flat out float v_layer;
 out vec4 v_color;
 out float v_flash;
+flat out float v_pal;
 void main() {
+  v_pal = a_pal;
   vec2 size = a_sizeUv.xy;
   vec2 local = a_posOff.zw + a_corner * size;
   vec2 p = local * a_scaleRotLayer.xy;
@@ -67,17 +70,30 @@ precision highp sampler2DArray;
 uniform sampler2DArray u_tex;
 uniform int u_additive;
 uniform float u_scale;
+// palette swap: texels of the stock dummy's colours become a hero's (row u_pals[(pal - 1) * 10 ..])
+uniform vec3 u_keys[10];
+uniform vec3 u_pals[80];
 in vec2 v_uv;
 in vec2 v_local;
 flat in float v_layer;
 in vec4 v_color;
 in float v_flash;
+flat in float v_pal;
 out vec4 o;
 ${BAYER}
 void main() {
   vec4 t;
   bool tex = v_layer >= 0.0;
-  if (tex) t = texture(u_tex, vec3(v_uv, v_layer));
+  if (tex) {
+    t = texture(u_tex, vec3(v_uv, v_layer));
+    if (v_pal > 0.5) {
+      int row = int(v_pal + 0.5) - 1;
+      for (int k = 0; k < 10; k++) {
+        vec3 d = abs(t.rgb - u_keys[k]);
+        if (max(d.r, max(d.g, d.b)) < 0.003) { t.rgb = u_pals[row * 10 + k]; break; }
+      }
+    }
+  }
   else if (v_layer > -1.5) { float d = clamp(1.0 - length(v_local), 0.0, 1.0); t = vec4(1.0, 1.0, 1.0, d * d); }
   else if (v_layer > -2.5) { if (dot(v_local, v_local) > 1.0) discard; t = vec4(1.0); }
   else t = vec4(1.0);
@@ -160,6 +176,8 @@ export class Batch {
   n = 0;
   keys = new Float64Array(1024);
   sorted: boolean;
+  /** The palette the next quads use (0: their own colours; n: hero palette n, see Renderer.setPalettes). */
+  pal = 0;
   constructor(sorted = false) {
     this.sorted = sorted;
   }
@@ -184,6 +202,7 @@ export class Batch {
     f[i + 8] = sx; f[i + 9] = sy; f[i + 10] = rot; f[i + 11] = layer;
     this.u[i + 12] = color >>> 0;
     f[i + 13] = flash;
+    f[i + 14] = this.pal;
     if (this.sorted) this.keys[this.n] = key;
     this.n++;
   }
@@ -264,7 +283,7 @@ export class Renderer {
     this.sprite = compile(gl, SPRITE_VS, SPRITE_FS);
     this.composite = compile(gl, QUAD_VS, COMPOSITE_FS);
     for (const [prog, names] of [
-      [this.sprite, ["u_camDev", "u_res", "u_scale", "u_page", "u_tex", "u_additive"]],
+      [this.sprite, ["u_camDev", "u_res", "u_scale", "u_page", "u_tex", "u_additive", "u_keys", "u_pals"]],
       [this.composite, ["u_color", "u_glow", "u_illum", "u_ambient", "u_steps", "u_res", "u_camDev", "u_scale", "u_vignette", "u_tint", "u_tintK"]],
     ] as const)
       for (const n of names) this.loc[(prog === this.sprite ? "s." : "c.") + n] = gl.getUniformLocation(prog, n);
@@ -294,6 +313,7 @@ export class Renderer {
     attr(3, 4, gl.FLOAT, false, 32);
     attr(4, 4, gl.UNSIGNED_BYTE, true, 48);
     attr(5, 1, gl.FLOAT, false, 52);
+    attr(6, 1, gl.FLOAT, false, 56);
     gl.bindVertexArray(null);
 
     this.texArray = gl.createTexture()!;
@@ -304,6 +324,19 @@ export class Renderer {
     gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     gl.texStorage3D(gl.TEXTURE_2D_ARRAY, 1, gl.RGBA8, PAGE_SIZE, PAGE_SIZE, Math.max(1, PAGE_URLS.length));
     this.resize();
+  }
+
+  /**
+   * The colours to swap (the stock dummy's ten) and up to eight palettes of ten to swap them for, as 0xRRGGBB.
+   * A quad drawn with Batch.pal = n uses palette n.
+   */
+  setPalettes(keys: number[], rows: number[][]): void {
+    const gl = this.gl, f = (c: number) => [((c >> 16) & 255) / 255, ((c >> 8) & 255) / 255, (c & 255) / 255];
+    gl.useProgram(this.sprite);
+    gl.uniform3fv(this.loc["s.u_keys"]!, keys.flatMap(f));
+    const flat = new Float32Array(80 * 3);
+    rows.slice(0, 8).forEach((row, r) => row.forEach((c, k) => flat.set(f(c), (r * 10 + k) * 3)));
+    gl.uniform3fv(this.loc["s.u_pals"]!, flat);
   }
 
   /** Load the atlas pages into the texture array. onProgress gets 0..1. */

@@ -10,68 +10,13 @@
 // hitbox for every frame from the art itself), variants ({ option: [values] }: one frame per value).
 
 import { PAL } from "../../pixelfx/src/core/color.js";
-import { READY } from "../../pixelfx/src/core/poses.js";
-import { poseAt } from "../../pixelfx/src/core/act.js";
-import { act as SLASH } from "../../pixelfx/src/fx/melee/sword-slash.js";
-import { act as DOUBLE } from "../../pixelfx/src/fx/melee/double-slash.js";
-import { act as THRUST } from "../../pixelfx/src/fx/melee/thrust.js";
+import { weaponAnims, DEATH } from "./weapons.mjs";
 import { IDS as UPGRADE_ICONS } from "../../art/fx/icons/upgrades.js";
 import { IDS as HUD_ICONS } from "../../art/fx/icons/hud.js";
 
-// ---- the hero: a knight in steel plate over a crimson gambeson, an ember-gold mark on the chest. Sword in the near
-// hand, a lantern in the far one (the game draws the lantern at the far hand and lights the scene from it).
-export const HERO_PALETTE = { k: "#0a0910", A: "#d4deea", B: "#8e9cb6", C: "#5c6a8a", D: "#3c4662", E: "#c8344c", F: "#922238", G: "#5c1428", J: "#3a0c1c", m: "#ffd04a" };
+// ---- the heroes: one skeleton, baked in the stock dummy's colours and recoloured per hero by the game's shader.
+// Each weapon brings its own stance, run, dash and blows (tools/bake/weapons.mjs).
 
-const GUARD = { ...READY, weapon: "sword", fx: 12, fy: -21, sa: -0.85, bx: 5, by: -15, turn: 0.35 };
-
-/** The legs (and bob) of the run cycle at phase k of 8. */
-function runLegs(k) {
-  const th = (k / 8) * Math.PI * 2, c = Math.cos(th), s = Math.sin(th);
-  return { crouch: 1 + 1.5 * Math.abs(c), ffx: 1 + 6 * c, ffy: -4 - Math.max(0, -s) * 5, fbx: 1 - 6 * c, fby: -4 - Math.max(0, s) * 5, x: 0, bob: 1.5 * Math.abs(c), c };
-}
-const run = [0, 1, 2, 3, 4, 5, 6, 7].map((k) => {
-  const L = runLegs(k);
-  return { ...GUARD, lean: 3, crouch: L.crouch, ffx: L.ffx, ffy: L.ffy, fbx: L.fbx, fby: L.fby, fy: GUARD.fy + L.bob * 0.5, bx: 4 + 2 * L.c, by: -15 };
-});
-const idle = [0, 1, 2, 1].map((k) => ({ ...GUARD, crouch: 3 + k * 0.6, fy: GUARD.fy + k * 0.4, by: -15 + k * 0.3 }));
-const dash = [
-  { ...GUARD, lean: 9, crouch: 4, fx: 4, fy: -18, sa: 2.6, bx: -4, by: -18, ffx: 7, ffy: -6, fbx: -8, fby: -5, y: -1 },
-  { ...GUARD, lean: 7, crouch: 3, fx: 5, fy: -18, sa: 2.7, bx: -2, by: -18, ffx: 4, ffy: -4, fbx: -6, fby: -7, y: -2 },
-];
-const hurt = [{ ...GUARD, lean: -5, crouch: 3, turn: 0.6, fx: 2, fy: -26, sa: -1.6, bx: 8, by: -24, ffx: -4, fbx: 5 }];
-
-// ---- the sword combo: three blows, each sampled from one of pixelfx's acted melee effects at the moments that sell
-// it (wind-up, the cut, the follow-through), with the far hand kept on the lantern. Frame 3 is the contact.
-export const ATTACK_FRAMES = 7, ATTACK_CONTACT = 3;
-const ATTACKS = [
-  { name: "slash", act: SLASH, times: [-0.3, -0.16, -0.06, 0, 0.06, 0.22, 0.45] },
-  { name: "backslash", act: DOUBLE, times: [-0.18, -0.08, -0.02, 0, 0.06, 0.17, 0.4] },
-  { name: "thrust", act: THRUST, times: [-0.24, -0.12, -0.04, 0, 0.07, 0.3, 0.55] },
-];
-function attackPoses(a, legs) {
-  const x0 = poseAt(a.act.poses, 0).x ?? 0;
-  return a.times.map((t) => {
-    const p = { ...poseAt(a.act.poses, t) };
-    // the body steps a little with the blow, but stays near the feet the game moves
-    p.x = Math.max(-5, Math.min(5, (p.x ?? 0) - x0));
-    p.weapon = "sword";
-    delete p.ghost;
-    if (legs) Object.assign(p, { ffx: legs.ffx, ffy: legs.ffy, fbx: legs.fbx, fby: legs.fby, crouch: Math.max(p.crouch ?? 0, legs.crouch), x: 0 });
-    return p;
-  });
-}
-const attackAnims = [];
-for (const a of ATTACKS) {
-  attackAnims.push({ name: `hero_${a.name}`, rig: attackPoses(a, null), fps: 20, loop: false });
-  // the same blow over each of the run cycle's 8 phases, frame-major: index = frame * 8 + phase
-  const grid = [];
-  const perPhase = [0, 1, 2, 3, 4, 5, 6, 7].map((k) => attackPoses(a, runLegs(k)));
-  for (let f = 0; f < ATTACK_FRAMES; f++) for (let k = 0; k < 8; k++) grid.push(perPhase[k][f]);
-  attackAnims.push({ name: `hero_${a.name}_run`, rig: grid, fps: 20, loop: false });
-}
-
-// warm light for the hero's blade: white edge, gold, ember
-const BLADE = ["#3a1a0a", "#8a3a12", "#d8701c", "#ffb43a", "#ffe08a", "#fff6d0", "#ffffff"];
 const CRITTER_LIGHT = { thr: 80, k: 0.6 };
 const FX_LIGHT = { thr: 6, k: 0.85 };
 const FX_BIG = { thr: 12, k: 0.85 };
@@ -90,18 +35,20 @@ const WALL = {
 };
 
 export const ANIMS = [
-  { name: "hero_idle", rig: idle, fps: 5, loop: true },
-  { name: "hero_run", rig: run, fps: 14, loop: true },
-  { name: "hero_dash", rig: dash, fps: 12, loop: true },
-  { name: "hero_hurt", rig: hurt, fps: 1, loop: true },
-  ...attackAnims,
+  ...weaponAnims({ thr: 6, k: 0.85 }),
+  { name: "hero_death", rig: DEATH, fps: 8, loop: false },
 
-  // ---- the hero's gear and blows
+  // ---- the heroes' gear, their shots and spells
   { name: "lantern", art: "gear/lantern", fps: 10 },
-  { name: "fx_slash", fx: "melee/sword-slash", fps: 24, maxT: 0.42, light: FX_LIGHT, opts: { palette: BLADE } },
-  { name: "fx_backslash", fx: "melee/double-slash", fps: 24, maxT: 0.42, light: FX_LIGHT, opts: { palette: BLADE } },
-  { name: "fx_thrust", fx: "melee/thrust", fps: 24, maxT: 0.42, light: FX_LIGHT, opts: { reach: 46 } },
   { name: "crescent", art: "shots/crescent", fps: 20 },
+  { name: "arrow", fx: "projectiles/arrow", fps: 20, light: { thr: 6, k: 0.8 } },
+  { name: "fireball", fx: "fire/fireball", fps: 15, light: { thr: 6, k: 0.85 }, opts: { radius: 4 } },
+  { name: "lightning", fx: "lightning/lightning-strike", fps: 20, maxT: 0.65, light: { thr: 12, k: 0.85 } },
+  { name: "wisp_light", art: "gear/wisp", fps: 12 },
+  { name: "rack", art: "props/weapon-rack", fps: 8 },
+  { name: "blink", fx: "arcane/blink-in", fps: 20, maxT: 0.8, light: { thr: 12, k: 0.85 } },
+  { name: "beam", fx: "spawn/respawn-beam", fps: 15, maxT: 1.4, light: { thr: 12, k: 0.85 } },
+  { name: "soul", fx: "spawn/soul-rise", fps: 15, maxT: 2.4, light: { thr: 8, k: 0.85 } },
   { name: "ember", art: "shots/ember-core", fps: 15 },
   { name: "ember_blue", art: "shots/ember-core", fps: 15, opts: { palette: ICE_FIRE } },
 

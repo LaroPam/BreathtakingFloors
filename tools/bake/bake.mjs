@@ -18,7 +18,7 @@ import { posed, skeleton } from "../../pixelfx/src/core/rig.js";
 import { DUMMY_PAL } from "../../pixelfx/src/core/actor.js";
 import { loadEffect, edgeFade, isScreen } from "../../pixelfx/tools/lib/fxlib.mjs";
 import { encodePNG } from "../../pixelfx/tools/lib/png.mjs";
-import { ANIMS, HERO_PALETTE } from "./manifest.mjs";
+import { ANIMS } from "./manifest.mjs";
 import { fontGlyphs } from "./font.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -91,8 +91,7 @@ function renderEffect(mod, meta, e, extraOpts = {}) {
   return { fps: 1 / dt, loop: !!meta.loop, frames: out, cut: !meta.loop && (e.maxT ?? D) < D };
 }
 
-/** Pose the hero on pixelfx's skeleton and recolor the stock dummy's shell into the hero's armor. */
-const DUMMY_TO_HERO = new Map(Object.keys(DUMMY_PAL).map((k) => [hex(DUMMY_PAL[k]) >>> 0, hex(HERO_PALETTE[k]) >>> 0]));
+/** Pose the hero on pixelfx's skeleton. */
 function renderRig(e) {
   const W = 64, H = 64, OX = 32, OY = 58, frames = [], hands = [];
   for (const pose of e.rig) {
@@ -101,8 +100,8 @@ function renderRig(e) {
     for (let i = 0; i < r.n; i++) {
       const x = r.xs[i] + OX + dx, y = r.ys[i] + OY + dy;
       if (x < 0 || y < 0 || x >= W || y >= H) continue;
-      const c = r.color[i] >>> 0;
-      buf[y * W + x] = DUMMY_TO_HERO.get(c) ?? c;
+      // the stock dummy's own colours: the game swaps them for each hero's palette as it draws
+      buf[y * W + x] = r.color[i] >>> 0;
     }
     frames.push({ color: trim(buf, W, H, OX, OY, hasColor), light: null });
     // where the hands are (near holds the sword, far holds the lantern), for the game to hang things on
@@ -188,7 +187,7 @@ for (const e of ANIMS) {
     px += (f.color ? f.color.w * f.color.h : 0) + (f.light ? f.light.w * f.light.h : 0);
     return [c, l];
   });
-  anims[e.name] = { fps: +r.fps.toFixed(4), loop: r.loop, cut: r.cut, frames, ...(r.keys ? { keys: r.keys } : {}), ...(r.hands ? { hands: r.hands } : {}), ...(e.body ? { body: r.frames.map((f) => bodyOf(f.color)) } : {}) };
+  anims[e.name] = { fps: +r.fps.toFixed(4), loop: r.loop, cut: r.cut, frames, ...(r.keys ? { keys: r.keys } : {}), ...(e.hits ? { hits: e.hits } : {}), ...(r.hands ? { hands: r.hands } : {}), ...(e.body ? { body: r.frames.map((f) => bodyOf(f.color)) } : {}) };
   stats.push([e.name, frames.length, px]);
 }
 
@@ -227,7 +226,7 @@ pages.forEach((P, i) => {
     writeFileSync(join(ROOT, "records", `atlas-preview-${i}.png`), encodePNG(PAGE, PAGE, v));
   }
 });
-const json = { version: 1, page: PAGE, pages: pages.length, anims, fonts };
+const json = { version: 1, page: PAGE, pages: pages.length, anims, fonts, dummy: DUMMY_PAL };
 writeFileSync(join(OUT, "atlas.json"), JSON.stringify(json));
 
 stats.sort((a, b) => b[2] - a[2]);

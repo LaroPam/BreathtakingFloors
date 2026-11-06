@@ -1,11 +1,11 @@
 // Turning the world into sprites: the room (floor, walls, torches, columns, things lying about), everything standing
 // sorted by its feet, light into the illumination layer, the baked pixelfx glow into the glow layer, numbers in front.
 
-import { anim, frameAt, type Anim } from "../engine/atlas";
+import { anim, frameAt, icon, type Anim } from "../engine/atlas";
 import { Batch, rgba, rgbaf, SOFT, withAlpha } from "../engine/renderer";
 import { text } from "../engine/text";
-import { AI, ENEMIES, RelicKind } from "./defs";
-import { ATTACKS, BULLET_ANIMS, B_CRESCENT, D_CHEST, D_GREEN, D_HEART, D_RED, TILE, type World } from "./world";
+import { AI, ENEMIES, HEROES, RelicKind, WEAPONS } from "./defs";
+import { BULLET_ANIMS, B_CRESCENT, D_CHEST, D_GREEN, D_HEART, D_RED, TILE, type World } from "./world";
 
 export class Scene {
   back = new Batch();
@@ -35,6 +35,8 @@ interface AnimOpts {
   glow?: number;
   /** Draw this frame index instead of the one at time t. */
   frame?: number;
+  /** A hero palette (see Renderer.setPalettes). */
+  pal?: number;
 }
 
 /** Draw one frame of a baked animation: its color image into the chosen layer, its light into the glow layer. */
@@ -49,11 +51,18 @@ export function drawAnim(s: Scene, a: Anim, t: number, x: number, y: number, o: 
   const sx = o.sx ?? 1, sy = o.sy ?? 1, rot = o.rot ?? 0;
   if (c) {
     const b = o.layer === "back" ? s.back : o.layer === "front" ? s.front : s.color;
+    b.pal = o.pal ?? 0;
     b.image(c, x, y, sx, sy, rot, withAlpha(o.tint ?? 0xffffffff, alpha), o.flash ?? 0, o.key ?? y);
+    b.pal = 0;
   }
   const g = (o.glow ?? 1) * alpha;
   if (l && g > 0.01) s.glow.image(l, x, y, sx, sy, rot, rgbaf(1, 1, 1, g));
 }
+
+const easeOutBack = (u: number) => {
+  const c = 1.9;
+  return 1 + (c + 1) * (u - 1) ** 3 + c * (u - 1) ** 2;
+};
 
 const hash = (x: number, y: number) => {
   let h = Math.imul(x, 374761393) + Math.imul(y, 668265263);
@@ -231,7 +240,9 @@ export function drawWorld(s: Scene, w: World, camX: number, camY: number, viewW:
     else if (E.chill[i] > 0) tint = STATUS_TINT.chill;
     let alpha = 1;
     if (d.ai === AI.Phantom && !w.inLight(x, y)) alpha = 0.35;
-    drawAnim(s, anim(d.anim), E.t[i], x, y, { sx: E.face[i] * d.scale, sy: d.scale, tint, alpha, flash: E.flash[i] > 0 ? 1 : 0, key: y, glow: 0.55 * alpha });
+    // newborn: they grow out of the floor with a little overshoot; struck: they squash for a beat
+    const age = E.age[i], grow = age < 0.3 ? easeOutBack(age / 0.3) : 1, hit = E.flash[i] > 0 ? 1 : 0;
+    drawAnim(s, anim(d.anim), E.t[i], x, y, { sx: E.face[i] * d.scale * (1 + 0.14 * hit) * grow, sy: d.scale * (1 - 0.12 * hit) * grow, tint, alpha, flash: hit, key: y, glow: 0.55 * alpha });
     if (d.glow) s.illum.light(w.bx, w.by, 20 * d.scale, 16 * d.scale, withAlpha(rgba(d.glow), 0.22));
     if (d.elite && d.scale === 1 && E.hp[i] < E.maxHp[i]) {
       const bw = 20, bx = Math.round(w.bx - bw / 2), by = Math.round(w.by - w.bry - 8);
@@ -241,20 +252,29 @@ export function drawWorld(s: Scene, w: World, camX: number, camY: number, viewW:
     if (w.debug) s.front.disc(w.bx, w.by, w.brx, w.bry, rgba("#ff3040", 0.3));
   }
 
-  // ---- the hero: body, sword, lantern
-  const run = anim("hero_run"), idle = anim("hero_idle"), dash = anim("hero_dash"), hurt = anim("hero_hurt"), lantern = anim("lantern");
+  // ---- the hero: body and weapon recoloured into the hero's palette, and the light they carry
+  const wid = h.weapon, pal = HEROES.findIndex((q) => q.id === h.def.id) + 1;
+  const run = anim(`${wid}_run`), idle = anim(`${wid}_idle`), dash = anim(`${wid}_dash`), hurt = anim(`${wid}_hurt`);
   for (const g of w.ghosts) {
-    drawAnim(s, dash, 0, g.x, g.y, { sx: g.flip, key: g.y - 0.5, tint: rgba("#7ad0ff"), alpha: (g.life / 0.22) * 0.7, glow: 0 });
+    drawAnim(s, dash, 0, g.x, g.y, { sx: g.flip, key: g.y - 0.5, tint: rgba("#7ad0ff"), alpha: (g.life / 0.22) * 0.7, glow: 0, pal });
     s.glow.image(dash.frames[0][0]!, g.x, g.y, g.flip, 1, 0, rgbaf(0.2, 0.5, 1, g.life * 1.2));
   }
-  if (!h.dead) {
-    s.back.disc(h.x, h.y, 9, 3, C_SHADOW);
+  let lightX = h.x, lightY = h.y - 14;
+  if (h.dead) {
+    // the fall: a stagger, the knees, the floor; then the body fades as the soul rises
+    const death = anim("hero_death"), fi = Math.min(death.frames.length - 1, Math.floor(h.deathT * 8));
+    const alpha = Math.max(0, Math.min(1, 1 - (h.deathT - 1.6) / 0.8));
+    if (alpha > 0) {
+      s.back.disc(h.x, h.y, 10, 3, C_SHADOW);
+      drawAnim(s, death, 0, h.x, h.y, { frame: fi, sx: h.face, key: h.y, alpha, pal, flash: h.deathT < 0.08 ? 1 : 0 });
+    }
+  } else {
     let a: Anim, fi: number;
     const runPhase = frameAt(run, h.runT);
     if (h.atk >= 0) {
-      const f = Math.min(6, Math.floor(h.atkT * 20));
-      if (h.moving) (a = anim(ATTACKS[h.atk].anim + "_run"), fi = f * 8 + runPhase);
-      else (a = anim(ATTACKS[h.atk].anim), fi = f);
+      const base = anim(`${wid}_a${h.atk}`), f = Math.min(base.frames.length - 1, Math.floor(h.atkT * 20));
+      if (h.moving) (a = anim(`${wid}_a${h.atk}_run`), fi = f * 8 + runPhase);
+      else (a = base, fi = f);
     } else if (h.dashT > 0) (a = dash, fi = frameAt(dash, time));
     else if (h.hurtT > 0) (a = hurt, fi = 0);
     else if (h.moving) {
@@ -262,24 +282,79 @@ export function drawWorld(s: Scene, w: World, camX: number, camY: number, viewW:
       a = run;
       fi = frameAt(run, backwards ? -h.runT : h.runT);
     } else (a = idle, fi = frameAt(idle, time));
-    const blink = h.invuln > 0 && h.dashT <= 0 && Math.floor(time * 16) % 2 === 0;
-    drawAnim(s, a, 0, h.x, h.y, { frame: fi, sx: h.face, key: h.y, alpha: blink ? 0.45 : 1, flash: h.hurtT > 0.2 ? 1 : 0 });
-    // the lantern hangs from the far hand and swings; it is the hero's light
+    // arriving: nothing in the first instant of the beam, then the body grows out of it; leaving: spun into the portal
+    let sx = h.face, sy = 1, rot = 0, flash = h.hurtT > 0.2 ? 1 : 0, show = true;
+    if (h.arriveT < 0.55) {
+      const u = (h.arriveT - 0.25) / 0.3;
+      show = u > 0;
+      sy = Math.max(0.05, 1 - (1 - Math.min(1, u)) ** 3);
+      sx = h.face * (1.4 - 0.4 * Math.min(1, u));
+      flash = u < 0.8 ? 1 : 0;
+    }
+    if (h.exitT >= 0) {
+      const k = Math.max(0, 1 - h.exitT / 0.75);
+      sx *= k;
+      sy = k;
+      rot = h.exitT * 14;
+      flash = 1;
+      show = k > 0.02;
+    }
+    const squash = h.hurtT > 0.18 ? 0.1 : 0;
+    const blink = h.invuln > 0 && h.dashT <= 0 && h.exitT < 0 && h.arriveT > 0.55 && Math.floor(time * 16) % 2 === 0;
+    if (show) {
+      s.back.disc(h.x, h.y, 9 * Math.abs(sx), 3, C_SHADOW);
+      drawAnim(s, a, 0, h.x, h.y, { frame: fi, sx: sx * (1 + squash), sy: sy * (1 - squash), rot, key: h.y, alpha: blink ? 0.45 : 1, flash, pal });
+    }
+    // the light: a lantern in the free hand or at the belt, swinging; or a wisp floating at the shoulder
     const hand = a.hands?.[fi] ?? [8, -20, 5, -15];
-    const lx = h.x + hand[2] * h.face, ly = h.y + hand[3];
-    if (h.dashT <= 0) drawAnim(s, lantern, time, lx, ly, { rot: h.lanternA, key: h.y - 0.3, glow: 1 });
-    const gx = lx - Math.sin(h.lanternA) * 7, gy = ly + Math.cos(h.lanternA) * 7;
-    const R = w.lanternR, flick = 1 + Math.sin(time * 9) * 0.02 + Math.sin(time * 23) * 0.015;
-    s.illum.light(gx, gy, R * flick, R * 0.85 * flick, rgbaf(1, 0.82, 0.58, 0.85));
-    s.illum.light(gx, gy, R * 0.4, R * 0.35, rgbaf(1, 0.9, 0.7, 0.35));
+    if (h.def.light === "lantern") {
+      const free = WEAPONS[wid].oneHand;
+      const lx = free ? h.x + hand[2] * h.face : h.x - h.face * 4, ly = free ? h.y + hand[3] : h.y - 15;
+      if (h.dashT <= 0 && show && h.exitT < 0) drawAnim(s, anim("lantern"), time, lx, ly, { rot: h.lanternA, key: h.y + (free ? -0.3 : 0.3), glow: 1 });
+      lightX = lx - Math.sin(h.lanternA) * 7;
+      lightY = ly + Math.cos(h.lanternA) * 7;
+    } else {
+      lightX = h.x - h.face * 11 + Math.sin(time * 1.7) * 2;
+      lightY = h.y - 36 + Math.sin(time * 2.6) * 2.5;
+      if (show && h.exitT < 0) drawAnim(s, anim("wisp_light"), time, lightX, lightY, { key: h.y + 0.5, glow: 1, tint: h.def.id === "reaper" ? rgba("#9affb0") : 0xffffffff });
+    }
     if (w.debug) {
       s.front.disc(h.x, h.y - 12, 5, 5, rgba("#40ff60", 0.4));
-      const A = ATTACKS[0], Rr = A.reach * w.stats.reach;
-      for (const da of [-A.arc, 0, A.arc]) {
-        const ang = Math.atan2(h.aimY, h.aimX) + da;
+      const B = WEAPONS[wid].blows[0], Rr = (B.reach || WEAPONS[wid].range) * w.stats.reach;
+      for (const da of [-B.arc, 0, B.arc]) {
+        const ang = Math.atan2(h.aimY, h.aimX) + (B.kind === "arc" ? da : 0);
         s.front.line(h.x, h.y - 18, h.x + Math.cos(ang) * Rr, h.y - 18 + Math.sin(ang) * Rr, 1, rgba("#40ff60", 0.5));
       }
     }
+  }
+  if (!h.dead || h.deathT < 1.6) {
+    const R = w.lanternR * (h.dead ? Math.max(0, 1 - h.deathT / 1.6) : 1), flick = 1 + Math.sin(time * 9) * 0.02 + Math.sin(time * 23) * 0.015, [lr, lg, lb] = h.def.lightColor;
+    s.illum.light(lightX, lightY, R * flick, R * 0.85 * flick, rgbaf(lr, lg, lb, 0.85));
+    s.illum.light(lightX, lightY, R * 0.4, R * 0.35, rgbaf(Math.min(1, lr + 0.1), Math.min(1, lg + 0.1), Math.min(1, lb + 0.1), 0.35));
+  }
+
+  // ---- weapon altars: the weapon's badge floats over the stone, a ring fills while the hero stands on it
+  const rackA = anim("rack");
+  for (const r of w.racks) {
+    if (!inView(r.x, r.y, 40)) continue;
+    s.back.disc(r.x, r.y, 15, 4, C_SHADOW);
+    drawAnim(s, rackA, time, r.x, r.y, { key: r.y, glow: 0.9 });
+    const bob = Math.sin(time * 2.2) * 2;
+    s.color.image(icon("icons", `w_${r.weapon}`), r.x, r.y - 30 + bob, 1, 1, 0, 0xffffffff, 0, r.y + 0.5);
+    s.illum.light(r.x, r.y - 24, 40, 32, rgbaf(0.7, 0.5, 1, 0.5));
+    if (r.progress > 0) {
+      const n = 20;
+      for (let k = 0; k < n; k++) {
+        const a = -Math.PI / 2 + (k / n) * Math.PI * 2, on = k / n < r.progress;
+        s.front.rect(Math.round(r.x + Math.cos(a) * 20), Math.round(r.y - 8 + Math.sin(a) * 8), 1, 1, on ? rgba("#c8a8ff") : rgba("#3a3448"));
+      }
+    }
+  }
+
+  // ---- the dying: their last frame flashes white and squashes away
+  for (const c of w.corpses) {
+    const k = c.t / 0.2;
+    drawAnim(s, anim(c.anim), 0, c.x, c.y, { frame: c.frame, sx: c.flip * c.scale * (1 + k * 0.7), sy: c.scale * Math.max(0.05, 1 - k), flash: 1, alpha: 1 - k * 0.6, key: c.y, glow: 0 });
   }
 
   // ---- relics in the world

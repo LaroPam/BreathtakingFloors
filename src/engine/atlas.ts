@@ -15,6 +15,8 @@ export interface Anim {
   frames: Frame[];
   /** Where the hero's hands are, per frame (rig animations only): near (sword) x, y, then far (lantern) x, y. */
   hands?: [number, number, number, number][];
+  /** The frames that land a blow (weapon animations). */
+  hits?: number[];
   /** A hitbox per frame measured from the art (enemies): ellipse centre x, y and radii, from the anchor. */
   body?: [number, number, number, number][];
   /** For animations baked from variants: the variant behind each frame (icons are looked up by it). */
@@ -33,6 +35,8 @@ export interface Font {
 interface AtlasFile {
   page: number;
   pages: number;
+  /** The stock dummy's colours, by role (the hero palettes swap these). */
+  dummy: Record<string, string>;
   anims: Record<string, Omit<Anim, "name" | "dur">>;
   fonts: Record<string, Font>;
 }
@@ -42,9 +46,13 @@ const file = atlasJson as unknown as AtlasFile;
 export const PAGE_SIZE = file.page;
 export const PAGE_COUNT = file.pages;
 export const FONTS = file.fonts as Record<"big" | "mini", Font>;
+/** The dummy's colour for each palette role: k ink, A-D plates lit to dark, E-G cloth, J seams, m the chest mark. */
+export const DUMMY = file.dummy;
 
 const anims = new Map<string, Anim>();
 for (const [name, a] of Object.entries(file.anims)) anims.set(name, { ...a, name, dur: a.frames.length / a.fps });
+
+export const hasAnim = (name: string): boolean => anims.has(name);
 
 export function anim(name: string): Anim {
   const a = anims.get(name);

@@ -8,6 +8,8 @@ export const IDS = [
   "orbit", "lance", "coil", "flask", "halo", "void",
   // the sword, the body, the light
   "edge", "haste", "reach", "wave", "parry", "speed", "maxhp", "magnet", "dashcd", "overdrive", "crit", "lantern",
+  // weapons
+  "w_sword", "w_hammer", "w_spear", "w_scythe", "w_daggers", "w_bow", "w_spell",
 ];
 
 export const meta = {
@@ -30,11 +32,13 @@ const BADGE = {
   fire: ["#2a0e0a", "#6a2414", "#ff8a3a"], frost: ["#0a1830", "#163c6a", "#78ccf4"], storm: ["#221a06", "#5a4610", "#ffe03c"],
   venom: ["#0c200c", "#22501a", "#8ad83a"], holy: ["#241c08", "#5a4818", "#fff09a"], void: ["#120a22", "#33185a", "#c684ff"],
   gold: ["#201408", "#5a3c14", "#f4d27a"], steel: ["#12141c", "#2e3448", "#b8c4dc"], life: ["#240810", "#5a1422", "#ff7a8a"],
+  arms: ["#100e16", "#2a2434", "#e8e4f0"],
 };
 const KIND = {
   orbit: "fire", lance: "frost", coil: "storm", flask: "venom", halo: "holy", void: "void",
   edge: "gold", haste: "gold", reach: "gold", wave: "gold", parry: "steel", speed: "steel", maxhp: "life",
   magnet: "steel", dashcd: "steel", overdrive: "holy", crit: "gold", lantern: "holy",
+  w_sword: "arms", w_hammer: "arms", w_spear: "arms", w_scythe: "arms", w_daggers: "arms", w_bow: "arms", w_spell: "arms",
 };
 
 function badge(p, [dark, mid, rim]) {
@@ -238,6 +242,70 @@ const SYMBOLS = {
     p.px(0, -2, H("#ffffff")); p.px(-1, 0, H("#ffffff")); p.px(0, 1, H("#fff3a6"));
   },
 };
+
+// the weapons: drawn bigger than the upgrades' symbols, corner to corner
+Object.assign(SYMBOLS, {
+  w_sword: SYMBOLS.edge,
+  w_hammer(p) {
+    outlined(p, (ink) => {
+      p.line(-6, 7, 3, -2, pick(ink, "#7a4a2a"));
+      p.line(-5, 7, 4, -2, pick(ink, "#a8683a"));
+      p.poly([[0, -5], [4, -9], [9, -4], [5, 0]], pick(ink, "#8aa0c4"));
+      p.poly([[0, -5], [4, -9], [6, -7], [2, -3]], pick(ink, "#e8edf6"));
+    });
+    p.px(-7, 8, H("#ffd84a")); p.line(5, -4, 7, -6, H("#4a5468"));
+  },
+  w_spear(p) {
+    outlined(p, (ink) => {
+      p.line(-8, 8, 3, -3, pick(ink, "#8a5a32"));
+      p.poly([[2, -2], [5, -8], [8, -8], [8, -5], [2, -2]], pick(ink, "#c4d4ec"));
+      p.line(3, -3, 7, -7, pick(ink, "#ffffff"));
+      p.line(0, -2, 2, 0, pick(ink, "#ffd84a"));
+    });
+    p.px(-6, 6, H("#b47c40")); p.px(-4, 4, H("#b47c40"));
+  },
+  w_scythe(p) {
+    outlined(p, (ink) => {
+      p.line(-6, 8, 4, -6, pick(ink, "#5a3820"));
+      p.arc(-1, -1, 7, (u) => 2.5 * Math.sin(u * Math.PI) + 0.4, -Math.PI * 0.95, -Math.PI * 0.35, () => pick(ink, "#c8d4e4"));
+    });
+    p.arc(-1, -1, 7, () => 1, -Math.PI * 0.9, -Math.PI * 0.45, H("#7ee88a"));
+    p.px(4, -6, H("#e8edf6"));
+  },
+  w_daggers(p) {
+    outlined(p, (ink) => {
+      for (const s of [1, -1]) {
+        p.line(-5 * s, 5, 4 * s, -4, pick(ink, "#e8edf6"));
+        p.line(-4 * s, 5, 4 * s, -3, pick(ink, "#a4afc6"));
+        p.line(-6 * s, 3, -3 * s, 6, pick(ink, "#ffd84a"));
+        p.line(-7 * s, 7, -6 * s, 6, pick(ink, "#7a3a2a"));
+      }
+    });
+    p.px(4, -5, H("#ffffff")); p.px(-4, -5, H("#ffffff"));
+  },
+  w_bow(p) {
+    outlined(p, (ink) => {
+      p.arc(-6, 0, 9, (u) => 1.6 - Math.abs(u - 0.5), -1.2, 1.2, () => pick(ink, "#a8683a"));
+      p.line(-2, -8, -2, 8, pick(ink, "#e8e4f0"));
+      p.line(-6, 0, 7, 0, pick(ink, "#8a5a32"));
+      p.tri(5, -2, 9, 0, 5, 2, pick(ink, "#c4d4ec"));
+      p.line(-8, -1, -6, 0, pick(ink, "#ff6a5a"));
+      p.line(-8, 1, -6, 0, pick(ink, "#ff6a5a"));
+    });
+    p.px(6, 0, H("#ffffff"));
+  },
+  w_spell(p) {
+    // a book of spells with a flame, a frost shard and a spark over it
+    outlined(p, (ink) => {
+      p.poly([[-7, 1], [0, 3], [7, 1], [7, 7], [0, 9], [-7, 7]], pick(ink, "#6b2cc0"));
+      p.line(0, 3, 0, 9, pick(ink, "#2b1252"));
+      p.circle(-5, -5, 2.2, (d) => pick(ink, d < 0.5 ? "#fff3a6" : "#ff8a2a"));
+      p.tri(-1, -2, 1, -9, 2, -2, pick(ink, "#9bdcff"));
+      p.poly([[5, -8], [3, -4], [5, -4], [4, -1], [7, -5], [5, -5], [6, -8]], pick(ink, "#ffe03c"));
+    });
+    p.line(-6, 3, -1, 4, H("#c684ff")); p.line(1, 4, 6, 3, H("#c684ff"));
+  },
+});
 
 export function draw(p, t, o) {
   badge(p, BADGE[KIND[o.id]]);

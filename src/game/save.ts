@@ -14,6 +14,7 @@ export interface SaveData {
   lang: "ru" | "en" | null;
   tutorial: boolean;
   wins?: number;
+  hero?: string;
 }
 
 export const defaultSave = (): SaveData => ({

@@ -4,10 +4,10 @@
 import type { Audio } from "../engine/audio";
 import type { Input } from "../engine/input";
 import { Batch, rgba, rgbaf, withAlpha, type Lighting, type Renderer } from "../engine/renderer";
-import { icon } from "../engine/atlas";
+import { anim, DUMMY, frameAt, icon } from "../engine/atlas";
 import { measure, text, wrap } from "../engine/text";
 import type { Platform } from "../platform/platform";
-import { EL_COLOR, EL_NAME, FORGE, MODIFIERS, NO_MODIFIER, REACTIONS, RELIC_MAX, RELIC_SLOTS, RELICS, STATS, type Modifier, type Reaction, type RelicKind, type StatId } from "./defs";
+import { bossOf, EL_COLOR, EL_NAME, FLOORS, FORGE, HEROES, PALETTE_KEYS, WEAPONS, MODIFIERS, NO_MODIFIER, REACTIONS, RELIC_MAX, RELIC_SLOTS, RELICS, STATS, type Modifier, type Reaction, type RelicKind, type StatId } from "./defs";
 import { drawWorld, Scene } from "./draw";
 import { getLang, langFor, setLang, t, tx, type Lang } from "./i18n";
 import { Rng } from "./rng";
@@ -15,7 +15,7 @@ import { defaultSave, sanitize, type SaveData } from "./save";
 import { button, C, drawHud, drawPointers, drawTouch, fmtTime, Menu, panel, para } from "./ui";
 import { World } from "./world";
 
-type State = "title" | "forge" | "play" | "spin" | "pause" | "codex" | "stairs" | "dead" | "won";
+type State = "title" | "heroes" | "forge" | "card" | "play" | "spin" | "pause" | "codex" | "stairs" | "dead" | "won";
 type Choice = { type: "relic"; kind: RelicKind; level: number } | { type: "stat"; id: StatId };
 
 /**
@@ -49,6 +49,10 @@ export class Game {
   private camY = 0;
   private banner: { text: string; t: number; color: number } | null = null;
   private spin: Spin | null = null;
+  /** A screen-covering wipe of diamonds (out: covering, then `then`; in: uncovering), and the floor's title card. */
+  private wipe: { t: number; dur: number; out: boolean; then?: () => void } | null = null;
+  private cardT = 0;
+  private heroIdx = 0;
   private startSpins = 0;
   private stairs: Modifier[] = [];
   private revived = false;
@@ -72,6 +76,10 @@ export class Game {
     this.audio.setEnabled(this.save.sound && this.platform.audioAllowed());
     this.audio.setVolumes(0.8, this.save.music ? 0.5 : 0);
     this.touch = this.platform.isMobile();
+    this.heroIdx = Math.max(0, HEROES.findIndex((h) => h.id === this.save.hero));
+    // the hero palettes the shader swaps the stock dummy's colours for
+    const hex = (c: string) => parseInt(c.slice(1), 16);
+    this.r.setPalettes(PALETTE_KEYS.map((k) => hex(DUMMY[k])), HEROES.map((h) => PALETTE_KEYS.map((k) => hex(h.palette[k]))));
     this.newWorld();
     this.attract();
   }
@@ -94,13 +102,17 @@ export class Game {
       floorCleared: () => this.onFloorCleared(),
       reaction: (r) => this.onReaction(r),
       banner: (text, color) => this.showBanner(text, color),
+      weapon: (id) => this.showBanner(tx(WEAPONS[id].name), C.gold),
     }, NO_MODIFIER);
   }
 
   /** The title screen's backdrop: a quiet floor with the hero by a lit brazier. */
   private attract(): void {
     const w = this.world;
+    w.setHero(HEROES[this.heroIdx]);
     w.startFloor(1, NO_MODIFIER);
+    w.hero.arriveT = 9;
+    w.fx = [];
     w.enemies.n = 0;
     w.braziers[0].x = w.hero.x - 70;
     w.braziers[0].y = w.hero.y + 6;
@@ -134,10 +146,18 @@ export class Game {
   }
 
   // =========================================================================================== runs
+  /** Cover the screen with a wipe of diamonds, then run `then` (and uncover it). */
+  private transition(then: () => void): void {
+    if (this.wipe) return;
+    this.wipe = { t: 0, dur: 0.45, out: true, then };
+  }
+
   private startRun(): void {
     this.newWorld();
-    const w = this.world, f = this.save.forge;
-    w.hero.maxHp = 5 + (f.heart ?? 0);
+    const w = this.world, f = this.save.forge, hero = HEROES[this.heroIdx];
+    this.save.hero = hero.id;
+    w.setHero(hero);
+    w.hero.maxHp += f.heart ?? 0;
     w.hero.hp = w.hero.maxHp;
     w.stats.might = 1 + 0.1 * (f.might ?? 0);
     w.stats.magnet *= 1 + 0.25 * (f.reach ?? 0);
@@ -147,8 +167,8 @@ export class Game {
     this.save.runs++;
     this.persist();
     this.audio.playMusic();
-    this.showBanner(`${t("floor")} 1`);
-    this.setState("play");
+    this.cardT = 0;
+    this.setState("card");
     // every run starts with a relic from the roulette (the forge's Legacy spins a second)
     this.startSpins = f.start ? 2 : 1;
     w.pendingChests = this.startSpins;
@@ -179,14 +199,16 @@ export class Game {
     const pool = [...MODIFIERS];
     this.stairs = [];
     for (let k = 0; k < 2; k++) this.stairs.push(pool.splice(this.runRng.int(0, pool.length - 1), 1)[0]);
-    this.setState("stairs");
+    this.transition(() => this.setState("stairs"));
   }
 
   private descend(mod: Modifier): void {
-    const w = this.world, next = w.floor + 1;
-    w.startFloor(next, mod);
-    this.showBanner(`${t("floor")} ${next}`);
-    this.setState("play");
+    this.transition(() => {
+      const w = this.world;
+      w.startFloor(w.floor + 1, mod);
+      this.cardT = 0;
+      this.setState("card");
+    });
   }
 
   private onReaction(r: Reaction): void {
@@ -213,7 +235,7 @@ export class Game {
       if (best) this.platform.submitScore(score);
       this.audio.stopMusic();
       this.setState("dead");
-    }, 1400);
+    }, 2600);
   }
 
   private async revive(): Promise<void> {
@@ -248,7 +270,12 @@ export class Game {
       if (lv === 0 && slotsFree) out.push([{ type: "relic", kind: def.kind, level: 1 }, relicsOnly ? 10 : 6]);
       else if (lv > 0 && lv < RELIC_MAX) out.push([{ type: "relic", kind: def.kind, level: lv + 1 }, relicsOnly ? 12 : 8]);
     }
-    if (!relicsOnly) for (const s of STATS) if ((w.statLevels[s.id] ?? 0) < s.max) out.push([{ type: "stat", id: s.id }, s.weight]);
+    if (!relicsOnly)
+      for (const s of STATS) {
+        // deflecting bullets is a blade's trick: no use to a bow or a spellbook
+        if (s.id === "parry" && WEAPONS[w.hero.weapon].ranged) continue;
+        if ((w.statLevels[s.id] ?? 0) < s.max) out.push([{ type: "stat", id: s.id }, s.weight]);
+      }
     if (!out.length) for (const id of ["edge", "haste", "speed"] as StatId[]) out.push([{ type: "stat", id }, 1]);
     return out;
   }
@@ -330,9 +357,33 @@ export class Game {
     if (this.banner) this.banner.t += dt;
 
     const w = this.world;
-    if (this.state === "play" && !this.platformPaused) this.nextSpin();
+    if (this.wipe) {
+      this.wipe.t += dt;
+      if (this.wipe.t >= this.wipe.dur) {
+        if (this.wipe.out) {
+          const then = this.wipe.then;
+          this.wipe = { t: 0, dur: 0.45, out: false };
+          then?.();
+        } else this.wipe = null;
+      }
+    }
+    if (this.state === "card") {
+      // the floor's title card: hold it, then uncover the floor and let the hero arrive
+      this.cardT += dt;
+      if (this.cardT > 1.9 || (this.cardT > 0.5 && (input.click || input.pressed("confirm")))) {
+        this.cardT = 99;
+        this.transition(() => {
+          w.hero.arriveT = 0;
+          w.addFx("beam", w.hero.x, w.hero.y, { glow: 1, key: 2 });
+          this.camX = w.hero.x - this.r.w / 2;
+          this.camY = w.hero.y - 20 - this.r.h / 2;
+          this.setState("play");
+        });
+      }
+    }
+    if (this.state === "play" && !this.platformPaused && w.hero.arriveT > 0.9 && !this.wipe) this.nextSpin();
     if (this.state === "spin") this.updateSpin(dt);
-    if (this.state === "play" && !this.platformPaused) {
+    if (this.state === "play" && !this.platformPaused && !this.wipe) {
       if (input.pressed("pause")) this.setState("pause");
       else {
         if (input.pressed("debug")) w.debug = !w.debug;
@@ -404,6 +455,8 @@ export class Game {
 
     switch (this.state) {
       case "title": this.drawTitle(); break;
+      case "heroes": this.drawHeroes(); break;
+      case "card": this.drawCard(); break;
       case "forge": this.drawForge(); break;
       case "play":
         drawPointers(ui, w, cx, cy, W, H, this.now);
@@ -419,7 +472,8 @@ export class Game {
       case "dead": this.drawDead(); break;
       case "won": this.drawWon(); break;
     }
-    this.menu.end(this.state === "stairs");
+    if (this.state !== "heroes") this.menu.end(this.state === "stairs");
+    this.drawWipe();
     this.r.render(s, ui, cx, cy, light, [0.025, 0.02, 0.045]);
   }
 
@@ -446,7 +500,7 @@ export class Game {
     let y = Math.round(H * 0.5);
     if (button(ui, this.menu, now, bx, y, bw, bh, t("play"), { color: C.gold })) {
       this.audio.unlock();
-      this.startRun();
+      this.setState("heroes", 2);
       return;
     }
     y += bh + 6;
@@ -466,6 +520,101 @@ export class Game {
     }
     const info = `${t("embers")}: ${this.save.embers}    ${t("best")}: ${t("floor")} ${this.save.bestFloor}`;
     text(ui, info, W / 2, H - 16, { font: "mini", align: "center", color: C.goldDim });
+  }
+
+  /** The hero select: the hero in their palette with their weapon, who they are, how they play. */
+  private drawHeroes(): void {
+    const ui = this.ui, W = this.r.w, H = this.r.h, now = this.now, input = this.input, n = HEROES.length;
+    const pick = (d: number) => {
+      this.heroIdx = (this.heroIdx + d + n) % n;
+      this.world.setHero(HEROES[this.heroIdx]);
+      this.audio.play("click");
+    };
+    if (input.pressed("left")) pick(-1);
+    if (input.pressed("right")) pick(1);
+    const hero = HEROES[this.heroIdx], weapon = WEAPONS[hero.weapon], wide = W >= 460;
+    text(ui, t("chooseHero"), W / 2, 12, { align: "center", scale: 2, color: C.gold, outline: true, shadow: rgba("#3a1a10") });
+    // the hero, big, on a pool of their light
+    const cx = wide ? Math.round(W * 0.3) : Math.round(W / 2), cy = wide ? Math.round(H * 0.62) : Math.round(H * 0.44), [lr, lg, lb] = hero.lightColor;
+    ui.disc(cx, cy, 46, 14, rgbaf(lr, lg, lb, 0.12));
+    ui.disc(cx, cy, 30, 9, rgbaf(lr, lg, lb, 0.18));
+    const idle = anim(`${hero.weapon}_idle`), f = idle.frames[frameAt(idle, now)][0]!;
+    ui.pal = this.heroIdx + 1;
+    ui.image(f, cx, cy, 3, 3);
+    ui.pal = 0;
+    if (hero.light === "wisp") {
+      const wf = anim("wisp_light"), r = wf.frames[frameAt(wf, now)][0]!;
+      ui.image(r, cx - 30, cy - 105 + Math.sin(now * 2.6) * 6, 2, 2, 0, hero.id === "reaper" ? rgba("#9affb0") : 0xffffffff);
+    }
+    if (button(ui, this.menu, now, cx - 112, cy - 56, 20, 30, "<")) pick(-1);
+    if (button(ui, this.menu, now, cx + 92, cy - 56, 20, 30, ">")) pick(1);
+    // who they are
+    const px = wide ? Math.round(W * 0.52) : Math.round(W / 2 - 150), pw = wide ? Math.min(280, W - px - 16) : 300;
+    let y = wide ? Math.round(H * 0.2) : cy + 18;
+    text(ui, tx(hero.name), px, y, { scale: wide ? 2 : 1, color: C.gold, outline: true, shadow: rgba("#3a1a10") });
+    y += wide ? 20 : 11;
+    text(ui, tx(hero.title), px, y, { font: "mini", color: C.dim });
+    y += 11;
+    ui.image(icon("icons", `w_${hero.weapon}`), px + 10, y + 10);
+    text(ui, tx(weapon.name), px + 24, y + 3, { color: C.text });
+    text(ui, tx(weapon.desc), px + 24, y + 13, { font: "mini", color: C.dim });
+    y += 26;
+    y += para(ui, tx(hero.perk), px, y, pw, rgba("#9ad4ff"));
+    y += 4;
+    for (let k = 0; k < hero.hearts; k++) ui.image(icon("hud", "heart"), px + 6 + k * 10, y + 5);
+    for (let k = 0; k < hero.dashes; k++) ui.image(icon("hud", "stamina"), px + 6 + hero.hearts * 10 + 8 + k * 9, y + 5);
+    y += 14;
+    text(ui, t("speed"), px, y, { font: "mini", color: C.dim });
+    ui.rect(px + 40, y + 1, 60, 3, C.ink);
+    ui.rect(px + 40, y + 1, Math.round(60 * (hero.speed - 0.8) / 0.4), 3, C.green);
+    // the four of them, small, the chosen one framed
+    const ty = H - 54;
+    HEROES.forEach((hd, k) => {
+      const x = Math.round(W / 2 + (k - (n - 1) / 2) * 34), a = anim(`${hd.weapon}_idle`).frames[0][0]!;
+      if (k === this.heroIdx) panel(ui, x - 14, ty - 22, 28, 30, C.gold, rgba("#221e30", 0.9));
+      ui.pal = k + 1;
+      ui.image(a, x, ty + 6, 1, 1, 0, k === this.heroIdx ? 0xffffffff : rgbaf(0.55, 0.55, 0.6, 1));
+      ui.pal = 0;
+    });
+    const bw = 120, by = H - 22;
+    if (button(ui, this.menu, now, Math.round(W / 2 - bw - 6), by, bw, 18, t("start"), { color: C.gold })) {
+      this.transition(() => this.startRun());
+    }
+    if (button(ui, this.menu, now, Math.round(W / 2 + 6), by, bw, 18, t("back")) || input.pressed("back")) this.setState("title");
+  }
+
+  /** The floor's title card: its number, its biome, a line about it, and where it sits in the run. */
+  private drawCard(): void {
+    const ui = this.ui, W = this.r.w, H = this.r.h, w = this.world, B = w.biome, a = Math.min(1, this.cardT * 3);
+    ui.rect(0, 0, W, H, rgba("#07060c"));
+    const cy = Math.round(H * 0.38);
+    text(ui, `${t("floor")} ${w.floor}`, W / 2, cy - 30, { align: "center", scale: 3, color: withAlpha(C.gold, a), outline: true, shadow: rgba("#3a1a10") });
+    text(ui, tx(B.name), W / 2, cy + 2, { align: "center", scale: 2, color: withAlpha(C.text, a) });
+    para(ui, tx(B.lore), Math.round(W / 2 - 150), cy + 24, 300, withAlpha(C.dim, a), "center");
+    const lw = Math.min(200, W - 40);
+    ui.rect(Math.round(W / 2 - lw / 2), cy - 6, lw, 1, withAlpha(C.goldDim, a));
+    // nine floors, the bosses' marked, ours lit
+    for (let k = 1; k <= FLOORS; k++) {
+      const x = Math.round(W / 2 + (k - (FLOORS + 1) / 2) * 16), y = cy + 62, boss = bossOf(k) >= 0;
+      if (boss) ui.image(icon("hud", "boss"), x, y, 1, 1, 0, k <= w.floor ? 0xffffffff : rgbaf(0.35, 0.35, 0.4, 1));
+      else ui.disc(x, y, 3, 3, k < w.floor ? C.goldDim : k === w.floor ? C.gold : rgba("#2a2438"));
+      if (k === w.floor) ui.rect(x - 4, y + 8, 9, 1, C.gold);
+    }
+  }
+
+  /** The wipe: diamonds that grow from one corner to the other until they cover the screen, and shrink away again. */
+  private drawWipe(): void {
+    const wp = this.wipe;
+    if (!wp) return;
+    const ui = this.ui, W = this.r.w, H = this.r.h, cell = 26, u = Math.min(1, wp.t / wp.dur), p = wp.out ? u : 1 - u;
+    const col = rgba("#07060c");
+    for (let y = -cell; y < H + cell; y += cell)
+      for (let x = -cell; x < W + cell; x += cell) {
+        const d = (x + y) / (W + H), k = Math.max(0, Math.min(1, p * 1.7 - d * 0.7));
+        if (k <= 0) continue;
+        const sz = k * cell * 1.45;
+        ui.push(x + cell / 2, y + cell / 2, -sz / 2, -sz / 2, sz, sz, 0, 0, 1, 1, Math.PI / 4, -3, col, 0, 0);
+      }
   }
 
   private drawForge(): void {
