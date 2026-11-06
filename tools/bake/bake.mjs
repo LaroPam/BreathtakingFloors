@@ -178,7 +178,7 @@ for (const e of ANIMS) {
     if (e.variants) {
       const [key, values] = Object.entries(e.variants)[0];
       parts = values.map((v) => renderEffect(fx.mod, fx.meta, { ...e, fps: 1 }, { [key]: v, seed: (e.opts?.seed ?? 1) + values.indexOf(v) }));
-      parts = [{ fps: 1, loop: true, frames: parts.map((p) => p.frames[0]), cut: false }];
+      parts = [{ fps: 1, loop: true, frames: parts.map((p) => p.frames[0]), cut: false, keys: values.map(String) }];
     } else parts = [renderEffect(fx.mod, fx.meta, e)];
   }
   const r = parts[0];
@@ -188,7 +188,7 @@ for (const e of ANIMS) {
     px += (f.color ? f.color.w * f.color.h : 0) + (f.light ? f.light.w * f.light.h : 0);
     return [c, l];
   });
-  anims[e.name] = { fps: +r.fps.toFixed(4), loop: r.loop, cut: r.cut, frames, ...(r.hands ? { hands: r.hands } : {}), ...(e.body ? { body: r.frames.map((f) => bodyOf(f.color)) } : {}) };
+  anims[e.name] = { fps: +r.fps.toFixed(4), loop: r.loop, cut: r.cut, frames, ...(r.keys ? { keys: r.keys } : {}), ...(r.hands ? { hands: r.hands } : {}), ...(e.body ? { body: r.frames.map((f) => bodyOf(f.color)) } : {}) };
   stats.push([e.name, frames.length, px]);
 }
 

@@ -17,6 +17,8 @@ export interface Anim {
   hands?: [number, number, number, number][];
   /** A hitbox per frame measured from the art (enemies): ellipse centre x, y and radii, from the anchor. */
   body?: [number, number, number, number][];
+  /** For animations baked from variants: the variant behind each frame (icons are looked up by it). */
+  keys?: string[];
   /** Length in seconds. */
   dur: number;
 }
@@ -48,6 +50,20 @@ export function anim(name: string): Anim {
   const a = anims.get(name);
   if (!a) throw new Error(`no animation "${name}" in the atlas; add it to tools/bake/manifest.mjs`);
   return a;
+}
+
+const keyIndex = new Map<string, number>();
+/** The color image of a variant frame by its key: icon("icons", "orbit"), icon("hud", "heart"). */
+export function icon(animName: string, key: string): Rect {
+  const id = animName + "/" + key;
+  let i = keyIndex.get(id);
+  if (i === undefined) {
+    const a = anim(animName);
+    i = a.keys ? a.keys.indexOf(key) : -1;
+    if (i < 0) throw new Error(`no icon "${key}" in "${animName}"`);
+    keyIndex.set(id, i);
+  }
+  return anim(animName).frames[i][0]!;
 }
 
 /** The frame index at time t (seconds). One-shots hold their last frame. */

@@ -3,8 +3,8 @@
 
 import type { Audio } from "../engine/audio";
 import type { Input } from "../engine/input";
-import { Batch, rgba, rgbaf, type Lighting, type Renderer } from "../engine/renderer";
-import { anim, frameAt } from "../engine/atlas";
+import { Batch, rgba, rgbaf, withAlpha, type Lighting, type Renderer } from "../engine/renderer";
+import { icon } from "../engine/atlas";
 import { measure, text, wrap } from "../engine/text";
 import type { Platform } from "../platform/platform";
 import { EL_COLOR, EL_NAME, FORGE, MODIFIERS, NO_MODIFIER, REACTIONS, RELIC_MAX, RELIC_SLOTS, RELICS, STATS, type Modifier, type Reaction, type RelicKind, type StatId } from "./defs";
@@ -15,8 +15,25 @@ import { defaultSave, sanitize, type SaveData } from "./save";
 import { button, C, drawHud, drawPointers, drawTouch, fmtTime, Menu, panel, para } from "./ui";
 import { World } from "./world";
 
-type State = "title" | "forge" | "play" | "levelup" | "chest" | "pause" | "codex" | "stairs" | "dead" | "won";
+type State = "title" | "forge" | "play" | "spin" | "pause" | "codex" | "stairs" | "dead" | "won";
 type Choice = { type: "relic"; kind: RelicKind; level: number } | { type: "stat"; id: StatId };
+
+/**
+ * The roulette that picks an upgrade: a reel of badges spins fast, slows down and stops on the winner, which
+ * pops, shines and is applied. A level-up spins the whole pool, a chest (and the start of a run) only relics.
+ */
+interface Spin {
+  kind: "level" | "chest" | "start";
+  reel: Choice[];
+  target: number;
+  t: number;
+  dur: number;
+  /** Time since it stopped (negative while spinning). */
+  held: number;
+  tick: number;
+}
+const RELIC_ICON = ["orbit", "lance", "coil", "flask", "halo", "void"];
+const iconKey = (c: Choice) => (c.type === "relic" ? RELIC_ICON[c.kind] : c.id);
 
 const STEP = 1 / 60;
 
@@ -31,7 +48,8 @@ export class Game {
   private camX = 0;
   private camY = 0;
   private banner: { text: string; t: number; color: number } | null = null;
-  private choices: Choice[] = [];
+  private spin: Spin | null = null;
+  private startSpins = 0;
   private stairs: Modifier[] = [];
   private revived = false;
   private platformPaused = false;
@@ -131,9 +149,9 @@ export class Game {
     this.audio.playMusic();
     this.showBanner(`${t("floor")} 1`);
     this.setState("play");
-    // every run starts with a relic of your choice (the forge's Legacy adds a second)
-    w.pendingChests = f.start ? 1 : 0;
-    this.openChoices(true, true);
+    // every run starts with a relic from the roulette (the forge's Legacy spins a second)
+    this.startSpins = f.start ? 2 : 1;
+    w.pendingChests = this.startSpins;
   }
 
   private onVictory(): void {
@@ -220,40 +238,85 @@ export class Game {
     this.setState("play");
   }
 
-  // =========================================================================================== choices
-  private rollChoices(chest: boolean): Choice[] {
-    const w = this.world, cands: [Choice, number][] = [];
+  // =========================================================================================== the roulette
+  /** What an upgrade can be right now, with weights: new relics, relic levels and, on a level-up, stats. */
+  private pool(relicsOnly: boolean): [Choice, number][] {
+    const w = this.world, out: [Choice, number][] = [];
     const slotsFree = w.relics.length < RELIC_SLOTS;
     for (const def of RELICS) {
       const lv = w.relicLevel(def.kind);
-      if (lv === 0 && slotsFree) cands.push([{ type: "relic", kind: def.kind, level: 1 }, chest ? 10 : 6]);
-      else if (lv > 0 && lv < RELIC_MAX) cands.push([{ type: "relic", kind: def.kind, level: lv + 1 }, chest ? 12 : 8]);
+      if (lv === 0 && slotsFree) out.push([{ type: "relic", kind: def.kind, level: 1 }, relicsOnly ? 10 : 6]);
+      else if (lv > 0 && lv < RELIC_MAX) out.push([{ type: "relic", kind: def.kind, level: lv + 1 }, relicsOnly ? 12 : 8]);
     }
-    if (!chest) for (const s of STATS) if ((w.statLevels[s.id] ?? 0) < s.max) cands.push([{ type: "stat", id: s.id }, s.weight]);
-    const out: Choice[] = [];
-    while (out.length < 3 && cands.length) {
-      let total = 0;
-      for (const [, wt] of cands) total += wt;
-      let x = this.runRng.range(0, total);
-      const k = cands.findIndex(([, wt]) => (x -= wt) <= 0);
-      out.push(cands.splice(Math.max(0, k), 1)[0][0]);
-    }
-    if (!out.length) for (const s of ["edge", "haste", "speed"] as StatId[]) out.push({ type: "stat", id: s });
+    if (!relicsOnly) for (const s of STATS) if ((w.statLevels[s.id] ?? 0) < s.max) out.push([{ type: "stat", id: s.id }, s.weight]);
+    if (!out.length) for (const id of ["edge", "haste", "speed"] as StatId[]) out.push([{ type: "stat", id }, 1]);
     return out;
   }
-  private openChoices(chest: boolean, start = false): void {
-    this.choices = this.rollChoices(chest);
-    if (start) this.choices = this.choices.filter((c) => c.type === "relic").slice(0, 3);
-    this.setState(chest ? "chest" : "levelup", 1);
-    if (!chest) this.audio.play("levelup");
+  private roll(pool: [Choice, number][]): Choice {
+    let total = 0;
+    for (const [, wt] of pool) total += wt;
+    let x = this.runRng.range(0, total);
+    for (const [c, wt] of pool) if ((x -= wt) <= 0) return c;
+    return pool[pool.length - 1][0];
   }
-  private take(c: Choice): void {
+  private startSpin(kind: Spin["kind"]): void {
+    const pool = this.pool(kind !== "level"), winner = this.roll(pool);
+    // a long strip of badges from the same pool, the winner placed near its end
+    const n = 30 + this.runRng.int(0, 6), reel: Choice[] = [];
+    for (let k = 0; k < n; k++) reel.push(this.roll(pool));
+    const target = n - 5;
+    reel[target] = winner;
+    // no twin of the winner right beside it, so the stop reads clearly
+    for (const k of [target - 1, target + 1]) if (pool.length > 1) while (iconKey(reel[k]) === iconKey(winner)) reel[k] = this.roll(pool);
+    this.spin = { kind, reel, target, t: 0, dur: 1.9 + this.runRng.range(0, 0.4), held: -1, tick: 0 };
+    this.setState("spin");
+    this.audio.play(kind === "level" ? "levelup" : "chest");
+  }
+  /** Where the reel is (in badges) at time t: fast at first, easing into the stop with a small settle. */
+  private reelPos(sp: Spin): number {
+    const u = Math.min(1, sp.t / sp.dur), e = 1 - (1 - u) ** 4;
+    const settle = u > 0.92 ? Math.sin(((u - 0.92) / 0.08) * Math.PI) * 0.06 : 0;
+    return sp.target * e + settle;
+  }
+  private updateSpin(dt: number): void {
+    const sp = this.spin!, input = this.input;
+    const skip = !!input.click || input.pressed("confirm") || input.pressed("dash");
+    if (sp.held < 0) {
+      sp.t += dt;
+      if (skip && sp.t > 0.25) sp.t = sp.dur;
+      const at = Math.round(this.reelPos(sp));
+      if (at !== sp.tick) {
+        sp.tick = at;
+        this.audio.play("click", 0.8 + (at / sp.target) * 0.6);
+      }
+      if (sp.t >= sp.dur) {
+        sp.held = 0;
+        this.audio.play("levelup", 1.25);
+        this.audio.play("chest");
+      }
+      return;
+    }
+    sp.held += dt;
+    if (sp.held > 1.6 || (skip && sp.held > 0.3)) this.take(sp.reel[sp.target], sp.kind);
+  }
+  private take(c: Choice, kind: Spin["kind"]): void {
     const w = this.world;
     if (c.type === "relic") w.addRelic(c.kind);
     else w.addStat(c.id);
-    if (this.state === "levelup") w.pendingLevels = Math.max(0, w.pendingLevels - 1);
+    if (kind === "level") w.pendingLevels = Math.max(0, w.pendingLevels - 1);
     else w.pendingChests = Math.max(0, w.pendingChests - 1);
+    this.spin = null;
     this.setState("play");
+  }
+  /** Start the next roulette if the world has one waiting. */
+  private nextSpin(): void {
+    const w = this.world;
+    if (w.hero.dead) return;
+    if (w.pendingChests > 0 && this.startSpins > 0) {
+      this.startSpins--;
+      this.startSpin("start");
+    } else if (w.pendingLevels > 0) this.startSpin("level");
+    else if (w.pendingChests > 0) this.startSpin("chest");
   }
 
   // =========================================================================================== the frame
@@ -267,6 +330,8 @@ export class Game {
     if (this.banner) this.banner.t += dt;
 
     const w = this.world;
+    if (this.state === "play" && !this.platformPaused) this.nextSpin();
+    if (this.state === "spin") this.updateSpin(dt);
     if (this.state === "play" && !this.platformPaused) {
       if (input.pressed("pause")) this.setState("pause");
       else {
@@ -295,10 +360,7 @@ export class Game {
         // 144 Hz with nothing to interpolate
         const n = Math.max(1, Math.ceil(dt / STEP - 1e-6));
         for (let k = 0; k < n; k++) w.step(dt / n);
-        if (!h.dead) {
-          if (w.pendingLevels > 0) this.openChoices(false);
-          else if (w.pendingChests > 0) this.openChoices(true);
-        }
+        this.nextSpin();
       }
     }
     this.updateCamera(dt);
@@ -350,15 +412,14 @@ export class Game {
         else this.input.zones = [];
         this.drawTutorial();
         break;
-      case "levelup":
-      case "chest": this.drawChoices(); break;
+      case "spin": this.drawSpin(); break;
       case "pause": this.drawPause(); break;
       case "codex": this.drawCodex(); break;
       case "stairs": this.drawStairs(); break;
       case "dead": this.drawDead(); break;
       case "won": this.drawWon(); break;
     }
-    this.menu.end(this.state === "levelup" || this.state === "chest" || this.state === "stairs");
+    this.menu.end(this.state === "stairs");
     this.r.render(s, ui, cx, cy, light, [0.025, 0.02, 0.045]);
   }
 
@@ -431,64 +492,59 @@ export class Game {
     if (button(ui, this.menu, now, Math.round(W / 2 - 50), H - 30, 100, 18, t("back")) || this.input.pressed("back")) this.setState("title", 1);
   }
 
-  /** An animated picture for a choice: the relic's own effect, or something that says what the stat does. */
-  private icon(c: Choice): string {
-    if (c.type === "relic") return ["ember", "ice_lance", "zap", "puddle", "collect", "void_orb"][c.kind];
-    const m: Record<StatId, string> = { edge: "hero_slash", haste: "hero_backslash", reach: "hero_thrust", wave: "crescent", parry: "parry", speed: "hero_run", maxhp: "heart", magnet: "shard_green", dashcd: "hero_dash", overdrive: "crit", crit: "crit", lantern: "lantern" };
-    return m[c.id];
-  }
+  private drawSpin(): void {
+    const sp = this.spin;
+    if (!sp) return;
+    const ui = this.ui, W = this.r.w, H = this.r.h, w = this.world, landed = sp.held >= 0;
+    const title = sp.kind === "level" ? t("levelUp") : sp.kind === "chest" ? t("chest") : t("startRelic");
+    const ty = Math.round(H * 0.18);
+    text(ui, title, W / 2, ty, { align: "center", scale: 2, color: C.gold, outline: true, shadow: rgba("#3a1a10") });
+    if (sp.kind === "level") text(ui, `${t("level")} ${w.hero.level}`, W / 2, ty + 20, { font: "mini", align: "center", color: rgba("#9ad4ff") });
 
-  private drawIcon(name: string, cx: number, cy: number, maxW: number, maxH: number): void {
-    const a = anim(name), t = a.loop ? this.now : this.now % (a.dur + 0.4);
-    const f = a.frames[frameAt(a, t)][0];
-    if (!f) return;
-    const k = f[3] * 2 <= maxW && f[4] * 2 <= maxH ? 2 : 1;
-    // centre the frame's own box, not its anchor
-    this.ui.image(f, Math.round(cx - (f[5] + f[3] / 2) * k), Math.round(cy - (f[6] + f[4] / 2) * k), k, k);
-  }
-
-  private drawChoices(): void {
-    const ui = this.ui, W = this.r.w, H = this.r.h, now = this.now, w = this.world, chest = this.state === "chest";
-    text(ui, chest ? t("chest") : t("levelUp"), W / 2, 14, { align: "center", scale: 2, color: C.gold, outline: true, shadow: rgba("#3a1a10") });
-    text(ui, t("chooseOne"), W / 2, 34, { font: "mini", align: "center", color: C.dim });
-    const n = this.choices.length, vertical = W < 420;
-    const cw = vertical ? Math.min(300, W - 24) : Math.min(156, Math.floor((W - 24 - (n - 1) * 8) / n));
-    const iconH = vertical ? 0 : 44, inner = cw - 12;
-    const content = this.choices.map((c) => {
-      const def = c.type === "relic" ? RELICS[c.kind] : null, stat = c.type === "stat" ? STATS.find((s) => s.id === c.id)! : null;
+    // the reel: a window of badges at 2x, the middle one framed
+    const S = 50, cy = Math.round(H * 0.42), cx = Math.round(W / 2), half = Math.min(4, Math.floor((W - 30) / S / 2));
+    const pos = this.reelPos(sp), ww = (half * 2 + 1) * S + 8;
+    panel(ui, cx - ww / 2, cy - 30, ww, 60, C.edge, rgba("#0e0c16", 0.94));
+    const first = Math.floor(pos) - half - 1, last = Math.ceil(pos) + half + 1;
+    for (let j = Math.max(0, first); j <= Math.min(sp.reel.length - 1, last); j++) {
+      const x = cx + (j - pos) * S, d = Math.abs(j - pos);
+      if (x < cx - ww / 2 + 22 || x > cx + ww / 2 - 22) continue;
+      const win = landed && j === sp.target;
+      const pop = win ? 1 + 0.25 * Math.max(0, 1 - sp.held * 4) * Math.sin(Math.min(1, sp.held * 4) * Math.PI) : 1;
+      const k = 2 * pop, dim = win ? 1 : Math.max(0.35, 1 - d * 0.28);
+      const r = icon("icons", iconKey(sp.reel[j]));
+      ui.image(r, x - (r[5] + r[3] / 2) * k, cy - (r[6] + r[4] / 2) * k, k, k, 0, rgbaf(dim, dim, dim, 1));
+    }
+    // the frame around the winning slot and the pointers above and below it
+    const fx = cx - S / 2 + 1, fw = S - 2, glow = landed ? 0.6 + 0.4 * Math.sin(this.now * 10) : 0;
+    const gold = landed ? rgbaf(1, 0.85 + 0.15 * glow, 0.45 + 0.4 * glow, 1) : C.gold;
+    ui.rect(fx, cy - 26, fw, 2, gold);
+    ui.rect(fx, cy + 24, fw, 2, gold);
+    ui.rect(fx, cy - 26, 2, 52, gold);
+    ui.rect(fx + fw - 2, cy - 26, 2, 52, gold);
+    for (let k = 0; k < 4; k++) {
+      ui.rect(cx - k, cy - 32 + k, k * 2 + 1, 1, gold);
+      ui.rect(cx - k, cy + 31 - k, k * 2 + 1, 1, gold);
+    }
+    if (landed) {
+      // rays turning behind the winner, and what it is
+      for (let k = 0; k < 10; k++) {
+        const a = (k / 10) * Math.PI * 2 + this.now * 1.5, r0 = 26, r1 = 34 + 4 * Math.sin(this.now * 6 + k);
+        ui.line(cx + Math.cos(a) * r0, cy + Math.sin(a) * r0, cx + Math.cos(a) * r1, cy + Math.sin(a) * r1, 1, rgbaf(1, 0.85, 0.4, Math.min(1, sp.held * 3) * 0.8));
+      }
+      const c = sp.reel[sp.target], a = Math.min(1, sp.held * 5);
+      const def = c.type === "relic" ? RELICS[c.kind] : null, stat = c.type === "stat" ? STATS.find((q) => q.id === c.id)! : null;
       const name = def ? tx(def.name) : tx(stat!.name);
       const desc = def && c.type === "relic" ? (c.level === 1 ? tx(def.desc) : tx(def.levels[c.level - 2])) : tx(stat!.desc);
-      return { def, stat, name, desc, h: 22 + iconH + wrap(name, inner).length * 10 + 3 + wrap(desc, inner).length * 10 + 6 };
-    });
-    const ch = Math.max(...content.map((q) => q.h));
-    const total = vertical ? n * ch + (n - 1) * 6 : ch;
-    const top = Math.max(46, Math.round(46 + (H - 56 - total) / 2));
-    this.choices.forEach((c, k) => {
-      const x = vertical ? Math.round(W / 2 - cw / 2) : Math.round(W / 2 - (n * cw + (n - 1) * 8) / 2 + k * (cw + 8));
-      const y = vertical ? top + k * (ch + 6) : top;
-      const { focused, hit } = this.menu.item(x, y, cw, ch, now);
-      const { def, name, desc } = content[k];
-      const col = def ? rgba(EL_COLOR[def.el]) : C.gold, yy = y - (focused ? 2 : 0);
-      panel(ui, x, yy, cw, ch, focused ? C.gold : C.edge, focused ? rgba("#221e30", 0.97) : C.panel);
-      ui.rect(x + 1, yy + 1, cw - 2, 3, col);
-      text(ui, String(k + 1), x + cw - 8, yy + 8, { font: "mini", color: C.dim });
-      let line = yy + 9;
-      if (def && c.type === "relic") {
-        const tag = c.level === 1 ? t("new") : `${t("lv")} ${c.level}${c.level >= RELIC_MAX ? " " + t("max") : ""}`;
-        text(ui, `${tag}  ${tx(EL_NAME[def.el])}`, x + 6, line, { font: "mini", color: col });
-      } else if (c.type === "stat") {
-        const st = STATS.find((s) => s.id === c.id)!;
-        text(ui, `${t("lv")} ${(w.statLevels[st.id] ?? 0) + 1}/${st.max}`, x + 6, line, { font: "mini", color: C.goldDim });
-      }
-      line += 11;
-      if (iconH) {
-        this.drawIcon(this.icon(c), x + cw / 2, line + iconH / 2 - 2, cw - 8, iconH - 4);
-        line += iconH;
-      }
-      line += para(ui, name, x + 6, line, inner, C.gold);
-      para(ui, desc, x + 6, line + 3, inner, C.text);
-      if (hit) this.take(c);
-    });
+      const tag = def && c.type === "relic" ? (c.level === 1 ? `${t("new")}  ${tx(EL_NAME[def.el])}` : `${t("lv")} ${c.level}${c.level >= RELIC_MAX ? " " + t("max") : ""}`) : `${t("lv")} ${(w.statLevels[stat!.id] ?? 0) + 1}/${stat!.max}`;
+      const col = def ? rgba(EL_COLOR[def.el]) : C.gold;
+      let y = cy + 42;
+      text(ui, tag, W / 2, y, { font: "mini", align: "center", color: withAlpha(col, a) });
+      y += 9;
+      text(ui, name, W / 2, y, { align: "center", scale: W >= 420 ? 2 : 1, color: withAlpha(C.gold, a), outline: true, shadow: withAlpha(rgba("#3a1a10"), a) });
+      y += W >= 420 ? 20 : 12;
+      para(ui, desc, Math.round(W / 2 - 140), y, 280, withAlpha(C.text, a), "center");
+    }
   }
 
   private drawPause(): void {

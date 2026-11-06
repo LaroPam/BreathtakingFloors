@@ -1,12 +1,12 @@
 // The interface, drawn in game pixels over the lit scene: the HUD, buttons and cards that work with a mouse, a
 // finger, a keyboard or a gamepad alike.
 
-import { anim } from "../engine/atlas";
+import { icon } from "../engine/atlas";
 import type { Audio } from "../engine/audio";
 import type { Input } from "../engine/input";
 import { Batch, rgba, rgbaf, withAlpha } from "../engine/renderer";
 import { measure, text, wrap } from "../engine/text";
-import { EL_COLOR, ENEMIES, RELICS } from "./defs";
+import { ENEMIES } from "./defs";
 import { t, tx } from "./i18n";
 import type { World } from "./world";
 
@@ -98,61 +98,91 @@ export function para(b: Batch, str: string, x: number, y: number, w: number, col
 
 const fmtTime = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
 
+/** A framed bar: dark well, coloured fill with a lit top row, optional shimmer running along it. */
+function bar(b: Batch, x: number, y: number, w: number, h: number, k: number, fill: number, top: number, well = rgba("#141220"), shimmer = -1): void {
+  b.rect(x - 1, y - 1, w + 2, h + 2, C.ink);
+  b.rect(x, y, w, h, well);
+  const f = Math.round(w * Math.max(0, Math.min(1, k)));
+  if (f <= 0) return;
+  b.rect(x, y, f, h, fill);
+  b.rect(x, y, f, 1, top);
+  if (shimmer >= 0 && f > 6) b.rect(x + ((shimmer * (f + 8)) % (f + 8)) - 6, y, 4, h, withAlpha(top, 0.6));
+}
+
 /** The heads-up display during a run. */
-export function drawHud(b: Batch, w: World, W: number, H: number, time: number, banner: { text: string; t: number; color: number } | null, touch: boolean, autofire: boolean): void {
+export function drawHud(b: Batch, w: World, W: number, H: number, time: number, banner: { text: string; t: number; color: number } | null, touch: boolean, _autofire: boolean): void {
   const h = w.hero;
-  // experience across the top
+
+  // ---- experience: a bar across the top, the level on a gem beneath its left end
   const need = w.levelNeed();
-  b.rect(0, 0, W, 4, C.ink);
-  b.rect(0, 1, Math.round((W * h.xp) / need), 2, C.blue);
-  b.rect(0, 1, Math.round((W * h.xp) / need), 1, rgba("#9ad4ff"));
+  b.rect(0, 0, W, 6, C.ink);
+  b.rect(0, 1, W, 4, rgba("#101626"));
+  const xf = Math.round((W * h.xp) / need);
+  b.rect(0, 1, xf, 4, rgba("#2a6ad0"));
+  b.rect(0, 1, xf, 1, rgba("#9ad4ff"));
+  if (xf > 10) b.rect(((time * 90) % (xf + 20)) - 10, 1, 6, 4, rgba("#c4e4ff", 0.45));
+  for (let k = 1; k < 10; k++) b.rect(Math.round((W * k) / 10), 1, 1, 4, rgba("#0b0a12", 0.5));
+  b.image(icon("hud", "xp"), 10, 14);
+  text(b, `${t("level")} ${h.level}`, 17, 10, { color: rgba("#9ad4ff"), outline: true });
 
-  // hearts
-  const heart = anim("heart").frames[0][0]!;
+  // ---- hearts; the last one beats when it is all that is left
+  const heartsY = 25;
   if (h.maxHp <= 12)
-    for (let k = 0; k < h.maxHp; k++) b.image(heart, 10 + k * 11, 21, 1, 1, 0, k < h.hp ? 0xffffffff : rgba("#2a2438"));
+    for (let k = 0; k < h.maxHp; k++) {
+      const full = k < h.hp, beat = h.hp === 1 && k === 0 ? 1 + 0.18 * Math.max(0, Math.sin(time * 9)) : 1;
+      b.image(icon("hud", full ? "heart" : "heart_empty"), 10 + k * 10, heartsY, beat, beat);
+    }
   else {
-    b.image(heart, 10, 21);
-    text(b, `${h.hp}/${h.maxHp}`, 20, 13, { color: C.text });
+    b.image(icon("hud", "heart"), 10, heartsY);
+    text(b, `${h.hp}/${h.maxHp}`, 17, heartsY - 3, { color: C.text, outline: true });
   }
-  // overdrive meter
-  const ox = 6, oy = 25, ow = Math.max(56, Math.min(12, h.maxHp) * 11);
-  b.rect(ox, oy, ow, 5, C.ink);
-  const full = h.od >= 100, pulse = full ? 0.6 + 0.4 * Math.sin(time * 8) : 1;
-  b.rect(ox + 1, oy + 1, Math.round(((ow - 2) * h.od) / 100), 3, full ? rgbaf(1, 0.9 * pulse + 0.1, 0.5 * pulse, 1) : C.goldDim);
-  if (full) text(b, touch ? t("overdriveReady") : t("overdriveReady") + " [E]", ox + ow + 4, oy - 1, { font: "mini", color: C.gold });
-  // dash charge
-  b.rect(ox, oy + 6, 24, 3, C.ink);
-  b.rect(ox + 1, oy + 7, Math.round(22 * Math.min(1, h.dashCharge >= 1 ? 1 : h.dashTimer / w.stats.dashCd)), 1, h.dashCharge >= 1 ? rgba("#7ad0ff") : C.dim);
-  // relics, with their level
+
+  // ---- stamina (the dash) and overdrive
+  const ready = h.dashCharge >= 1, sk = ready ? 1 : h.dashTimer / w.stats.dashCd;
+  b.image(icon("hud", "stamina"), 10, 36, 1, 1, 0, ready ? 0xffffffff : rgbaf(0.55, 0.55, 0.6, 1));
+  bar(b, 17, 34, 44, 4, sk, ready ? rgba("#4aa8e8") : rgba("#3a4a68"), ready ? rgba("#c8ecff") : rgba("#5a6a88"));
+  const full = h.od >= 100, pulse = 0.6 + 0.4 * Math.sin(time * 8);
+  b.image(icon("hud", "overdrive"), 10, 47);
+  bar(b, 17, 45, 60, 5, h.od / 100, full ? rgbaf(1, 0.75 + 0.2 * pulse, 0.3 + 0.3 * pulse, 1) : rgba("#c8862a"), full ? rgba("#fff6c4") : rgba("#ffd27a"), rgba("#141220"), full ? time * 0.8 : -1);
+  if (full) text(b, touch ? t("overdriveReady") : t("overdriveReady") + "  E", 81, 44, { font: "mini", color: withAlpha(C.gold, 0.6 + 0.4 * pulse) });
+
+  // ---- relics: their badges, a pip for each level
   w.relics.forEach((r, k) => {
-    const x = 6 + k * 15, y = 38, col = rgba(EL_COLOR[RELICS[r.kind].el]);
-    panel(b, x, y, 13, 13, col, C.panel);
-    b.rect(x + 4, y + 3, 5, 5, col);
-    b.rect(x + 5, y + 4, 2, 2, rgba("#ffffff"));
-    for (let q = 0; q < r.level; q++) b.rect(x + 2 + q * 2, y + 10, 1, 1, C.gold);
+    const x = 16 + k * 23, y = 66;
+    b.image(icon("icons", ["orbit", "lance", "coil", "flask", "halo", "void"][r.kind]), x, y);
+    for (let q = 0; q < 5; q++) b.rect(x - 7 + q * 3, y + 12, 2, 2, q < r.level ? C.gold : rgba("#2a2438"));
   });
-  text(b, `${t("level")} ${h.level}`, 6, 6, { font: "mini", color: rgba("#9ad4ff") });
 
-  // the floor and its objective
-  const lit = w.braziers.filter((q) => q.lit).length;
-  text(b, `${t("floor")} ${w.floor}  ${tx(w.biome.name)}`, W / 2, 8, { align: "center", color: C.gold });
-  const bi0 = w.bossIndex();
-  const goal = w.portal ? t("portalOpen") : bi0 >= 0 ? tx(ENEMIES[w.enemies.type[bi0]].name) : `${t("lightBraziers")} ${lit}/${w.braziers.length}`;
-  text(b, goal, W / 2, 18, { font: "mini", align: "center", color: w.portal ? rgba("#c684ff") : C.dim });
-  // time and kills
-  text(b, fmtTime(w.time), W - 6, 8, { align: "right", color: C.text });
-  text(b, `${t("kills")} ${w.kills}`, W - 6, 18, { font: "mini", align: "right", color: C.dim });
-  if (autofire && !touch) text(b, t("autofire"), W - 6, 26, { font: "mini", align: "right", color: C.goldDim });
-
-  // the boss's health
+  // ---- the floor, and what to do on it: three braziers, then the portal or the boss
+  text(b, `${t("floor")} ${w.floor}  ${tx(w.biome.name)}`, W / 2, 10, { align: "center", color: C.gold, outline: true });
   const bi = w.bossIndex();
+  if (w.portal) text(b, t("portalOpen"), W / 2, 21, { font: "mini", align: "center", color: rgba("#c684ff") });
+  else if (bi >= 0) {
+    const name = tx(ENEMIES[w.enemies.type[bi]].name);
+    b.image(icon("hud", "boss"), W / 2 - measure(name, "mini") / 2 - 8, 23);
+    text(b, name, W / 2 + 2, 21, { font: "mini", align: "center", color: rgba(ENEMIES[w.enemies.type[bi]].glow || "#f53cd1") });
+  } else
+    w.braziers.forEach((q, k) => {
+      const x = W / 2 + (k - (w.braziers.length - 1) / 2) * 14;
+      b.image(icon("hud", q.lit ? "brazier" : "brazier_cold"), x, 25);
+      if (!q.lit && q.progress > 0) b.rect(x - 4, 31, Math.round(8 * q.progress), 1, rgba("#ffc040"));
+    });
+
+  // ---- time and kills
+  text(b, fmtTime(w.time), W - 8, 10, { align: "right", color: C.text, outline: true });
+  b.image(icon("hud", "time"), W - 14 - measure(fmtTime(w.time)), 13);
+  const kills = String(w.kills);
+  text(b, kills, W - 8, 21, { align: "right", color: C.dim, outline: true });
+  b.image(icon("hud", "skull"), W - 15 - measure(kills), 24);
+
+  // ---- the boss's health
   if (bi >= 0) {
-    const E = w.enemies, bw = Math.min(260, W - 40), bx = Math.round(W / 2 - bw / 2), by = H - 22;
-    text(b, tx(ENEMIES[E.type[bi]].name), W / 2, by - 10, { font: "mini", align: "center", color: rgba(ENEMIES[E.type[bi]].glow || "#f53cd1") });
-    b.rect(bx - 1, by - 1, bw + 2, 6, C.ink);
-    b.rect(bx, by, Math.round((bw * E.hp[bi]) / E.maxHp[bi]), 4, rgba("#c0207a"));
-    b.rect(bx, by, Math.round((bw * E.hp[bi]) / E.maxHp[bi]), 1, rgba("#ff86e6"));
+    const E = w.enemies, d = ENEMIES[E.type[bi]], bw = Math.min(280, W - 60), bx = Math.round(W / 2 - bw / 2), by = H - 20;
+    const col = rgba(d.glow || "#f53cd1");
+    text(b, tx(d.name), W / 2, by - 11, { align: "center", color: col, outline: true });
+    b.image(icon("hud", "boss"), bx - 9, by + 2);
+    bar(b, bx, by, bw, 5, E.hp[bi] / E.maxHp[bi], rgba("#a01858"), rgba("#ff86e6"), rgba("#1a0a14"));
+    for (let k = 1; k < 4; k++) b.rect(bx + Math.round((bw * k) / 4), by, 1, 5, rgba("#0b0a12", 0.7));
   }
 
   if (banner && banner.t < 2.2) {
@@ -197,11 +227,12 @@ export function drawTouch(b: Batch, input: Input, w: World, W: number, H: number
   ];
   const h = w.hero, ready = h.dashCharge >= 1;
   b.disc(dashX, dashY, 20, 20, rgba(ready ? "#7ad0ff" : "#3a3448", ready ? 0.3 : 0.25));
-  text(b, t("dash"), dashX, dashY - 3, { font: "mini", align: "center", color: ready ? C.text : C.dim });
+  b.image(icon("hud", "stamina"), dashX, dashY, 2, 2, 0, ready ? 0xffffffff : rgbaf(0.5, 0.5, 0.55, 1));
   const full = h.od >= 100;
   b.disc(ultX, ultY, 18, 18, full ? rgbaf(1, 0.85, 0.4, 0.35 + 0.15 * Math.sin(time * 8)) : rgba("#3a3448", 0.25));
   b.disc(ultX, ultY, 18, 18, rgba("#000000", 0));
-  text(b, `${Math.floor(h.od)}%`, ultX, ultY - 3, { font: "mini", align: "center", color: full ? C.gold : C.dim });
+  b.image(icon("hud", "overdrive"), ultX, ultY - 3, 2, 2, 0, full ? 0xffffffff : rgbaf(0.5, 0.5, 0.55, 1));
+  text(b, `${Math.floor(h.od)}%`, ultX, ultY + 9, { font: "mini", align: "center", color: full ? C.gold : C.dim });
   b.rect(pauseX - 3, pauseY - 4, 2, 8, C.dim);
   b.rect(pauseX + 1, pauseY - 4, 2, 8, C.dim);
 }

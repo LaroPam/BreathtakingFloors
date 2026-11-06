@@ -15,6 +15,8 @@ import { poseAt } from "../../pixelfx/src/core/act.js";
 import { act as SLASH } from "../../pixelfx/src/fx/melee/sword-slash.js";
 import { act as DOUBLE } from "../../pixelfx/src/fx/melee/double-slash.js";
 import { act as THRUST } from "../../pixelfx/src/fx/melee/thrust.js";
+import { IDS as UPGRADE_ICONS } from "../../art/fx/icons/upgrades.js";
+import { IDS as HUD_ICONS } from "../../art/fx/icons/hud.js";
 
 // ---- the hero: a knight in steel plate over a crimson gambeson, an ember-gold mark on the chest. Sword in the near
 // hand, a lantern in the far one (the game draws the lantern at the far hand and lights the scene from it).
@@ -173,6 +175,10 @@ export const ANIMS = [
   { name: "brazier_cold", art: "props/brazier-cold", fps: 12 },
   { name: "brazier", fx: "fire/brazier", fps: 10, light: { thr: 10, k: 1 } },
   { name: "portal", fx: "arcane/portal", fps: 8, light: FX_BIG },
+
+  // ---- interface: upgrade badges and HUD icons, one frame per id (the game looks them up by name)
+  { name: "icons", art: "icons/upgrades", light: false, variants: { id: UPGRADE_ICONS } },
+  { name: "hud", art: "icons/hud", light: false, variants: { id: HUD_ICONS } },
 
   // ---- pickups
   { name: "shard_blue", art: "pickups/shard", fps: 10 },
