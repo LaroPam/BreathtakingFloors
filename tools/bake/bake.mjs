@@ -97,17 +97,36 @@ function renderRig(e) {
   const W = 64, H = 64, OX = 32, OY = 58, frames = [], hands = [];
   for (const pose of e.rig) {
     const r = posed(pose), buf = new Uint32Array(W * H), dy = Math.round(pose.y ?? 0);
+    const dx = Math.round(pose.x ?? 0);
     for (let i = 0; i < r.n; i++) {
-      const x = r.xs[i] + OX, y = r.ys[i] + OY + dy;
+      const x = r.xs[i] + OX + dx, y = r.ys[i] + OY + dy;
       if (x < 0 || y < 0 || x >= W || y >= H) continue;
       const c = r.color[i] >>> 0;
       buf[y * W + x] = DUMMY_TO_HERO.get(c) ?? c;
     }
     frames.push({ color: trim(buf, W, H, OX, OY, hasColor), light: null });
-    const hand = skeleton(pose).joints.handN;
-    hands.push([Math.round(hand[0]), Math.round(hand[1] + dy)]);
+    // where the hands are (near holds the sword, far holds the lantern), for the game to hang things on
+    const J = skeleton(pose).joints, xo = Math.round(pose.x ?? 0);
+    hands.push([Math.round(J.handN[0]) + xo, Math.round(J.handN[1] + dy), Math.round(J.handF[0]) + xo, Math.round(J.handF[1] + dy)]);
   }
   return { fps: e.fps ?? 12, loop: e.loop ?? true, frames, cut: false, hands };
+}
+
+/**
+ * A hitbox for one frame, measured from the art: the box that holds the middle 84% of its solid pixels (so stray
+ * sparks, drips and dust don't stretch it), as an ellipse [cx, cy, rx, ry] from the anchor.
+ */
+function bodyOf(img) {
+  if (!img) return [0, -8, 6, 6];
+  const xs = [], ys = [];
+  for (let y = 0; y < img.h; y++)
+    for (let x = 0; x < img.w; x++) if (img.data[y * img.w + x] >>> 24 >= 200) (xs.push(x + img.ox), ys.push(y + img.oy));
+  if (xs.length < 4) return [0, -8, 6, 6];
+  xs.sort((a, b) => a - b);
+  ys.sort((a, b) => a - b);
+  const q = (a, k) => a[Math.min(a.length - 1, Math.max(0, Math.floor(a.length * k)))];
+  const x0 = q(xs, 0.08), x1 = q(xs, 0.92) + 1, y0 = q(ys, 0.08), y1 = q(ys, 0.92) + 1;
+  return [Math.round((x0 + x1) / 2), Math.round((y0 + y1) / 2), Math.max(3, Math.round((x1 - x0) * 0.5)), Math.max(3, Math.round((y1 - y0) * 0.5))];
 }
 
 // ---------------------------------------------------------------------------------------------------- packing
@@ -169,7 +188,7 @@ for (const e of ANIMS) {
     px += (f.color ? f.color.w * f.color.h : 0) + (f.light ? f.light.w * f.light.h : 0);
     return [c, l];
   });
-  anims[e.name] = { fps: +r.fps.toFixed(4), loop: r.loop, cut: r.cut, frames, ...(r.hands ? { hands: r.hands } : {}) };
+  anims[e.name] = { fps: +r.fps.toFixed(4), loop: r.loop, cut: r.cut, frames, ...(r.hands ? { hands: r.hands } : {}), ...(e.body ? { body: r.frames.map((f) => bodyOf(f.color)) } : {}) };
   stats.push([e.name, frames.length, px]);
 }
 

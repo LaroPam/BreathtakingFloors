@@ -8,6 +8,8 @@ export class Enemies {
   x: Float32Array; y: Float32Array; vx: Float32Array; vy: Float32Array; kx: Float32Array; ky: Float32Array;
   hp: Float32Array; maxHp: Float32Array; type: Uint8Array; t: Float32Array; flash: Float32Array; cd: Float32Array;
   fuse: Float32Array; uid: Int32Array; phase: Float32Array; speedMul: Float32Array;
+  /** Facing (1 right, -1 left), an AI state, an AI timer and an AI target point. */
+  face: Int8Array; st: Uint8Array; at: Float32Array; ax: Float32Array; ay: Float32Array;
   // statuses
   burn: Float32Array; chill: Float32Array; chillN: Uint8Array; frozen: Float32Array; shock: Float32Array;
   poison: Float32Array; poisonN: Uint8Array; holy: Float32Array; hex: Float32Array; stun: Float32Array;
@@ -22,6 +24,7 @@ export class Enemies {
     this.x = F(); this.y = F(); this.vx = F(); this.vy = F(); this.kx = F(); this.ky = F();
     this.hp = F(); this.maxHp = F(); this.type = U(); this.t = F(); this.flash = F(); this.cd = F();
     this.fuse = F(); this.uid = new Int32Array(cap); this.phase = F(); this.speedMul = F();
+    this.face = new Int8Array(cap); this.st = U(); this.at = F(); this.ax = F(); this.ay = F();
     this.burn = F(); this.chill = F(); this.chillN = U(); this.frozen = F(); this.shock = F();
     this.poison = F(); this.poisonN = U(); this.holy = F(); this.hex = F(); this.stun = F();
     this.reactCd = F(); this.tick = F();
@@ -34,6 +37,7 @@ export class Enemies {
     this.x[i] = x; this.y[i] = y; this.vx[i] = 0; this.vy[i] = 0; this.kx[i] = 0; this.ky[i] = 0;
     this.hp[i] = hp; this.maxHp[i] = hp; this.type[i] = type; this.t[i] = phase * 10; this.flash[i] = 0; this.cd[i] = 1 + phase * 2;
     this.fuse[i] = 0; this.uid[i] = this.nextUid++; this.phase[i] = phase; this.speedMul[i] = speedMul;
+    this.face[i] = 1; this.st[i] = 0; this.at[i] = phase * 1.5; this.ax[i] = x; this.ay[i] = y;
     this.burn[i] = 0; this.chill[i] = 0; this.chillN[i] = 0; this.frozen[i] = 0; this.shock[i] = 0;
     this.poison[i] = 0; this.poisonN[i] = 0; this.holy[i] = 0; this.hex[i] = 0; this.stun[i] = 0;
     this.reactCd[i] = 0; this.tick[i] = 0; this.orbitCd[i] = 0; this.voidCd[i] = 0; this.poolCd[i] = 0;
@@ -44,6 +48,7 @@ export class Enemies {
     const j = --this.n;
     if (i === j) return;
     const all = [this.x, this.y, this.vx, this.vy, this.kx, this.ky, this.hp, this.maxHp, this.type, this.t, this.flash, this.cd, this.fuse, this.uid, this.phase, this.speedMul,
+      this.face, this.st, this.at, this.ax, this.ay,
       this.burn, this.chill, this.chillN, this.frozen, this.shock, this.poison, this.poisonN, this.holy, this.hex, this.stun, this.reactCd, this.tick, this.orbitCd, this.voidCd, this.poolCd];
     for (const a of all) a[i] = a[j];
   }

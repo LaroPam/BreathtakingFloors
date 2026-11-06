@@ -1,12 +1,14 @@
-// The renderer: WebGL2, everything drawn as instanced quads into small low-resolution targets, then put together
-// and scaled up by a whole number with nearest filtering, so every pixel stays a crisp square.
+// The renderer: WebGL2, everything drawn as instanced quads at the screen's own resolution. Art pixels stay crisp
+// squares (each one is `scale` x `scale` screen pixels, sampled nearest), but positions are kept to the screen pixel,
+// not the art pixel: things glide instead of stepping, the camera scrolls smoothly and rotations turn smoothly.
 //
 //   color  sprites, alpha-blended, sorted back to front (floor, then everything standing, by its feet)
-//   glow   additive light: the light frames baked from pixelfx effects, glints, muzzle flashes
+//   glow   additive light: the light frames baked from pixelfx effects, glints, sparks
 //   illum  additive light that lights the scene: the hero's lantern, braziers, fires
-//   final  color * (ambient + illum, posterized with an ordered dither) + glow, then the UI on top
+//   screen color * (ambient + illum, posterized in art-pixel cells with an ordered dither) + glow, then the UI
 //
-// One texture array holds every atlas page, so a whole pass is one draw call.
+// The light's dither cells are anchored to the world, so pools of light fall off in chunky pixel-art steps that
+// stay put on the floor while the camera moves. One texture array holds every atlas page: a pass is one draw call.
 
 import { PAGE_SIZE, PAGE_URLS, type Rect } from "./atlas";
 
@@ -25,8 +27,9 @@ layout(location=2) in vec4 a_sizeUv;
 layout(location=3) in vec4 a_scaleRotLayer;
 layout(location=4) in vec4 a_color;
 layout(location=5) in float a_flash;
-uniform vec2 u_cam;
-uniform vec2 u_view;
+uniform vec2 u_camDev;
+uniform vec2 u_res;
+uniform float u_scale;
 uniform float u_page;
 out vec2 v_uv;
 out vec2 v_local;
@@ -39,8 +42,9 @@ void main() {
   vec2 p = local * a_scaleRotLayer.xy;
   float r = a_scaleRotLayer.z;
   if (r != 0.0) { float c = cos(r), s = sin(r); p = vec2(p.x * c - p.y * s, p.x * s + p.y * c); }
-  vec2 world = floor(a_posOff.xy + 0.5) + p - u_cam;
-  vec2 ndc = world / u_view * 2.0 - 1.0;
+  // the anchor snaps to a screen pixel, the art keeps whole art pixels around it
+  vec2 dev = floor(a_posOff.xy * u_scale + 0.5) - u_camDev + p * u_scale;
+  vec2 ndc = dev / u_res * 2.0 - 1.0;
   gl_Position = vec4(ndc.x, -ndc.y, 0.0, 1.0);
   v_uv = (a_sizeUv.zw + a_corner * size) / u_page;
   v_local = a_corner * 2.0 - 1.0;
@@ -62,6 +66,7 @@ precision highp float;
 precision highp sampler2DArray;
 uniform sampler2DArray u_tex;
 uniform int u_additive;
+uniform float u_scale;
 in vec2 v_uv;
 in vec2 v_local;
 flat in float v_layer;
@@ -84,7 +89,7 @@ void main() {
   float a = t.a;
   if (tex) {
     // fade sprites with an ordered dither, as pixelfx does: no muddy half-transparent pixel art
-    if (v_color.a < 0.999 && v_color.a <= bayer(gl_FragCoord.xy)) discard;
+    if (v_color.a < 0.999 && v_color.a <= bayer(floor(gl_FragCoord.xy / u_scale))) discard;
   } else a *= v_color.a;
   if (a <= 0.003) discard;
   o = vec4(rgb, a);
@@ -102,7 +107,9 @@ uniform sampler2D u_glow;
 uniform sampler2D u_illum;
 uniform vec3 u_ambient;
 uniform float u_steps;
-uniform vec2 u_view;
+uniform vec2 u_res;
+uniform vec2 u_camDev;
+uniform float u_scale;
 uniform float u_vignette;
 uniform vec3 u_tint;
 uniform float u_tintK;
@@ -115,21 +122,15 @@ void main() {
   vec3 il = texelFetch(u_illum, p, 0).rgb;
   // posterize the light with an ordered dither, so light pools fall off in pixel-art steps
   vec3 L = u_ambient + il * 1.15;
-  L = floor(L * u_steps + bayer(gl_FragCoord.xy)) / u_steps;
+  vec2 cell = floor((vec2(gl_FragCoord.x, u_res.y - gl_FragCoord.y) + u_camDev) / u_scale);
+  L = floor(L * u_steps + bayer(cell)) / u_steps;
   vec3 rgb = c * min(L + g * 0.45, vec3(1.7)) + g;
-  vec2 uv = gl_FragCoord.xy / u_view - 0.5;
+  vec2 uv = gl_FragCoord.xy / u_res - 0.5;
   float v = 1.0 - u_vignette * dot(uv, uv) * 1.6;
   rgb *= v;
   rgb = mix(rgb, u_tint, u_tintK);
   o = vec4(rgb, 1.0);
 }`;
-
-const BLIT_FS = `#version 300 es
-precision highp float;
-uniform sampler2D u_src;
-in vec2 v_uv;
-out vec4 o;
-void main() { o = texture(u_src, v_uv); }`;
 
 function compile(gl: WebGL2RenderingContext, vs: string, fs: string): WebGLProgram {
   const make = (type: number, src: string) => {
@@ -239,13 +240,12 @@ export interface Lighting {
 export class Renderer {
   readonly gl: WebGL2RenderingContext;
   readonly canvas: HTMLCanvasElement;
-  /** Low-resolution size, in game pixels, and how many screen pixels one game pixel takes. */
+  /** The view in game pixels (art pixels), and how many screen pixels one game pixel takes. */
   w = 320;
   h = 180;
   scale = 1;
   private sprite: WebGLProgram;
   private composite: WebGLProgram;
-  private blit: WebGLProgram;
   private vao: WebGLVertexArrayObject;
   private quadVao: WebGLVertexArrayObject;
   private instBuf: WebGLBuffer;
@@ -254,7 +254,6 @@ export class Renderer {
   private color!: Target;
   private glow!: Target;
   private illum!: Target;
-  private final!: Target;
   private loc: Record<string, WebGLUniformLocation | null> = {};
 
   constructor(canvas: HTMLCanvasElement) {
@@ -264,13 +263,11 @@ export class Renderer {
     this.gl = gl;
     this.sprite = compile(gl, SPRITE_VS, SPRITE_FS);
     this.composite = compile(gl, QUAD_VS, COMPOSITE_FS);
-    this.blit = compile(gl, QUAD_VS, BLIT_FS);
     for (const [prog, names] of [
-      [this.sprite, ["u_cam", "u_view", "u_page", "u_tex", "u_additive"]],
-      [this.composite, ["u_color", "u_glow", "u_illum", "u_ambient", "u_steps", "u_view", "u_vignette", "u_tint", "u_tintK"]],
-      [this.blit, ["u_src"]],
+      [this.sprite, ["u_camDev", "u_res", "u_scale", "u_page", "u_tex", "u_additive"]],
+      [this.composite, ["u_color", "u_glow", "u_illum", "u_ambient", "u_steps", "u_res", "u_camDev", "u_scale", "u_vignette", "u_tint", "u_tintK"]],
     ] as const)
-      for (const n of names) this.loc[(prog === this.sprite ? "s." : prog === this.composite ? "c." : "b.") + n] = gl.getUniformLocation(prog, n);
+      for (const n of names) this.loc[(prog === this.sprite ? "s." : "c.") + n] = gl.getUniformLocation(prog, n);
 
     const corners = gl.createBuffer()!;
     gl.bindBuffer(gl.ARRAY_BUFFER, corners);
@@ -334,7 +331,7 @@ export class Renderer {
     }
     const tex = gl.createTexture()!;
     gl.bindTexture(gl.TEXTURE_2D, tex);
-    gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RGBA8, this.w, this.h);
+    gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RGBA8, this.canvas.width, this.canvas.height);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
@@ -350,20 +347,21 @@ export class Renderer {
    * 340 game pixels (a phone in landscape, a laptop and a 4K screen all see roughly the same amount of the floor).
    */
   resize(): boolean {
-    const dpr = Math.min(window.devicePixelRatio || 1, 3);
+    // the screen's own pixels, but at most ~4 MP (a 4K monitor renders a little under its full resolution)
+    let dpr = window.devicePixelRatio || 1;
+    const css = this.canvas.clientWidth * this.canvas.clientHeight;
+    if (css * dpr * dpr > 4.2e6) dpr = Math.sqrt(4.2e6 / Math.max(1, css));
     const cw = Math.max(1, Math.floor(this.canvas.clientWidth * dpr)), ch = Math.max(1, Math.floor(this.canvas.clientHeight * dpr));
     const scale = Math.max(1, Math.round(Math.min(cw, ch) / 340));
-    const w = Math.ceil(cw / scale), h = Math.ceil(ch / scale);
-    if (this.canvas.width === cw && this.canvas.height === ch && w === this.w && h === this.h && this.color) return false;
+    if (this.canvas.width === cw && this.canvas.height === ch && scale === this.scale && this.color) return false;
     this.canvas.width = cw;
     this.canvas.height = ch;
-    this.w = w;
-    this.h = h;
+    this.w = Math.ceil(cw / scale);
+    this.h = Math.ceil(ch / scale);
     this.scale = scale;
     this.color = this.target(this.color);
     this.glow = this.target(this.glow);
     this.illum = this.target(this.illum);
-    this.final = this.target(this.final);
     return true;
   }
 
@@ -384,8 +382,9 @@ export class Renderer {
     b.sort();
     this.upload(b);
     gl.useProgram(this.sprite);
-    gl.uniform2f(this.loc["s.u_cam"]!, Math.round(camX), Math.round(camY));
-    gl.uniform2f(this.loc["s.u_view"]!, this.w, this.h);
+    gl.uniform2f(this.loc["s.u_camDev"]!, Math.round(camX * this.scale), Math.round(camY * this.scale));
+    gl.uniform2f(this.loc["s.u_res"]!, this.canvas.width, this.canvas.height);
+    gl.uniform1f(this.loc["s.u_scale"]!, this.scale);
     gl.uniform1f(this.loc["s.u_page"]!, PAGE_SIZE);
     gl.uniform1i(this.loc["s.u_tex"]!, 0);
     gl.uniform1i(this.loc["s.u_additive"]!, additive ? 1 : 0);
@@ -399,10 +398,10 @@ export class Renderer {
     gl.bindVertexArray(null);
   }
 
-  /** Draw a frame: the world's three layers lit and put together, the UI over it, scaled up to the screen. */
+  /** Draw a frame: the world's three layers lit and put together on the screen, the UI over it. */
   render(world: { back: Batch; color: Batch; front: Batch; glow: Batch; illum: Batch }, ui: Batch, camX: number, camY: number, light: Lighting, clear: [number, number, number]): void {
     const gl = this.gl;
-    gl.viewport(0, 0, this.w, this.h);
+    gl.viewport(0, 0, this.canvas.width, this.canvas.height);
     gl.bindFramebuffer(gl.FRAMEBUFFER, this.color.fb);
     gl.clearColor(clear[0], clear[1], clear[2], 1);
     gl.clear(gl.COLOR_BUFFER_BIT);
@@ -419,7 +418,7 @@ export class Renderer {
     gl.clear(gl.COLOR_BUFFER_BIT);
     this.drawBatch(world.illum, camX, camY, true);
 
-    gl.bindFramebuffer(gl.FRAMEBUFFER, this.final.fb);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     gl.disable(gl.BLEND);
     gl.useProgram(this.composite);
     const tex = (unit: number, t: WebGLTexture, name: string) => {
@@ -432,27 +431,18 @@ export class Renderer {
     tex(3, this.illum.tex, "c.u_illum");
     gl.uniform3f(this.loc["c.u_ambient"]!, ...light.ambient);
     gl.uniform1f(this.loc["c.u_steps"]!, light.steps);
-    gl.uniform2f(this.loc["c.u_view"]!, this.w, this.h);
+    gl.uniform2f(this.loc["c.u_res"]!, this.canvas.width, this.canvas.height);
+    gl.uniform2f(this.loc["c.u_camDev"]!, Math.round(camX * this.scale), Math.round(camY * this.scale));
+    gl.uniform1f(this.loc["c.u_scale"]!, this.scale);
     gl.uniform1f(this.loc["c.u_vignette"]!, light.vignette);
     gl.uniform3f(this.loc["c.u_tint"]!, ...light.tint);
     gl.uniform1f(this.loc["c.u_tintK"]!, light.tintK);
     gl.bindVertexArray(this.quadVao);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 
-    this.drawBatch(ui, 0, 0, false);
-
-    // up to the screen: whole-number scale, anchored top-left (the canvas is at most scale - 1 px short)
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-    const W = this.w * this.scale, H = this.h * this.scale;
-    gl.viewport(0, this.canvas.height - H, W, H);
-    gl.disable(gl.BLEND);
-    gl.useProgram(this.blit);
-    gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, this.final.tex);
-    gl.uniform1i(this.loc["b.u_src"]!, 0);
-    gl.bindVertexArray(this.quadVao);
-    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     gl.bindVertexArray(null);
+
+    this.drawBatch(ui, 0, 0, false);
   }
 }
 

@@ -13,6 +13,7 @@ export interface SaveData {
   autofire: boolean;
   lang: "ru" | "en" | null;
   tutorial: boolean;
+  wins?: number;
 }
 
 export const defaultSave = (): SaveData => ({

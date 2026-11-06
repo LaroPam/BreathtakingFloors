@@ -13,8 +13,10 @@ export interface Anim {
   /** A one-shot cut short at bake time: fade it out over its last frames. */
   cut: boolean;
   frames: Frame[];
-  /** Where the hero's gun hand is, per frame (rig animations only). */
-  hands?: [number, number][];
+  /** Where the hero's hands are, per frame (rig animations only): near (sword) x, y, then far (lantern) x, y. */
+  hands?: [number, number, number, number][];
+  /** A hitbox per frame measured from the art (enemies): ellipse centre x, y and radii, from the anchor. */
+  body?: [number, number, number, number][];
   /** Length in seconds. */
   dur: number;
 }

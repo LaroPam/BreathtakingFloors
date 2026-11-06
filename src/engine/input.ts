@@ -7,7 +7,7 @@
 //                      with the right thumb up the hero aims at the nearest enemy and fires by itself
 
 export type Mode = "kbm" | "pad" | "touch";
-export type Button = "dash" | "ult" | "pause" | "confirm" | "back" | "up" | "down" | "left" | "right" | "one" | "two" | "three" | "autofire";
+export type Button = "dash" | "ult" | "pause" | "confirm" | "back" | "up" | "down" | "left" | "right" | "one" | "two" | "three" | "autofire" | "debug";
 
 export interface Stick {
   active: boolean;
@@ -70,8 +70,9 @@ export class Input {
   }
 
   private gamePos(e: PointerEvent): [number, number] {
-    const r = this.canvas.getBoundingClientRect(), dpr = Math.min(window.devicePixelRatio || 1, 3);
-    return [((e.clientX - r.left) * dpr) / this.scale, ((e.clientY - r.top) * dpr) / this.scale];
+    // canvas pixels per CSS pixel, as the renderer sized it, then game pixels
+    const r = this.canvas.getBoundingClientRect(), k = this.canvas.width / Math.max(1, r.width);
+    return [((e.clientX - r.left) * k) / this.scale, ((e.clientY - r.top) * k) / this.scale];
   }
 
   private key(e: KeyboardEvent, down: boolean): void {
@@ -82,7 +83,7 @@ export class Input {
       const map: Record<string, Button> = {
         Space: "dash", ShiftLeft: "dash", ShiftRight: "dash", KeyE: "ult", KeyQ: "ult", Escape: "pause", KeyP: "pause",
         Enter: "confirm", NumpadEnter: "confirm", Backspace: "back", Digit1: "one", Digit2: "two", Digit3: "three",
-        Numpad1: "one", Numpad2: "two", Numpad3: "three", KeyF: "autofire",
+        Numpad1: "one", Numpad2: "two", Numpad3: "three", KeyF: "autofire", KeyH: "debug",
         ArrowUp: "up", KeyW: "up", ArrowDown: "down", KeyS: "down", ArrowLeft: "left", KeyA: "left", ArrowRight: "right", KeyD: "right",
       };
       const b = map[c];

@@ -15,7 +15,7 @@ import { defaultSave, sanitize, type SaveData } from "./save";
 import { button, C, drawHud, drawPointers, drawTouch, fmtTime, Menu, panel, para } from "./ui";
 import { World } from "./world";
 
-type State = "title" | "forge" | "play" | "levelup" | "chest" | "pause" | "codex" | "stairs" | "dead";
+type State = "title" | "forge" | "play" | "levelup" | "chest" | "pause" | "codex" | "stairs" | "dead" | "won";
 type Choice = { type: "relic"; kind: RelicKind; level: number } | { type: "stat"; id: StatId };
 
 const STEP = 1 / 60;
@@ -27,7 +27,6 @@ export class Game {
   private scene = new Scene();
   private ui = new Batch();
   private menu: Menu;
-  private acc = 0;
   private now = 0;
   private camX = 0;
   private camY = 0;
@@ -73,6 +72,7 @@ export class Game {
       levelUp: () => {},
       chest: () => {},
       died: () => this.onDeath(),
+      victory: () => this.onVictory(),
       floorCleared: () => this.onFloorCleared(),
       reaction: (r) => this.onReaction(r),
       banner: (text, color) => this.showBanner(text, color),
@@ -131,8 +131,27 @@ export class Game {
     this.audio.playMusic();
     this.showBanner(`${t("floor")} 1`);
     this.setState("play");
-    if (f.start) this.openChoices(true, true);
-    else w.addRelic(this.runRng.pick([0, 1, 2, 3, 4, 5]) as RelicKind);
+    // every run starts with a relic of your choice (the forge's Legacy adds a second)
+    w.pendingChests = f.start ? 1 : 0;
+    this.openChoices(true, true);
+  }
+
+  private onVictory(): void {
+    const w = this.world;
+    setTimeout(() => {
+      const embers = Math.round(((w.floor - 1) * 8 + w.kills / 10 + w.embersBonus + 60) * (w.mod.embers ?? 1));
+      const score = w.floor * 1000 + w.kills * 5 + w.hero.level * 50 + 5000;
+      const best = score > this.save.bestScore;
+      this.lastResult = { floor: w.floor, kills: w.kills, time: w.runTime, embers, score, best };
+      this.save.embers += embers;
+      this.save.bestScore = Math.max(this.save.bestScore, score);
+      this.save.bestFloor = Math.max(this.save.bestFloor, w.floor);
+      this.save.wins = (this.save.wins ?? 0) + 1;
+      this.persist();
+      if (best) this.platform.submitScore(score);
+      this.audio.stopMusic();
+      this.setState("won");
+    }, 2200);
   }
 
   private onFloorCleared(): void {
@@ -219,7 +238,7 @@ export class Game {
       const k = cands.findIndex(([, wt]) => (x -= wt) <= 0);
       out.push(cands.splice(Math.max(0, k), 1)[0][0]);
     }
-    if (!out.length) for (const s of ["damage", "rate", "speed"] as StatId[]) out.push({ type: "stat", id: s });
+    if (!out.length) for (const s of ["edge", "haste", "speed"] as StatId[]) out.push({ type: "stat", id: s });
     return out;
   }
   private openChoices(chest: boolean, start = false): void {
@@ -251,10 +270,7 @@ export class Game {
     if (this.state === "play" && !this.platformPaused) {
       if (input.pressed("pause")) this.setState("pause");
       else {
-        if (input.pressed("autofire")) {
-          this.save.autofire = !this.save.autofire;
-          this.persist();
-        }
+        if (input.pressed("debug")) w.debug = !w.debug;
         const h = w.hero;
         if (input.pressed("dash")) h.wantDash = true;
         if (input.pressed("ult")) h.wantUlt = true;
@@ -273,14 +289,12 @@ export class Game {
           w.aimTarget = null;
           w.autoAim = true;
         }
-        // fire: a held button or an aiming stick; on touch or a pad with no stick held, at whatever the auto-aim found;
-        // with a mouse, all the time if autofire is on (F)
-        h.firing = input.firing || (w.autoAim && w.autoTarget) || (input.mode === "kbm" && this.save.autofire);
-        this.acc = Math.min(this.acc + dt, 0.1);
-        while (this.acc >= STEP) {
-          w.step(STEP);
-          this.acc -= STEP;
-        }
+        // the sword swings by itself at whatever comes in reach; a held button or an aiming stick swings at will
+        h.attacking = input.firing;
+        // as many equal steps as this frame needs, none longer than 1/60 s: motion matches the display at 60, 120 or
+        // 144 Hz with nothing to interpolate
+        const n = Math.max(1, Math.ceil(dt / STEP - 1e-6));
+        for (let k = 0; k < n; k++) w.step(dt / n);
         if (!h.dead) {
           if (w.pendingLevels > 0) this.openChoices(false);
           else if (w.pendingChests > 0) this.openChoices(true);
@@ -300,9 +314,9 @@ export class Game {
     this.camX += (tx - this.camX) * k;
     this.camY += (ty - this.camY) * k;
     // keep the floor's edges in view without showing more void than needed
-    const mx = 40, my = 50;
+    const mx = 30, top = 62, bottom = 30;
     this.camX = W > w.w + mx * 2 ? w.w / 2 - W / 2 : Math.max(-mx, Math.min(w.w + mx - W, this.camX));
-    this.camY = H > w.h + my * 2 ? w.h / 2 - H / 2 : Math.max(-my - 20, Math.min(w.h + my - H, this.camY));
+    this.camY = H > w.h + top + bottom ? w.h / 2 - H / 2 - (top - bottom) / 2 : Math.max(-top, Math.min(w.h + bottom - H, this.camY));
   }
 
   // =========================================================================================== drawing
@@ -318,7 +332,7 @@ export class Game {
 
     const dim = this.state !== "play" && this.state !== "title";
     const light: Lighting = {
-      ambient: [w.ambient * 0.95, w.ambient * 0.9, w.ambient * 1.25],
+      ambient: [w.ambient * w.biome.ambient[0], w.ambient * w.biome.ambient[1], w.ambient * w.biome.ambient[2]],
       steps: 7,
       vignette: 0.55,
       tint: w.flash > 0 ? [1, 0.95, 0.85] : [0.03, 0.025, 0.06],
@@ -331,7 +345,7 @@ export class Game {
       case "forge": this.drawForge(); break;
       case "play":
         drawPointers(ui, w, cx, cy, W, H, this.now);
-        drawHud(ui, w, W, H, this.now, this.banner, this.touch, this.save.autofire);
+        drawHud(ui, w, W, H, this.now, this.banner, this.touch, false);
         if (this.touch) drawTouch(ui, this.input, w, W, H, this.now);
         else this.input.zones = [];
         this.drawTutorial();
@@ -342,6 +356,7 @@ export class Game {
       case "codex": this.drawCodex(); break;
       case "stairs": this.drawStairs(); break;
       case "dead": this.drawDead(); break;
+      case "won": this.drawWon(); break;
     }
     this.menu.end(this.state === "levelup" || this.state === "chest" || this.state === "stairs");
     this.r.render(s, ui, cx, cy, light, [0.025, 0.02, 0.045]);
@@ -418,8 +433,8 @@ export class Game {
 
   /** An animated picture for a choice: the relic's own effect, or something that says what the stat does. */
   private icon(c: Choice): string {
-    if (c.type === "relic") return ["fireball", "ice_lance", "zap", "puddle", "collect", "void_orb"][c.kind];
-    const m: Record<StatId, string> = { damage: "bolt", rate: "muzzle", multishot: "bolt", pierce: "bolt_frost", speed: "hero_run", maxhp: "heart", magnet: "shard_green", dashcd: "hero_dash", overdrive: "crit", crit: "crit", lantern: "candle" };
+    if (c.type === "relic") return ["ember", "ice_lance", "zap", "puddle", "collect", "void_orb"][c.kind];
+    const m: Record<StatId, string> = { edge: "hero_slash", haste: "hero_backslash", reach: "hero_thrust", wave: "crescent", parry: "parry", speed: "hero_run", maxhp: "heart", magnet: "shard_green", dashcd: "hero_dash", overdrive: "crit", crit: "crit", lantern: "lantern" };
     return m[c.id];
   }
 
@@ -542,6 +557,33 @@ export class Game {
       para(ui, tx(m.reward), x + 8, line, inner, C.text);
       if (hit) this.descend(m);
     });
+  }
+
+  private drawWon(): void {
+    const ui = this.ui, W = this.r.w, H = this.r.h, now = this.now, res = this.lastResult;
+    text(ui, t("victory"), W / 2, Math.round(H * 0.12), { align: "center", scale: 2, color: C.gold, outline: true, shadow: rgba("#3a1a10") });
+    para(ui, t("victorySub"), Math.round(W / 2 - 150), Math.round(H * 0.12) + 22, 300, C.dim, "center");
+    const pw = Math.min(260, W - 20), px = Math.round(W / 2 - pw / 2);
+    let y = Math.round(H * 0.32);
+    panel(ui, px, y, pw, 52);
+    for (const [label, value] of [[t("kills"), String(res.kills)], [t("time"), fmtTime(res.time)], [t("earned"), `+${res.embers}`]]) {
+      text(ui, label, px + 10, y + 8, { color: C.dim });
+      text(ui, value, px + pw - 10, y + 8, { align: "right", color: C.gold });
+      y += 12;
+    }
+    y = Math.round(H * 0.32) + 62;
+    const bw = 200, bh = 20, bx = Math.round(W / 2 - bw / 2);
+    if (button(ui, this.menu, now, bx, y, bw, bh, t("again"), { color: C.gold })) {
+      void this.platform.showInterstitial().then(() => this.startRun());
+      this.setState("title");
+      return;
+    }
+    y += bh + 6;
+    if (button(ui, this.menu, now, bx, y, bw, bh, t("menu"))) {
+      this.newWorld();
+      this.attract();
+      this.setState("title");
+    }
   }
 
   private drawDead(): void {

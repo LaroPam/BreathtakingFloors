@@ -37,8 +37,8 @@ export interface TextOpts {
 export function text(b: Batch, str: string, x: number, y: number, o: TextOpts = {}): number {
   const font = o.font ?? "big", s = o.scale ?? 1, F = FONTS[font];
   const w = measure(str, font, s);
-  let cx = Math.round(o.align === "center" ? x - w / 2 : o.align === "right" ? x - w : x);
-  const cy = Math.round(y), color = o.color ?? 0xffffffff, shadow = o.shadow ?? 0xff0b0a12, key = o.key ?? 0;
+  let cx = o.align === "center" ? x - w / 2 : o.align === "right" ? x - w : x;
+  const cy = y, color = o.color ?? 0xffffffff, shadow = o.shadow ?? 0xff0b0a12, key = o.key ?? 0;
   for (const ch of str) {
     const g = glyph(font, ch);
     if (!g) {

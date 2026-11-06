@@ -1,5 +1,5 @@
-// A flagstone of the tower's floor, 16 x 16, lit top-left with a mortar line on the right and bottom. Eight variants:
-// plain, worn, cracked, chipped, mossy, pebbled, carved with a rune, and a stone with a seam.
+// A flagstone of the tower's floor, 16 x 16, lit top-left with a mortar line on the right and bottom. Variants:
+// plain, worn, cracked, chipped, mossy, pebbled, carved with a rune, a stone with a seam, frosted, overgrown.
 import { fit, rand } from "../../../pixelfx/src/core/index.js";
 
 export const meta = {
@@ -15,6 +15,7 @@ export const meta = {
   options: {
     stone: ["#1d1a26", "#2a2636", "#363145", "#433d54", "#575070"],
     moss: ["#24402a", "#3a6034"],
+    frost: ["#6a9ac8", "#c8ecff"],
     rune: "#342e48",
     variant: 0,
     seed: 1,
@@ -65,6 +66,21 @@ export function draw(p, t, o) {
     p.ellipse(7.5, 7.5, 4, 4, (d) => (d > 0.72 ? o.rune : 0));
     p.line(7, 4, 7, 11, o.rune);
     p.line(5, 6, 9, 9, o.rune);
+  }
+  if (v === 8) {
+    // frost: pale cracks and a few glints
+    const F = fit(o.frost, 2);
+    let x = 2 + Math.floor(R(1) * 5), y = 2 + Math.floor(R(2) * 4);
+    for (let i = 0; i < 10 && x < 14 && y < 14; i++) {
+      p.px(x, y, F[0]);
+      if (R(i + 10) < 0.5) x++; else y++;
+    }
+    for (let i = 0; i < 3; i++) p.px(2 + Math.floor(R(i + 40) * 12), 2 + Math.floor(R(i + 50) * 12), F[1]);
+  }
+  if (v === 9) {
+    // overgrown: moss across the stone and blades of grass in the joints
+    for (let i = 0; i < 18; i++) p.px(1 + Math.floor(R(i) * 14), 1 + Math.floor(R(i + 20) * 14), M[R(i + 40) < 0.5 ? 0 : 1]);
+    for (let x = 2; x < 15; x += 3) (p.px(x, 14, M[1]), p.px(x, 13, M[1]), p.px(x + (R(x) < 0.5 ? 1 : 0), 12, M[1]));
   }
   if (v === 7) {
     // two stones: a seam down the middle

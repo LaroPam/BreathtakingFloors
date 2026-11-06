@@ -7,7 +7,7 @@ import type { Input } from "../engine/input";
 import { Batch, rgba, rgbaf, withAlpha } from "../engine/renderer";
 import { measure, text, wrap } from "../engine/text";
 import { EL_COLOR, ENEMIES, RELICS } from "./defs";
-import { t } from "./i18n";
+import { t, tx } from "./i18n";
 import type { World } from "./world";
 
 export const C = {
@@ -136,8 +136,9 @@ export function drawHud(b: Batch, w: World, W: number, H: number, time: number, 
 
   // the floor and its objective
   const lit = w.braziers.filter((q) => q.lit).length;
-  text(b, `${t("floor")} ${w.floor}`, W / 2, 8, { align: "center", color: C.gold });
-  const goal = w.portal ? t("portalOpen") : w.bossIndex() >= 0 ? t("bossAwakes") : `${t("lightBraziers")} ${lit}/${w.braziers.length}`;
+  text(b, `${t("floor")} ${w.floor}  ${tx(w.biome.name)}`, W / 2, 8, { align: "center", color: C.gold });
+  const bi0 = w.bossIndex();
+  const goal = w.portal ? t("portalOpen") : bi0 >= 0 ? tx(ENEMIES[w.enemies.type[bi0]].name) : `${t("lightBraziers")} ${lit}/${w.braziers.length}`;
   text(b, goal, W / 2, 18, { font: "mini", align: "center", color: w.portal ? rgba("#c684ff") : C.dim });
   // time and kills
   text(b, fmtTime(w.time), W - 6, 8, { align: "right", color: C.text });
@@ -148,7 +149,7 @@ export function drawHud(b: Batch, w: World, W: number, H: number, time: number, 
   const bi = w.bossIndex();
   if (bi >= 0) {
     const E = w.enemies, bw = Math.min(260, W - 40), bx = Math.round(W / 2 - bw / 2), by = H - 22;
-    text(b, ENEMIES[E.type[bi]].anim === "eye_boss" ? (t("bossAwakes") as string) : "", W / 2, by - 10, { font: "mini", align: "center", color: rgba("#f53cd1") });
+    text(b, tx(ENEMIES[E.type[bi]].name), W / 2, by - 10, { font: "mini", align: "center", color: rgba(ENEMIES[E.type[bi]].glow || "#f53cd1") });
     b.rect(bx - 1, by - 1, bw + 2, 6, C.ink);
     b.rect(bx, by, Math.round((bw * E.hp[bi]) / E.maxHp[bi]), 4, rgba("#c0207a"));
     b.rect(bx, by, Math.round((bw * E.hp[bi]) / E.maxHp[bi]), 1, rgba("#ff86e6"));
