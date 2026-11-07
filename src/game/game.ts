@@ -12,7 +12,7 @@ import { drawWorld, Scene } from "./draw";
 import { getLang, langFor, setLang, t, tx, type Lang } from "./i18n";
 import { Rng } from "./rng";
 import { defaultSave, sanitize, type SaveData } from "./save";
-import { button, C, drawHud, drawPointers, drawTouch, fmtTime, Menu, panel, para } from "./ui";
+import { button, C, divider, glow as glowUi, drawHud, drawPointers, drawTouch, fmtTime, frame, header, inset, Menu, panel, para, plate, reticle, slot } from "./ui";
 import { CINE_DUR, World } from "./world";
 
 type State = "title" | "heroes" | "forge" | "daily" | "records" | "tasks" | "card" | "play" | "spin" | "pause" | "codex" | "stairs" | "dead" | "won";
@@ -167,10 +167,8 @@ export class Game {
    * A heading in the blackletter title font, centred, at the largest scale (up to max) that fits the screen.
    * Returns its height, so what follows can sit under it.
    */
-  private heading(str: string, y: number, max: number, color = C.gold, a = 1, shadow = rgba("#3a1a10")): number {
-    const W = this.r.w, sc = fitScale(str, "title", W - 20, max);
-    text(this.ui, str, W / 2, y, { font: "title", align: "center", scale: sc, color: withAlpha(color, a), shadow: withAlpha(shadow, a), outline: true });
-    return FONT_H * sc;
+  private heading(str: string, y: number, max: number, color = C.gold, a = 1, sub?: string): number {
+    return header(this.ui, this.r.w, y, str, { max, a, sub, red: color === C.red, color: color === C.gold || color === C.red ? undefined : color });
   }
 
   // =========================================================================================== runs
@@ -575,6 +573,8 @@ export class Game {
         if (this.touch) drawTouch(ui, this.input, w, W, H, this.now);
         else this.input.zones = [];
         this.drawTutorial();
+        // the reticle stands in for the pointer while aiming with the mouse
+        if (this.input.mode === "kbm" && !this.touch) reticle(ui, this.input.mouse.x, this.input.mouse.y, this.now, w.autoTarget);
         break;
       case "spin": this.drawSpin(); break;
       case "pause": this.drawPause(); break;
@@ -584,6 +584,12 @@ export class Game {
       case "won": this.drawWon(); break;
     }
     if (this.state !== "heroes") this.menu.end(this.state === "stairs");
+    // a screen comes up out of the dark
+    const since = this.now - this.menu.openedAt;
+    if (this.state !== "play" && this.state !== "card" && since < 0.2) ui.rect(0, 0, W, H, rgba("#07060c", (1 - since / 0.2) * 0.7));
+    // the system pointer hides while the reticle aims
+    const cursor = this.state === "play" && this.input.mode === "kbm" && !this.touch ? "none" : "default";
+    if (this.r.canvas.style.cursor !== cursor) this.r.canvas.style.cursor = cursor;
     this.drawWipe();
     this.r.render(s, ui, cx, cy, light, [0.025, 0.02, 0.045]);
   }
@@ -597,6 +603,8 @@ export class Game {
       ...wrap(t("hintGraze"), W - 24, "mini").map((l): [string, number] => [l, rgbaf(0.95, 0.82, 0.48, a)]),
       ...(w.spirit?.state === "offer" ? wrap(t("spiritHint"), W - 24, "mini").map((l): [string, number] => [l, rgbaf(0.6, 0.85, 1, a)]) : []),
     ];
+    const lw = Math.min(W - 8, Math.max(...lines.map(([l]) => measure(l, "mini"))) + 16);
+    plate(ui, W / 2 - lw / 2, H - 18 - lines.length * 9, lw, lines.length * 9 + 8, withAlpha(C.goldDim, a));
     lines.forEach(([l, col], k) => text(ui, l, W / 2, H - 14 - (lines.length - k) * 9, { font: "mini", align: "center", color: col }));
     if (w.time > 13.5) {
       this.save.tutorial = false;
@@ -606,27 +614,26 @@ export class Game {
 
   private drawTitle(): void {
     const ui = this.ui, W = this.r.w, H = this.r.h, now = this.now;
-    const ty = Math.round(H * 0.14);
+    const ty = Math.round(H * 0.12), glow = 0.08 + 0.03 * Math.sin(now * 1.3);
+    glowUi(ui, W / 2, ty + 14, Math.min(W * 0.45, 260), 34, rgbaf(1, 0.7, 0.35, 1), glow * 2.2);
     const th = this.heading(t("title"), ty, 3);
-    text(ui, t("subtitle"), W / 2, ty + th + 8, { align: "center", color: C.dim });
+    text(ui, t("subtitle"), W / 2, ty + th + 2, { align: "center", color: rgba("#c8b8a0"), shadow: C.ink });
     const bw = 160, bh = H >= 300 ? 20 : 17, gap = H >= 300 ? 6 : 4, bx = Math.round(W / 2 - bw / 2);
     let y = Math.round(Math.min(H * 0.46, H - 34 - 7 * (bh + gap)));
-    if (button(ui, this.menu, now, bx, y, bw, bh, t("play"), { color: C.gold })) {
+    if (button(ui, this.menu, now, bx, y, bw, bh, t("play"), { primary: true, icon: icon("hud", "play") })) {
       this.audio.unlock();
       this.daily = false;
       this.setState("heroes", 2);
       return;
     }
     y += bh + gap;
-    if (button(ui, this.menu, now, bx, y, bw, bh, t("daily"), { color: rgba("#ff9a8a") })) {
+    if (button(ui, this.menu, now, bx, y, bw, bh, t("daily"), { color: rgba("#ffb0a0"), icon: icon("hud", "daily") })) {
       this.audio.unlock();
       this.setState("daily");
       return;
     }
-    ui.image(icon("hud", "daily"), bx + 12, y + bh / 2);
     y += bh + gap;
-    if (button(ui, this.menu, now, bx, y, bw, bh, t("tasks"))) this.setState("tasks");
-    ui.image(icon("hud", "scroll"), bx + 12, y + bh / 2);
+    if (button(ui, this.menu, now, bx, y, bw, bh, t("tasks"), { icon: icon("hud", "scroll") })) this.setState("tasks");
     if (this.tasksReady()) {
       // a reward waits: a red seal with "!" on the button
       const p = 0.7 + 0.3 * Math.sin(now * 6);
@@ -634,22 +641,21 @@ export class Game {
       text(ui, "!", bx + bw - 12, y + bh / 2 - 3, { font: "mini", align: "center", color: C.text });
     }
     y += bh + gap;
-    if (button(ui, this.menu, now, bx, y, bw, bh, t("forge"))) this.setState("forge");
+    if (button(ui, this.menu, now, bx, y, bw, bh, t("forge"), { icon: icon("hud", "anvil") })) this.setState("forge");
     y += bh + gap;
-    if (button(ui, this.menu, now, bx, y, bw, bh, t("records"))) {
+    if (button(ui, this.menu, now, bx, y, bw, bh, t("records"), { icon: icon("hud", "crown") })) {
       this.recordsTab = "score";
       this.setState("records");
     }
-    ui.image(icon("hud", "crown"), bx + 12, y + bh / 2);
     y += bh + gap;
-    if (button(ui, this.menu, now, bx, y, bw, bh, t("language"))) {
+    if (button(ui, this.menu, now, bx, y, bw, bh, t("language"), { icon: icon("hud", "globe") })) {
       const next: Lang = getLang() === "ru" ? "en" : "ru";
       setLang(next);
       this.save.lang = next;
       this.persist();
     }
     y += bh + gap;
-    if (button(ui, this.menu, now, bx, y, bw, bh, `${t("sound")}: ${this.save.sound ? t("on") : t("off")}`)) {
+    if (button(ui, this.menu, now, bx, y, bw, bh, `${t("sound")}: ${this.save.sound ? t("on") : t("off")}`, { icon: icon("hud", this.save.sound ? "speaker" : "mute") })) {
       this.save.sound = !this.save.sound;
       this.audio.setEnabled(this.save.sound && this.platform.audioAllowed());
       this.persist();
@@ -674,13 +680,10 @@ export class Game {
     const hero = HEROES[this.heroIdx], weapon = WEAPONS[hero.weapon], wide = W >= 460, locked = !this.save.unlocked.includes(hero.id);
     this.heading(t("chooseHero"), 10, H >= 320 ? 2 : 1);
     // what you have to spend, top right
-    const emb = String(this.save.embers);
-    text(ui, emb, W - 8, 8, { align: "right", color: C.gold, outline: true });
-    ui.image(icon("hud", "ember"), W - 14 - measure(emb), 11);
+    this.purse(W - 6, 6);
     // the hero, big, on a pool of their light
     const cx = wide ? Math.round(W * 0.3) : Math.round(W / 2), cy = wide ? Math.round(H * 0.62) : Math.round(H * 0.44), [lr, lg, lb] = hero.lightColor;
-    ui.disc(cx, cy, 46, 14, rgbaf(lr, lg, lb, 0.12));
-    ui.disc(cx, cy, 30, 9, rgbaf(lr, lg, lb, 0.18));
+    glowUi(ui, cx, cy, 56, 17, rgbaf(lr, lg, lb, 1), 0.55);
     const idle = anim(`${hero.weapon}_idle`), f = idle.frames[frameAt(idle, now)][0]!;
     // a hero not yet bought stands as a shadow with a lock on it; one just bought steps out of a burst of light
     const since = now - this.unlockedAt, burst = since < 1.2 ? 1 - since / 1.2 : 0;
@@ -730,7 +733,8 @@ export class Game {
     const ty = H - 54;
     HEROES.forEach((hd, k) => {
       const x = Math.round(W / 2 + (k - (n - 1) / 2) * 34), a = anim(`${hd.weapon}_idle`).frames[0][0]!;
-      if (k === this.heroIdx) panel(ui, x - 14, ty - 22, 28, 30, C.gold, rgba("#221e30", 0.9));
+      slot(ui, x - 14, ty - 22, 28, k === this.heroIdx ? C.gold : undefined);
+      if (k === this.heroIdx) ui.rect(x - 13, ty + 5, 26, 1, C.goldDim);
       const own = this.save.unlocked.includes(hd.id);
       ui.pal = k + 1;
       ui.image(a, x, ty + 6, 1, 1, 0, !own ? rgbaf(0.13, 0.12, 0.18, 1) : k === this.heroIdx ? 0xffffffff : rgbaf(0.55, 0.55, 0.6, 1));
@@ -740,7 +744,7 @@ export class Game {
     const bw = 120, by = H - 22, bx = Math.round(W / 2 - bw - 6);
     if (locked) {
       const afford = this.save.embers >= hero.cost, label = `${t("unlock")} ${hero.cost}`;
-      if (button(ui, this.menu, now, bx, by, bw, 18, label, { color: C.gold, disabled: !afford })) {
+      if (button(ui, this.menu, now, bx, by, bw, 18, label, { primary: true, disabled: !afford, icon: icon("hud", "ember") })) {
         this.save.embers -= hero.cost;
         this.save.unlocked.push(hero.id);
         this.unlockedAt = now;
@@ -748,12 +752,11 @@ export class Game {
         this.audio.play("levelup");
         this.audio.play("chest");
       }
-      ui.image(icon("hud", "ember"), bx + bw / 2 + measure(label) / 2 + 7, by + 9);
       if (!afford) text(ui, t("notEnough"), bx + bw / 2, by - 9, { font: "mini", align: "center", color: C.red });
-    } else if (button(ui, this.menu, now, bx, by, bw, 18, t("start"), { color: C.gold })) {
+    } else if (button(ui, this.menu, now, bx, by, bw, 18, t("start"), { primary: true, icon: icon("hud", "play") })) {
       this.transition(() => this.startRun());
     }
-    if (button(ui, this.menu, now, Math.round(W / 2 + 6), by, bw, 18, t("back")) || input.pressed("back")) this.setState("title");
+    if (button(ui, this.menu, now, Math.round(W / 2 + 6), by, bw, 18, t("back"), { icon: icon("hud", "back") }) || input.pressed("back")) this.setState("title");
   }
 
   /** A boss enters: black bars close in, its name lands with a thud, the line under it fades in. */
@@ -778,21 +781,34 @@ export class Game {
   private drawCard(): void {
     const ui = this.ui, W = this.r.w, H = this.r.h, w = this.world, B = w.biome, a = Math.min(1, this.cardT * 3);
     this.drawCardBack();
-    const cy = Math.round(H * 0.38);
+    const cy = Math.round(H * 0.36);
     if (this.daily) text(ui, t("daily"), W / 2, cy - 44, { font: "mini", align: "center", color: withAlpha(rgba("#ff9a8a"), a) });
-    this.heading(`${t("floor")} ${w.floor}`, cy - 30, 2, C.gold, a);
-    this.heading(tx(B.name), cy + 2, 1, C.text, a, rgba("#0b0a12"));
-    para(ui, tx(B.lore), Math.round(W / 2 - 150), cy + 24, 300, withAlpha(C.dim, a), "center");
-    const lw = Math.min(200, W - 40);
-    ui.rect(Math.round(W / 2 - lw / 2), cy - 6, lw, 1, withAlpha(C.goldDim, a));
-    // nine floors, the bosses' marked, ours lit
+    const th = this.heading(`${t("floor")} ${w.floor}`, cy - 32, 2, C.gold, a);
+    text(ui, tx(B.name), W / 2, cy - 32 + th + 4, { font: "title", align: "center", color: withAlpha(C.text, a), shadow: withAlpha(C.ink, a), outline: true });
+    para(ui, tx(B.lore), Math.round(W / 2 - 150), cy - 32 + th + 22, 300, withAlpha(C.dim, a), "center");
+    // the road down: nine floors on a thread, the bosses' marked, those behind lit, ours ringed
+    const my = cy - 32 + th + 52, step = Math.min(18, Math.floor((W - 40) / FLOORS));
+    const x0 = Math.round(W / 2 - ((FLOORS - 1) / 2) * step);
+    ui.rect(x0, my, (FLOORS - 1) * step, 1, withAlpha(rgba("#2a2438"), a));
+    ui.rect(x0, my, Math.max(0, (w.floor - 1) * step), 1, withAlpha(C.goldDim, a));
     for (let k = 1; k <= FLOORS; k++) {
-      const x = Math.round(W / 2 + (k - (FLOORS + 1) / 2) * 16), y = cy + 62, boss = bossOf(k) >= 0;
-      if (boss) ui.image(icon("hud", "boss"), x, y, 1, 1, 0, k <= w.floor ? 0xffffffff : rgbaf(0.35, 0.35, 0.4, 1));
-      else ui.disc(x, y, 3, 3, k < w.floor ? C.goldDim : k === w.floor ? C.gold : rgba("#2a2438"));
-      if (k === w.floor) ui.rect(x - 4, y + 8, 9, 1, C.gold);
+      const x = x0 + (k - 1) * step, boss = bossOf(k) >= 0, here = k === w.floor;
+      if (here) {
+        const p = 0.6 + 0.4 * Math.sin(this.now * 5);
+        ui.disc(x, my, 7, 7, withAlpha(C.gold, 0.15 * p * a));
+        for (let q = 0; q < 12; q++) {
+          const an = (q / 12) * Math.PI * 2 + this.now;
+          ui.rect(Math.round(x + Math.cos(an) * 6), Math.round(my + Math.sin(an) * 6), 1, 1, withAlpha(C.gold, a * p));
+        }
+      }
+      if (boss) ui.image(icon("hud", "boss"), x, my, 1, 1, 0, k <= w.floor ? withAlpha(0xffffffff, a) : rgbaf(0.35, 0.35, 0.4, a));
+      else {
+        ui.disc(x, my, 3, 3, withAlpha(C.ink, a));
+        ui.disc(x, my, 2, 2, withAlpha(k < w.floor ? C.goldDim : here ? C.gold : rgba("#2a2438"), a));
+      }
     }
   }
+
 
   /**
    * Behind the floor card, the biome is alive: its air (dust, fireflies, snow) drifts past, two of its torches burn
@@ -856,7 +872,7 @@ export class Game {
     panel(ui, rx, y, colW, ph);
     text(ui, t("heroOfDay"), lx + colW / 2, y + 5, { font: "mini", align: "center", color: C.dim });
     const idle = anim(`${hero.weapon}_idle`), big = ph >= 100 ? 2 : 1, [lr, lg, lb] = hero.lightColor;
-    ui.disc(lx + colW / 2, y + ph - 20, 26 * big, 7 * big, rgbaf(lr, lg, lb, 0.15));
+    glowUi(ui, lx + colW / 2, y + ph - 20, 30 * big, 9 * big, rgbaf(lr, lg, lb, 1), 0.5);
     ui.pal = HEROES.indexOf(hero) + 1;
     ui.image(idle.frames[frameAt(idle, now)][0]!, lx + colW / 2, y + ph - 20, big, big);
     ui.pal = 0;
@@ -875,11 +891,11 @@ export class Game {
     const d = this.save.daily?.day === String(plan.day) ? this.save.daily : null;
     text(ui, `${t("todayBest")}: ${d?.best ?? 0}    ${t("tries")}: ${d?.tries ?? 0}`, W / 2, y, { align: "center", color: C.goldDim });
     const bw = 120, by = H - 24;
-    if (button(ui, this.menu, now, Math.round(W / 2 - bw - 6), by, bw, 18, t("begin"), { color: red })) {
+    if (button(ui, this.menu, now, Math.round(W / 2 - bw - 6), by, bw, 18, t("begin"), { primary: true, icon: icon("hud", "play") })) {
       this.daily = true;
       this.transition(() => this.startRun());
     }
-    if (button(ui, this.menu, now, Math.round(W / 2 + 6), by, bw, 18, t("back")) || this.input.pressed("back")) this.setState("title", 1);
+    if (button(ui, this.menu, now, Math.round(W / 2 + 6), by, bw, 18, t("back"), { icon: icon("hud", "back") }) || this.input.pressed("back")) this.setState("title", 1);
   }
 
   /** Today's tasks: each with its progress and reward, a claim button when done, the bonus for all three. */
@@ -903,7 +919,7 @@ export class Game {
       const rx = px + pw - 94;
       if (claimed) text(ui, t("claimed"), rx + 43, y + 9, { font: "mini", align: "center", color: C.dim });
       else if (done) {
-        if (button(ui, this.menu, now, rx, y + 5, 86, Math.max(14, rowH - 14), `${t("claim")} ${reward}`, { color: C.gold })) onClaim();
+        if (button(ui, this.menu, now, rx, y + 5, 86, Math.max(14, rowH - 14), `${t("claim")} ${reward}`, { primary: true, font: "mini", icon: icon("hud", "ember") })) onClaim();
       } else {
         text(ui, `+${reward}`, rx + 50, y + 9, { align: "right", color: C.goldDim });
         ui.image(icon("hud", "ember"), rx + 58, y + 12);
@@ -932,7 +948,7 @@ export class Game {
     const flash = Math.max(0, 1 - (now - this.claimedAt) * 2), emb = String(this.save.embers);
     text(ui, emb, W - 8, 8, { align: "right", color: flash > 0 ? rgbaf(1, 1, 0.7 + 0.3 * flash, 1) : C.gold, outline: true, scale: flash > 0.5 ? 2 : 1 });
     ui.image(icon("hud", "ember"), W - 14 - measure(emb, "big", flash > 0.5 ? 2 : 1), 11);
-    if (button(ui, this.menu, now, Math.round(W / 2 - 50), H - 24, 100, 18, t("back")) || this.input.pressed("back")) this.setState("title", 2);
+    if (button(ui, this.menu, now, Math.round(W / 2 - 50), H - 24, 100, 18, t("back"), { icon: icon("hud", "back") }) || this.input.pressed("back")) this.setState("title", 2);
   }
 
   /** Records: the platform's leaderboards (best runs, today's trial) and the player's own. */
@@ -983,7 +999,7 @@ export class Game {
       text(ui, value, px + k * cw + cw / 2, y, { align: "center", color: C.gold, outline: true });
       text(ui, label, px + k * cw + cw / 2, y + 10, { font: "mini", align: "center", color: C.dim });
     });
-    if (button(ui, this.menu, now, Math.round(W / 2 - 50), H - 24, 100, 18, t("back")) || this.input.pressed("back")) {
+    if (button(ui, this.menu, now, Math.round(W / 2 - 50), H - 24, 100, 18, t("back"), { icon: icon("hud", "back") }) || this.input.pressed("back")) {
       this.boards = {};
       this.setState("title", 4);
     }
@@ -1007,17 +1023,27 @@ export class Game {
   private drawForge(): void {
     const ui = this.ui, W = this.r.w, H = this.r.h, now = this.now, f = this.save.forge;
     const pw = Math.min(360, W - 20), px = Math.round(W / 2 - pw / 2);
-    this.heading(t("forgeTitle"), 12, 1);
-    text(ui, `${t("embers")}: ${this.save.embers}`, W / 2, 28, { font: "mini", align: "center", color: C.goldDim });
-    let y = 42;
-    const rowH = Math.min(44, Math.floor((H - 90) / FORGE.length));
+    const th = this.heading(t("forgeTitle"), 8, 1);
+    this.purse(W - 8, 8);
+    let y = 8 + th + 6;
+    const rowH = Math.min(42, Math.floor((H - y - 34) / FORGE.length));
+    const ICON: Record<string, [string, string]> = { heart: ["hud", "heart"], might: ["icons", "edge"], reach: ["icons", "magnet"], start: ["icons", "orbit"] };
     for (const item of FORGE) {
-      const lv = f[item.id] ?? 0, maxed = lv >= item.costs.length, cost = item.costs[lv];
-      panel(ui, px, y, pw, rowH - 4);
-      text(ui, `${tx(item.name)}  ${lv}/${item.costs.length}`, px + 8, y + 6, { color: C.text });
-      text(ui, tx(item.desc), px + 8, y + 17, { font: "mini", color: C.dim });
+      const lv = f[item.id] ?? 0, maxed = lv >= item.costs.length, cost = item.costs[lv], [atlas, ic] = ICON[item.id] ?? ["hud", "ember"];
+      frame(ui, px, y, pw, rowH - 4, { edge: maxed ? C.goldDim : undefined });
+      // its badge in a well, its name and what it does, a pip per level bought
+      const bs = Math.min(24, rowH - 12);
+      slot(ui, px + 6, y + Math.round((rowH - 4 - bs) / 2), bs);
+      ui.image(icon(atlas, ic), px + 6 + bs / 2, y + Math.round((rowH - 4) / 2), atlas === "icons" ? Math.min(1, (bs - 4) / 20) : 1, atlas === "icons" ? Math.min(1, (bs - 4) / 20) : 1);
+      const tx0 = px + bs + 12;
+      text(ui, tx(item.name), tx0, y + 6, { color: maxed ? C.gold : C.text });
+      text(ui, tx(item.desc), tx0, y + 16, { font: "mini", color: C.dim });
+      for (let q = 0; q < item.costs.length; q++) {
+        inset(ui, tx0 + q * 7, y + rowH - 13, 6, 5);
+        if (q < lv) ui.rect(tx0 + q * 7 + 1, y + rowH - 12, 4, 3, C.gold);
+      }
       const label = maxed ? t("owned") : `${cost}`;
-      if (button(ui, this.menu, now, px + pw - 70, y + 6, 62, rowH - 16, label, { disabled: maxed || this.save.embers < cost, color: C.gold })) {
+      if (button(ui, this.menu, now, px + pw - 72, y + 7, 64, Math.max(14, rowH - 18), label, { disabled: maxed || this.save.embers < cost, primary: !maxed, icon: maxed ? undefined : icon("hud", "ember") })) {
         this.save.embers -= cost;
         f[item.id] = lv + 1;
         this.audio.play("chest");
@@ -1025,8 +1051,17 @@ export class Game {
       }
       y += rowH;
     }
-    if (button(ui, this.menu, now, Math.round(W / 2 - 50), H - 30, 100, 18, t("back")) || this.input.pressed("back")) this.setState("title", 3);
+    if (button(ui, this.menu, now, Math.round(W / 2 - 50), H - 26, 100, 18, t("back"), { icon: icon("hud", "back") }) || this.input.pressed("back")) this.setState("title", 3);
   }
+
+  /** The embers the player has, in a small plate at the top right of a screen. */
+  private purse(right: number, y: number): void {
+    const ui = this.ui, emb = String(this.save.embers), w = measure(emb) + 20;
+    plate(ui, right - w, y, w, 13, C.goldDim);
+    ui.image(icon("hud", "ember"), right - w + 7, y + 7);
+    text(ui, emb, right - 4, y + 3, { align: "right", color: C.gold, shadow: C.ink });
+  }
+
 
   private drawSpin(): void {
     const sp = this.spin;
@@ -1091,6 +1126,8 @@ export class Game {
         col = opens ? rgba("#fff09a") : C.gold;
       }
       let y = cy + 42;
+      const cw = Math.min(320, W - 24), chh = 22 + (W >= 420 ? 20 : 12) + wrap(desc, 280).length * 10;
+      frame(ui, W / 2 - cw / 2, y - 6, cw, chh, { edge: c.type === "evo" ? C.gold : undefined });
       text(ui, tag, W / 2, y, { font: "mini", align: "center", color: withAlpha(col, a) });
       y += 9;
       text(ui, name, W / 2, y, { align: "center", scale: W >= 420 ? 2 : 1, color: withAlpha(C.gold, a), outline: true, shadow: withAlpha(rgba("#3a1a10"), a) });
@@ -1101,38 +1138,44 @@ export class Game {
 
   private drawPause(): void {
     const ui = this.ui, W = this.r.w, H = this.r.h, now = this.now;
-    this.heading(t("paused"), Math.round(H * 0.2) - 6, 2, C.gold, 1, C.ink);
-    const bw = 160, bh = 20, bx = Math.round(W / 2 - bw / 2);
-    let y = Math.round(H * 0.36);
-    if (button(ui, this.menu, now, bx, y, bw, bh, t("resume"), { color: C.gold }) || (this.menu.ready(now) && (this.input.pressed("pause") || this.input.pressed("back")))) {
+    const bw = 170, bh = 20, gap = 6, ph = 4 * (bh + gap) + 18, py = Math.round(Math.max(H * 0.2 + 30, H / 2 - ph / 2 + 10));
+    this.heading(t("paused"), py - 40, 2);
+    frame(ui, W / 2 - bw / 2 - 14, py - 10, bw + 28, ph);
+    const bx = Math.round(W / 2 - bw / 2);
+    let y = py;
+    if (button(ui, this.menu, now, bx, y, bw, bh, t("resume"), { primary: true, icon: icon("hud", "resume") }) || (this.menu.ready(now) && (this.input.pressed("pause") || this.input.pressed("back")))) {
       this.audio.resume();
       this.platformPaused = false;
       this.setState("play");
       return;
     }
-    y += bh + 6;
-    if (button(ui, this.menu, now, bx, y, bw, bh, t("codex"))) this.setState("codex");
-    y += bh + 6;
-    if (button(ui, this.menu, now, bx, y, bw, bh, `${t("sound")}: ${this.save.sound ? t("on") : t("off")}`)) {
+    y += bh + gap;
+    if (button(ui, this.menu, now, bx, y, bw, bh, t("codex"), { icon: icon("hud", "book") })) this.setState("codex");
+    y += bh + gap;
+    if (button(ui, this.menu, now, bx, y, bw, bh, `${t("sound")}: ${this.save.sound ? t("on") : t("off")}`, { icon: icon("hud", this.save.sound ? "speaker" : "mute") })) {
       this.save.sound = !this.save.sound;
       this.audio.setEnabled(this.save.sound && this.platform.audioAllowed());
       this.persist();
     }
-    y += bh + 6;
-    if (button(ui, this.menu, now, bx, y, bw, bh, t("quit"), { color: C.red })) {
+    y += bh + gap;
+    if (button(ui, this.menu, now, bx, y, bw, bh, t("quit"), { color: C.red, icon: icon("hud", "flag") })) {
       this.world.hero.hp = 0;
       this.world.hero.dead = true;
       this.setState("play");
       this.onDeath();
     }
+    // the run so far, under the panel
+    const w = this.world;
+    text(ui, `${t("floor")} ${w.floor}   ${t("kills")} ${w.kills}   ${t("time")} ${fmtTime(w.runTime)}`, W / 2, py + ph - 2, { font: "mini", align: "center", color: C.dim });
   }
+
 
   /** The codex: the reactions found so far, or (second page) every evolution's recipe. */
   private drawCodex(): void {
     const ui = this.ui, W = this.r.w, H = this.r.h, now = this.now, pw = Math.min(380, W - 16), px = Math.round(W / 2 - pw / 2);
     const bw = 100, by = H - 26;
-    if (button(ui, this.menu, now, Math.round(W / 2 - bw - 4), by, bw, 18, this.codexPage ? t("codex") : t("evolutions"))) this.codexPage = 1 - this.codexPage;
-    if (button(ui, this.menu, now, Math.round(W / 2 + 4), by, bw, 18, t("back")) || this.input.pressed("back")) {
+    if (button(ui, this.menu, now, Math.round(W / 2 - bw - 4), by, bw, 18, this.codexPage ? t("codex") : t("evolutions"), { icon: icon("hud", "book") })) this.codexPage = 1 - this.codexPage;
+    if (button(ui, this.menu, now, Math.round(W / 2 + 4), by, bw, 18, t("back"), { icon: icon("hud", "back") }) || this.input.pressed("back")) {
       this.codexPage = 0;
       this.setState("pause", 1);
       return;
@@ -1174,94 +1217,105 @@ export class Game {
 
   private drawStairs(): void {
     const ui = this.ui, W = this.r.w, H = this.r.h, now = this.now;
-    const th = this.heading(t("cleared"), 8, H >= 300 ? 2 : 1, C.gold, 1, C.ink);
-    text(ui, t("stairs"), W / 2, 8 + th + 4, { font: "mini", align: "center", color: C.dim });
+    const th = this.heading(t("cleared"), 8, H >= 300 ? 2 : 1, C.gold, 1, t("stairs"));
     const vertical = W < 420, n = this.stairs.length;
-    const cw = vertical ? Math.min(300, W - 24) : Math.min(200, Math.floor((W - 32) / 2)), inner = cw - 16;
-    const ch = Math.max(...this.stairs.map((m) => 16 + (wrap(tx(m.name), inner).length + wrap(tx(m.risk), inner).length + wrap(tx(m.reward), inner).length) * 10 + 24));
-    const total = vertical ? n * ch + 6 : ch, top = Math.max(46, Math.round(46 + (H - 56 - total) / 2));
+    const cw = vertical ? Math.min(300, W - 24) : Math.min(210, Math.floor((W - 40) / 2)), inner = cw - 20;
+    const ch = Math.max(...this.stairs.map((m) => 22 + (wrap(tx(m.name), inner).length + wrap(tx(m.risk), inner - 10).length + wrap(tx(m.reward), inner - 10).length) * 10 + 26));
+    const total = vertical ? n * ch + 8 : ch, top = Math.max(8 + th + 8, Math.round(8 + th + 8 + (H - 16 - th - 8 - total) / 2));
     this.stairs.forEach((m, k) => {
-      const x = vertical ? Math.round(W / 2 - cw / 2) : Math.round(W / 2 - (n * cw + 8) / 2 + k * (cw + 8));
-      const y = vertical ? top + k * (ch + 6) : top;
-      const { focused, hit } = this.menu.item(x, y, cw, ch, now);
-      panel(ui, x, y, cw, ch, focused ? C.gold : C.edge, focused ? rgba("#221e30", 0.97) : C.panel);
-      let line = y + 8;
-      line += para(ui, tx(m.name), x + 8, line, inner, C.gold);
-      text(ui, t("risk"), x + 8, line + 3, { font: "mini", color: C.red });
+      const x = vertical ? Math.round(W / 2 - cw / 2) : Math.round(W / 2 - (n * cw + 12) / 2 + k * (cw + 12));
+      const { focused, hit, idx } = this.menu.item(x, vertical ? top + k * (ch + 8) : top, cw, ch, now);
+      // the card rises a little when chosen, and slides in with the screen
+      const y = (vertical ? top + k * (ch + 8) : top) - (focused ? 2 : 0) + Math.round((1 - this.menu.appear(now, idx)) * 10);
+      if (focused) glowUi(ui, x + cw / 2, y + ch / 2, cw * 0.7, ch * 0.75, C.gold, 0.25);
+      frame(ui, x, y, cw, ch, { edge: focused ? C.gold : undefined });
+      let line = y + 9;
+      line += para(ui, tx(m.name), x + 10, line, inner, focused ? C.goldLight : C.gold);
+      divider(ui, x + cw / 2, line + 2, cw - 30, C.goldDeep);
+      line += 7;
+      ui.image(icon("hud", "skull"), x + 15, line + 6);
+      text(ui, t("risk"), x + 23, line + 3, { font: "mini", color: C.red });
       line += 11;
-      line += para(ui, tx(m.risk), x + 8, line, inner, C.text);
-      text(ui, t("reward"), x + 8, line + 3, { font: "mini", color: C.green });
+      line += para(ui, tx(m.risk), x + 20, line, inner - 10, C.text);
+      ui.image(icon("hud", "ember"), x + 15, line + 6);
+      text(ui, t("reward"), x + 23, line + 3, { font: "mini", color: C.green });
       line += 11;
-      para(ui, tx(m.reward), x + 8, line, inner, C.text);
+      para(ui, tx(m.reward), x + 20, line, inner - 10, C.text);
       if (hit) this.descend(m);
     });
   }
 
+
   private drawWon(): void {
     const ui = this.ui, W = this.r.w, H = this.r.h, now = this.now, res = this.lastResult;
-    const th = this.heading(t("victory"), Math.round(H * 0.1), 2);
-    para(ui, t("victorySub"), Math.round(W / 2 - 150), Math.round(H * 0.1) + th + 6, 300, C.dim, "center");
-    if (this.tasksReady()) text(ui, t("tasksReady"), W / 2, H - 14, { font: "mini", align: "center", color: C.green });
-    const pw = Math.min(260, W - 20), px = Math.round(W / 2 - pw / 2);
-    let y = Math.round(H * 0.32);
-    panel(ui, px, y, pw, 52);
-    for (const [label, value] of [[t("kills"), String(res.kills)], [t("time"), fmtTime(res.time)], [t("earned"), `+${res.embers}`]]) {
-      text(ui, label, px + 10, y + 8, { color: C.dim });
-      text(ui, value, px + pw - 10, y + 8, { align: "right", color: C.gold });
-      y += 12;
-    }
-    y = Math.round(H * 0.32) + 62;
-    const bw = 200, bh = 20, bx = Math.round(W / 2 - bw / 2);
-    if (button(ui, this.menu, now, bx, y, bw, bh, t("again"), { color: C.gold })) {
+    const ty = Math.round(H * 0.07), th = this.heading(t("victory"), ty, 2);
+    const sh = para(ui, t("victorySub"), Math.round(W / 2 - 150), ty + th + 2, 300, C.dim, "center");
+    let y = this.resultCard(ty + th + sh + 6, [["skull", t("kills"), String(res.kills), C.text], ["time", t("time"), fmtTime(res.time), C.text], ["ember", t("earned"), `+${res.embers}`, C.gold]], res.score) + 10;
+    const bw = 190, bh = 20, bx = Math.round(W / 2 - bw / 2);
+    if (button(ui, this.menu, now, bx, y, bw, bh, t("again"), { primary: true, icon: icon("hud", "play") })) {
       void this.platform.showInterstitial().then(() => this.startRun());
       this.setState("title");
       return;
     }
     y += bh + 6;
-    if (button(ui, this.menu, now, bx, y, bw, bh, t("menu"))) {
+    if (button(ui, this.menu, now, bx, y, bw, bh, t("menu"), { icon: icon("hud", "back") })) {
       this.daily = false;
       this.newWorld();
       this.attract();
       this.setState("title");
     }
+    if (this.tasksReady()) text(ui, t("tasksReady"), W / 2, H - 12, { font: "mini", align: "center", color: C.green });
   }
+
+  /** The end of a run on a card: a row per number with its icon, the score at the foot. Returns the card's bottom. */
+  private resultCard(y: number, rows: [string, string, string, number][], score: number): number {
+    const ui = this.ui, W = this.r.w, pw = Math.min(250, W - 24), px = Math.round(W / 2 - pw / 2), rh = 13, ph = rows.length * rh + 34;
+    frame(ui, px, y, pw, ph);
+    let ry = y + 8;
+    rows.forEach(([ic, label, value, color], k) => {
+      ui.image(icon("hud", ic), px + 14, ry + 4);
+      text(ui, label, px + 24, ry + 1, { color: C.dim });
+      text(ui, value, px + pw - 10, ry + 1, { align: "right", color });
+      if (k < rows.length - 1) ui.rect(px + 8, ry + rh - 2, pw - 16, 1, rgba("#2a2438"));
+      ry += rh;
+    });
+    divider(ui, W / 2, ry + 3, pw - 20, C.goldDeep);
+    text(ui, t("score"), px + 10, ry + 9, { font: "mini", color: C.goldDim });
+    text(ui, String(score), px + pw - 10, ry + 8, { align: "right", gradient: [rgba("#fff0b8"), rgba("#e0a84a")], shadow: C.ink });
+    return y + ph;
+  }
+
 
   private drawDead(): void {
     const ui = this.ui, W = this.r.w, H = this.r.h, now = this.now, res = this.lastResult;
-    this.heading(t("died"), Math.round(H * 0.12), 2, C.red, 1, C.ink);
-    const pw = Math.min(260, W - 20), px = Math.round(W / 2 - pw / 2);
-    let y = Math.round(H * 0.28);
-    panel(ui, px, y, pw, 64);
-    const row = (label: string, value: string, color = C.text) => {
-      text(ui, label, px + 10, y + 8, { color: C.dim });
-      text(ui, value, px + pw - 10, y + 8, { align: "right", color });
-      y += 12;
-    };
-    row(t("reached"), String(res.floor), C.gold);
-    row(t("kills"), String(res.kills));
-    row(t("time"), fmtTime(res.time));
-    row(t("earned"), `+${res.embers}`, C.gold);
-    y = Math.round(H * 0.28) + 72;
-    const bw = 200, bh = 20, bx = Math.round(W / 2 - bw / 2);
+    const ty = Math.round(H * 0.08);
+    if (res.daily) text(ui, t("daily"), W / 2, ty - 7, { font: "mini", align: "center", color: rgba("#ff9a8a") });
+    const th = this.heading(t("died"), ty, 2, C.red);
+    let y = this.resultCard(ty + th + 4, [["brazier", t("reached"), String(res.floor), C.gold], ["skull", t("kills"), String(res.kills), C.text], ["time", t("time"), fmtTime(res.time), C.text], ["ember", t("earned"), `+${res.embers}`, C.gold]], res.score) + 10;
+    const bw = 190, bh = 20, bx = Math.round(W / 2 - bw / 2);
     if (!this.revived && this.platform.canShowRewarded()) {
-      if (button(ui, this.menu, now, bx, y, bw, bh, t("revive"), { color: C.green })) void this.revive();
+      if (button(ui, this.menu, now, bx, y, bw, bh, t("revive"), { color: C.green, icon: icon("hud", "heart") })) void this.revive();
       y += bh + 6;
     }
-    if (button(ui, this.menu, now, bx, y, bw, bh, t("again"), { color: C.gold })) {
+    if (button(ui, this.menu, now, bx, y, bw, bh, t("again"), { primary: true, icon: icon("hud", "play") })) {
       void this.platform.showInterstitial().then(() => this.startRun());
       this.setState("title");
       return;
     }
     y += bh + 6;
-    if (button(ui, this.menu, now, bx, y, bw, bh, t("menu"))) {
+    if (button(ui, this.menu, now, bx, y, bw, bh, t("menu"), { icon: icon("hud", "back") })) {
       this.daily = false;
       this.newWorld();
       this.attract();
       this.setState("title");
     }
-    if (res.best) text(ui, res.daily ? `${t("newRecord")}: ${res.score}` : `${t("best")}! ${res.score}`, W / 2, H - 14, { font: "mini", align: "center", color: C.gold });
-    if (this.tasksReady()) text(ui, t("tasksReady"), W / 2, H - 24, { font: "mini", align: "center", color: C.green });
-    if (res.daily) text(ui, t("daily"), W / 2, Math.round(H * 0.12) - 9, { font: "mini", align: "center", color: rgba("#ff9a8a") });
-    void measure;
+    // a new best gleams under it all; a task reward waiting says so
+    let fy = H - 12;
+    if (res.best) {
+      text(ui, res.daily ? `${t("newRecord")}: ${res.score}` : `${t("best")}! ${res.score}`, W / 2, fy, { font: "mini", align: "center", color: rgbaf(1, 0.85 + 0.15 * Math.sin(now * 6), 0.45, 1) });
+      fy -= 9;
+    }
+    if (this.tasksReady()) text(ui, t("tasksReady"), W / 2, fy, { font: "mini", align: "center", color: C.green });
   }
+
 }

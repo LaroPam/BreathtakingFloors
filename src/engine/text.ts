@@ -32,6 +32,8 @@ export interface TextOpts {
   shadow?: number;
   outline?: boolean;
   key?: number;
+  /** Two colours, top and bottom: each glyph is split across the middle of its capitals (gilded headings). */
+  gradient?: [number, number];
 }
 
 /** Draw a line of text with its top at y. Returns its width. */
@@ -53,7 +55,11 @@ export function text(b: Batch, str: string, x: number, y: number, o: TextOpts = 
           b.push(cx + dx * s, cy + dy * s, 0, 0, gw, gh, u, v, s, s, 0, page, shadow, 0, key);
       } else b.push(cx + s, cy + s, 0, 0, gw, gh, u, v, s, s, 0, page, shadow, 0, key);
     }
-    b.push(cx, cy, 0, 0, gw, gh, u, v, s, s, 0, page, color, 0, key);
+    if (o.gradient) {
+      const split = Math.min(gh, F.top + Math.ceil(F.h * 0.5));
+      b.push(cx, cy, 0, 0, gw, split, u, v, s, s, 0, page, o.gradient[0], 0, key);
+      b.push(cx, cy + split * s, 0, 0, gw, gh - split, u, v + split, s, s, 0, page, o.gradient[1], 0, key);
+    } else b.push(cx, cy, 0, 0, gw, gh, u, v, s, s, 0, page, color, 0, key);
     cx += (gw + F.gap) * s;
   }
   return w;

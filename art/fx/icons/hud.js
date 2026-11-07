@@ -3,7 +3,9 @@
 // at the centre of a 16 x 16 cell.
 import { hex } from "../../../pixelfx/src/core/index.js";
 
-export const IDS = ["heart", "heart_empty", "stamina", "xp", "overdrive", "skull", "time", "brazier", "brazier_cold", "boss", "lock", "ember", "daily", "crown", "scroll"];
+export const IDS = ["heart", "heart_empty", "stamina", "xp", "overdrive", "skull", "time", "brazier", "brazier_cold", "boss", "lock", "ember", "daily", "crown", "scroll",
+  // on buttons
+  "play", "anvil", "globe", "speaker", "mute", "back", "resume", "book", "flag"];
 
 export const meta = {
   name: "HUD icons",
@@ -74,6 +76,42 @@ const ICONS = {
   scroll: [
     [".kkkkkkk.", "kwppppppk", ".kpkkkpk.", ".kppppkk.", ".kpkkpk..", ".kppppk..", "kwppppppk", ".kkkkkkk."],
     { k: "#0b0a12", w: "#c89a5a", p: "#f0dcae" },
+  ],
+  play: [
+    ["......kk", ".....kwk", "....kwk.", "k..kwk..", "kkkwk...", ".kyk....", "kykkk...", "kk......"],
+    { k: "#0b0a12", w: "#e8edf6", y: "#f4d27a" },
+  ],
+  anvil: [
+    [".........", "kkkkkkkk.", "kwwwwwiik", ".kiiiiiik", "..kddddk.", "...kddk..", "..kddddk.", ".kkkkkkkk"],
+    { k: "#0b0a12", w: "#d8d8ec", i: "#8a8aa8", d: "#4a4a62" },
+  ],
+  globe: [
+    ["..kkkkk..", ".kbgbgbk.", "kbgbbbgbk", "kbbgbgbbk", "kgbbgbbgk", "kbbgbgbbk", "kbgbbbgbk", ".kbgbgbk.", "..kkkkk.."],
+    { k: "#0b0a12", b: "#3a8ef0", g: "#8ad83a" },
+  ],
+  speaker: [
+    ["...kk.....", "..kwk..w..", "kkkwk.w.w.", "kwwwk..w.w", "kwwwk..w.w", "kkkwk.w.w.", "..kwk..w..", "...kk....."],
+    { k: "#0b0a12", w: "#e8e4f0" },
+  ],
+  mute: [
+    ["...kk.....", "..kwk.....", "kkkwk.r..r", "kwwwk..rr.", "kwwwk..rr.", "kkkwk.r..r", "..kwk.....", "...kk....."],
+    { k: "#0b0a12", w: "#8f88a8", r: "#ff5a6a" },
+  ],
+  back: [
+    ["...k....", "..kwk...", ".kwwkkkk", "kwwwwwwk", ".kwwkkkk", "..kwk...", "...k...."],
+    { k: "#0b0a12", w: "#e8e4f0" },
+  ],
+  resume: [
+    ["kk....", "kwk...", "kwwk..", "kwwwk.", "kwwk..", "kwk...", "kk...."],
+    { k: "#0b0a12", w: "#f4d27a" },
+  ],
+  book: [
+    ["kkkk.kkkk", "kwwwkwwwk", "kwppkppwk", "kwwwkwwwk", "kwppkppwk", "kwwwkwwwk", "kkkkkkkkk"],
+    { k: "#0b0a12", w: "#e4dcc8", p: "#8a7aa8" },
+  ],
+  flag: [
+    ["kkkkkk.", "pwwwwwk", "pwwwwwk", "pkkkkk.", "p......", "p......", "p......"],
+    { k: "#0b0a12", w: "#ff8a9a", p: "#a8683a" },
   ],
   boss: [
     ["k.......k", "kk.kkk.kk", ".kkwwwkk.", "kwwwwwwwk", "kwrkwkrwk", "kwrkwkrwk", "kwwwkwwwk", ".kwwwwwk.", "..kwkwk..", "..kkkkk.."],
