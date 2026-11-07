@@ -21,12 +21,11 @@
 
 | Где | Шрифт | Автор | Лицензия |
 |---|---|---|---|
-| заголовки, имена героев и боссов | [Fantasy Warrior](https://burpyfresh.itch.io/fantasy-warrior), 11 px | Douglas Vautour (Burpy Fresh) | CC BY 4.0 |
+| заголовки, имена героев и боссов | [Pixeloid Sans Bold](https://ggbot.itch.io/pixeloid-font), 9 px | GGBotNet | SIL OFL 1.1 |
 | основной текст | [Pixeloid Sans](https://ggbot.itch.io/pixeloid-font), 9 px | GGBotNet | SIL OFL 1.1 |
 | мелкие подписи | [Tiny5](https://github.com/Gissio/font_tiny5), 8 px | The Tiny5 Project Authors | SIL OFL 1.1 |
 
-"Fantasy Warrior Font" by Douglas Vautour (Burpy Fresh) is licensed under CC-BY 4.0. Строка с авторами шрифтов
-есть и в самой игре, внизу титульного экрана.
+Строка с авторами шрифтов есть и в самой игре, внизу титульного экрана.
 
 ## Запуск
 

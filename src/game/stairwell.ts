@@ -1,0 +1,110 @@
+// Between floors: the stairwell down, behind the choice of the next floor's stairs. The renderer draws the shaft
+// itself per art pixel (WELL_FS in src/engine/renderer.ts); here are its numbers, the torches on its walls, the
+// motes falling past and the light of the floor below, all coming up as the descent goes on.
+
+import { anim, frameAt } from "../engine/atlas";
+import { rgba, rgbaf, withAlpha, type Well } from "../engine/renderer";
+import type { Biome } from "./defs";
+import type { Scene } from "./draw";
+
+/** Each turn down looks this much smaller; steps per turn; the tread's share of a turn; the 3/4 view's squash. */
+const Q = 0.56, N = 32, T = 0.62, SQ = 0.82;
+// (on a tall screen the shaft is taller than wide, so its side walls stay in view)
+/** Turns descended per second. */
+const SPEED = 1 / 7;
+
+// the stone of the floors and walls (as baked in tools/bake/manifest.mjs), and the light coming up from below
+const STONE: Record<Biome["id"], string[]> = {
+  crypt: ["#1d1a26", "#2a2636", "#363145", "#433d54", "#575070"],
+  garden: ["#161c18", "#222a22", "#2e382c", "#3a4636", "#52604a"],
+  frost: ["#121a28", "#1c2838", "#283a50", "#344c68", "#52709a"],
+};
+const WALL: Record<Biome["id"], string[]> = {
+  crypt: ["#0e0c14", "#1c1826", "#2a2436", "#3a3348", "#4e4660"],
+  garden: ["#0c100c", "#182018", "#242e22", "#323e2e", "#465640"],
+  frost: ["#0c121c", "#16202e", "#223044", "#2e4058", "#46607e"],
+};
+const DEEP: Record<Biome["id"], string> = { crypt: "#ff9a48", garden: "#6af0a0", frost: "#7ac4ff" };
+
+const rgb = (h: string): [number, number, number] => [parseInt(h.slice(1, 3), 16) / 255, parseInt(h.slice(3, 5), 16) / 255, parseInt(h.slice(5, 7), 16) / 255];
+const hash = (k: number, salt: number) => {
+  const x = Math.sin(k * 127.1 + salt * 311.7) * 43758.5453;
+  return x - Math.floor(x);
+};
+
+/**
+ * A point on the shaft's wall `z` turns below the eye, `phi` of the way round (clockwise from the far left corner),
+ * as the shader lays it out. Returns x, y and how large things look there (1 at the eye's rim).
+ */
+function rim(cx: number, cy: number, a0: number, sq: number, z: number, phi: number): [number, number, number] {
+  const p = Q ** z, r = a0 * p, q = (((phi % 1) + 1) % 1) * 4, side = Math.floor(q), along = (q - side) * 2 - 1;
+  if (side === 0) return [cx + along * r, cy - r * sq, p];
+  if (side === 1) return [cx + r, cy + along * r * sq, p];
+  if (side === 2) return [cx - along * r, cy + r * sq, p];
+  return [cx - r, cy - along * r * sq, p];
+}
+
+/**
+ * The stairwell for a screen W x H (art pixels, the camera at 0, 0), going down into `next`: draws its torches,
+ * motes and the glow below into the scene and returns the shaft for the renderer and the light to see it by.
+ */
+export function stairwell(s: Scene, W: number, H: number, now: number, next: Biome): { well: Well; ambient: [number, number, number] } {
+  const cx = W / 2, cy = H * 0.56, sq = Math.max(SQ, Math.min(2.2, H / W)), a0 = Math.max(W / 2, (H - cy) / sq, cy / sq) + 6, t = now * SPEED;
+  const deep = rgba(DEEP[next.id]), torchLight = rgba(next.torchLight), torch = anim(next.torch);
+
+  // the floor below: a light at the bottom of the shaft, breathing
+  const breathe = 0.85 + 0.15 * Math.sin(now * 1.3);
+  const pit = a0 * Q ** 2.4;
+  s.illum.light(cx, cy, pit * 2.2, pit * 2.2 * sq, withAlpha(deep, 0.55 * breathe));
+  s.illum.light(cx, cy, pit * 1.1, pit * 1.1 * sq, withAlpha(deep, 0.6 * breathe));
+
+  // torches under the treads, two on each turn of the side walls: a torch burns upright, so it hangs only where the
+  // wall runs up the screen, along the flight (on the far and near walls it would stand across it)
+  for (let lvl = Math.floor(t) - 1; lvl <= Math.floor(t) + 4; lvl++)
+    for (let n = 0; n < 4; n++) {
+      const side = n < 2 ? 1 : 3, phi = (side + (n % 2 ? 0.72 : 0.28)) / 4, z = lvl + T + 0.3 * (1 - T) - t + Math.floor(phi * N) / N;
+      if (z < -0.3 || z > 3.4) continue;
+      const [x, y, p] = rim(cx, cy, a0, sq, z, phi), k = lvl * 4 + n, size = (p * a0) / 240;
+      const f = 1 + Math.sin(now * 9 + k) * 0.06 + Math.sin(now * 23 + k * 3) * 0.04;
+      // fading in out of the dark as they come up
+      const seen = Math.min(1, Math.max(0, (3.4 - z) / 1.2));
+      s.illum.light(x, y - 6 * size, 95 * size * f, 80 * size * f, withAlpha(torchLight, 0.85 * seen));
+      if (size >= 0.62) {
+        const fr = torch.frames[frameAt(torch, now + k * 0.37)];
+        if (fr[0]) s.front.image(fr[0], x, y, 1, 1, 0, rgbaf(1, 1, 1, seen));
+        if (fr[1]) s.glow.image(fr[1], x, y, 1, 1, 0, rgbaf(1, 1, 1, 0.9 * seen));
+      } else {
+        // far down, a torch is a flicker of its flame
+        s.glow.light(x, y - 3 * size, 4 * size * f + 1, 5 * size * f + 1, withAlpha(torchLight, 0.8 * seen));
+        s.front.rect(Math.round(x), Math.round(y - 2), 1, 1 + (size > 0.4 ? 1 : 0), withAlpha(rgba("#fff0b0"), seen));
+      }
+    }
+
+  // the air of the floor below drifting in the shaft: we pass it on the way down, so it comes up and out
+  for (let i = 0; i < 64; i++) {
+    const phi = hash(i, 1), rf = 0.15 + 0.6 * hash(i, 2), z = (((hash(i, 3) * 3.6 - t * 1.4) % 3.6) + 3.6) % 3.6 - 0.2;
+    const [rx, ry, p] = rim(cx, cy, a0, sq, z, phi), x = cx + (rx - cx) * rf, y = cy + (ry - cy) * rf;
+    const seen = Math.min(1, (3.4 - z) / 1.4) * Math.min(1, (z + 0.2) * 3), big = p > 0.5 ? 2 : 1;
+    if (seen <= 0) continue;
+    if (next.motes === "snow") s.glow.rect(Math.round(x), Math.round(y), big, big, rgbaf(0.75, 0.85, 1, 0.55 * seen));
+    else if (next.motes === "fireflies") {
+      const blink = Math.max(0, Math.sin(now * 2.2 + i * 3));
+      s.glow.rect(Math.round(x), Math.round(y), big, big, rgbaf(0.7, 1, 0.4, blink * seen));
+      if (big > 1 && blink > 0.3) s.illum.light(x, y, 12, 10, rgbaf(0.6, 1, 0.4, 0.25 * blink * seen));
+    } else s.front.rect(Math.round(x), Math.round(y), big, big, rgbaf(0.75, 0.7, 0.85, 0.5 * seen));
+  }
+
+  const d = rgb(DEEP[next.id]);
+  return {
+    well: {
+      center: [cx, cy],
+      a0,
+      t,
+      shape: [Q, N, T, sq],
+      stone: STONE[next.id].map(rgb),
+      wall: WALL[next.id].map(rgb),
+      deep: [d[0] * 0.55, d[1] * 0.55, d[2] * 0.55],
+    },
+    ambient: [next.ambient[0] * 0.62, next.ambient[1] * 0.62, next.ambient[2] * 0.62],
+  };
+}

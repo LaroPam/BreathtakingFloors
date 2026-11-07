@@ -138,8 +138,8 @@ export const ANIMS = [
 
   // ---- pickups
   { name: "shard_blue", art: "pickups/shard", fps: 10 },
-  { name: "shard_green", art: "pickups/shard", fps: 10, opts: { palette: ["#0a240e", "#1f7a2a", "#3ad050", "#a8ff9a", "#ffffff"] } },
-  { name: "shard_red", art: "pickups/shard", fps: 10, opts: { palette: ["#3a0810", "#a01c2c", "#f04a4a", "#ffb0a0", "#ffffff"] } },
+  { name: "shard_green", art: "pickups/shard", fps: 10, opts: { size: 1, palette: ["#0a240e", "#1f7a2a", "#3ad050", "#a8ff9a", "#ffffff"] } },
+  { name: "shard_red", art: "pickups/shard", fps: 10, opts: { size: 2, palette: ["#3a0810", "#a01c2c", "#f04a4a", "#ffb0a0", "#ffffff"] } },
   { name: "heart", art: "pickups/heart", fps: 12 },
   { name: "chest", fx: "pickups/chest-open", fps: 12, maxT: 2.0, light: FX_BIG },
   { name: "collect", fx: "pickups/collect-burst", fps: 20, light: FX_LIGHT },

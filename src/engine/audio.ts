@@ -6,6 +6,9 @@ type Sfx =
   | "portal" | "click" | "graze" | "heal" | "chest" | "reaction" | "enemyShot" | "roar" | "deny" | "break" | "coin" | "curse" | "achieve" | "secret"
   | "hover" | "burn" | "venom" | "holy" | "void";
 
+/** The master's lift (×): the voices are mixed small, this brings the whole to a normal loudness (peaks near -3 dBFS). */
+const LEVEL = 8;
+
 const LIMITS: Partial<Record<Sfx, number>> = { break: 0.04, coin: 0.03, hover: 0.04, burn: 0.08, venom: 0.08, holy: 0.08, void: 0.08, hit: 0.035, kill: 0.03, pickup: 0.025, shoot: 0.03, enemyShot: 0.05, zap: 0.05, graze: 0.06, boom: 0.06, freeze: 0.05, reaction: 0.05 };
 
 /** The music's moods: the three biomes and a boss fight. Chords as MIDI notes, one per bar. */
@@ -42,21 +45,43 @@ export class Audio {
   musicVolume = 0.5;
   private suspendedByGame = false;
 
+  /** When the browser was last asked to let the sound play (s, performance.now() / 1000). */
+  private askedAt = 0;
+  /** The page has been touched, yet the browser keeps the sound off (some embedding pages forbid it). */
+  get blocked(): boolean {
+    return !!this.ctx && this.ctx.state !== "running" && !this.suspendedByGame && performance.now() / 1000 - this.askedAt > 1;
+  }
   /** Create the audio context. Browsers allow it only inside a user gesture, so call this from one. */
   unlock(): void {
     if (this.ctx) {
-      if (this.ctx.state === "suspended" && !this.suspendedByGame) void this.ctx.resume();
+      if (this.ctx.state !== "running" && !this.suspendedByGame) {
+        this.askedAt = performance.now() / 1000;
+        void this.ctx.resume().then(() => this.prime());
+      }
       return;
+    }
+    this.askedAt = performance.now() / 1000;
+    // on an iPhone the ringer switch mutes web sound unless the page asks to be played like music (Safari 16.4+)
+    const nav = navigator as Navigator & { audioSession?: { type: string } };
+    try {
+      if (nav.audioSession) nav.audioSession.type = "playback";
+    } catch {
+      /* not offered */
     }
     const AC = window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
     if (!AC) return;
     const ctx = new AC();
     this.ctx = ctx;
+    // the mix is quiet by design (many small voices); the master lifts it to a normal loudness and a limiter keeps
+    // a hundred kills at once from clipping
     const comp = ctx.createDynamicsCompressor();
-    comp.threshold.value = -14;
-    comp.ratio.value = 4;
+    comp.threshold.value = -12;
+    comp.knee.value = 6;
+    comp.ratio.value = 12;
+    comp.attack.value = 0.002;
+    comp.release.value = 0.18;
     this.master = ctx.createGain();
-    this.master.gain.value = this.enabled ? 1 : 0;
+    this.master.gain.value = this.enabled ? LEVEL : 0;
     this.master.connect(comp).connect(ctx.destination);
     this.sfxBus = ctx.createGain();
     this.sfxBus.gain.value = this.sfxVolume * 0.5;
@@ -72,11 +97,22 @@ export class Audio {
       d[i] = (s / 2147483647) * 2 - 1;
     }
     if (this.musicOn) this.startMusic();
+    if (ctx.state !== "running") void ctx.resume().then(() => this.prime());
+    else this.prime();
+  }
+  /** A silent sample, played inside the gesture: some browsers (Safari) open the sound only for a real play. */
+  private prime(): void {
+    const c = this.ctx;
+    if (!c) return;
+    const src = c.createBufferSource();
+    src.buffer = c.createBuffer(1, 1, c.sampleRate);
+    src.connect(c.destination);
+    src.start();
   }
 
   setEnabled(on: boolean): void {
     this.enabled = on;
-    if (this.ctx) this.master.gain.setTargetAtTime(on ? 1 : 0, this.ctx.currentTime, 0.05);
+    if (this.ctx) this.master.gain.setTargetAtTime(on ? LEVEL : 0, this.ctx.currentTime, 0.02);
   }
   setVolumes(sfx: number, music: number): void {
     this.sfxVolume = sfx;
@@ -89,11 +125,16 @@ export class Audio {
   /** The platform paused the game (an ad, a hidden tab): stop all sound until resume(). */
   suspend(): void {
     this.suspendedByGame = true;
-    if (this.ctx && this.ctx.state === "running") void this.ctx.suspend();
+    const c = this.ctx;
+    // a resume() that came while this was still settling would find the context running and do nothing
+    if (c && c.state === "running")
+      void c.suspend().then(() => {
+        if (!this.suspendedByGame) void c.resume();
+      });
   }
   resume(): void {
     this.suspendedByGame = false;
-    if (this.ctx && this.ctx.state === "suspended") void this.ctx.resume();
+    if (this.ctx && this.ctx.state !== "running") void this.ctx.resume();
   }
 
   // ---- building blocks

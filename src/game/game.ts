@@ -8,12 +8,13 @@ import { anim, FONTS, frameAt, icon, type Anim, type Rect } from "../engine/atla
 import { heroSprites, initHeroSprites, lookId, type HeroAnim, type HeroSprites } from "./heroSprites";
 import { fitScale, measure, text, wrap } from "../engine/text";
 import { dayNumber, weekNumber, type Board, type BoardName, type Platform } from "../platform/platform";
-import { ACHIEVEMENTS, heroDef, bossOf, EL_COLOR, LEGENDS, legendDesc, type WeaponId, EL_NAME, ENEMIES, EVOLUTIONS, evolutionOf, FLOORS, FORGE, questDef, TASK_BONUS, TASKS, type TaskId, HEROES, WEAPONS, weaponName, MODIFIERS, MUTATORS, NO_MODIFIER, REACTIONS, RELIC_MAX, RELIC_SLOTS, RELICS, STATS, type Modifier, type Reaction, type RelicKind, type StatId } from "./defs";
+import { ACHIEVEMENTS, heroDef, biomeOf, bossOf, EL_COLOR, LEGENDS, legendDesc, type WeaponId, EL_NAME, ENEMIES, EVOLUTIONS, evolutionOf, FLOORS, FORGE, questDef, TASK_BONUS, TASKS, type TaskId, HEROES, WEAPONS, weaponName, MODIFIERS, MUTATORS, NO_MODIFIER, REACTIONS, RELIC_MAX, RELIC_SLOTS, RELICS, STATS, type Modifier, type Reaction, type RelicKind, type StatId } from "./defs";
 import { drawWorld, Scene } from "./draw";
+import { stairwell } from "./stairwell";
 import { getLang, langFor, setLang, t, tx, type Lang } from "./i18n";
 import { Rng } from "./rng";
 import { defaultSave, sanitize, type SaveData } from "./save";
-import { button, slider, C, divider, glow as glowUi, drawHud, drawPointers, drawTouch, fmtTime, frame, header, inset, Menu, panel, para, plate, reticle, slot } from "./ui";
+import { button, slider, C, divider, glow as glowUi, drawHud, drawPointers, drawTouch, fmtTime, frame, header, inset, Menu, panel, para, plate , slot } from "./ui";
 import { CINE_DUR, World } from "./world";
 
 type State = "title" | "heroes" | "forge" | "daily" | "records" | "tasks" | "settings" | "card" | "play" | "spin" | "pause" | "codex" | "stairs" | "dead" | "won";
@@ -163,7 +164,7 @@ export class Game {
       victory: () => this.onVictory(),
       floorCleared: () => this.onFloorCleared(),
       reaction: (r) => this.onReaction(r),
-      banner: (text, color) => this.showBanner(text, color),
+      banner: (text, color, sub) => this.showBanner(text, color, sub),
       quest: (q) => {
         const name = tx(questDef(q.kind).name);
         if (q.state === "active") {
@@ -295,7 +296,7 @@ export class Game {
     w.hero.hp = w.hero.maxHp;
     w.stats.might = hero.might * (1 + 0.1 * (f.might ?? 0));
     w.stats.magnet *= 1 + 0.25 * (f.reach ?? 0);
-    w.autoAim = this.touch;
+    w.autoAim = true;
     // the week's rule
     let spins = f.start ? 2 : 1;
     if (this.weekly) {
@@ -665,19 +666,9 @@ export class Game {
         if (input.pressed("ult")) h.wantUlt = true;
         w.moveX = input.move.x;
         w.moveY = input.move.y;
-        // aim: a stick wins, then the mouse; on touch with no stick held, the nearest enemy
-        if (input.aimStick) {
-          w.aimTarget = null;
-          w.autoAim = false;
-          h.aimX = input.aimDir.x;
-          h.aimY = input.aimDir.y;
-        } else if (input.mode === "kbm") {
-          w.autoAim = false;
-          w.aimTarget = { x: input.mouse.x + this.camX, y: input.mouse.y + this.camY };
-        } else {
-          w.aimTarget = null;
-          w.autoAim = true;
-        }
+        // aim: always the nearest enemy (or where he runs): to choose a target, walk up to it
+        w.aimTarget = null;
+        w.autoAim = true;
         // the sword swings by itself at whatever comes in reach; a held button or an aiming stick swings at will
         h.attacking = input.firing;
         // as many equal steps as this frame needs, none longer than 1/60 s: motion matches the display at 60, 120 or
@@ -716,16 +707,18 @@ export class Game {
     this.menu.begin();
     const shake = w.shake > 0 && this.state === "play" && this.save.shake ? w.shake * w.shake * 6 : 0;
     const sx = shake ? (Math.random() - 0.5) * shake : 0, sy = shake ? (Math.random() - 0.5) * shake : 0;
-    const cx = this.camX + sx, cy = this.camY + sy;
-    drawWorld(s, w, cx, cy, W, H, this.now);
+    // between floors the floor behind is gone: the stairwell down to the next one takes its place
+    const down = this.state === "stairs" ? stairwell(s, W, H, this.now, biomeOf(w.floor + 1)) : null;
+    const cx = down ? 0 : this.camX + sx, cy = down ? 0 : this.camY + sy;
+    if (!down) drawWorld(s, w, cx, cy, W, H, this.now);
 
-    const dim = this.state !== "play" && this.state !== "title";
+    const dim = this.state !== "play" && this.state !== "title" && !down;
     const light: Lighting = {
-      ambient: [w.ambient * w.biome.ambient[0], w.ambient * w.biome.ambient[1], w.ambient * w.biome.ambient[2]],
+      ambient: down ? down.ambient : [w.ambient * w.biome.ambient[0], w.ambient * w.biome.ambient[1], w.ambient * w.biome.ambient[2]],
       steps: 7,
-      vignette: 0.55,
-      tint: w.flash > 0 && this.save.flashes ? [1, 0.95, 0.85] : [0.03, 0.025, 0.06],
-      tintK: w.flash > 0 && this.save.flashes ? w.flash * 0.25 : dim ? 0.55 : 0,
+      vignette: down ? 0.8 : 0.55,
+      tint: w.flash > 0 && this.save.flashes && !down ? [1, 0.95, 0.85] : [0.03, 0.025, 0.06],
+      tintK: w.flash > 0 && this.save.flashes && !down ? w.flash * 0.25 : dim ? 0.55 : 0,
     };
     if (this.state === "title") light.tintK = 0.2;
     if (w.curse && this.state === "play" && !(w.flash > 0 && this.save.flashes)) {
@@ -758,8 +751,8 @@ export class Game {
         if (this.touch) drawTouch(ui, this.input, w, W, H, this.now);
         else this.input.zones = [];
         this.drawTutorial();
+        this.drawHint();
         // the reticle stands in for the pointer while aiming with the mouse
-        if (this.input.mode === "kbm" && !this.touch) reticle(ui, this.input.mouse.x, this.input.mouse.y, this.now, w.autoTarget);
         break;
       case "spin": this.drawSpin(); break;
       case "pause": this.drawPause(); break;
@@ -773,11 +766,25 @@ export class Game {
     const since = this.now - this.menu.openedAt;
     if (this.state !== "play" && this.state !== "card" && since < 0.2) ui.rect(0, 0, W, H, rgba("#07060c", (1 - since / 0.2) * 0.7));
     // the system pointer hides while the reticle aims
+    // no aiming with the mouse: in play the pointer only gets in the way of the view
     const cursor = this.state === "play" && this.input.mode === "kbm" && !this.touch ? "none" : "default";
     if (this.r.canvas.style.cursor !== cursor) this.r.canvas.style.cursor = cursor;
     this.drawToast(this.dt);
     this.drawWipe();
-    this.r.render(s, ui, cx, cy, light, [0.025, 0.02, 0.045]);
+    this.r.render(s, ui, cx, cy, light, [0.025, 0.02, 0.045], down?.well);
+  }
+
+  /** The world's word to the player (what to do now), on a plate low in the middle: it fades in, holds, fades out. */
+  private drawHint(): void {
+    const hint = this.world.hint;
+    if (!hint || hint.t < 0) return;
+    const ui = this.ui, W = this.r.w, H = this.r.h, a = Math.max(0, Math.min(1, hint.t / 0.45, (hint.dur - hint.t) / 0.7));
+    if (a <= 0) return;
+    const lines = wrap(hint.text, Math.min(W - 40, 360)), lw = Math.min(W - 16, Math.max(...lines.map((l) => measure(l))) + 20);
+    // above the first floor's controls, if they are still showing
+    const tut = this.save.tutorial && this.world.floor === 1 && this.world.time <= 14, y = Math.round(H * (tut ? 0.56 : 0.68) + (1 - a) * 6);
+    plate(ui, W / 2 - lw / 2, y - 5, lw, lines.length * 11 + 8, withAlpha(C.gold, a));
+    lines.forEach((l, k) => text(ui, l, W / 2, y + k * 11, { align: "center", color: withAlpha(rgba("#ffe8b0"), a), shadow: withAlpha(C.ink, a) }));
   }
 
   private drawTutorial(): void {
@@ -840,10 +847,15 @@ export class Game {
       this.setState("settings");
     }
     const info = `${t("embers")}: ${this.save.embers}    ${t("best")}: ${t("floor")} ${this.save.bestFloor}`;
-    // the fonts' authors along the bottom (Fantasy Warrior asks for attribution), what you have above them
+    // the fonts' authors along the bottom, what you have above them
     const credits = wrap(t("fontCredits"), W - 16, "mini");
     credits.forEach((l, k) => text(ui, l, W / 2, H - 9 - (credits.length - 1 - k) * 8, { font: "mini", align: "center", color: rgba("#5a5470") }));
     text(ui, info, W / 2, H - 20 - (credits.length - 1) * 8, { font: "mini", align: "center", color: C.goldDim });
+    // touched, and still no sound: say so (the browser or the page around the game kept it off)
+    if (this.audio.blocked) {
+      const lines = wrap(t("soundBlocked"), Math.min(W - 24, 360), "mini"), y0 = H - 32 - (credits.length - 1) * 8 - lines.length * 8;
+      lines.forEach((l, k) => text(ui, l, W / 2, y0 + k * 8, { font: "mini", align: "center", color: rgba("#ff9a8a"), shadow: C.ink }));
+    }
   }
 
   /** The hero select: the hero in their palette with their weapon, who they are, how they play. */

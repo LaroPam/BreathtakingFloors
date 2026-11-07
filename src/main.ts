@@ -29,9 +29,9 @@ async function boot(): Promise<void> {
   const input = new Input(canvas);
   const audio = new Audio();
   // browsers start audio only from a user gesture
+  // (a touch counts as a gesture only when the finger lifts: pointerup and touchend, not pointerdown)
   const unlock = () => audio.unlock();
-  window.addEventListener("pointerdown", unlock);
-  window.addEventListener("keydown", unlock);
+  for (const ev of ["pointerdown", "pointerup", "touchend", "click", "keydown"]) window.addEventListener(ev, unlock, { capture: true });
 
   const game = new Game(renderer, input, audio, platform);
   await game.init();

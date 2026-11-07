@@ -37,8 +37,8 @@
         document.getElementById("lantern").innerHTML = svg;
         var ru = /^(ru|be|uk|kk|uz|ky|tg|hy|az)/i.test(navigator.language || "");
         var tips = ru
-          ? ["Призраков можно ранить только в свете.", "Рывок сквозь пули копит Выброс.", "Огонь и гроза вместе — взрыв.", "Дух на этаже ждёт с заданием.", "Реликвия 5 уровня может эволюционировать."]
-          : ["Ghosts can only be hurt in the light.", "Dashing through bullets charges Overdrive.", "Fire and storm together explode.", "A spirit on the floor waits with a task.", "A level 5 relic can evolve."];
+          ? ["Призраков можно ранить только в свете.", "Рывок сквозь снаряды копит Выброс.", "Огонь и гроза вместе — взрыв.", "Дух на этаже ждёт с заданием.", "Реликвия 5 уровня может эволюционировать."]
+          : ["Ghosts can only be hurt in the light.", "Dashing through bolts charges Overdrive.", "Fire and storm together explode.", "A spirit on the floor waits with a task.", "A level 5 relic can evolve."];
         document.getElementById("bootword").textContent = ru ? "Загрузка" : "Loading";
         document.getElementById("boottip").textContent = tips[Math.floor(Math.random() * tips.length)];
       })();

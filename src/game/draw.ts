@@ -3,11 +3,12 @@
 
 import { anim, frameAt, hasAnim, icon, type Anim } from "../engine/atlas";
 import { heroSprites, lookId, type HeroAnim } from "./heroSprites";
+import { TEAM_HERO } from "./pools";
 import { Batch, rgba, rgbaf, SOFT, withAlpha } from "../engine/renderer";
 import { text } from "../engine/text";
 import { AI, EL_COLOR, ENEMIES, LEGENDS, questDef, RelicKind, WEAPONS, weaponName } from "./defs";
 import { t as tr, tx } from "./i18n";
-import { BULLET_ANIMS, B_CRESCENT, B_FIREBALL, B_LANCE, CINE_DUR, D_CHEST, D_EMBER, D_GREEN, D_HEART, D_RED, SANCTUARY_R, STAR_EVERY, TILE, type World } from "./world";
+import { BULLET_ANIMS, HERO_HIT_Y, HERO_R, B_CRESCENT, B_FIREBALL, B_LANCE, CINE_DUR, D_CHEST, D_EMBER, D_GREEN, D_HEART, D_RED, SANCTUARY_R, STAR_EVERY, TILE, type World } from "./world";
 
 export class Scene {
   back = new Batch();
@@ -264,7 +265,13 @@ export function drawWorld(s: Scene, w: World, camX: number, camY: number, viewW:
       continue;
     }
     const a = k === D_HEART ? heart : k === D_RED ? shardR : k === D_GREEN ? shardG : shardB;
-    drawAnim(s, a, time + i * 0.17, x, y + bob, { key: y, glow: 0.8 });
+    // a soul shard floats over its shadow and lights the floor a little in its own colour
+    if (k !== D_HEART) {
+      const big = k === D_RED ? 1.4 : k === D_GREEN ? 1.2 : 1;
+      s.back.disc(x, y + 1, 4 * big - bob * 0.3, 1.5 * big, C_SHADOW);
+      s.illum.light(x, y - 8 + bob, 16 * big, 13 * big, k === D_RED ? rgbaf(1, 0.35, 0.35, 0.3) : k === D_GREEN ? rgbaf(0.35, 1, 0.45, 0.3) : rgbaf(0.4, 0.7, 1, 0.3));
+    }
+    drawAnim(s, a, time + i * 0.17, x, y + bob, { key: y, glow: 1 });
   }
 
   // ---- enemies
@@ -301,7 +308,7 @@ export function drawWorld(s: Scene, w: World, camX: number, camY: number, viewW:
       }
       s.illum.light(w.bx, w.by, 20 + 30 * k, 16 + 24 * k, withAlpha(col[0], 0.45 * k));
     }
-    if (d.elite && d.scale === 1 && E.hp[i] < E.maxHp[i]) {
+    if (d.elite && d.ai !== AI.Boss && d.ai !== AI.BossFrog && E.hp[i] < E.maxHp[i]) {
       const bw = 20, bx = Math.round(w.bx - bw / 2), by = Math.round(w.by - w.bry - 8);
       s.front.rect(bx - 1, by - 1, bw + 2, 4, rgba("#0b0a12"));
       s.front.rect(bx, by, Math.max(1, Math.round((bw * E.hp[i]) / E.maxHp[i])), 2, rgba("#ff4a5a"));
@@ -320,6 +327,39 @@ export function drawWorld(s: Scene, w: World, camX: number, camY: number, viewW:
       s.illum.light(w.bx, w.by, 40, 34, rgbaf(1, 0.25, 0.2, 0.35 * p));
     }
     if (w.debug) s.front.disc(w.bx, w.by, w.brx, w.bry, rgba("#ff3040", 0.3));
+  }
+
+  // ---- the way on: chevrons running out from the hero towards the nearest unlit brazier (between waves) or the
+  // portal, while it is more than a few steps away
+  const goal = w.objective();
+  if (goal && !h.dead && h.exitT < 0 && h.arriveT > 0.55) {
+    const dx = goal[0] - h.x, dy = goal[1] - h.y, d = Math.hypot(dx, dy);
+    if (d > 80) {
+      const ux = dx / d, uy = dy / d, col = w.portal ? rgba("#d8a8ff") : rgba("#ffcf5a");
+      for (let q = 0; q < 2; q++) {
+        const u = (time * 1.4 + q * 0.5) % 1, r = 30 + u * 26, al = Math.sin(u * Math.PI);
+        const cx = h.x + ux * r, cy = h.y - 12 + uy * r * 0.85;
+        // a chevron: two short strokes meeting at the tip, inked so it reads on any floor
+        for (const [pass, c] of [[1, rgba("#0b0a12", 0.8 * al)], [0, withAlpha(col, al)]] as const)
+          for (const side of [-1, 1])
+            for (let k = 0; k < 8; k++) {
+              const px = cx - ux * k * 0.9 + side * -uy * k * 0.95, py = cy - uy * k * 0.9 + side * ux * k * 0.95;
+              if (pass) s.front.rect(Math.round(px) - 1, Math.round(py) - 1, 4, 4, c, 1e6);
+              else s.front.rect(Math.round(px), Math.round(py), 2, 2, c, 1e6);
+            }
+        s.glow.disc(cx, cy, 3, 3, withAlpha(col, 0.35 * al));
+      }
+    }
+  }
+
+  // ---- the enemy the hero is turned to: four corners closing on it (gold when it is in reach)
+  if (w.target.r > 0 && !h.dead) {
+    const tg = w.target, r = tg.r + 4 + Math.sin(time * 6) * 1.2, c = w.autoTarget ? rgba("#ffcf5a") : rgba("#c8c0d8", 0.6);
+    for (const [sx, sy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+      const x = Math.round(tg.x + sx * r), y = Math.round(tg.y + sy * r);
+      s.front.rect(x - (sx > 0 ? 2 : 0), y, 3, 1, c);
+      s.front.rect(x, y - (sy > 0 ? 2 : 0), 1, 3, c);
+    }
   }
 
   // ---- an ability's blows on their way: arrows falling out of the dark, the floor marked where an element strikes
@@ -433,6 +473,14 @@ export function drawWorld(s: Scene, w: World, camX: number, camY: number, viewW:
       // the wisp burns in the hero's own light (the sorceress's stays its natural blue)
       const [wr, wg, wb] = h.def.lightColor, tint = h.def.id === "mage" ? 0xffffffff : rgbaf(wr, wg, wb, 1);
       if (show && h.exitT < 0) drawAnim(s, anim("wisp_light"), time, lightX, lightY, { key: h.y + 0.5, glow: 1, tint });
+    }
+    // the hitbox, when enemy shots come near: a bright core in a dark ring, exactly as big as what they must miss
+    if (w.danger > 0.05 && show && !h.dead) {
+      const k = Math.min(1, w.danger * 1.2), cy = h.y - HERO_HIT_Y;
+      s.front.disc(h.x, cy, HERO_R + 1.5, HERO_R + 1.5, rgba("#0b0a12", 0.7 * k), 1e6);
+      s.front.disc(h.x, cy, HERO_R, HERO_R, rgbaf(1, 1, 1, 0.9 * k), 1e6);
+      s.front.disc(h.x, cy, HERO_R - 1.5, HERO_R - 1.5, rgbaf(1, 0.45, 0.55, k), 1e6);
+      s.glow.disc(h.x, cy, HERO_R + 2, HERO_R + 2, rgbaf(1, 0.6, 0.7, 0.4 * k));
     }
     if (w.debug) {
       s.front.disc(h.x, h.y - 12, 5, 5, rgba("#40ff60", 0.4));
@@ -606,13 +654,17 @@ export function drawWorld(s: Scene, w: World, camX: number, camY: number, viewW:
     const x = Bu.x[i], y = Bu.y[i];
     if (!inView(x, y, 20)) continue;
     const k = Bu.kind[i], a = banims[k], orb = k >= 2 && k <= 5;
-    drawAnim(s, a, Bu.t[i], x, y, { rot: orb ? 0 : Math.atan2(Bu.vy[i], Bu.vx[i]), key: y + 14, glow: 0.9, alpha: k === B_CRESCENT ? Math.min(1, Bu.life[i] * 5) : 1 });
+    // the hero's shots grow out of the hand over their first instant; the enemies' are drawn big and ringed in
+    // dark so they read against anything
+    const grow = Bu.team[i] === TEAM_HERO ? Math.min(1, 0.3 + (Bu.t[i] / 0.09) * 0.7) : orb ? 1.5 : 1;
+    if (orb) s.color.disc(x, y, 6, 6, rgba("#0b0a12", 0.55), y + 13);
+    drawAnim(s, a, Bu.t[i], x, y, { rot: orb ? 0 : Math.atan2(Bu.vy[i], Bu.vx[i]), sx: grow, sy: grow, key: y + 14, glow: 0.9, alpha: k === B_CRESCENT ? Math.min(1, Bu.life[i] * 5) : 1 });
     if (orb) {
       s.back.disc(x, y + 14, 3, 1, rgba("#000000", 0.25));
       s.illum.light(x, y, 16, 14, k === 2 ? rgbaf(1, 0.2, 0.3, 0.35) : k === 3 ? rgbaf(0.6, 0.3, 1, 0.35) : k === 4 ? rgbaf(0.4, 1, 0.3, 0.35) : rgbaf(0.3, 0.6, 1, 0.35));
     } else {
       // a streak behind what the hero throws: the eye reads speed and direction from it
-      const len = k === B_CRESCENT ? 0.025 : 0.045, el = Bu.el[i];
+      const len = (k === B_CRESCENT ? 0.025 : 0.045) * grow, el = Bu.el[i];
       const col = k === B_FIREBALL ? rgbaf(1, 0.55, 0.2, 0.6) : k === B_LANCE ? rgbaf(0.6, 0.85, 1, 0.6) : el ? withAlpha(rgba(EL_COLOR[el as keyof typeof EL_COLOR]), 0.6) : rgbaf(1, 0.9, 0.7, 0.45);
       s.glow.line(x - Bu.vx[i] * len, y - Bu.vy[i] * len, x, y, k === B_FIREBALL ? 3 : 1, col);
       s.illum.light(x, y, k === B_FIREBALL ? 34 : 18, k === B_FIREBALL ? 28 : 14, k === B_FIREBALL ? rgbaf(1, 0.55, 0.2, 0.55) : rgbaf(1, 0.75, 0.4, 0.35));

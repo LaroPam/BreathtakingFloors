@@ -151,6 +151,84 @@ void main() {
   o = vec4(rgb, 1.0);
 }`;
 
+/**
+ * A stairwell seen from above, drawn per art pixel (the screen between floors): a square shaft with a stair winding
+ * down its walls, each turn smaller and darker, falling away to the light of the floor below. Treads are cut into
+ * steps with lit nosings and shadowed starts, the shaft's walls are laid in brick courses, and the depth fades to
+ * the deep's colour through an ordered dither. This writes the scene's colour; lights and the vignette come after,
+ * as for any floor. u_shape: (scale per turn, steps per turn, the tread's share of a turn, vertical squash).
+ */
+const WELL_FS = `#version 300 es
+precision highp float;
+uniform vec2 u_res;
+uniform float u_scale;
+uniform vec2 u_camDev;
+uniform vec2 u_center;
+uniform float u_a0;
+uniform float u_t;
+uniform vec4 u_shape;
+uniform vec3 u_stone[5];
+uniform vec3 u_wall[5];
+uniform vec3 u_deep;
+out vec4 o;
+${BAYER}
+float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+void main() {
+  float Q = u_shape.x, N = u_shape.y, T = u_shape.z, SQ = u_shape.w, lnq = log(1.0 / Q);
+  vec2 cell = floor((vec2(gl_FragCoord.x, u_res.y - gl_FragCoord.y) + u_camDev) / u_scale);
+  vec2 d = cell + 0.5 - u_center;
+  float ax = abs(d.x), ay = abs(d.y) / SQ, r = max(max(ax, ay), 0.25);
+  // where on the square's rim, clockwise from its far-left corner (0..1), and how many pixels one turn spans here
+  bool across = ay >= ax;
+  float side, along;
+  if (across) { side = d.y < 0.0 ? 0.0 : 2.0; along = d.y < 0.0 ? d.x / r : -d.x / r; }
+  else { side = d.x > 0.0 ? 1.0 : 3.0; along = d.x > 0.0 ? d.y / (r * SQ) : -d.y / (r * SQ); }
+  float phi = (side + (along + 1.0) * 0.5) * 0.25;
+  float pPhi = across ? 8.0 * r : 8.0 * r * SQ;   // screen-art pixels per whole turn around
+  float pZ = across ? r * lnq * SQ : r * lnq;     // art pixels per turn of depth
+  float z = log(u_a0 / r) / lnq;                  // turns below the eye
+  float sN = phi * N, stepI = floor(sN), u = z + u_t - stepI / N, lvl = floor(u), f = u - lvl;
+  vec3 c;
+  float depth;
+  if (f < T) {
+    // a tread: planks of stone, each step's nosing lit where it drops to the next and a dark gap behind it; a rail
+    // of lighter stone along the edge over the void
+    depth = z - f;
+    float fs = sN - stepI, toDrop = (1.0 - fs) * pPhi / N, fromStart = fs * pPhi / N;
+    float toLip = (T - f) * pZ, fromWall = f * pZ, h = hash(vec2(lvl, stepI));
+    int k = h > 0.6 ? 3 : 2;
+    if (hash(floor(cell / 2.0) + lvl * 13.0) > 0.94) k = 1;
+    if (toLip < 1.0) k = 4;
+    else if (toLip < 2.0) k = 3;
+    else if (toLip < 3.0) k = 0;
+    else if (toDrop < 1.0) k = 4;
+    else if (fromStart < 1.5) k = 0;
+    else if (fromStart < 2.5 || fromWall < 2.0) k = 1;
+    c = u_stone[k];
+    // a post of the rail every other step
+    if (toLip < 3.0 && mod(stepI, 2.0) == 0.0 && fs * pPhi / N < 1.5) c = u_stone[4] * 1.15;
+  } else {
+    // the shaft's wall under the tread, in courses of brick, in the tread's shadow right under its lip
+    depth = z;
+    float g = (f - T) / (1.0 - T), under = (f - T) * pZ, course = floor(g * 3.0);
+    float joint = fract(g * 3.0) * (1.0 - T) / 3.0 * pZ;
+    float bricks = phi * 48.0 + mod(course + lvl, 2.0) * 0.5, bj = fract(bricks) * pPhi / 48.0;
+    float h = hash(vec2(lvl * 7.0 + course, floor(bricks)));
+    int k = h > 0.7 ? 2 : 1;
+    if (joint < 1.0 || bj < 1.0 || under < 3.0) k = 0;
+    // where two walls meet, a dark seam
+    if (abs(ax - ay) < 0.8) k = 0;
+    c = u_wall[k] * (side == 0.0 ? 0.8 : side == 1.0 ? 0.9 : side == 2.0 ? 0.7 : 0.75);
+  }
+  // the depth, through the dither: the shaft darkens, then the turns far down catch the light of the floor below
+  // (stone still, lit in its colour), and at the very bottom there is only that light
+  float dark = floor(clamp((depth - 0.3) * 0.62, 0.0, 1.0) * 7.0 + bayer(cell)) / 7.0;
+  float lit = floor(clamp((depth - 1.3) * 0.55, 0.0, 1.0) * 8.0 + bayer(cell + 2.0)) / 8.0;
+  float pit = floor(clamp((depth - 3.1) * 0.9, 0.0, 1.0) * 6.0 + bayer(cell + 1.0)) / 6.0;
+  c = mix(mix(c, c * 0.16, dark), c * u_deep * 4.0, lit);
+  o = vec4(mix(c, u_deep, pit), 1.0);
+}`;
+
 function compile(gl: WebGL2RenderingContext, vs: string, fs: string): WebGLProgram {
   const make = (type: number, src: string) => {
     const s = gl.createShader(type)!;
@@ -251,6 +329,20 @@ export class Batch {
   }
 }
 
+/** The stairwell between floors (WELL_FS): colours as [r, g, b] in 0..1. */
+export interface Well {
+  center: [number, number];
+  /** Half the shaft's width at the eye (art pixels): set it so the rim lies just off the screen. */
+  a0: number;
+  /** How far down we have come, in turns: it grows to descend. */
+  t: number;
+  /** Scale per turn, steps per turn, the tread's share of a turn, vertical squash. */
+  shape: [number, number, number, number];
+  stone: [number, number, number][];
+  wall: [number, number, number][];
+  deep: [number, number, number];
+}
+
 export interface Lighting {
   ambient: [number, number, number];
   steps: number;
@@ -268,6 +360,7 @@ export class Renderer {
   scale = 1;
   private sprite: WebGLProgram;
   private composite: WebGLProgram;
+  private well: WebGLProgram;
   private vao: WebGLVertexArrayObject;
   private quadVao: WebGLVertexArrayObject;
   private instBuf: WebGLBuffer;
@@ -285,11 +378,13 @@ export class Renderer {
     this.gl = gl;
     this.sprite = compile(gl, SPRITE_VS, SPRITE_FS);
     this.composite = compile(gl, QUAD_VS, COMPOSITE_FS);
+    this.well = compile(gl, QUAD_VS, WELL_FS);
     for (const [prog, names] of [
       [this.sprite, ["u_camDev", "u_res", "u_scale", "u_page", "u_tex", "u_additive", "u_keys", "u_pals"]],
       [this.composite, ["u_color", "u_glow", "u_illum", "u_ambient", "u_steps", "u_res", "u_camDev", "u_scale", "u_vignette", "u_tint", "u_tintK"]],
+      [this.well, ["u_res", "u_scale", "u_camDev", "u_center", "u_a0", "u_t", "u_shape", "u_stone", "u_wall", "u_deep"]],
     ] as const)
-      for (const n of names) this.loc[(prog === this.sprite ? "s." : "c.") + n] = gl.getUniformLocation(prog, n);
+      for (const n of names) this.loc[(prog === this.sprite ? "s." : prog === this.well ? "w." : "c.") + n] = gl.getUniformLocation(prog, n);
 
     const corners = gl.createBuffer()!;
     gl.bindBuffer(gl.ARRAY_BUFFER, corners);
@@ -448,12 +543,13 @@ export class Renderer {
   }
 
   /** Draw a frame: the world's three layers lit and put together on the screen, the UI over it. */
-  render(world: { back: Batch; color: Batch; front: Batch; glow: Batch; illum: Batch }, ui: Batch, camX: number, camY: number, light: Lighting, clear: [number, number, number]): void {
+  render(world: { back: Batch; color: Batch; front: Batch; glow: Batch; illum: Batch }, ui: Batch, camX: number, camY: number, light: Lighting, clear: [number, number, number], well?: Well): void {
     const gl = this.gl;
     gl.viewport(0, 0, this.canvas.width, this.canvas.height);
     gl.bindFramebuffer(gl.FRAMEBUFFER, this.color.fb);
     gl.clearColor(clear[0], clear[1], clear[2], 1);
     gl.clear(gl.COLOR_BUFFER_BIT);
+    if (well) this.drawWell(well, camX, camY);
     this.drawBatch(world.back, camX, camY, false);
     this.drawBatch(world.color, camX, camY, false);
     this.drawBatch(world.front, camX, camY, false);
@@ -492,6 +588,26 @@ export class Renderer {
     gl.bindVertexArray(null);
 
     this.drawBatch(ui, 0, 0, false);
+  }
+
+  /** The stairwell into the colour target, under whatever the world draws over it. */
+  private drawWell(w: Well, camX: number, camY: number): void {
+    const gl = this.gl, L = (n: string) => this.loc["w." + n]!;
+    gl.disable(gl.BLEND);
+    gl.useProgram(this.well);
+    gl.uniform2f(L("u_res"), this.canvas.width, this.canvas.height);
+    gl.uniform1f(L("u_scale"), this.scale);
+    gl.uniform2f(L("u_camDev"), Math.round(camX * this.scale), Math.round(camY * this.scale));
+    gl.uniform2f(L("u_center"), w.center[0], w.center[1]);
+    gl.uniform1f(L("u_a0"), w.a0);
+    gl.uniform1f(L("u_t"), w.t);
+    gl.uniform4f(L("u_shape"), ...w.shape);
+    gl.uniform3fv(L("u_stone"), w.stone.flat());
+    gl.uniform3fv(L("u_wall"), w.wall.flat());
+    gl.uniform3f(L("u_deep"), ...w.deep);
+    gl.bindVertexArray(this.quadVao);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    gl.bindVertexArray(null);
   }
 }
 

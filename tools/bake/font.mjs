@@ -1,7 +1,7 @@
 // The game's pixel fonts, rasterized at bake time from open fonts at their native pixel size (art/fonts):
 //
-//   title  Fantasy Warrior, 11 px  (Douglas Vautour / Burpy Fresh, CC BY 4.0): blackletter-flavoured capitals for
-//          the name of the game, floors, bosses, heroes and screen titles.
+//   title  Pixeloid Sans Bold, 9 px (GGBotNet, SIL OFL 1.1): bold capitals for the name of the game, floors, bosses,
+//          heroes and screen titles, drawn at two or three times their size (clear at any distance).
 //   big    Pixeloid Sans, 9 px     (GGBotNet, SIL OFL 1.1): the body text, 7 px capitals like the font it replaces.
 //   mini   Tiny5, 8 px             (The Tiny5 Project Authors, SIL OFL 1.1): 5 px capitals for small labels.
 //
@@ -14,7 +14,7 @@ import { inside, readTTF } from "./ttf.mjs";
 
 const DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "art", "fonts");
 export const FONT_SPECS = {
-  title: { file: "FantasyWarrior-Regular.ttf", ppem: 11, gap: 1 },
+  title: { file: "PixeloidSans-Bold.ttf", ppem: 9, gap: 1 },
   big: { file: "PixeloidSans.ttf", ppem: 9, gap: 1 },
   mini: { file: "Tiny5.ttf", ppem: 8, gap: 1 },
 };

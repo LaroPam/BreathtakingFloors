@@ -98,27 +98,29 @@ export interface EnemyDef {
   shot: number;
   /** Bosses: the line under their name when they enter. */
   title?: Text;
+  /** Moves only in the air, hop by hop, in time with its animation (slimes). */
+  hops?: boolean;
 }
 type Def = Omit<EnemyDef, "id">;
 const E = (d: Partial<Def> & Pick<Def, "key" | "name" | "anim" | "ai" | "hp" | "speed" | "xp">): Def => ({ glow: "", scale: 1, elite: false, every: 0, shot: 2, ...d });
 const DEFS: Def[] = [
-  E({ key: "slime", name: { ru: "СЛИЗЕНЬ", en: "SLIME" }, anim: "slime", ai: AI.Chase, hp: 20, speed: 30, xp: 1, glow: "#3ad050" }),
-  E({ key: "bat", name: { ru: "НЕТОПЫРЬ", en: "BAT" }, anim: "bat", ai: AI.Flutter, hp: 10, speed: 62, xp: 1 }),
-  E({ key: "skull", name: { ru: "ОГНЕННЫЙ ЧЕРЕП", en: "FIRE SKULL" }, anim: "skull", ai: AI.Shooter, hp: 34, speed: 40, xp: 3, glow: "#ff8a2a", every: 2.8 }),
-  E({ key: "eye", name: { ru: "ОКО", en: "WATCHER" }, anim: "eye", ai: AI.Turret, hp: 60, speed: 16, xp: 5, glow: "#ff3a5a", every: 3.8 }),
-  E({ key: "ghost", name: { ru: "ПРИЗРАК", en: "GHOST" }, anim: "ghost", ai: AI.Phantom, hp: 30, speed: 44, xp: 3, glow: "#c8d8ff" }),
-  E({ key: "wisp", name: { ru: "ОГОНЁК", en: "WISP" }, anim: "wisp", ai: AI.Bomber, hp: 14, speed: 58, xp: 2, glow: "#ff8a2a" }),
-  E({ key: "frog", name: { ru: "ЖАБА-ПРЫГУН", en: "LEAPING TOAD" }, anim: "frog", ai: AI.Leaper, hp: 26, speed: 0, xp: 2, every: 1.7 }),
-  E({ key: "snake", name: { ru: "ЗМЕЯ", en: "SNAKE" }, anim: "snake", ai: AI.Slither, hp: 16, speed: 70, xp: 1 }),
-  E({ key: "jelly", name: { ru: "ГРОЗОВАЯ МЕДУЗА", en: "STORM JELLY" }, anim: "jelly", ai: AI.Drifter, hp: 44, speed: 24, xp: 4, glow: "#c684ff", every: 3.2 }),
-  E({ key: "bird", name: { ru: "КРОВАВЫЙ СТРИЖ", en: "BLOOD SWIFT" }, anim: "bird", ai: AI.Swooper, hp: 16, speed: 60, xp: 2, every: 2.6 }),
-  E({ key: "moth", name: { ru: "ЦЕЛЕБНЫЙ МОТЫЛЁК", en: "MENDING MOTH" }, anim: "moth", ai: AI.Healer, hp: 22, speed: 46, xp: 4, glow: "#7ee88a" }),
-  E({ key: "frog_toxic", name: { ru: "ЯДОВИТАЯ ЖАБА", en: "VENOM TOAD" }, anim: "frog_toxic", ai: AI.Leaper, hp: 40, speed: 0, xp: 3, every: 1.5, shot: 4 }),
-  E({ key: "slime_ice", name: { ru: "ЛЕДЯНОЙ СЛИЗЕНЬ", en: "FROST SLIME" }, anim: "slime_ice", ai: AI.Chase, hp: 34, speed: 32, xp: 2, glow: "#78ccf4" }),
-  E({ key: "snake_ice", name: { ru: "ИНЕЙНАЯ ЗМЕЯ", en: "RIME SNAKE" }, anim: "snake_ice", ai: AI.Slither, hp: 26, speed: 78, xp: 2 }),
-  E({ key: "skull_ice", name: { ru: "ХЛАДНЫЙ ЧЕРЕП", en: "COLD SKULL" }, anim: "skull_ice", ai: AI.Shooter, hp: 50, speed: 40, xp: 4, glow: "#78ccf4", every: 2.4, shot: 5 }),
-  E({ key: "slime_elite", name: { ru: "КРОВАВЫЙ СЛИЗЕНЬ", en: "BLOOD SLIME" }, anim: "slime_elite", ai: AI.Chase, hp: 150, speed: 36, xp: 15, glow: "#ff3a3a", elite: true }),
-  E({ key: "skull_elite", name: { ru: "ЧЕРЕП-КОЛДУН", en: "HEX SKULL" }, anim: "skull_elite", ai: AI.Shooter, hp: 200, speed: 42, xp: 20, glow: "#c684ff", elite: true, every: 1.9, shot: 3 }),
+  E({ key: "slime", name: { ru: "СЛИЗЕНЬ", en: "SLIME" }, anim: "slime", ai: AI.Chase, hp: 20, speed: 30, xp: 1, glow: "#3ad050", scale: 0.6, hops: true }),
+  E({ key: "bat", name: { ru: "НЕТОПЫРЬ", en: "BAT" }, anim: "bat", ai: AI.Flutter, hp: 10, speed: 62, xp: 1, scale: 0.7 }),
+  E({ key: "skull", name: { ru: "ОГНЕННЫЙ ЧЕРЕП", en: "FIRE SKULL" }, anim: "skull", ai: AI.Shooter, hp: 34, speed: 40, xp: 3, glow: "#ff8a2a", every: 2.8, scale: 0.5 }),
+  E({ key: "eye", name: { ru: "ОКО", en: "WATCHER" }, anim: "eye", ai: AI.Turret, hp: 60, speed: 16, xp: 5, glow: "#ff3a5a", every: 3.8, scale: 0.6 }),
+  E({ key: "ghost", name: { ru: "ПРИЗРАК", en: "GHOST" }, anim: "ghost", ai: AI.Phantom, hp: 30, speed: 44, xp: 3, glow: "#c8d8ff", scale: 0.65 }),
+  E({ key: "wisp", name: { ru: "ОГОНЁК", en: "WISP" }, anim: "wisp", ai: AI.Bomber, hp: 14, speed: 58, xp: 2, glow: "#ff8a2a", scale: 0.7 }),
+  E({ key: "frog", name: { ru: "ЖАБА-ПРЫГУН", en: "LEAPING TOAD" }, anim: "frog", ai: AI.Leaper, hp: 26, speed: 0, xp: 2, every: 1.7, scale: 0.7 }),
+  E({ key: "snake", name: { ru: "ЗМЕЯ", en: "SNAKE" }, anim: "snake", ai: AI.Slither, hp: 16, speed: 70, xp: 1, scale: 0.75 }),
+  E({ key: "jelly", name: { ru: "ГРОЗОВАЯ МЕДУЗА", en: "STORM JELLY" }, anim: "jelly", ai: AI.Drifter, hp: 44, speed: 24, xp: 4, glow: "#c684ff", every: 3.2, scale: 0.6 }),
+  E({ key: "bird", name: { ru: "КРОВАВЫЙ СТРИЖ", en: "BLOOD SWIFT" }, anim: "bird", ai: AI.Swooper, hp: 16, speed: 60, xp: 2, every: 2.6, scale: 0.7 }),
+  E({ key: "moth", name: { ru: "ЦЕЛЕБНЫЙ МОТЫЛЁК", en: "MENDING MOTH" }, anim: "moth", ai: AI.Healer, hp: 22, speed: 46, xp: 4, glow: "#7ee88a", scale: 0.7 }),
+  E({ key: "frog_toxic", name: { ru: "ЯДОВИТАЯ ЖАБА", en: "VENOM TOAD" }, anim: "frog_toxic", ai: AI.Leaper, hp: 40, speed: 0, xp: 3, every: 1.5, shot: 4, scale: 0.75 }),
+  E({ key: "slime_ice", name: { ru: "ЛЕДЯНОЙ СЛИЗЕНЬ", en: "FROST SLIME" }, anim: "slime_ice", ai: AI.Chase, hp: 34, speed: 32, xp: 2, glow: "#78ccf4", scale: 0.65, hops: true }),
+  E({ key: "snake_ice", name: { ru: "ИНЕЙНАЯ ЗМЕЯ", en: "RIME SNAKE" }, anim: "snake_ice", ai: AI.Slither, hp: 26, speed: 78, xp: 2, scale: 0.75 }),
+  E({ key: "skull_ice", name: { ru: "ХЛАДНЫЙ ЧЕРЕП", en: "COLD SKULL" }, anim: "skull_ice", ai: AI.Shooter, hp: 50, speed: 40, xp: 4, glow: "#78ccf4", every: 2.4, shot: 5, scale: 0.55 }),
+  E({ key: "slime_elite", name: { ru: "КРОВАВЫЙ СЛИЗЕНЬ", en: "BLOOD SLIME" }, anim: "slime_elite", ai: AI.Chase, hp: 150, speed: 36, xp: 15, glow: "#ff3a3a", elite: true, scale: 0.9, hops: true }),
+  E({ key: "skull_elite", name: { ru: "ЧЕРЕП-КОЛДУН", en: "HEX SKULL" }, anim: "skull_elite", ai: AI.Shooter, hp: 200, speed: 42, xp: 20, glow: "#c684ff", elite: true, every: 1.9, shot: 3, scale: 0.7 }),
   E({ key: "eye_boss", name: { ru: "ВЕЛИКОЕ ОКО", en: "THE GREAT EYE" }, anim: "eye_boss", ai: AI.Boss, hp: 1700, speed: 22, xp: 100, glow: "#f53cd1", scale: 2, elite: true, title: { ru: "ХРАНИТЕЛЬ СКЛЕПА, ЧТО НЕ СМЫКАЕТ ВЕК", en: "WARDEN OF THE CRYPT, WHO NEVER BLINKS" } }),
   E({ key: "frog_king", name: { ru: "ЖАБИЙ КОРОЛЬ", en: "THE TOAD KING" }, anim: "frog_king", ai: AI.BossFrog, hp: 2800, speed: 0, xp: 140, glow: "#ff8a2a", scale: 2.2, elite: true, title: { ru: "ВЛАДЫКА ТОПКОГО САДА", en: "LORD OF THE SUNKEN GARDEN" } }),
   E({ key: "eye_void", name: { ru: "ОКО ПУСТОТЫ", en: "THE VOID EYE" }, anim: "eye_void", ai: AI.Boss, hp: 4600, speed: 26, xp: 200, glow: "#78ccf4", scale: 2.3, elite: true, title: { ru: "ТО, ЧТО СМОТРИТ ИЗ-ПОД БАШНИ", en: "WHAT WATCHES FROM BENEATH THE TOWER" } }),
@@ -231,7 +233,7 @@ export const RELICS: RelicDef[] = [
     kind: RelicKind.Halo, el: El.Holy,
     name: { ru: "НИМБ", en: "HALO" },
     desc: { ru: "ВОЛНА СВЕТА ОТБРАСЫВАЕТ ВСЕХ ВОКРУГ", en: "A WAVE OF LIGHT HURLS BACK ALL AROUND" },
-    levels: [{ ru: "ШИРЕ", en: "WIDER" }, { ru: "ЧАЩЕ НА 25%", en: "25% MORE OFTEN" }, { ru: "+50% УРОНА", en: "+50% DAMAGE" }, { ru: "ГАСИТ ВРАЖЕСКИЕ ПУЛИ", en: "ERASES ENEMY BULLETS" }],
+    levels: [{ ru: "ШИРЕ", en: "WIDER" }, { ru: "ЧАЩЕ НА 25%", en: "25% MORE OFTEN" }, { ru: "+50% УРОНА", en: "+50% DAMAGE" }, { ru: "ГАСИТ ВРАЖЕСКИЕ СНАРЯДЫ", en: "ERASES ENEMY BOLTS" }],
   },
   {
     kind: RelicKind.Void, el: El.Void,
@@ -257,7 +259,7 @@ export const STATS: StatDef[] = [
   { id: "haste", name: { ru: "ЛЁГКАЯ РУКА", en: "LIGHT HAND" }, desc: { ru: "+12% СКОРОСТИ АТАК", en: "+12% ATTACK SPEED" }, max: 6, weight: 9 },
   { id: "reach", name: { ru: "ДЛИННЫЙ КЛИНОК", en: "LONG BLADE" }, desc: { ru: "+15% ДАЛЬНОСТИ: ШИРЕ УДАРЫ, БЫСТРЕЕ СНАРЯДЫ", en: "+15% REACH: WIDER BLOWS, FASTER SHOTS" }, max: 4, weight: 7 },
   { id: "wave", name: { ru: "ВОЛНА СВЕТА", en: "WAVE OF LIGHT" }, desc: { ru: "УДАР ПУСКАЕТ СВЕТОВОЙ СЕРП, ВЫСТРЕЛ - ЕЩЁ ОДИН СНАРЯД", en: "BLOWS THROW A CRESCENT, SHOTS ONE MORE MISSILE" }, max: 3, weight: 6 },
-  { id: "parry", name: { ru: "ОТРАЖЕНИЕ", en: "DEFLECT" }, desc: { ru: "РАЗРУБЛЕННЫЕ ПУЛИ ЛЕТЯТ ОБРАТНО", en: "BULLETS YOU CUT FLY BACK" }, max: 1, weight: 4 },
+  { id: "parry", name: { ru: "ОТРАЖЕНИЕ", en: "DEFLECT" }, desc: { ru: "РАЗРУБЛЕННЫЕ СНАРЯДЫ ЛЕТЯТ ОБРАТНО", en: "BOLTS YOU CUT FLY BACK" }, max: 1, weight: 4 },
   { id: "speed", name: { ru: "ЛЁГКИЕ САПОГИ", en: "LIGHT BOOTS" }, desc: { ru: "+8% СКОРОСТИ", en: "+8% MOVE SPEED" }, max: 4, weight: 6 },
   { id: "maxhp", name: { ru: "ЗАКАЛЁННОЕ СЕРДЦЕ", en: "TEMPERED HEART" }, desc: { ru: "+1 СЕРДЦЕ И ЛЕЧЕНИЕ", en: "+1 HEART, AND HEAL" }, max: 4, weight: 5 },
   { id: "magnet", name: { ru: "МАГНИТ ДУШ", en: "SOUL MAGNET" }, desc: { ru: "+35% РАДИУС СБОРА", en: "+35% PICKUP RANGE" }, max: 4, weight: 6 },
@@ -326,7 +328,7 @@ export const EVOLUTIONS: EvolutionDef[] = [
   { relic: RelicKind.Lance, stat: "reach", icon: "e_lance", name: { ru: "ЛЕДЯНОЙ ШКВАЛ", en: "BLIZZARD" }, desc: { ru: "КОПЬЯ ЛЕТЯТ ВО ВСЕ СТОРОНЫ И ПРОБИВАЮТ ВСЕХ, ТРИ ИЗ НИХ - В БЛИЖАЙШИХ", en: "LANCES FLY ALL ROUND AND PIERCE EVERYTHING, THREE AT THE NEAREST" } },
   { relic: RelicKind.Coil, stat: "haste", icon: "e_coil", name: { ru: "НЕБЕСНАЯ БУРЯ", en: "SKY TEMPEST" }, desc: { ru: "МОЛНИИ БЬЮТ С НЕБА В ЧЕТЫРЁХ ВРАГОВ СРАЗУ И ПЕРЕСКАКИВАЮТ ДАЛЬШЕ", en: "LIGHTNING STRIKES FOUR FOES FROM THE SKY AND LEAPS ON" } },
   { relic: RelicKind.Flask, stat: "crit", icon: "e_flask", name: { ru: "ЧУМНОЙ КОТЁЛ", en: "PLAGUE CAULDRON" }, desc: { ru: "ЧЕТЫРЕ ФЛЯГИ РАЗОМ, ОТРАВЛЕННЫЕ ВРАГИ ЛОПАЮТСЯ НОВЫМИ ЛУЖАМИ", en: "FOUR FLASKS AT ONCE; POISONED FOES BURST INTO NEW POOLS" } },
-  { relic: RelicKind.Halo, stat: "wave", icon: "e_halo", name: { ru: "ОБИТЕЛЬ СВЕТА", en: "SANCTUARY" }, desc: { ru: "СВЯТОЙ КРУГ ВСЕГДА С ТОБОЙ: ЖЖЁТ ВРАГОВ, ГАСИТ ПУЛИ, РАЗ В 40 С ЛЕЧИТ СЕРДЦЕ", en: "A HOLY RING ALWAYS ABOUT YOU: BURNS FOES, SNUFFS BULLETS, HEALS A HEART EVERY 40 S" } },
+  { relic: RelicKind.Halo, stat: "wave", icon: "e_halo", name: { ru: "ОБИТЕЛЬ СВЕТА", en: "SANCTUARY" }, desc: { ru: "СВЯТОЙ КРУГ ВСЕГДА С ТОБОЙ: ЖЖЁТ ВРАГОВ, ГАСИТ СНАРЯДЫ, РАЗ В 40 С ЛЕЧИТ СЕРДЦЕ", en: "A HOLY RING ALWAYS ABOUT YOU: BURNS FOES, SNUFFS BOLTS, HEALS A HEART EVERY 40 S" } },
   { relic: RelicKind.Void, stat: "edge", icon: "e_void", name: { ru: "ЧЁРНАЯ ЗВЕЗДА", en: "BLACK STAR" }, desc: { ru: "ЗВЕЗДА ПУСТОТЫ ТЯНЕТ ВРАГОВ В СЕБЯ И РАЗ В ЧЕТЫРЕ СЕКУНДЫ СХЛОПЫВАЕТСЯ", en: "A STAR OF VOID DRAWS FOES IN AND COLLAPSES EVERY FOUR SECONDS" } },
 ];
 export const evolutionOf = (kind: RelicKind): EvolutionDef => EVOLUTIONS.find((e) => e.relic === kind)!;
@@ -351,7 +353,7 @@ export const QUESTS: QuestDef[] = [
   { kind: "untouched", from: 1, name: { ru: "НИ ЦАРАПИНЫ", en: "UNTOUCHED" }, goal: { ru: "ЗАЖГИ ЖАРОВНЮ, НЕ ПОЛУЧИВ НИ ОДНОГО УДАРА", en: "LIGHT A BRAZIER WITHOUT TAKING A SINGLE HIT" } },
   { kind: "swift", from: 1, name: { ru: "БЫСТРЫЕ НОГИ", en: "SWIFT FEET" }, goal: { ru: "ЗАЖГИ ВСЕ ЖАРОВНИ, ПОКА НЕ ВЫШЛО ВРЕМЯ", en: "LIGHT EVERY BRAZIER BEFORE TIME RUNS OUT" } },
   { kind: "bounty", from: 2, name: { ru: "НАГРАДА ЗА ГОЛОВУ", en: "BOUNTY" }, goal: { ru: "УБЕЙ МЕЧЕНУЮ ЭЛИТУ, ПОКА ОНА НЕ УШЛА", en: "SLAY THE MARKED ELITE BEFORE IT ESCAPES" } },
-  { kind: "graze", from: 2, name: { ru: "ТАНЕЦ С ПУЛЯМИ", en: "BULLET DANCE" }, goal: { ru: "ЗАДЕНЬ {n} ПУЛЬ, НЕ ПОПАДАЯ ПОД НИХ", en: "GRAZE {n} BULLETS WITHOUT BEING HIT" } },
+  { kind: "graze", from: 2, name: { ru: "ТАНЕЦ СО СНАРЯДАМИ", en: "BOLT DANCE" }, goal: { ru: "ЗАДЕНЬ {n} СНАРЯДОВ, НЕ ПОПАДАЯ ПОД НИХ", en: "GRAZE {n} BOLTS WITHOUT BEING HIT" } },
   { kind: "alchemy", from: 2, name: { ru: "АЛХИМИЯ", en: "ALCHEMY" }, goal: { ru: "ВЫЗОВИ {n} РЕАКЦИИ СТИХИЙ", en: "SET OFF {n} REACTIONS" } },
 ];
 export const questDef = (kind: QuestKind): QuestDef => QUESTS.find((q) => q.kind === kind)!;
@@ -374,7 +376,7 @@ export const TASKS: TaskDef[] = [
   { id: "evolve", name: { ru: "ПОЛУЧИ ЭВОЛЮЦИЮ", en: "EVOLVE A RELIC" }, goals: [1], reward: 70 },
   { id: "spirits", name: { ru: "ВЫПОЛНИ {n} ЗАДАНИЯ ДУХОВ", en: "COMPLETE {n} SPIRIT QUESTS" }, goals: [2, 3], reward: 45 },
   { id: "chests", name: { ru: "ОТКРОЙ {n} СУНДУКОВ", en: "OPEN {n} CHESTS" }, goals: [5, 8], reward: 35 },
-  { id: "grazes", name: { ru: "ЗАДЕНЬ {n} ПУЛЬ", en: "GRAZE {n} BULLETS" }, goals: [100, 150], reward: 35 },
+  { id: "grazes", name: { ru: "ЗАДЕНЬ {n} СНАРЯДОВ", en: "GRAZE {n} BOLTS" }, goals: [100, 150], reward: 35 },
   { id: "secrets", name: { ru: "ВСКРОЙ ТАЙНИКИ В СТЕНАХ: {n}", en: "BREAK OPEN HIDDEN CACHES: {n}" }, goals: [1, 2], reward: 40 },
   { id: "trial", name: { ru: "ДОЙДИ ДО {n} ЭТАЖА В ИСПЫТАНИИ ДНЯ", en: "REACH FLOOR {n} IN THE DAILY TRIAL" }, goals: [2], reward: 45 },
 ];
@@ -433,7 +435,7 @@ export const ACHIEVEMENTS: AchDef[] = [
   { id: "secret", icon: ["hud", "secret"], reward: 20, stat: "secrets", goal: 1, name: { ru: "ЧТО ЗА СТЕНОЙ?", en: "WHAT LIES BEHIND?" }, desc: { ru: "ВСКРОЙ ТАЙНИК В СТЕНЕ", en: "BREAK OPEN A CACHE IN THE WALL" } },
   { id: "secrets", icon: ["hud", "secret"], reward: 50, stat: "secrets", goal: 12, name: { ru: "КЛАДОИСКАТЕЛЬ", en: "TREASURE HUNTER" }, desc: { ru: "ВСКРОЙ 12 ТАЙНИКОВ", en: "BREAK OPEN 12 HIDDEN CACHES" } },
   { id: "urns", icon: ["hud", "urn"], reward: 20, stat: "urns", goal: 100, name: { ru: "ГОНЧАРНЫЙ ПОГРОМ", en: "POTTERY RAMPAGE" }, desc: { ru: "РАЗБЕЙ 100 УРН", en: "BREAK 100 URNS" } },
-  { id: "grazes", icon: ["hud", "stamina"], reward: 20, stat: "grazes", goal: 500, name: { ru: "ТАНЕЦ СРЕДИ ПУЛЬ", en: "DANCER AMONG BULLETS" }, desc: { ru: "ЗАДЕНЬ 500 ПУЛЬ", en: "GRAZE 500 BULLETS" } },
+  { id: "grazes", icon: ["hud", "stamina"], reward: 20, stat: "grazes", goal: 500, name: { ru: "ТАНЕЦ СРЕДИ СНАРЯДОВ", en: "DANCER AMONG BOLTS" }, desc: { ru: "ЗАДЕНЬ 500 СНАРЯДОВ", en: "GRAZE 500 BOLTS" } },
   { id: "heroes", icon: ["hud", "lock"], reward: 50, stat: "heroesKnown", goal: 6, name: { ru: "ПОЛНЫЙ ОТРЯД", en: "THE FULL COMPANY" }, desc: { ru: "ОТКРОЙ ВСЕХ ГЕРОЕВ", en: "UNLOCK EVERY HERO" } },
   { id: "forge", icon: ["hud", "anvil"], reward: 40, stat: "forgeLevels", goal: 8, name: { ru: "КУЗНЕЦ", en: "SMITH" }, desc: { ru: "КУПИ ВСЁ В КУЗНИЦЕ", en: "BUY EVERYTHING IN THE FORGE" } },
   { id: "tasks", icon: ["hud", "daily"], reward: 25, name: { ru: "ПРИЛЕЖНЫЙ", en: "DILIGENT" }, desc: { ru: "ВЫПОЛНИ ВСЕ ТРИ ЗАДАНИЯ ДНЯ", en: "COMPLETE ALL THREE DAILY TASKS" } },
@@ -625,15 +627,15 @@ export const HEROES: HeroDef[] = [
   {
     id: "knight", cost: 0, name: { ru: "РЫЦАРЬ ФОНАРЯ", en: "LANTERN KNIGHT" }, title: { ru: "СТАЛЬ И ТЁПЛЫЙ СВЕТ", en: "STEEL AND WARM LIGHT" },
     perk: { ru: "+1 СЕРДЦЕ, ФОНАРЬ СВЕТИТ НА 20% ШИРЕ", en: "+1 HEART, A LANTERN 20% WIDER" },
-    weapon: "sword", hearts: 6, speed: 1, dashCd: 1, dashes: 1, lantern: 1.2, light: "lantern", lightColor: [1, 0.82, 0.58],
+    weapon: "sword", hearts: 6, speed: 1, dashCd: 3.5, dashes: 1, lantern: 1.2, light: "lantern", lightColor: [1, 0.82, 0.58],
     might: 1, haste: 1, crit: 0.05,
-    ability: { name: { ru: "ВСПЫШКА ФОНАРЯ", en: "LANTERN FLARE" }, desc: { ru: "ВЗРЫВ СВЕТА ЖЖЁТ ВСЕХ ВОКРУГ И СТИРАЕТ ПУЛИ. 3 СЕКУНДЫ ЩИТ СВЕТА: НЕУЯЗВИМ, ПУЛИ ГАСНУТ", en: "A BURST OF LIGHT BURNS ALL AROUND AND ERASES BULLETS. 3 SECONDS OF A WARD: UNHARMED, BULLETS DIE ON IT" } },
+    ability: { name: { ru: "ВСПЫШКА ФОНАРЯ", en: "LANTERN FLARE" }, desc: { ru: "ВЗРЫВ СВЕТА ЖЖЁТ ВСЕХ ВОКРУГ И СТИРАЕТ СНАРЯДЫ. 3 СЕКУНДЫ ЩИТ СВЕТА: НЕУЯЗВИМ, СНАРЯДЫ ГАСНУТ", en: "A BURST OF LIGHT BURNS ALL AROUND AND ERASES BOLTS. 3 SECONDS OF A WARD: UNHARMED, BOLTS DIE ON IT" } },
 
   },
   {
     id: "ranger", cost: 60, name: { ru: "СЛЕДОПЫТ", en: "RANGER" }, title: { ru: "ЛУК, КОЖА И ЛЁГКИЙ ШАГ", en: "BOW, LEATHER, A LIGHT STEP" },
     perk: { ru: "ДВА РЫВКА ПОДРЯД, БЕГАЕТ БЫСТРЕЕ, СТРЕЛЫ ПРОБИВАЮТ +1", en: "TWO DASHES, FASTER FEET, ARROWS PIERCE +1" },
-    weapon: "bow", hearts: 4, speed: 1.12, dashCd: 0.85, dashes: 2, lantern: 1, light: "lantern", lightColor: [1, 0.85, 0.6],
+    weapon: "bow", hearts: 4, speed: 1.12, dashCd: 3.2, dashes: 2, lantern: 1, light: "lantern", lightColor: [1, 0.85, 0.6],
     might: 0.9, haste: 1.15, crit: 0.1,
     ability: { name: { ru: "ГРАД СТРЕЛ", en: "ARROW RAIN" }, desc: { ru: "ДВАДЦАТЬ СТРЕЛ ПАДАЮТ С НЕБА НА БЛИЖАЙШИХ ВРАГОВ, КАЖДАЯ СИЛЬНЕЕ ВЫСТРЕЛА", en: "TWENTY ARROWS FALL FROM THE SKY ON THE NEAREST FOES, EACH HARDER THAN A SHOT" } },
 
@@ -641,7 +643,7 @@ export const HEROES: HeroDef[] = [
   {
     id: "mage", cost: 90, name: { ru: "ЧАРОДЕЙКА", en: "SORCERESS" }, title: { ru: "ОГОНЬ, ЛЁД И ГРОЗА", en: "FIRE, ICE AND STORM" },
     perk: { ru: "ЗАКЛИНАНИЯ ЧЕРЕДУЮТ СТИХИИ И САМИ ВЫЗЫВАЮТ РЕАКЦИИ", en: "HER SPELLS TAKE TURNS AND SET OFF REACTIONS" },
-    weapon: "spell", hearts: 4, speed: 0.98, dashCd: 1, dashes: 1, lantern: 1, light: "wisp", lightColor: [0.55, 0.85, 1],
+    weapon: "spell", hearts: 4, speed: 0.98, dashCd: 3.5, dashes: 1, lantern: 1, light: "wisp", lightColor: [0.55, 0.85, 1],
     might: 1.15, haste: 0.95, crit: 0.05,
     ability: { name: { ru: "БУРЯ СТИХИЙ", en: "ELEMENTAL STORM" }, desc: { ru: "ОГОНЬ, ЛЁД И МОЛНИЯ ПО ОЧЕРЕДИ БЬЮТ В САМЫЕ ГУСТЫЕ ТОЛПЫ И САМИ ВЫЗЫВАЮТ РЕАКЦИИ", en: "FIRE, ICE AND LIGHTNING STRIKE THE THICKEST CROWDS IN TURN AND SET OFF REACTIONS" } },
 
@@ -649,7 +651,7 @@ export const HEROES: HeroDef[] = [
   {
     id: "reaper", cost: 140, name: { ru: "ЖНЕЦ", en: "REAPER" }, title: { ru: "КОСА И ЗЕЛЁНЫЙ ОГОНЬ ДУШ", en: "A SCYTHE AND GREEN SOUL-FIRE" },
     perk: { ru: "ЖАТВА: КАЖДЫЕ 25 УБИЙСТВ ВОЗВРАЩАЮТ СЕРДЦЕ", en: "HARVEST: EVERY 25 KILLS GIVE A HEART BACK" },
-    weapon: "scythe", hearts: 5, speed: 0.95, dashCd: 1.1, dashes: 1, lantern: 1, light: "wisp", lightColor: [0.55, 1, 0.6],
+    weapon: "scythe", hearts: 5, speed: 0.95, dashCd: 3.8, dashes: 1, lantern: 1, light: "wisp", lightColor: [0.55, 1, 0.6],
     might: 1.1, haste: 0.9, crit: 0.08,
     ability: { name: { ru: "ЖАТВА", en: "HARVEST" }, desc: { ru: "КОСА ДУШ ПРОНОСИТСЯ ВОКРУГ: РАНЕНЫХ ДОБИВАЕТ СРАЗУ, КАЖДЫЕ 6 ДУШ ВОЗВРАЩАЮТ СЕРДЦЕ", en: "A SCYTHE OF SOULS SWEEPS AROUND: THE WOUNDED DIE AT ONCE, EVERY 6 SOULS GIVE A HEART BACK" } },
 
@@ -657,7 +659,7 @@ export const HEROES: HeroDef[] = [
   {
     id: "berserker", cost: 180, name: { ru: "БЕРСЕРК", en: "BERSERKER" }, title: { ru: "БРОНЗА, МЕХ И ЯРОСТЬ", en: "BRONZE, FUR AND FURY" },
     perk: { ru: "ЯРОСТЬ: ЧЕМ МЕНЬШЕ СЕРДЕЦ, ТЕМ СИЛЬНЕЕ УДАРЫ (ДО +70%)", en: "FURY: THE FEWER HEARTS, THE HARDER THE BLOWS (UP TO +70%)" },
-    weapon: "greatsword", hearts: 7, speed: 0.95, dashCd: 1.15, dashes: 1, lantern: 0.95, light: "lantern", lightColor: [1, 0.7, 0.45],
+    weapon: "greatsword", hearts: 7, speed: 0.95, dashCd: 4, dashes: 1, lantern: 0.95, light: "lantern", lightColor: [1, 0.7, 0.45],
     might: 1.25, haste: 0.85, crit: 0.05,
     ability: { name: { ru: "БОЕВОЙ КЛИЧ", en: "WAR CRY" }, desc: { ru: "РЁВ ОГЛУШАЕТ И ОТБРАСЫВАЕТ ВСЕХ РЯДОМ. 6 СЕКУНД УДАРЫ НА 50% СИЛЬНЕЕ И ЧАЩЕ", en: "A ROAR STUNS AND HURLS BACK ALL NEAR. FOR 6 SECONDS BLOWS LAND 50% HARDER AND FASTER" } },
 
@@ -665,7 +667,7 @@ export const HEROES: HeroDef[] = [
   {
     id: "shadow", cost: 240, name: { ru: "ТЕНЬ", en: "SHADE" }, title: { ru: "КОГТИ ИЗ СУМРАКА", en: "CLAWS OUT OF THE DUSK" },
     perk: { ru: "+20% КРИТА, РЫВОК РЕЖЕТ ВСЕХ НА ПУТИ", en: "+20% CRIT, THE DASH CUTS ALL IN ITS WAY" },
-    weapon: "claws", hearts: 4, speed: 1.15, dashCd: 0.8, dashes: 2, lantern: 0.9, light: "wisp", lightColor: [0.8, 0.5, 1],
+    weapon: "claws", hearts: 4, speed: 1.15, dashCd: 2.8, dashes: 2, lantern: 0.9, light: "wisp", lightColor: [0.8, 0.5, 1],
     might: 0.85, haste: 1.3, crit: 0.25,
     ability: { name: { ru: "ТАНЕЦ ТЕНЕЙ", en: "SHADOW DANCE" }, desc: { ru: "ПРЫЖКИ СКВОЗЬ ТЕНИ К СЕМИ ВРАГАМ ПОДРЯД, НЕУЯЗВИМА, КАЖДЫЙ УДАР КРИТИЧЕСКИЙ", en: "LEAPS THROUGH THE SHADOWS TO SEVEN FOES IN TURN, UNHARMED, EVERY BLOW CRITICAL" } },
 
