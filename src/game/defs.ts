@@ -329,6 +329,57 @@ export const EVOLUTIONS: EvolutionDef[] = [
 ];
 export const evolutionOf = (kind: RelicKind): EvolutionDef => EVOLUTIONS.find((e) => e.relic === kind)!;
 
+// ------------------------------------------------------------------------------------------------ quests
+/**
+ * Spirit quests: on every floor waits the ghost of a lightbearer who came down before, with a task for this floor.
+ * Done, it leaves a chest and embers; failed (hit, or out of time), it fades.
+ */
+export type QuestKind = "hunt" | "bounty" | "untouched" | "swift" | "purge" | "graze" | "alchemy";
+export interface QuestDef {
+  kind: QuestKind;
+  name: Text;
+  /** What to do; {n} is the count, {who} the hunted kind. */
+  goal: Text;
+  /** From which floor it can be given. */
+  from: number;
+}
+export const QUESTS: QuestDef[] = [
+  { kind: "hunt", from: 1, name: { ru: "ОХОТА", en: "THE HUNT" }, goal: { ru: "УБЕЙ {n}: {who}", en: "SLAY {n}: {who}" } },
+  { kind: "purge", from: 1, name: { ru: "ОЧИЩЕНИЕ", en: "PURGE" }, goal: { ru: "УБЕЙ {n} ВРАГОВ, ПОКА НЕ ВЫШЛО ВРЕМЯ", en: "SLAY {n} FOES BEFORE TIME RUNS OUT" } },
+  { kind: "untouched", from: 1, name: { ru: "НИ ЦАРАПИНЫ", en: "UNTOUCHED" }, goal: { ru: "ЗАЖГИ ЖАРОВНЮ, НЕ ПОЛУЧИВ НИ ОДНОГО УДАРА", en: "LIGHT A BRAZIER WITHOUT TAKING A SINGLE HIT" } },
+  { kind: "swift", from: 1, name: { ru: "БЫСТРЫЕ НОГИ", en: "SWIFT FEET" }, goal: { ru: "ЗАЖГИ ВСЕ ЖАРОВНИ, ПОКА НЕ ВЫШЛО ВРЕМЯ", en: "LIGHT EVERY BRAZIER BEFORE TIME RUNS OUT" } },
+  { kind: "bounty", from: 2, name: { ru: "НАГРАДА ЗА ГОЛОВУ", en: "BOUNTY" }, goal: { ru: "УБЕЙ МЕЧЕНУЮ ЭЛИТУ, ПОКА ОНА НЕ УШЛА", en: "SLAY THE MARKED ELITE BEFORE IT ESCAPES" } },
+  { kind: "graze", from: 2, name: { ru: "ТАНЕЦ С ПУЛЯМИ", en: "BULLET DANCE" }, goal: { ru: "ЗАДЕНЬ {n} ПУЛЬ, НЕ ПОПАДАЯ ПОД НИХ", en: "GRAZE {n} BULLETS WITHOUT BEING HIT" } },
+  { kind: "alchemy", from: 2, name: { ru: "АЛХИМИЯ", en: "ALCHEMY" }, goal: { ru: "ВЫЗОВИ {n} РЕАКЦИИ СТИХИЙ", en: "SET OFF {n} REACTIONS" } },
+];
+export const questDef = (kind: QuestKind): QuestDef => QUESTS.find((q) => q.kind === kind)!;
+/** The spirit's palette slot (after the heroes'): a ghost of the stock dummy in cold light. */
+export const SPIRIT_PALETTE = { k: "#1a2a3a", A: "#e8f8ff", B: "#a8d8f0", C: "#78b0d8", D: "#4a7aa8", E: "#9ad4ff", F: "#5aa0d8", G: "#3a6aa0", J: "#203a5a", m: "#ffffff" };
+
+/** Daily tasks: three a day, the same for everyone, progress carried over the day's runs, embers for each. */
+export type TaskId = "kills" | "braziers" | "floor" | "boss" | "reactions" | "evolve" | "spirits" | "chests" | "grazes" | "trial";
+export interface TaskDef {
+  id: TaskId;
+  /** {n} is the goal. */
+  name: Text;
+  goals: number[];
+  reward: number;
+}
+export const TASKS: TaskDef[] = [
+  { id: "kills", name: { ru: "УБЕЙ {n} ВРАГОВ", en: "SLAY {n} FOES" }, goals: [250, 350, 450], reward: 40 },
+  { id: "braziers", name: { ru: "ЗАЖГИ {n} ЖАРОВЕН", en: "LIGHT {n} BRAZIERS" }, goals: [9, 12, 15], reward: 35 },
+  { id: "floor", name: { ru: "ДОЙДИ ДО {n} ЭТАЖА", en: "REACH FLOOR {n}" }, goals: [3, 4, 5], reward: 50 },
+  { id: "boss", name: { ru: "ПОБЕДИ БОССА", en: "DEFEAT A BOSS" }, goals: [1], reward: 60 },
+  { id: "reactions", name: { ru: "ВЫЗОВИ {n} РЕАКЦИЙ", en: "SET OFF {n} REACTIONS" }, goals: [15, 25], reward: 40 },
+  { id: "evolve", name: { ru: "ПОЛУЧИ ЭВОЛЮЦИЮ", en: "EVOLVE A RELIC" }, goals: [1], reward: 70 },
+  { id: "spirits", name: { ru: "ВЫПОЛНИ {n} ЗАДАНИЯ ДУХОВ", en: "COMPLETE {n} SPIRIT QUESTS" }, goals: [2, 3], reward: 45 },
+  { id: "chests", name: { ru: "ОТКРОЙ {n} СУНДУКОВ", en: "OPEN {n} CHESTS" }, goals: [5, 8], reward: 35 },
+  { id: "grazes", name: { ru: "ЗАДЕНЬ {n} ПУЛЬ", en: "GRAZE {n} BULLETS" }, goals: [100, 150], reward: 35 },
+  { id: "trial", name: { ru: "ДОЙДИ ДО {n} ЭТАЖА В ИСПЫТАНИИ ДНЯ", en: "REACH FLOOR {n} IN THE DAILY TRIAL" }, goals: [2], reward: 45 },
+];
+/** Embers for finishing all three of the day's tasks. */
+export const TASK_BONUS = 50;
+
 // ------------------------------------------------------------------------------------------------ weapons
 export type WeaponId = "sword" | "hammer" | "spear" | "scythe" | "daggers" | "greatsword" | "claws" | "whip" | "bow" | "spell";
 /**

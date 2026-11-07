@@ -5,8 +5,8 @@ import { anim, frameAt, hasAnim, type Anim } from "../engine/atlas";
 import type { Audio } from "../engine/audio";
 import { rgba, rgbaf } from "../engine/renderer";
 import {
-  AI, biomeOf, bossOf, El, EL_COLOR, EN, ENEMIES, evolutionOf, FLOORS, heroDef, RELIC_MAX, RELICS, RelicKind, reactionFor, roster, WEAPON_IDS, WEAPONS,
-  type Biome, type Blow, type HeroDef, type Modifier, type Reaction, type StatId, type WeaponId,
+  AI, biomeOf, bossOf, El, EL_COLOR, EN, ENEMIES, evolutionOf, FLOORS, heroDef, QUESTS, RELIC_MAX, RELICS, RelicKind, reactionFor, roster, WEAPON_IDS, WEAPONS,
+  type Biome, type Blow, type HeroDef, type Modifier, type QuestKind, type Reaction, type StatId, type TaskId, type WeaponId,
 } from "./defs";
 import { getLang, t as tr, tx } from "./i18n";
 import { Bullets, Drops, Enemies, Grid, Particles, TEAM_FOE, TEAM_HERO } from "./pools";
@@ -156,6 +156,32 @@ export interface Rack {
   /** The hero must step off before swapping again. */
   armed: boolean;
 }
+/** The ghost of a lightbearer who came down before, waiting on the floor with a task. */
+export interface Spirit {
+  x: number;
+  y: number;
+  kind: QuestKind;
+  /** offer: waiting with its "!"; active: faint, watching; done / failed: rising away. */
+  state: "offer" | "active" | "done" | "failed";
+  /** Seconds in this state. */
+  t: number;
+}
+/** The quest taken from the floor's spirit. */
+export interface Quest {
+  kind: QuestKind;
+  need: number;
+  have: number;
+  /** Seconds left (timed quests; -1 for none) and how long it had. */
+  left: number;
+  total: number;
+  /** The hunted enemy kind (hunt), the marked elite's uid (bounty). */
+  type: number;
+  uid: number;
+  state: "active" | "done" | "failed";
+  /** Seconds since it ended (the tracker lingers, then goes). */
+  endT: number;
+}
+
 /** The boss's entrance: the world holds still while the camera looks at it. */
 export interface Cine {
   t: number;
@@ -196,6 +222,10 @@ export interface WorldEvents {
   victory(): void;
   reaction(r: Reaction): void;
   weapon(id: WeaponId, el: El): void;
+  /** A spirit's quest was taken, done or failed. */
+  quest(q: Quest): void;
+  /** Something the day's tasks count happened. */
+  count(id: TaskId, n?: number): void;
   banner(text: string, color?: number): void;
 }
 
@@ -318,6 +348,8 @@ export class World {
   racks: Rack[] = [];
   /** The boss's entrance while it plays. */
   cine: Cine | null = null;
+  spirit: Spirit | null = null;
+  quest: Quest | null = null;
   moveX = 0;
   moveY = 0;
   private spawnAcc = 0;
@@ -362,6 +394,7 @@ export class World {
     this.ghosts = [];
     this.portal = null;
     this.cine = null;
+    this.quest = null;
     this.bossSpawned = false;
     this.bossUid = 0;
     this.cleared = false;
@@ -424,6 +457,15 @@ export class World {
       // from the second floor on, more and more of them are steeped in an element (not the spellbook, not the fire whip)
       const el = this.floor >= 2 && !WEAPONS[weapon].el && !WEAPONS[weapon].ranged && R.chance(0.25 + 0.06 * this.floor) ? R.pick(ELEMENTS) : El.None;
       this.racks.push({ x: Math.round(x), y: Math.round(y), weapon, el, progress: 0, armed: true });
+      break;
+    }
+    // the spirit of one who came before, somewhere away from the start and the altar, with a task fit for this floor
+    this.spirit = null;
+    const questKinds = QUESTS.filter((q) => q.from <= this.floor && (q.kind !== "alchemy" || this.elementsAtHand() >= 2)).map((q) => q.kind);
+    for (let tries = 0; tries < 80 && questKinds.length; tries++) {
+      const x = R.range(60, W - 60), y = R.range(80, H - 40);
+      if (!clear(x, y, 12) || this.racks.some((r) => (x - r.x) ** 2 + (y - r.y) ** 2 < 110 * 110)) continue;
+      this.spirit = { x: Math.round(x), y: Math.round(y), kind: R.pick(questKinds), state: "offer", t: 0 };
       break;
     }
     this.motes = [];
@@ -570,6 +612,7 @@ export class World {
     this.updateBullets(dt);
     this.updateDrops(dt);
     this.updateFloor(dt);
+    this.updateQuest(dt);
     this.director(dt);
     this.tickAmbient(dt);
   }
@@ -1055,6 +1098,7 @@ export class World {
     const h = this.hero;
     if (h.invuln > 0 || h.dead) return;
     h.hp -= 1;
+    if (this.quest?.state === "active" && (this.quest.kind === "untouched" || this.quest.kind === "graze")) this.endQuest(false);
     h.invuln = 1.1;
     h.hurtT = 0.3;
     h.atk = -1;
@@ -1200,6 +1244,8 @@ export class World {
       this.ev.reaction(r);
     }
     this.popup(x, y - this.bry - 14, r.name[getLang()], rgba(r.color), true);
+    this.ev.count("reactions");
+    this.questStep("alchemy");
     this.audio.play("reaction");
     this.gainOd(3);
     this.hitstop = Math.max(this.hitstop, 0.025);
@@ -1251,6 +1297,11 @@ export class World {
     const cx = this.bx, cy = this.by;
     this.kills++;
     this.gainOd(0.45);
+    this.ev.count("kills");
+    if (this.quest?.state === "active") {
+      if (this.quest.kind === "purge" || (this.quest.kind === "hunt" && type === this.quest.type)) this.questStep(this.quest.kind);
+      else if (this.quest.kind === "bounty" && E.uid[i] === this.quest.uid) this.endQuest(true);
+    }
     const a = this.enemyAnims[type];
     if (this.corpses.length < 40) this.corpses.push({ anim: d.anim, frame: frameAt(a, E.t[i]), x, y, flip: E.face[i], scale: d.scale, t: 0 });
     // the Reaper takes a heart back for every 25 souls
@@ -1289,6 +1340,7 @@ export class World {
         if (j >= 0) (E.kx[j] = this.rng.range(-120, 120), E.ky[j] = this.rng.range(-120, 120));
       }
     if (boss) {
+      this.ev.count("boss");
       this.hitstop = 0.25;
       this.shake = 1.2;
       this.flash = 1;
@@ -1305,6 +1357,106 @@ export class World {
     }
     if (d.elite) this.hitstop = Math.max(this.hitstop, 0.06);
     E.remove(i);
+  }
+
+  // ============================================================================================ quests
+  /** How many different elements the hero can deal right now (relics, the weapon's, the spellbook's three). */
+  private elementsAtHand(): number {
+    const els = new Set<El>(this.relics.map((r) => RELICS[r.kind].el));
+    if (this.weaponEl) els.add(this.weaponEl);
+    if (this.hero.weapon === "spell") [El.Fire, El.Frost, El.Storm].forEach((e) => els.add(e));
+    return els.size;
+  }
+  /** The hero steps up to the spirit and takes its task. */
+  private takeQuest(): void {
+    const sp = this.spirit!, f = this.floor, unlit = this.braziers.filter((b) => !b.lit).length;
+    let kind = sp.kind;
+    // a brazier quest needs a brazier left to light
+    if ((kind === "untouched" || kind === "swift") && !unlit) kind = "purge";
+    const q: Quest = { kind, need: 1, have: 0, left: -1, total: -1, type: -1, uid: 0, state: "active", endT: 0 };
+    switch (kind) {
+      case "hunt": {
+        // the kind hunted is one of those the floor sends from the start, so there are always enough of them
+        const pool = roster(f, 0);
+        let total = 0;
+        for (const [, w] of pool) total += w;
+        let r = this.rng.range(0, total);
+        q.type = pool[0][0];
+        for (const [id, w] of pool) if ((r -= w) <= 0) { q.type = id; break; }
+        q.need = 8 + f;
+        break;
+      }
+      case "purge": q.need = 18 + f * 3; q.left = q.total = 45; break;
+      case "swift": q.need = unlit; q.left = q.total = 40 + 30 * unlit; break;
+      case "graze": q.need = 16 + f * 2; break;
+      case "alchemy": q.need = 3 + Math.floor(f / 3); break;
+      case "bounty": {
+        const [x, y] = this.edgePoint(230), type = this.rng.chance(0.5) ? EN.skullElite : EN.slimeElite, i = this.spawnAt(type, x, y);
+        if (i >= 0) {
+          this.enemies.hp[i] *= 1.5;
+          this.enemies.maxHp[i] = this.enemies.hp[i];
+          q.uid = this.enemies.uid[i];
+          this.addFx("spawn", x, y, { glow: 0.8, tint: rgba("#ff6a5a") });
+        }
+        q.left = q.total = 50;
+        break;
+      }
+    }
+    sp.kind = kind;
+    sp.state = "active";
+    sp.t = 0;
+    this.quest = q;
+    this.audio.play("portal", 1.4);
+    this.addFx("heal_ring", sp.x, sp.y, { tint: rgba("#9ad4ff"), glow: 0.7, sx: 0.5, sy: 0.5 });
+    this.ev.quest(q);
+  }
+  /** Progress on the quest; it is done when the count is reached. */
+  private questStep(kind: QuestKind, n = 1): void {
+    const q = this.quest;
+    if (!q || q.state !== "active" || q.kind !== kind) return;
+    q.have += n;
+    if (q.have >= q.need) this.endQuest(true);
+  }
+  private endQuest(done: boolean): void {
+    const q = this.quest!, h = this.hero, sp = this.spirit;
+    q.state = done ? "done" : "failed";
+    q.endT = 0;
+    if (sp) (sp.state = q.state, sp.t = 0);
+    if (done) {
+      // the spirit's thanks: a chest at the hero's feet, embers for the forge (and a heart for the untouched)
+      this.pendingChests++;
+      this.embersBonus += 5 + this.floor * 2;
+      if (q.kind === "untouched" && h.hp < h.maxHp) h.hp++;
+      this.addFx("chest", h.x, h.y + 6, { glow: 0.9 });
+      this.addFx("heal_ring", h.x, h.y, { tint: rgba("#9ad4ff"), glow: 0.8 });
+      if (sp) this.addFx("soul", sp.x, sp.y, { glow: 1, key: 3, tint: rgba("#c8ecff") });
+      this.audio.play("levelup", 1.2);
+      this.ev.count("spirits");
+    } else this.audio.play("hurt", 0.6);
+    this.ev.quest(q);
+  }
+  private updateQuest(dt: number): void {
+    const sp = this.spirit, h = this.hero, q = this.quest;
+    if (sp) {
+      sp.t += dt;
+      if (sp.state === "offer" && !h.dead && h.exitT < 0 && (h.x - sp.x) ** 2 + (h.y - sp.y) ** 2 < 22 * 22) this.takeQuest();
+      if ((sp.state === "done" || sp.state === "failed") && sp.t > 2) this.spirit = null;
+    }
+    if (!q) return;
+    if (q.state !== "active") {
+      q.endT += dt;
+      if (q.endT > 3) this.quest = null;
+      return;
+    }
+    if (q.left >= 0) {
+      q.left -= dt;
+      if (q.left <= 0) this.endQuest(false);
+    }
+  }
+  /** The marked elite of a bounty, if it lives. */
+  bountyIndex(): number {
+    const q = this.quest;
+    return q && q.kind === "bounty" && q.state === "active" && q.uid ? this.indexOf(q.uid) : -1;
   }
 
   // ============================================================================================ relics
@@ -2065,6 +2217,8 @@ export class World {
             // passing through a bullet in a dash is a perfect graze
             if (!B.grazed[i] && h.dashT > 0) {
               B.grazed[i] = 1;
+              this.ev.count("grazes");
+              this.questStep("graze");
               this.gainOd(7);
               this.audio.play("graze", 1.3);
               this.burst(x, y, 5, rgba("#fff09a"), 70, 0.3);
@@ -2078,6 +2232,8 @@ export class World {
         }
         if (!B.grazed[i] && dd < 18 * 18 && !h.dead) {
           B.grazed[i] = 1;
+          this.ev.count("grazes");
+          this.questStep("graze");
           this.gainOd(2.2);
           this.audio.play("graze");
           this.parts.add(x, y, 0, -20, 0.3, rgba("#fff09a"), 1, 0, 1);
@@ -2149,6 +2305,9 @@ export class World {
       if (b.progress >= 1) {
         b.lit = true;
         b.litT = 0;
+        this.ev.count("braziers");
+        if (this.quest?.state === "active" && this.quest.kind === "untouched") this.endQuest(true);
+        this.questStep("swift");
         this.audio.play("ignite");
         this.addFx("explosion", b.x, b.y - 22, { sx: 0.4, sy: 0.4, glow: 0.9 });
         this.shake = 0.35;

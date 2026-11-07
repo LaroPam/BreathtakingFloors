@@ -4,8 +4,8 @@
 import { anim, frameAt, hasAnim, icon, type Anim } from "../engine/atlas";
 import { Batch, rgba, rgbaf, SOFT, withAlpha } from "../engine/renderer";
 import { text } from "../engine/text";
-import { AI, EL_COLOR, ENEMIES, HEROES, RelicKind, WEAPONS, weaponName } from "./defs";
-import { tx } from "./i18n";
+import { AI, EL_COLOR, ENEMIES, HEROES, questDef, RelicKind, WEAPONS, weaponName } from "./defs";
+import { t as tr, tx } from "./i18n";
 import { BULLET_ANIMS, B_CRESCENT, B_FIREBALL, B_LANCE, CINE_DUR, D_CHEST, D_GREEN, D_HEART, D_RED, SANCTUARY_R, STAR_EVERY, TILE, type World } from "./world";
 
 export class Scene {
@@ -72,6 +72,8 @@ const hash = (x: number, y: number) => {
 };
 
 const C_SHADOW = rgba("#000000", 0.38);
+/** The spirit's palette slot: after the heroes' (game.ts sets it up with them). */
+const SPIRIT_PAL = HEROES.length + 1;
 /** The colour an enemy's tell glows in, by the look of its bullets. */
 const TELL = [0, 0, 0, 0, 0, 0].map((_, k) => {
   const c = ["#ff5a6a", "#ff5a6a", "#ff5a6a", "#c684ff", "#8ad83a", "#78ccf4"][k];
@@ -241,7 +243,7 @@ export function drawWorld(s: Scene, w: World, camX: number, camY: number, viewW:
   }
 
   // ---- enemies
-  const E = w.enemies;
+  const E = w.enemies, bounty = w.bountyIndex();
   for (let i = 0; i < E.n; i++) {
     const d = ENEMIES[E.type[i]], x = E.x[i], y = E.y[i];
     if (!inView(x, y, 70)) continue;
@@ -278,6 +280,19 @@ export function drawWorld(s: Scene, w: World, camX: number, camY: number, viewW:
       const bw = 20, bx = Math.round(w.bx - bw / 2), by = Math.round(w.by - w.bry - 8);
       s.front.rect(bx - 1, by - 1, bw + 2, 4, rgba("#0b0a12"));
       s.front.rect(bx, by, Math.max(1, Math.round((bw * E.hp[i]) / E.maxHp[i])), 2, rgba("#ff4a5a"));
+    }
+    // the bounty: a red ring at its feet and the horned skull over it
+    if (i === bounty) {
+      const p = 0.6 + 0.4 * Math.sin(time * 6);
+      for (let k = 0; k < 32; k++) {
+        const a = (k / 32) * Math.PI * 2 + time * 1.5, R = w.brx + 9;
+        if (k % 4 === 3) continue;
+        const rx = Math.round(x + Math.cos(a) * R), ry = Math.round(y + Math.sin(a) * R * 0.38);
+        s.back.rect(rx, ry, 2, 1, rgbaf(1, 0.35, 0.28, 1));
+        s.glow.rect(rx, ry, 2, 1, rgbaf(1, 0.25, 0.2, 0.8 * p));
+      }
+      s.front.image(icon("hud", "boss"), w.bx, w.by - w.bry - 14 + Math.sin(time * 4) * 1.5);
+      s.illum.light(w.bx, w.by, 40, 34, rgbaf(1, 0.25, 0.2, 0.35 * p));
     }
     if (w.debug) s.front.disc(w.bx, w.by, w.brx, w.bry, rgba("#ff3040", 0.3));
   }
@@ -404,6 +419,33 @@ export function drawWorld(s: Scene, w: World, camX: number, camY: number, viewW:
       for (let k = 0; k < n; k++) {
         const a = -Math.PI / 2 + (k / n) * Math.PI * 2, on = k / n < r.progress;
         s.front.rect(Math.round(r.x + Math.cos(a) * 20), Math.round(r.y - 8 + Math.sin(a) * 8), 1, 1, on ? rgba("#c8a8ff") : rgba("#3a3448"));
+      }
+    }
+  }
+
+  // ---- the floor's spirit: a lightbearer's ghost in cold light, floating; "!" while it waits with a task
+  const sp = w.spirit;
+  if (sp && inView(sp.x, sp.y, 60)) {
+    const idle = anim("sword_idle"), ending = sp.state === "done" || sp.state === "failed";
+    const fade = ending ? Math.max(0, 1 - sp.t / 1.6) : 1, alpha = (sp.state === "offer" ? 0.78 + 0.12 * Math.sin(time * 5) : sp.state === "active" ? 0.32 : 0.6) * fade;
+    const rise = sp.state === "done" ? sp.t * sp.t * 18 : 0, bob = Math.sin(time * 2) * 2 - 3 - rise, flip = h.x < sp.x ? -1 : 1, fi = frameAt(idle, time * 0.7);
+    s.back.disc(sp.x, sp.y, 9, 3, rgba("#000000", 0.2 * fade));
+    drawAnim(s, idle, 0, sp.x, sp.y + bob, { frame: fi, sx: flip, key: sp.y, alpha, pal: SPIRIT_PAL, glow: 0, tint: sp.state === "failed" ? rgbaf(0.55, 0.58, 0.68, 1) : rgbaf(0.72, 0.9, 1, 1) });
+    s.glow.image(idle.frames[fi][0]!, sp.x, sp.y + bob, flip, 1, 0, rgbaf(0.25, 0.5, 0.8, 0.35 * alpha));
+    s.illum.light(sp.x, sp.y - 16 + bob, 54, 46, rgbaf(0.55, 0.8, 1, 0.45 * alpha));
+    if (sp.state === "offer") {
+      const my = sp.y - 50 + Math.sin(time * 4) * 2;
+      text(s.front, "!", sp.x, my, { font: "title", align: "center", color: rgba("#9ad4ff"), outline: true });
+      text(s.glow, "!", sp.x, my, { font: "title", align: "center", color: rgbaf(0.5, 0.8, 1, 0.7) });
+      // what it asks, when the hero comes close
+      const near = Math.hypot(h.x - sp.x, h.y - sp.y);
+      if (near < 90 && !h.dead) {
+        const a = Math.min(1, (90 - near) / 25), def = questDef(sp.kind);
+        for (const b of [s.front, s.glow]) {
+          const glow = b === s.glow;
+          text(b, tx(def.name), sp.x, sp.y - 74, { font: "big", align: "center", color: withAlpha(glow ? rgbaf(0.5, 0.8, 1, 1) : rgba("#c8ecff"), a * (glow ? 0.5 : 1)), shadow: glow ? 0 : withAlpha(rgba("#0b0a12"), a) });
+          text(b, tr("questReward"), sp.x, sp.y - 63, { font: "mini", align: "center", color: withAlpha(glow ? rgbaf(1, 0.8, 0.4, 1) : rgba("#f4d27a"), a * (glow ? 0.4 : 1)), shadow: glow ? 0 : withAlpha(rgba("#0b0a12"), a) });
+        }
       }
     }
   }

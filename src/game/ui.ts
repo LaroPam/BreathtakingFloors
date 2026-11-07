@@ -6,7 +6,7 @@ import type { Audio } from "../engine/audio";
 import type { Input } from "../engine/input";
 import { Batch, rgba, rgbaf, withAlpha } from "../engine/renderer";
 import { measure, text, wrap } from "../engine/text";
-import { EL_COLOR, ENEMIES } from "./defs";
+import { EL_COLOR, ENEMIES, questDef } from "./defs";
 import { t, tx } from "./i18n";
 import type { World } from "./world";
 
@@ -110,7 +110,7 @@ function bar(b: Batch, x: number, y: number, w: number, h: number, k: number, fi
 }
 
 /** The heads-up display during a run. */
-export function drawHud(b: Batch, w: World, W: number, H: number, time: number, banner: { text: string; t: number; color: number } | null, touch: boolean, daily: boolean): void {
+export function drawHud(b: Batch, w: World, W: number, H: number, time: number, banner: { text: string; t: number; color: number; sub?: string } | null, touch: boolean, daily: boolean): void {
   const h = w.hero;
 
   // ---- experience: a bar across the top, the level on a gem beneath its left end
@@ -174,6 +174,31 @@ export function drawHud(b: Batch, w: World, W: number, H: number, time: number, 
     for (let q = 0; q < 5; q++) b.rect(x - 7 + q * 3, y + 12, 2, 2, q < r.level ? (ready && q === 4 && Math.sin(time * 8) > 0 ? rgba("#ffffff") : C.gold) : rgba("#2a2438"));
   });
 
+  // ---- the spirit's quest: its name, how far along, the time left; it lingers a moment when done or failed
+  const q = w.quest;
+  if (q) {
+    const a = q.state === "active" ? 1 : Math.max(0, Math.min(1, (3 - q.endT) / 0.6)), qy = 82, qw = 132;
+    b.rect(5, qy, qw, 22, rgba("#141220", 0.8 * a));
+    b.rect(5, qy, 2, 22, withAlpha(q.state === "failed" ? C.red : q.state === "done" ? C.green : rgba("#9ad4ff"), a));
+    b.image(icon("hud", "scroll"), 15, qy + 7, 1, 1, 0, rgbaf(1, 1, 1, a));
+    text(b, tx(questDef(q.kind).name), 24, qy + 3, { font: "mini", color: withAlpha(rgba("#c8ecff"), a) });
+    let what: string;
+    if (q.state !== "active") what = q.state === "done" ? t("questDone") : t("questFailed");
+    else if (q.kind === "hunt") what = `${tx(ENEMIES[q.type].name)} ${q.have}/${q.need}`;
+    else if (q.kind === "untouched") what = t("questNoHits");
+    else if (q.kind === "bounty") what = t("questMarked");
+    else if (q.kind === "swift") what = `${t("questBraziers")} ${q.have}/${q.need}`;
+    else what = `${q.have}/${q.need}`;
+    text(b, what, 10, qy + 12, { font: "mini", color: withAlpha(q.state === "failed" ? C.red : q.state === "done" ? C.green : C.text, a) });
+    if (q.state === "active" && q.left >= 0) {
+      const low = q.left < 10 && Math.sin(time * 10) > 0;
+      text(b, fmtTime(Math.ceil(q.left)), 5 + qw - 4, qy + 3, { font: "mini", align: "right", color: low ? C.red : C.gold });
+    }
+    const k = q.state !== "active" ? 1 : q.kind === "bounty" || q.kind === "untouched" ? (q.left >= 0 ? q.left / q.total : 1) : q.have / q.need;
+    b.rect(10, qy + 19, qw - 10, 1, withAlpha(rgba("#2a2438"), a));
+    b.rect(10, qy + 19, Math.round((qw - 10) * Math.max(0, Math.min(1, k))), 1, withAlpha(q.state === "failed" ? C.red : rgba("#9ad4ff"), a));
+  }
+
   // ---- the floor, and what to do on it: three braziers, then the portal or the boss
   const floorLine = `${t("floor")} ${w.floor}  ${tx(w.biome.name)}`;
   text(b, floorLine, W / 2, 10, { align: "center", color: C.gold, outline: true });
@@ -209,10 +234,13 @@ export function drawHud(b: Batch, w: World, W: number, H: number, time: number, 
     for (let k = 1; k < 4; k++) b.rect(bx + Math.round((bw * k) / 4), by, 1, 5, rgba("#0b0a12", 0.7));
   }
 
-  if (banner && banner.t < 2.2) {
-    const a = Math.min(1, banner.t * 6, (2.2 - banner.t) * 2);
+  // a banner holds a little longer when it carries a line of what to do under it
+  const life = banner?.sub ? 3.4 : 2.2;
+  if (banner && banner.t < life) {
+    const a = Math.min(1, banner.t * 6, (life - banner.t) * 2);
     const y = Math.round(H * 0.24 - Math.max(0, 0.15 - banner.t) * 40);
     text(b, banner.text, W / 2, y, { align: "center", scale: 2, color: withAlpha(banner.color, a), shadow: withAlpha(C.ink, a), outline: true });
+    if (banner.sub) text(b, banner.sub, W / 2, y + 19, { align: "center", color: withAlpha(C.text, a), shadow: withAlpha(C.ink, a), outline: true });
   }
 }
 
@@ -220,6 +248,9 @@ export function drawHud(b: Batch, w: World, W: number, H: number, time: number, 
 export function drawPointers(b: Batch, w: World, camX: number, camY: number, W: number, H: number, time: number): void {
   const targets: [number, number, number][] = [];
   for (const q of w.braziers) if (!q.lit) targets.push([q.x, q.y - 20, rgba("#ffae35")]);
+  if (w.spirit?.state === "offer") targets.push([w.spirit.x, w.spirit.y - 20, rgba("#9ad4ff")]);
+  const bi = w.bountyIndex();
+  if (bi >= 0) targets.push([w.enemies.x[bi], w.enemies.y[bi] - 10, rgba("#ff4a3a")]);
   if (w.portal) targets.push([w.portal.x, w.portal.y - 20, rgba("#c684ff")]);
   const cx = W / 2, cy = H / 2;
   for (const [x, y, col] of targets) {

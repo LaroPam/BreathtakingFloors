@@ -7,7 +7,7 @@ import { Batch, rgba, rgbaf, withAlpha, type Lighting, type Renderer } from "../
 import { anim, DUMMY, FONTS, frameAt, icon } from "../engine/atlas";
 import { fitScale, measure, text, wrap } from "../engine/text";
 import { dayNumber, type Board, type BoardName, type Platform } from "../platform/platform";
-import { bossOf, EL_COLOR, EL_NAME, ENEMIES, EVOLUTIONS, evolutionOf, FLOORS, FORGE, HEROES, PALETTE_KEYS, WEAPONS, weaponName, MODIFIERS, NO_MODIFIER, REACTIONS, RELIC_MAX, RELIC_SLOTS, RELICS, STATS, type Modifier, type Reaction, type RelicKind, type StatId } from "./defs";
+import { bossOf, EL_COLOR, EL_NAME, ENEMIES, EVOLUTIONS, evolutionOf, FLOORS, FORGE, questDef, SPIRIT_PALETTE, TASK_BONUS, TASKS, type TaskId, HEROES, PALETTE_KEYS, WEAPONS, weaponName, MODIFIERS, NO_MODIFIER, REACTIONS, RELIC_MAX, RELIC_SLOTS, RELICS, STATS, type Modifier, type Reaction, type RelicKind, type StatId } from "./defs";
 import { drawWorld, Scene } from "./draw";
 import { getLang, langFor, setLang, t, tx, type Lang } from "./i18n";
 import { Rng } from "./rng";
@@ -15,7 +15,7 @@ import { defaultSave, sanitize, type SaveData } from "./save";
 import { button, C, drawHud, drawPointers, drawTouch, fmtTime, Menu, panel, para } from "./ui";
 import { CINE_DUR, World } from "./world";
 
-type State = "title" | "heroes" | "forge" | "daily" | "records" | "card" | "play" | "spin" | "pause" | "codex" | "stairs" | "dead" | "won";
+type State = "title" | "heroes" | "forge" | "daily" | "records" | "tasks" | "card" | "play" | "spin" | "pause" | "codex" | "stairs" | "dead" | "won";
 type Choice = { type: "relic"; kind: RelicKind; level: number } | { type: "stat"; id: StatId } | { type: "evo"; kind: RelicKind };
 
 /**
@@ -49,7 +49,7 @@ export class Game {
   private now = 0;
   private camX = 0;
   private camY = 0;
-  private banner: { text: string; t: number; color: number } | null = null;
+  private banner: { text: string; t: number; color: number; sub?: string } | null = null;
   private spin: Spin | null = null;
   /** A screen-covering wipe of diamonds (out: covering, then `then`; in: uncovering), and the floor's title card. */
   private wipe: { t: number; dur: number; out: boolean; then?: () => void } | null = null;
@@ -57,6 +57,7 @@ export class Game {
   private heroIdx = 0;
   private codexPage = 0;
   private unlockedAt = -9;
+  private claimedAt = -9;
   private startSpins = 0;
   private stairs: Modifier[] = [];
   private revived = false;
@@ -88,7 +89,7 @@ export class Game {
     this.heroIdx = Math.max(0, HEROES.findIndex((h) => h.id === this.save.hero));
     // the hero palettes the shader swaps the stock dummy's colours for
     const hex = (c: string) => parseInt(c.slice(1), 16);
-    this.r.setPalettes(PALETTE_KEYS.map((k) => hex(DUMMY[k])), HEROES.map((h) => PALETTE_KEYS.map((k) => hex(h.palette[k]))));
+    this.r.setPalettes(PALETTE_KEYS.map((k) => hex(DUMMY[k])), [...HEROES.map((h) => h.palette), SPIRIT_PALETTE].map((p: Record<string, string>) => PALETTE_KEYS.map((k) => hex(p[k]))));
     this.newWorld();
     this.attract();
   }
@@ -111,6 +112,14 @@ export class Game {
       floorCleared: () => this.onFloorCleared(),
       reaction: (r) => this.onReaction(r),
       banner: (text, color) => this.showBanner(text, color),
+      quest: (q) => {
+        const name = tx(questDef(q.kind).name);
+        if (q.state === "active") {
+          const goal = tx(questDef(q.kind).goal).replace("{n}", String(q.need)).replace("{who}", tx(ENEMIES[Math.max(0, q.type)].name));
+          this.showBanner(name, rgba("#9ad4ff"), goal);
+        } else this.showBanner(q.state === "done" ? t("questDone") : t("questFailed"), q.state === "done" ? C.green : C.red);
+      },
+      count: (id, n) => this.bump(id, n ?? 1),
       weapon: (id, el) => this.showBanner(tx(weaponName(id, el)), el || WEAPONS[id].el ? rgba(EL_COLOR[el || WEAPONS[id].el!]) : C.gold),
     }, NO_MODIFIER);
   }
@@ -150,8 +159,8 @@ export class Game {
     } else this.audio.resume();
   }
 
-  private showBanner(textStr: string, color = C.gold): void {
-    this.banner = { text: textStr, t: 0, color };
+  private showBanner(textStr: string, color = C.gold, sub?: string): void {
+    this.banner = { text: textStr, t: 0, color, sub };
   }
 
   /**
@@ -198,6 +207,7 @@ export class Game {
     w.stats.magnet *= 1 + 0.25 * (f.reach ?? 0);
     w.autoAim = this.touch;
     w.startFloor(1, this.daily ? plan.mod : NO_MODIFIER);
+    this.reached(1);
     this.revived = false;
     this.save.runs++;
     this.persist();
@@ -254,6 +264,7 @@ export class Game {
     this.transition(() => {
       const w = this.world;
       w.startFloor(w.floor + 1, mod);
+      this.reached(w.floor);
       this.cardT = 0;
       this.setState("card");
     });
@@ -295,6 +306,47 @@ export class Game {
     this.audio.play("heal");
     this.audio.playMusic();
     this.setState("play");
+  }
+
+  // =========================================================================================== daily tasks
+  /** Today's tasks (made from the day's number the first time they are asked for). */
+  private tasks(): NonNullable<SaveData["tasks"]> {
+    const day = String(dayNumber());
+    let T = this.save.tasks;
+    if (!T || T.day !== day) {
+      const r = new Rng((Math.imul(dayNumber(), 2654435761) ^ 0x9e3779b9) >>> 0), pool = [...TASKS], items: NonNullable<SaveData["tasks"]>["items"] = [];
+      while (items.length < 3) {
+        const d = pool.splice(r.int(0, pool.length - 1), 1)[0];
+        items.push({ id: d.id, goal: r.pick(d.goals), have: 0, claimed: false });
+      }
+      T = this.save.tasks = { day, items, bonus: false };
+    }
+    return T;
+  }
+  private taskName(it: { id: string; goal: number }): string {
+    return tx(TASKS.find((d) => d.id === it.id)!.name).replace("{n}", String(it.goal));
+  }
+  /** Something a task counts happened: add to it (or raise it, for "how far"), announce it when it is done. */
+  private bump(id: TaskId, n = 1, max = false): void {
+    for (const it of this.tasks().items) {
+      if (it.id !== id || it.have >= it.goal) continue;
+      it.have = Math.min(it.goal, max ? Math.max(it.have, n) : it.have + n);
+      if (it.have >= it.goal) {
+        this.showBanner(`${t("taskDone")}: ${this.taskName(it)}`, C.green);
+        this.audio.play("levelup", 1.3);
+        this.persist();
+      }
+    }
+  }
+  /** Is there a task reward to collect? */
+  private tasksReady(): boolean {
+    const T = this.tasks();
+    return T.items.some((it) => it.have >= it.goal && !it.claimed) || (!T.bonus && T.items.every((it) => it.claimed));
+  }
+  /** A new floor: the tasks that count how deep you got. */
+  private reached(floor: number): void {
+    this.bump("floor", floor, true);
+    if (this.daily) this.bump("trial", floor, true);
   }
 
   // =========================================================================================== the roulette
@@ -371,8 +423,9 @@ export class Game {
   private take(c: Choice, kind: Spin["kind"]): void {
     const w = this.world;
     if (c.type === "relic") w.addRelic(c.kind);
-    else if (c.type === "evo") w.evolve(c.kind);
+    else if (c.type === "evo") (w.evolve(c.kind), this.bump("evolve"));
     else w.addStat(c.id);
+    if (kind === "chest") this.bump("chests");
     if (kind === "level") w.pendingLevels = Math.max(0, w.pendingLevels - 1);
     else w.pendingChests = Math.max(0, w.pendingChests - 1);
     this.spin = null;
@@ -510,6 +563,7 @@ export class Game {
       case "forge": this.drawForge(); break;
       case "daily": this.drawDaily(); break;
       case "records": this.drawRecords(); break;
+      case "tasks": this.drawTasks(); break;
       case "play":
         if (w.cine) {
           this.drawCine();
@@ -541,6 +595,7 @@ export class Game {
     const lines: [string, number][] = [
       ...wrap(this.touch ? t("hintTouch") : t("hint"), W - 24, "mini").map((l): [string, number] => [l, rgbaf(0.9, 0.88, 0.95, a)]),
       ...wrap(t("hintGraze"), W - 24, "mini").map((l): [string, number] => [l, rgbaf(0.95, 0.82, 0.48, a)]),
+      ...(w.spirit?.state === "offer" ? wrap(t("spiritHint"), W - 24, "mini").map((l): [string, number] => [l, rgbaf(0.6, 0.85, 1, a)]) : []),
     ];
     lines.forEach(([l, col], k) => text(ui, l, W / 2, H - 14 - (lines.length - k) * 9, { font: "mini", align: "center", color: col }));
     if (w.time > 13.5) {
@@ -555,7 +610,7 @@ export class Game {
     const th = this.heading(t("title"), ty, 3);
     text(ui, t("subtitle"), W / 2, ty + th + 8, { align: "center", color: C.dim });
     const bw = 160, bh = H >= 300 ? 20 : 17, gap = H >= 300 ? 6 : 4, bx = Math.round(W / 2 - bw / 2);
-    let y = Math.round(Math.min(H * 0.46, H - 34 - 6 * (bh + gap)));
+    let y = Math.round(Math.min(H * 0.46, H - 34 - 7 * (bh + gap)));
     if (button(ui, this.menu, now, bx, y, bw, bh, t("play"), { color: C.gold })) {
       this.audio.unlock();
       this.daily = false;
@@ -569,6 +624,15 @@ export class Game {
       return;
     }
     ui.image(icon("hud", "daily"), bx + 12, y + bh / 2);
+    y += bh + gap;
+    if (button(ui, this.menu, now, bx, y, bw, bh, t("tasks"))) this.setState("tasks");
+    ui.image(icon("hud", "scroll"), bx + 12, y + bh / 2);
+    if (this.tasksReady()) {
+      // a reward waits: a red seal with "!" on the button
+      const p = 0.7 + 0.3 * Math.sin(now * 6);
+      ui.disc(bx + bw - 12, y + bh / 2, 5, 5, rgbaf(0.9, 0.2, 0.25, p));
+      text(ui, "!", bx + bw - 12, y + bh / 2 - 3, { font: "mini", align: "center", color: C.text });
+    }
     y += bh + gap;
     if (button(ui, this.menu, now, bx, y, bw, bh, t("forge"))) this.setState("forge");
     y += bh + gap;
@@ -818,6 +882,59 @@ export class Game {
     if (button(ui, this.menu, now, Math.round(W / 2 + 6), by, bw, 18, t("back")) || this.input.pressed("back")) this.setState("title", 1);
   }
 
+  /** Today's tasks: each with its progress and reward, a claim button when done, the bonus for all three. */
+  private drawTasks(): void {
+    const ui = this.ui, W = this.r.w, H = this.r.h, now = this.now, T = this.tasks();
+    const th = this.heading(t("tasksTitle"), 8, H >= 320 ? 2 : 1);
+    const left = Math.max(0, (dayNumber() + 1) * 86400000 - Date.now()), hh = Math.floor(left / 3600000), mm = Math.floor((left % 3600000) / 60000);
+    text(ui, `${t("newIn")} ${hh}:${String(mm).padStart(2, "0")}`, W / 2, 8 + th + 4, { font: "mini", align: "center", color: C.dim });
+    const pw = Math.min(340, W - 16), px = Math.round(W / 2 - pw / 2), rowH = Math.min(40, Math.floor((H - 8 - th - 70) / 4));
+    let y = 8 + th + 16;
+    const row = (name: string, have: number, goal: number, reward: number, claimed: boolean, onClaim: () => void) => {
+      const done = have >= goal;
+      panel(ui, px, y, pw, rowH - 4, claimed ? C.edge : done ? C.green : C.edge, claimed ? rgba("#100e18", 0.85) : C.panel);
+      text(ui, name, px + 8, y + 5, { color: claimed ? C.dim : C.text });
+      // progress
+      const bw = pw - 110;
+      ui.rect(px + 8, y + 17, bw, 3, C.ink);
+      ui.rect(px + 8, y + 17, Math.round(bw * Math.min(1, have / goal)), 3, done ? C.green : rgba("#9ad4ff"));
+      text(ui, `${Math.min(have, goal)}/${goal}`, px + 8 + bw, y + 22, { font: "mini", align: "right", color: C.dim });
+      // the reward, or the button to take it
+      const rx = px + pw - 94;
+      if (claimed) text(ui, t("claimed"), rx + 43, y + 9, { font: "mini", align: "center", color: C.dim });
+      else if (done) {
+        if (button(ui, this.menu, now, rx, y + 5, 86, Math.max(14, rowH - 14), `${t("claim")} ${reward}`, { color: C.gold })) onClaim();
+      } else {
+        text(ui, `+${reward}`, rx + 50, y + 9, { align: "right", color: C.goldDim });
+        ui.image(icon("hud", "ember"), rx + 58, y + 12);
+      }
+      y += rowH;
+    };
+    for (const it of T.items) {
+      const def = TASKS.find((d) => d.id === it.id)!;
+      row(this.taskName(it), it.have, it.goal, def.reward, it.claimed, () => {
+        it.claimed = true;
+        this.save.embers += def.reward;
+        this.claimedAt = now;
+        this.audio.play("chest");
+        this.persist();
+      });
+    }
+    const all = T.items.filter((it) => it.claimed).length;
+    row(t("allThree"), all, 3, TASK_BONUS, T.bonus, () => {
+      T.bonus = true;
+      this.save.embers += TASK_BONUS;
+      this.claimedAt = now;
+      this.audio.play("levelup");
+      this.persist();
+    });
+    // the purse, with a flash when it grows
+    const flash = Math.max(0, 1 - (now - this.claimedAt) * 2), emb = String(this.save.embers);
+    text(ui, emb, W - 8, 8, { align: "right", color: flash > 0 ? rgbaf(1, 1, 0.7 + 0.3 * flash, 1) : C.gold, outline: true, scale: flash > 0.5 ? 2 : 1 });
+    ui.image(icon("hud", "ember"), W - 14 - measure(emb, "big", flash > 0.5 ? 2 : 1), 11);
+    if (button(ui, this.menu, now, Math.round(W / 2 - 50), H - 24, 100, 18, t("back")) || this.input.pressed("back")) this.setState("title", 2);
+  }
+
   /** Records: the platform's leaderboards (best runs, today's trial) and the player's own. */
   private drawRecords(): void {
     const ui = this.ui, W = this.r.w, H = this.r.h, now = this.now, tab = this.recordsTab;
@@ -868,7 +985,7 @@ export class Game {
     });
     if (button(ui, this.menu, now, Math.round(W / 2 - 50), H - 24, 100, 18, t("back")) || this.input.pressed("back")) {
       this.boards = {};
-      this.setState("title", 3);
+      this.setState("title", 4);
     }
   }
 
@@ -908,7 +1025,7 @@ export class Game {
       }
       y += rowH;
     }
-    if (button(ui, this.menu, now, Math.round(W / 2 - 50), H - 30, 100, 18, t("back")) || this.input.pressed("back")) this.setState("title", 2);
+    if (button(ui, this.menu, now, Math.round(W / 2 - 50), H - 30, 100, 18, t("back")) || this.input.pressed("back")) this.setState("title", 3);
   }
 
   private drawSpin(): void {
@@ -1084,6 +1201,7 @@ export class Game {
     const ui = this.ui, W = this.r.w, H = this.r.h, now = this.now, res = this.lastResult;
     const th = this.heading(t("victory"), Math.round(H * 0.1), 2);
     para(ui, t("victorySub"), Math.round(W / 2 - 150), Math.round(H * 0.1) + th + 6, 300, C.dim, "center");
+    if (this.tasksReady()) text(ui, t("tasksReady"), W / 2, H - 14, { font: "mini", align: "center", color: C.green });
     const pw = Math.min(260, W - 20), px = Math.round(W / 2 - pw / 2);
     let y = Math.round(H * 0.32);
     panel(ui, px, y, pw, 52);
@@ -1142,6 +1260,7 @@ export class Game {
       this.setState("title");
     }
     if (res.best) text(ui, res.daily ? `${t("newRecord")}: ${res.score}` : `${t("best")}! ${res.score}`, W / 2, H - 14, { font: "mini", align: "center", color: C.gold });
+    if (this.tasksReady()) text(ui, t("tasksReady"), W / 2, H - 24, { font: "mini", align: "center", color: C.green });
     if (res.daily) text(ui, t("daily"), W / 2, Math.round(H * 0.12) - 9, { font: "mini", align: "center", color: rgba("#ff9a8a") });
     void measure;
   }

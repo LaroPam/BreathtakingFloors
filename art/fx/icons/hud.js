@@ -3,7 +3,7 @@
 // at the centre of a 16 x 16 cell.
 import { hex } from "../../../pixelfx/src/core/index.js";
 
-export const IDS = ["heart", "heart_empty", "stamina", "xp", "overdrive", "skull", "time", "brazier", "brazier_cold", "boss", "lock", "ember", "daily", "crown"];
+export const IDS = ["heart", "heart_empty", "stamina", "xp", "overdrive", "skull", "time", "brazier", "brazier_cold", "boss", "lock", "ember", "daily", "crown", "scroll"];
 
 export const meta = {
   name: "HUD icons",
@@ -70,6 +70,10 @@ const ICONS = {
   crown: [
     ["k...k...k", "kyk.kyk.k", "kyykyyyky", "kyyyyyyyk", "kyrywyryk", "kyyyyyyyk", "kkkkkkkkk"],
     { k: "#0b0a12", y: "#f4d27a", r: "#ff3a5a", w: "#ffffff" },
+  ],
+  scroll: [
+    [".kkkkkkk.", "kwppppppk", ".kpkkkpk.", ".kppppkk.", ".kpkkpk..", ".kppppk..", "kwppppppk", ".kkkkkkk."],
+    { k: "#0b0a12", w: "#c89a5a", p: "#f0dcae" },
   ],
   boss: [
     ["k.......k", "kk.kkk.kk", ".kkwwwkk.", "kwwwwwwwk", "kwrkwkrwk", "kwrkwkrwk", "kwwwkwwwk", ".kwwwwwk.", "..kwkwk..", "..kkkkk.."],
