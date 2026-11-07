@@ -251,7 +251,7 @@ export function button(b: Batch, menu: Menu, now: number, x: number, y: number, 
   else [top, mid, bot, rimHi, rimLo, ink] = [rgba("#2c2740"), rgba("#242034"), rgba("#1d1a2a"), S.rimHi, S.rimLo, o.color ?? C.text];
   if (down) [top, bot] = [bot, top];
   // a soft glow under what has focus
-  if (hi) glow(b, x + w / 2, y + h / 2, w * 0.66, h * 1.3, C.gold, 0.22 + 0.06 * Math.sin(now * 6));
+  if (hi) glow(b, x + w / 2, y + h / 2, w * 0.56, h * 1.05, C.gold, 0.14 + 0.04 * Math.sin(now * 6));
   if (!down) {
     b.rect(x + 2, y + h, w - 2, 2, rgba("#000000", 0.45));
     b.rect(x + w, y + 2, 1, h - 2, rgba("#000000", 0.45));
@@ -475,8 +475,9 @@ export function drawHud(b: Batch, w: World, W: number, H: number, time: number, 
   const floorLine = `${t("floor")} ${w.floor}  ·  ${tx(w.biome.name)}`, fw = measure(floorLine) + (daily ? 30 : 20), bi = w.bossIndex();
   plate(b, W / 2 - fw / 2, 9, fw, 25);
   text(b, floorLine, W / 2 + (daily ? 5 : 0), 13, { align: "center", gradient: [rgba("#fff0b8"), rgba("#e0a84a")], shadow: C.ink });
-  // the daily trial wears its seal by the floor's name
+  // the daily trial wears its seal by the floor's name; a cursed floor its skull on the other side
   if (daily) b.image(icon("hud", "daily"), W / 2 - fw / 2 + 9, 16);
+  if (w.curse) b.image(icon("hud", "curse"), W / 2 + fw / 2 + 8, 16, 1, 1, 0, rgbaf(1, 0.7 + 0.3 * Math.sin(time * 6), 0.7, 1));
   if (w.portal) text(b, t("portalOpen"), W / 2, 24, { font: "mini", align: "center", color: rgba("#c684ff") });
   else if (bi >= 0) {
     const name = tx(ENEMIES[w.enemies.type[bi]].name);

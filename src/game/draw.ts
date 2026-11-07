@@ -6,7 +6,7 @@ import { Batch, rgba, rgbaf, SOFT, withAlpha } from "../engine/renderer";
 import { text } from "../engine/text";
 import { AI, EL_COLOR, ENEMIES, HEROES, questDef, RelicKind, WEAPONS, weaponName } from "./defs";
 import { t as tr, tx } from "./i18n";
-import { BULLET_ANIMS, B_CRESCENT, B_FIREBALL, B_LANCE, CINE_DUR, D_CHEST, D_GREEN, D_HEART, D_RED, SANCTUARY_R, STAR_EVERY, TILE, type World } from "./world";
+import { BULLET_ANIMS, B_CRESCENT, B_FIREBALL, B_LANCE, CINE_DUR, D_CHEST, D_EMBER, D_GREEN, D_HEART, D_RED, SANCTUARY_R, STAR_EVERY, TILE, type World } from "./world";
 
 export class Scene {
   back = new Batch();
@@ -227,7 +227,7 @@ export function drawWorld(s: Scene, w: World, camX: number, camY: number, viewW:
   }
 
   // ---- drops
-  const D = w.drops, shardB = anim("shard_blue"), shardG = anim("shard_green"), shardR = anim("shard_red"), heart = anim("heart"), chest = anim("chest");
+  const emberA = anim("ember"), D = w.drops, shardB = anim("shard_blue"), shardG = anim("shard_green"), shardR = anim("shard_red"), heart = anim("heart"), chest = anim("chest");
   for (let i = 0; i < D.n; i++) {
     const k = D.kind[i], x = D.x[i], y = D.y[i];
     if (!inView(x, y, 20)) continue;
@@ -238,6 +238,12 @@ export function drawWorld(s: Scene, w: World, camX: number, camY: number, viewW:
       continue;
     }
     const bob = Math.sin(time * 4 + i) * 1.2;
+    if (k === D_EMBER) {
+      // an ember: a small coal for the forge, glowing
+      drawAnim(s, emberA, time * 1.4 + i * 0.3, x, y + bob, { key: y, glow: 0.9, sx: 0.7, sy: 0.7 });
+      s.illum.light(x, y + bob, 14, 12, rgbaf(1, 0.6, 0.25, 0.35));
+      continue;
+    }
     const a = k === D_HEART ? heart : k === D_RED ? shardR : k === D_GREEN ? shardG : shardB;
     drawAnim(s, a, time + i * 0.17, x, y + bob, { key: y, glow: 0.8 });
   }
@@ -419,6 +425,49 @@ export function drawWorld(s: Scene, w: World, camX: number, camY: number, viewW:
       for (let k = 0; k < n; k++) {
         const a = -Math.PI / 2 + (k / n) * Math.PI * 2, on = k / n < r.progress;
         s.front.rect(Math.round(r.x + Math.cos(a) * 20), Math.round(r.y - 8 + Math.sin(a) * 8), 1, 1, on ? rgba("#c8a8ff") : rgba("#3a3448"));
+      }
+    }
+  }
+
+  // ---- urns, pots, jars, vases: things to break
+  const urnA = anim("urns");
+  for (const u of w.urns) {
+    if (!inView(u.x, u.y, 20)) continue;
+    s.back.disc(u.x, u.y, 6, 2, C_SHADOW);
+    drawAnim(s, urnA, 0, u.x, u.y, { frame: u.v, key: u.y, glow: 0 });
+  }
+  // ---- chests on the floor: a mimic gives itself away with a twitch now and then
+  const mimicA = anim("mimic");
+  for (const c of w.chests) {
+    if (!inView(c.x, c.y, 30)) continue;
+    const tw = c.mimic ? (c.t % 3.4 < 0.22 ? Math.round(Math.sin(c.t * 60) * 1) : 0) : 0, hop = c.mimic && c.t % 3.4 < 0.22 ? -1 : 0;
+    s.back.disc(c.x, c.y, 11, 3, C_SHADOW);
+    drawAnim(s, mimicA, 0, c.x + tw, c.y + hop, { frame: 0, key: c.y, glow: 0 });
+    // a glint on the lock, now and then, on either kind
+    if ((time + c.x * 0.01) % 2.6 < 0.12) s.glow.light(c.x, c.y - 9, 4, 4, rgbaf(1, 0.9, 0.5, 0.9));
+    s.illum.light(c.x, c.y - 8, 28, 22, rgbaf(1, 0.8, 0.4, 0.25));
+  }
+  // ---- the cursed altar: its candles go out once the curse is taken; a ring fills while the hero stands on it
+  const al = w.altar;
+  if (al && inView(al.x, al.y, 50)) {
+    const altarA = anim("curse_altar");
+    s.back.disc(al.x, al.y, 16, 4, C_SHADOW);
+    drawAnim(s, altarA, al.taken ? 0 : time, al.x, al.y, { key: al.y, glow: al.taken ? 0.25 : 1, tint: al.taken ? rgbaf(0.55, 0.5, 0.55, 1) : 0xffffffff });
+    if (!al.taken) s.illum.light(al.x, al.y - 18, 50, 40, rgbaf(1, 0.2, 0.15, 0.5 + 0.1 * Math.sin(time * 6)));
+    if (al.progress > 0) {
+      const n = 24;
+      for (let k = 0; k < n; k++) {
+        const a = -Math.PI / 2 + (k / n) * Math.PI * 2, on = k / n < al.progress;
+        s.front.rect(Math.round(al.x + Math.cos(a) * 22), Math.round(al.y - 10 + Math.sin(a) * 9), 1, 1, on ? rgba("#ff5a5a") : rgba("#3a2430"));
+      }
+    }
+    const near = Math.hypot(h.x - al.x, h.y - al.y);
+    if (!al.taken && near < 90 && !h.dead) {
+      const a = Math.min(1, (90 - near) / 25);
+      for (const b of [s.front, s.glow]) {
+        const glow = b === s.glow;
+        text(b, tr("altarName"), al.x, al.y - 50, { font: "big", align: "center", color: withAlpha(glow ? rgbaf(1, 0.3, 0.25, 1) : rgba("#ff8a7a"), a * (glow ? 0.5 : 1)), shadow: glow ? 0 : withAlpha(rgba("#0b0a12"), a) });
+        text(b, tr("altarDeal"), al.x, al.y - 39, { font: "mini", align: "center", color: withAlpha(glow ? rgbaf(1, 0.8, 0.4, 1) : rgba("#f4d27a"), a * (glow ? 0.4 : 1)), shadow: glow ? 0 : withAlpha(rgba("#0b0a12"), a) });
       }
     }
   }

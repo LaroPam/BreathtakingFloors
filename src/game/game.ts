@@ -128,6 +128,12 @@ export class Game {
         } else this.showBanner(q.state === "done" ? t("questDone") : t("questFailed"), q.state === "done" ? C.green : C.red);
       },
       count: (id, n) => this.bump(id, n ?? 1),
+      curse: (state) => {
+        if (state === "taken") {
+          this.audio.play("curse");
+          this.showBanner(t("curseTaken"), rgba("#ff5a5a"), t("curseTakenSub"));
+        } else this.showBanner(t("curseLifted"), C.gold, t("curseLiftedSub"));
+      },
       weapon: (id, el) => this.showBanner(tx(weaponName(id, el)), el || WEAPONS[id].el ? rgba(EL_COLOR[el || WEAPONS[id].el!]) : C.gold),
     }, NO_MODIFIER);
     this.world.numbers = this.save.numbers;
@@ -557,6 +563,10 @@ export class Game {
       tintK: w.flash > 0 && this.save.flashes ? w.flash * 0.25 : dim ? 0.55 : 0,
     };
     if (this.state === "title") light.tintK = 0.2;
+    if (w.curse && this.state === "play" && !(w.flash > 0 && this.save.flashes)) {
+      light.tint = [0.35, 0.02, 0.05];
+      light.tintK = 0.07 + 0.02 * Math.sin(this.now * 2);
+    }
     if (w.cine) {
       // the room darkens around the newcomer
       const u = Math.min(1, w.cine.t / 0.5) * Math.min(1, (CINE_DUR - w.cine.t) / 0.5);

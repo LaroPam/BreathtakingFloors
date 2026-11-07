@@ -3,9 +3,10 @@
 
 type Sfx =
   | "shoot" | "hit" | "kill" | "pickup" | "levelup" | "dash" | "hurt" | "boom" | "zap" | "freeze" | "ult" | "ignite"
-  | "portal" | "click" | "graze" | "heal" | "chest" | "reaction" | "enemyShot" | "roar" | "deny";
+  | "portal" | "click" | "graze" | "heal" | "chest" | "reaction" | "enemyShot" | "roar" | "deny" | "break" | "coin" | "curse" | "achieve"
+  | "hover" | "burn" | "venom" | "holy" | "void";
 
-const LIMITS: Partial<Record<Sfx, number>> = { hit: 0.035, kill: 0.03, pickup: 0.025, shoot: 0.03, enemyShot: 0.05, zap: 0.05, graze: 0.06, boom: 0.06, freeze: 0.05, reaction: 0.05 };
+const LIMITS: Partial<Record<Sfx, number>> = { break: 0.04, coin: 0.03, hover: 0.04, burn: 0.08, venom: 0.08, holy: 0.08, void: 0.08, hit: 0.035, kill: 0.03, pickup: 0.025, shoot: 0.03, enemyShot: 0.05, zap: 0.05, graze: 0.06, boom: 0.06, freeze: 0.05, reaction: 0.05 };
 
 export class Audio {
   private ctx: AudioContext | null = null;
@@ -193,6 +194,42 @@ export class Audio {
         break;
       case "chest":
         [0, 4, 7, 11, 14].forEach((s, i) => this.tone("triangle", 523 * 2 ** (s / 12), 523 * 2 ** (s / 12), 0.3, 0.07, i * 0.07));
+        break;
+      case "break":
+        // a clay pot: a sharp crack, then the clatter of shards
+        this.hiss(0.08, 3200 * p, 1200, 0.16, 1.4);
+        this.tone("triangle", 520 * p, 180, 0.06, 0.06);
+        [0.05, 0.09, 0.14].forEach((d, i) => this.tone("square", (1400 - i * 260) * p, (900 - i * 120) * p, 0.03, 0.025, d));
+        break;
+      case "coin":
+        this.tone("square", 1320 * p, 1320 * p, 0.04, 0.03);
+        this.tone("square", 1760 * p, 1760 * p, 0.08, 0.03, 0.04);
+        break;
+      case "curse":
+        [0, 1, 6].forEach((s, i) => this.tone("sawtooth", 110 * 2 ** (s / 12), 100 * 2 ** (s / 12), 1.1, 0.06, i * 0.04, 0.08));
+        this.hiss(1, 600, 80, 0.12, 0.6, "lowpass");
+        break;
+      case "achieve":
+        [0, 7, 12, 16, 19, 24].forEach((s, i) => this.tone("triangle", 392 * 2 ** (s / 12), 392 * 2 ** (s / 12), 0.35, 0.07, i * 0.06));
+        this.tone("sine", 1568, 1568, 0.6, 0.03, 0.36);
+        break;
+      case "hover":
+        this.tone("square", 1800, 1700, 0.015, 0.02);
+        break;
+      case "burn":
+        this.hiss(0.18, 900 * p, 2400, 0.08, 0.8);
+        break;
+      case "venom":
+        this.tone("sine", 300 * p, 520 * p, 0.07, 0.05);
+        this.tone("sine", 380 * p, 620 * p, 0.06, 0.04, 0.05);
+        break;
+      case "holy":
+        this.tone("sine", 1320 * p, 1320 * p, 0.25, 0.04);
+        this.tone("sine", 1980 * p, 1980 * p, 0.3, 0.025, 0.02);
+        break;
+      case "void":
+        this.tone("sine", 160 * p, 60, 0.25, 0.08);
+        this.hiss(0.2, 400, 120, 0.06, 0.8, "lowpass");
         break;
       case "roar":
         this.tone("sawtooth", 90, 45, 1.1, 0.2, 0, 0.1);

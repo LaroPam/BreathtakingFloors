@@ -122,6 +122,8 @@ const DEFS: Def[] = [
   E({ key: "eye_boss", name: { ru: "ВЕЛИКОЕ ОКО", en: "THE GREAT EYE" }, anim: "eye_boss", ai: AI.Boss, hp: 1700, speed: 22, xp: 100, glow: "#f53cd1", scale: 2, elite: true, title: { ru: "ХРАНИТЕЛЬ СКЛЕПА, ЧТО НЕ СМЫКАЕТ ВЕК", en: "WARDEN OF THE CRYPT, WHO NEVER BLINKS" } }),
   E({ key: "frog_king", name: { ru: "ЖАБИЙ КОРОЛЬ", en: "THE TOAD KING" }, anim: "frog_king", ai: AI.BossFrog, hp: 2800, speed: 0, xp: 140, glow: "#ff8a2a", scale: 2.2, elite: true, title: { ru: "ВЛАДЫКА ТОПКОГО САДА", en: "LORD OF THE SUNKEN GARDEN" } }),
   E({ key: "eye_void", name: { ru: "ОКО ПУСТОТЫ", en: "THE VOID EYE" }, anim: "eye_void", ai: AI.Boss, hp: 4600, speed: 26, xp: 200, glow: "#78ccf4", scale: 2.3, elite: true, title: { ru: "ТО, ЧТО СМОТРИТ ИЗ-ПОД БАШНИ", en: "WHAT WATCHES FROM BENEATH THE TOWER" } }),
+  // not on any roster: it waits on the floor looking like a chest
+  E({ key: "mimic", name: { ru: "МИМИК", en: "MIMIC" }, anim: "mimic", ai: AI.Chase, hp: 240, speed: 62, xp: 30, glow: "#ffd84a", elite: true }),
 ];
 export const ENEMIES: EnemyDef[] = DEFS.map((d, id) => ({ ...d, id }));
 const id = (key: string) => ENEMIES.findIndex((e) => e.key === key);
@@ -129,7 +131,7 @@ export const EN = {
   slime: id("slime"), bat: id("bat"), skull: id("skull"), eye: id("eye"), ghost: id("ghost"), wisp: id("wisp"), frog: id("frog"),
   snake: id("snake"), jelly: id("jelly"), bird: id("bird"), moth: id("moth"), frogToxic: id("frog_toxic"), slimeIce: id("slime_ice"),
   snakeIce: id("snake_ice"), skullIce: id("skull_ice"), slimeElite: id("slime_elite"), skullElite: id("skull_elite"),
-  eyeBoss: id("eye_boss"), frogKing: id("frog_king"), eyeVoid: id("eye_void"),
+  eyeBoss: id("eye_boss"), frogKing: id("frog_king"), eyeVoid: id("eye_void"), mimic: id("mimic"),
 };
 
 // ------------------------------------------------------------------------------------------------ the run
@@ -357,7 +359,7 @@ export const questDef = (kind: QuestKind): QuestDef => QUESTS.find((q) => q.kind
 export const SPIRIT_PALETTE = { k: "#1a2a3a", A: "#e8f8ff", B: "#a8d8f0", C: "#78b0d8", D: "#4a7aa8", E: "#9ad4ff", F: "#5aa0d8", G: "#3a6aa0", J: "#203a5a", m: "#ffffff" };
 
 /** Daily tasks: three a day, the same for everyone, progress carried over the day's runs, embers for each. */
-export type TaskId = "kills" | "braziers" | "floor" | "boss" | "reactions" | "evolve" | "spirits" | "chests" | "grazes" | "trial";
+export type TaskId = "kills" | "braziers" | "floor" | "boss" | "reactions" | "evolve" | "spirits" | "chests" | "grazes" | "trial" | "urns" | "mimic" | "curse";
 export interface TaskDef {
   id: TaskId;
   /** {n} is the goal. */

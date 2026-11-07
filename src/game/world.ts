@@ -17,13 +17,15 @@ export const TILE = 16;
 export const B_CRESCENT = 0, B_LANCE = 1, B_ORB_RED = 2, B_ORB_VIOLET = 3, B_ORB_GREEN = 4, B_ORB_BLUE = 5;
 export const BULLET_ANIMS = ["crescent", "ice_lance", "orb_red", "orb_violet", "orb_green", "orb_blue"];
 // drop kinds
-export const D_BLUE = 0, D_GREEN = 1, D_RED = 2, D_HEART = 3, D_CHEST = 4;
+export const D_BLUE = 0, D_GREEN = 1, D_RED = 2, D_HEART = 3, D_CHEST = 4, D_EMBER = 5;
 export const B_ARROW = 6, B_FIREBALL = 7;
 BULLET_ANIMS.push("arrow", "fireball");
 const ATK_FPS = 20;
 const ELEMENTS = [El.Fire, El.Frost, El.Storm, El.Venom, El.Holy, El.Void];
 /** What the floor kicks up under the feet, per biome. */
 const DUST = { crypt: ["#6a6078", "#4a4258"], garden: ["#6a7a46", "#4a5a30"], frost: ["#d8e8f8", "#a8c0dc"] } as const;
+/** The sound each element makes when a blow lands with it. */
+const EL_SFX = ["hit", "burn", "freeze", "zap", "venom", "holy", "void"] as const;
 const ORB_TRAIL = ["", "", "#ff5a6a", "#c684ff", "#8ad83a", "#78ccf4"];
 const FIRE_TRAIL = [rgba("#ffd84a"), rgba("#ff8a2a"), rgba("#f2561d"), rgba("#a02a10")];
 const ICE_TRAIL = [rgba("#e8f8ff"), rgba("#9bdcff"), rgba("#5aa8e0")];
@@ -156,6 +158,30 @@ export interface Rack {
   /** The hero must step off before swapping again. */
   armed: boolean;
 }
+/** An urn, a pot, a jar or a vase: one blow breaks it, and something may be inside. */
+export interface Urn {
+  x: number;
+  y: number;
+  /** Which of the four (urns art variant). */
+  v: number;
+}
+/** A chest standing on the floor: loot, or a mimic waiting for someone to come close. */
+export interface FloorChest {
+  x: number;
+  y: number;
+  mimic: boolean;
+  t: number;
+}
+/** The cursed altar: stand on it to take a curse for the floor; the reward comes when the floor is done. */
+export interface CurseAltar {
+  x: number;
+  y: number;
+  progress: number;
+  taken: boolean;
+}
+/** Each urn's colours, for its shards. */
+const URN_SHARDS = [["#7a4a2a", "#b87848", "#3a2216"], ["#9a4a26", "#d07040", "#7ac048"], ["#3a6a98", "#78b0d8", "#e8f8ff"], ["#5a5068", "#8a809a", "#2a2430"]].map((c) => c.map((h) => rgba(h)));
+
 /** The ghost of a lightbearer who came down before, waiting on the floor with a task. */
 export interface Spirit {
   x: number;
@@ -222,6 +248,8 @@ export interface WorldEvents {
   victory(): void;
   reaction(r: Reaction): void;
   weapon(id: WeaponId, el: El): void;
+  /** The curse of the floor's altar was taken, or lifted (the floor done, the reward given). */
+  curse(state: "taken" | "lifted"): void;
   /** A spirit's quest was taken, done or failed. */
   quest(q: Quest): void;
   /** Something the day's tasks count happened. */
@@ -352,6 +380,11 @@ export class World {
   cine: Cine | null = null;
   spirit: Spirit | null = null;
   quest: Quest | null = null;
+  urns: Urn[] = [];
+  chests: FloorChest[] = [];
+  altar: CurseAltar | null = null;
+  /** The floor's curse is on: enemies tougher and faster until the floor is done. */
+  curse = false;
   moveX = 0;
   moveY = 0;
   private spawnAcc = 0;
@@ -397,6 +430,7 @@ export class World {
     this.portal = null;
     this.cine = null;
     this.quest = null;
+    this.curse = false;
     this.bossSpawned = false;
     this.bossUid = 0;
     this.cleared = false;
@@ -470,6 +504,43 @@ export class World {
       this.spirit = { x: Math.round(x), y: Math.round(y), kind: R.pick(questKinds), state: "offer", t: 0 };
       break;
     }
+    // a spot for a prop: off the columns, away from the start, the braziers, the altar and the spirit
+    const spot = (x: number, y: number, r: number) =>
+      x > 20 && x < W - 20 && y > 30 && y < H - 12 && this.free(x, y, r) && (x - W / 2) ** 2 + (y - H / 2) ** 2 > 90 * 90 &&
+      this.braziers.every((b) => (x - b.x) ** 2 + (y - b.y) ** 2 > 40 * 40) && this.racks.every((q) => (x - q.x) ** 2 + (y - q.y) ** 2 > 36 * 36) &&
+      (!this.spirit || (x - this.spirit.x) ** 2 + (y - this.spirit.y) ** 2 > 36 * 36);
+    // things to break: urns in twos and threes along the back wall and by the columns
+    this.urns = [];
+    const urnKinds = this.biome.id === "crypt" ? [0, 0, 3] : this.biome.id === "garden" ? [1] : [2, 2, 3];
+    const groups = 3 + Math.round((W * H) / 110000);
+    for (let g = 0, tries = 0; g < groups && tries < 120; tries++) {
+      const pil = this.pillars.length && R.chance(0.5) ? R.pick(this.pillars) : null;
+      const bx = pil ? pil.x + R.range(-22, 10) : R.range(40, W - 60), by = pil ? pil.y + R.range(12, 18) : R.range(32, 42);
+      if (!spot(bx, by, 8)) continue;
+      for (let k = 0, n = R.int(2, 3); k < n; k++) {
+        const x = Math.round(bx + k * 11 + R.range(-1.5, 1.5)), y = Math.round(by + R.range(-3, 3));
+        if (spot(x, y, 7)) this.urns.push({ x, y, v: R.pick(urnKinds) });
+      }
+      g++;
+    }
+    // a chest on the floor, now and then: loot, or from the second floor on maybe a mimic
+    this.chests = [];
+    if (R.chance(0.55))
+      for (let tries = 0; tries < 60; tries++) {
+        const x = R.range(50, W - 50), y = R.range(70, H - 30);
+        if (!spot(x, y, 10) || (x - W / 2) ** 2 + (y - H / 2) ** 2 < 160 * 160) continue;
+        this.chests.push({ x: Math.round(x), y: Math.round(y), mimic: this.floor >= 2 && R.chance(0.45), t: R.range(0, 3) });
+        break;
+      }
+    // the cursed altar: from the second floor, now and then
+    this.altar = null;
+    if (this.floor >= 2 && R.chance(0.45))
+      for (let tries = 0; tries < 60; tries++) {
+        const x = R.range(60, W - 60), y = R.range(80, H - 40);
+        if (!spot(x, y, 16) || this.chests.some((c) => (x - c.x) ** 2 + (y - c.y) ** 2 < 60 * 60)) continue;
+        this.altar = { x: Math.round(x), y: Math.round(y), progress: 0, taken: false };
+        break;
+      }
     this.motes = [];
     for (let k = 0; k < 70; k++) this.motes.push({ x: R.range(0, W), y: R.range(-40, H), vx: R.range(-1, 1), vy: R.range(-1, 1), ph: R.range(0, 6.3) });
   }
@@ -553,8 +624,9 @@ export class World {
   }
   spawnAt(type: number, x: number, y: number): number {
     const d = ENEMIES[type], f = this.floor;
-    const hp = d.hp * (1 + 0.25 * (f - 1)) * (1 + Math.min(0.8, this.time / 240)) * (d.elite && !d.scale ? 1 : 1);
-    const i = this.enemies.add(type, x, y, hp, this.rng.next(), this.mod.speed * (1 + (f - 1) * 0.025) * this.rng.range(0.9, 1.1));
+    const curse = this.curse ? 1.5 : 1;
+    const hp = d.hp * (1 + 0.25 * (f - 1)) * (1 + Math.min(0.8, this.time / 240)) * curse;
+    const i = this.enemies.add(type, x, y, hp, this.rng.next(), this.mod.speed * (1 + (f - 1) * 0.025) * this.rng.range(0.9, 1.1) * (this.curse ? 1.2 : 1));
     if (i >= 0) {
       this.enemies.face[i] = this.hero.x < x ? -1 : 1;
       if (!this.seen.has(type)) {
@@ -615,6 +687,7 @@ export class World {
     this.updateDrops(dt);
     this.updateFloor(dt);
     this.updateQuest(dt);
+    this.updateProps(dt);
     this.director(dt);
     this.tickAmbient(dt);
   }
@@ -987,6 +1060,9 @@ export class World {
       }
       hits++;
     });
+    // urns in the blow's reach break
+    if (B.kind === "front") this.smashUrns(fx, fy, R);
+    else this.smashUrns(cx, cy, R, dir, B.kind === "around" ? Math.PI : arc);
     if (B.kind === "front" && hit === 0) {
       this.addFx("slam", fx, h.y + 2, { sx: 0.6, sy: 0.6, glow: 0.8 });
       this.shake = Math.max(this.shake, 0.4);
@@ -1026,6 +1102,8 @@ export class World {
         const a = dir + (q - (s.wave - 1) / 2) * 0.28;
         this.bullets.add(TEAM_HERO, B_CRESCENT, cx + Math.cos(a) * 14, cy + Math.sin(a) * 14, Math.cos(a) * 250, Math.sin(a) * 250, 0.55, dmg * 0.6, 8, wel, 3);
       }
+    // an element sings in its own voice when the blow lands
+    if (hits && wel) this.audio.play(EL_SFX[wel], 1.1);
     if (hits) {
       const heavy = B.push >= 140;
       this.hitstop = Math.max(this.hitstop, heavy ? 0.05 : of > 3 ? 0.012 : 0.025);
@@ -1038,6 +1116,7 @@ export class World {
   /** Damage everything in a circle (spells, fireballs bursting). */
   private blast(x: number, y: number, r: number, dmg: number, el: El, push: number): void {
     const E = this.enemies, hit: number[] = [];
+    this.smashUrns(x, y, r);
     this.grid.query(x, y + 10, r + 24, (i) => {
       this.body(i);
       if ((this.bx - x) ** 2 + (this.by - y) ** 2 < (r + (this.brx + this.bry) / 2) ** 2) hit.push(E.uid[i]);
@@ -1336,6 +1415,13 @@ export class World {
     if (this.rng.chance(d.elite ? 0.4 : 0.015)) this.drops.add(D_HEART, x, y, 1, 0, -20);
     const boss = d.ai === AI.Boss || d.ai === AI.BossFrog;
     if (d.elite && !boss) this.drops.add(D_CHEST, x, y, 1, 0, 0);
+    // a mimic was full of what it pretended to be
+    if (type === EN.mimic) {
+      this.pendingChests++;
+      this.embersBonus += 8;
+      this.ev.count("mimic");
+      for (let q = 0; q < 6; q++) this.drops.add(D_EMBER, x, y - 4, 1, this.rng.range(-60, 60), this.rng.range(-70, -10));
+    }
     if (type === EN.slimeElite)
       for (let k = 0; k < 3; k++) {
         const j = this.spawnAt(EN.slime, x + this.rng.range(-10, 10), y + this.rng.range(-8, 8));
@@ -1359,6 +1445,89 @@ export class World {
     }
     if (d.elite) this.hitstop = Math.max(this.hitstop, 0.06);
     E.remove(i);
+  }
+
+  // ============================================================================================ urns, chests, the altar
+  private updateProps(dt: number): void {
+    const h = this.hero;
+    if (h.dead || h.exitT >= 0) return;
+    // a dash goes through urns
+    if (h.dashT > 0) this.smashUrns(h.x, h.y - 8, 12);
+    // chests: walk into a real one, come too close to a mimic
+    for (let k = this.chests.length - 1; k >= 0; k--) {
+      const c = this.chests[k], d2 = (h.x - c.x) ** 2 + (h.y - c.y) ** 2;
+      c.t += dt;
+      if (d2 > (c.mimic ? 30 : 18) ** 2) continue;
+      this.chests.splice(k, 1);
+      if (c.mimic) {
+        const i = this.spawnAt(EN.mimic, c.x, c.y);
+        if (i >= 0) this.enemies.age[i] = 0.2;
+        this.addFx("poof", c.x, c.y + 4, { glow: 0.6 });
+        this.burst(c.x, c.y - 8, 14, rgba("#d8a830"), 90, 0.5, 120);
+        this.audio.play("roar", 1.7);
+        this.shake = Math.max(this.shake, 0.45);
+      } else {
+        this.pendingChests++;
+        this.addFx("chest", c.x, c.y + 6, { glow: 0.9 });
+        this.audio.play("chest");
+      }
+    }
+    // the cursed altar: a moment standing on it takes the curse
+    const a = this.altar;
+    if (a && !a.taken) {
+      const near = (h.x - a.x) ** 2 + (h.y - a.y) ** 2 < 22 * 22;
+      a.progress = near ? a.progress + dt / 1.1 : Math.max(0, a.progress - dt * 2);
+      if (near && this.rng.chance(dt * 30)) this.parts.add(a.x + this.rng.range(-12, 12), a.y - 10, 0, -30, 0.5, rgba("#ff3a3a"), 1, 0, 1);
+      if (a.progress >= 1) {
+        a.taken = true;
+        this.curse = true;
+        // what is already here is cursed too
+        const E = this.enemies;
+        for (let i = 0; i < E.n; i++) if (ENEMIES[E.type[i]].ai < AI.Boss) (E.hp[i] *= 1.5, E.maxHp[i] *= 1.5, E.speedMul[i] *= 1.2);
+        this.addFx("spawn", a.x, a.y, { tint: rgba("#ff3a3a"), glow: 1 });
+        this.addFx("frost_nova", h.x, h.y, { tint: rgba("#c8303a"), glow: 0.7, sx: 0.7, sy: 0.7 });
+        this.flash = Math.max(this.flash, 0.3);
+        this.shake = Math.max(this.shake, 0.6);
+        this.audio.play("roar", 0.8);
+        this.ev.curse("taken");
+      }
+    }
+  }
+
+  /** Break the urns within r of a point (and, for a swing, within its arc). */
+  smashUrns(x: number, y: number, r: number, dir = 0, arc = Math.PI): void {
+    for (let k = this.urns.length - 1; k >= 0; k--) {
+      const u = this.urns[k], dx = u.x - x, dy = u.y - 8 - y, d = Math.hypot(dx, dy);
+      if (d > r + 7) continue;
+      if (arc < Math.PI) {
+        let da = Math.atan2(dy, dx) - dir;
+        da = Math.atan2(Math.sin(da), Math.cos(da));
+        if (Math.abs(da) > arc + 0.4) continue;
+      }
+      this.urns.splice(k, 1);
+      this.breakUrn(u);
+    }
+  }
+  /** An urn shatters: shards fly and fall, dust puffs, and whatever was inside spills out. */
+  private breakUrn(u: Urn): void {
+    const R = this.rng, cols = URN_SHARDS[u.v];
+    for (let q = 0; q < 12; q++) {
+      const a = R.range(-Math.PI, 0), sp = R.range(30, 95);
+      this.parts.add(u.x + R.range(-4, 4), u.y - R.range(2, 12), Math.cos(a) * sp, Math.sin(a) * sp, R.range(0.35, 0.7), R.pick(cols), R.chance(0.4) ? 2 : 1, 260, 0);
+    }
+    this.dust(u.x, u.y, 6, 30);
+    this.addFx("poof", u.x, u.y + 2, { sx: 0.5, sy: 0.5, glow: 0.3 });
+    this.audio.play("break");
+    this.ev.count("urns");
+    // the loot: embers often, soul shards, now and then a heart, rarely a chest
+    const r = R.next(), h = this.hero, spill = (kind: number, value: number) => {
+      const a = R.range(-Math.PI, 0), s = R.range(20, 60);
+      this.drops.add(kind, u.x, u.y - 4, value, Math.cos(a) * s, Math.sin(a) * s);
+    };
+    if (r < 0.34) for (let q = R.int(1, 3); q > 0; q--) spill(D_EMBER, 1);
+    else if (r < 0.74) for (let q = R.int(2, 4); q > 0; q--) spill(this.floor >= 4 && R.chance(0.3) ? D_GREEN : D_BLUE, this.floor >= 4 ? 5 : 1);
+    else if (r < 0.82 && h.hp < h.maxHp) spill(D_HEART, 1);
+    else if (r < 0.84) this.drops.add(D_CHEST, u.x, u.y, 1, 0, 0);
   }
 
   // ============================================================================================ quests
@@ -2176,6 +2345,7 @@ export class World {
         continue;
       }
       if (B.team[i] === TEAM_HERO) {
+        if (this.urns.length) this.smashUrns(x, y + 6, 3);
         let gone = false;
         this.grid.query(x, y + 16, 40, (j) => {
           this.body(j);
@@ -2272,7 +2442,11 @@ export class World {
       D.x[i] += D.vx[i] * dt;
       D.y[i] += D.vy[i] * dt;
       if (d < 10 && D.pulled[i]) {
-        if (kind === D_HEART) {
+        if (kind === D_EMBER) {
+          this.embersBonus += D.value[i];
+          this.audio.play("coin");
+          this.parts.add(h.x + this.rng.range(-3, 3), h.y - 18, 0, -30, 0.4, rgba("#ffc23d"), 1, 0, 1);
+        } else if (kind === D_HEART) {
           h.hp = Math.min(h.maxHp, h.hp + 1);
           this.audio.play("heal");
           this.popup(h.x, h.y - 40, "+1", rgba("#ff8a9a"), true);
@@ -2362,7 +2536,16 @@ export class World {
     this.portal = { x: Math.max(40, Math.min(this.w - 40, x)), y: Math.max(60, Math.min(this.h - 20, y)), t: 0 };
     this.addFx("spawn", this.portal.x, this.portal.y, { glow: 0.8 });
     this.audio.play("portal");
-    this.ev.banner(tr("portalOpen"), rgba("#c684ff"));
+    if (this.curse) {
+      // the floor is done under the curse: it lifts, and pays
+      this.curse = false;
+      this.pendingChests += 2;
+      this.embersBonus += 10 + this.floor * 3;
+      const h = this.hero;
+      this.addFx("heal_ring", h.x, h.y, { tint: rgba("#ff8a6a"), glow: 0.8 });
+      this.ev.count("curse");
+      this.ev.curse("lifted");
+    } else this.ev.banner(tr("portalOpen"), rgba("#c684ff"));
   }
   private spawnElite(): void {
     const [x, y] = this.edgePoint(200);
@@ -2406,7 +2589,7 @@ export class World {
   private director(dt: number): void {
     if (this.hero.dead || this.cleared || this.won || this.hero.exitT >= 0) return;
     const E = this.enemies, phase = this.phase, boss = this.bossIndex() >= 0;
-    const target = Math.min(90, Math.round((4 + this.floor * 2.2) * (1 + 0.5 * phase) * this.mod.spawn * (1 + Math.min(0.5, this.time / 240)) * (boss ? 0.45 : this.portal ? 0.5 : 1)));
+    const target = Math.min(90, Math.round((4 + this.floor * 2.2) * (1 + 0.5 * phase) * this.mod.spawn * (1 + Math.min(0.5, this.time / 240)) * (boss ? 0.45 : this.portal ? 0.5 : 1) * (this.curse ? 1.25 : 1)));
     this.spawnAcc += dt;
     if (E.n < target && this.spawnAcc >= 0.6) {
       this.spawnAcc = 0;
