@@ -21,6 +21,7 @@ import { encodePNG } from "../../pixelfx/tools/lib/png.mjs";
 import { ANIMS } from "./manifest.mjs";
 import { fontGlyphs } from "./font.mjs";
 import { weaponModelFrames } from "./weapons.mjs";
+import { FX_PAD, RIG_CANVAS } from "./canvas.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const PFX_DIR = join(ROOT, "pixelfx", "src", "fx"), ART_DIR = join(ROOT, "art", "fx");
@@ -65,7 +66,10 @@ function shapeLight(L, mode) {
 
 /** Render an effect module to trimmed color and light frames. */
 function renderEffect(mod, meta, e, extraOpts = {}) {
-  const [W, H] = meta.size, [OX, OY] = meta.origin, D = meta.duration ?? 1;
+  // an animated effect gets a margin on every side, so a trail or a spark that overshoots its canvas is not cut off
+  // (stills, tiles and screen-wide effects are drawn to fill theirs exactly)
+  const P = e.variants || isScreen(meta) || (e.art ?? "").startsWith("tiles/") ? 0 : FX_PAD;
+  const W = meta.size[0] + 2 * P, H = meta.size[1] + 2 * P, OX = meta.origin[0] + P, OY = meta.origin[1] + P, D = meta.duration ?? 1;
   const fps = e.fps ?? Math.min(meta.fps ?? 30, 20);
   let n, dt;
   if (meta.loop) {
@@ -94,7 +98,8 @@ function renderEffect(mod, meta, e, extraOpts = {}) {
 
 /** Pose the hero on pixelfx's skeleton. */
 function renderRig(e) {
-  const W = 64, H = 64, OX = 32, OY = 58, frames = [], hands = [];
+  // a canvas big enough for the longest weapon at full stretch (tools/check/clip.mjs makes sure of it)
+  const { W, H, OX, OY } = RIG_CANVAS, frames = [], hands = [];
   for (const pose of e.rig) {
     const r = posed(pose), buf = new Uint32Array(W * H), dy = Math.round(pose.y ?? 0);
     const dx = Math.round(pose.x ?? 0);

@@ -19,7 +19,8 @@
     "typecheck": "tsc --noEmit",
     "fx": "node pixelfx/tools/render.mjs",
     "fx:check": "node pixelfx/tools/check.mjs",
-    "art": "node tools/art.mjs"
+    "art": "node tools/art.mjs",
+    "check:clip": "node tools/check/clip.mjs --strict"
   },
   "devDependencies": {
     "typescript": "6.0.3",
