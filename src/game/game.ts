@@ -6,7 +6,7 @@ import type { Input } from "../engine/input";
 import { Batch, rgba, rgbaf, withAlpha, type Lighting, type Renderer } from "../engine/renderer";
 import { anim, DUMMY, FONTS, frameAt, icon } from "../engine/atlas";
 import { fitScale, measure, text, wrap } from "../engine/text";
-import type { Platform } from "../platform/platform";
+import { dayNumber, type Board, type BoardName, type Platform } from "../platform/platform";
 import { bossOf, EL_COLOR, EL_NAME, ENEMIES, EVOLUTIONS, evolutionOf, FLOORS, FORGE, HEROES, PALETTE_KEYS, WEAPONS, weaponName, MODIFIERS, NO_MODIFIER, REACTIONS, RELIC_MAX, RELIC_SLOTS, RELICS, STATS, type Modifier, type Reaction, type RelicKind, type StatId } from "./defs";
 import { drawWorld, Scene } from "./draw";
 import { getLang, langFor, setLang, t, tx, type Lang } from "./i18n";
@@ -15,7 +15,7 @@ import { defaultSave, sanitize, type SaveData } from "./save";
 import { button, C, drawHud, drawPointers, drawTouch, fmtTime, Menu, panel, para } from "./ui";
 import { CINE_DUR, World } from "./world";
 
-type State = "title" | "heroes" | "forge" | "card" | "play" | "spin" | "pause" | "codex" | "stairs" | "dead" | "won";
+type State = "title" | "heroes" | "forge" | "daily" | "records" | "card" | "play" | "spin" | "pause" | "codex" | "stairs" | "dead" | "won";
 type Choice = { type: "relic"; kind: RelicKind; level: number } | { type: "stat"; id: StatId } | { type: "evo"; kind: RelicKind };
 
 /**
@@ -56,12 +56,18 @@ export class Game {
   private cardT = 0;
   private heroIdx = 0;
   private codexPage = 0;
+  private unlockedAt = -9;
   private startSpins = 0;
   private stairs: Modifier[] = [];
   private revived = false;
   private platformPaused = false;
   private runRng = new Rng(Date.now() & 0xffffff);
-  private lastResult = { floor: 0, kills: 0, time: 0, embers: 0, score: 0, best: false };
+  private lastResult = { floor: 0, kills: 0, time: 0, embers: 0, score: 0, best: false, daily: false };
+  /** This run is the daily trial (the same seed, hero and first floor for everyone today). */
+  private daily = false;
+  /** Leaderboards as last fetched ("loading" while a request is out). */
+  private boards: Partial<Record<BoardName, Board | null | "loading">> = {};
+  private recordsTab: BoardName = "score";
   private gameplayOn = false;
   private touch = false;
   private savePending = false;
@@ -165,17 +171,33 @@ export class Game {
     this.wipe = { t: 0, dur: 0.45, out: true, then };
   }
 
+  /** Today's trial, the same everywhere: a seed from the day, the hero of the day, the first floor's stair modifier. */
+  private dailyPlan() {
+    const day = dayNumber(), seed = (Math.imul(day ^ 0x5bd1e995, 0x27d4eb2d) ^ (day << 7)) >>> 0, r = new Rng(seed);
+    return { day, seed, hero: HEROES[r.int(0, HEROES.length - 1)], mod: MODIFIERS[r.int(0, MODIFIERS.length - 1)] };
+  }
+
   private startRun(): void {
+    // a daily trial plays from the day's seed; any other run from the clock
+    const plan = this.dailyPlan();
+    this.runRng = new Rng(this.daily ? plan.seed : (Date.now() ^ (Math.random() * 1e9)) >>> 0);
     this.newWorld();
-    const w = this.world, f = this.save.forge, hero = HEROES[this.heroIdx];
-    this.save.hero = hero.id;
+    if (!this.save.unlocked.includes(HEROES[this.heroIdx].id)) this.heroIdx = 0;
+    // the daily trial: its own hero, nothing from the forge, everyone equal
+    const w = this.world, f = this.daily ? {} : this.save.forge, hero = this.daily ? plan.hero : HEROES[this.heroIdx];
+    if (!this.daily) this.save.hero = hero.id;
+    else {
+      const d = this.save.daily?.day === String(plan.day) ? this.save.daily : { day: String(plan.day), best: 0, tries: 0 };
+      d.tries++;
+      this.save.daily = d;
+    }
     w.setHero(hero);
     w.hero.maxHp += f.heart ?? 0;
     w.hero.hp = w.hero.maxHp;
     w.stats.might = 1 + 0.1 * (f.might ?? 0);
     w.stats.magnet *= 1 + 0.25 * (f.reach ?? 0);
     w.autoAim = this.touch;
-    w.startFloor(1, NO_MODIFIER);
+    w.startFloor(1, this.daily ? plan.mod : NO_MODIFIER);
     this.revived = false;
     this.save.runs++;
     this.persist();
@@ -188,21 +210,34 @@ export class Game {
   }
 
   private onVictory(): void {
+    setTimeout(() => this.finishRun(true), 2200);
+  }
+
+  /** A run is over: embers, records, the leaderboards, the result screen. */
+  private finishRun(won: boolean): void {
     const w = this.world;
-    setTimeout(() => {
-      const embers = Math.round(((w.floor - 1) * 8 + w.kills / 10 + w.embersBonus + 60) * (w.mod.embers ?? 1));
-      const score = w.floor * 1000 + w.kills * 5 + w.hero.level * 50 + 5000;
-      const best = score > this.save.bestScore;
-      this.lastResult = { floor: w.floor, kills: w.kills, time: w.runTime, embers, score, best };
-      this.save.embers += embers;
+    const embers = Math.round(((w.floor - 1) * 8 + w.kills / 10 + w.embersBonus + (won ? 60 : 0)) * (w.mod.embers ?? 1));
+    const score = w.floor * 1000 + w.kills * 5 + w.hero.level * 50 + (won ? 5000 : 0);
+    let best: boolean;
+    if (this.daily) {
+      // the daily trial counts on its own board, not against the forge-made records
+      const d = this.save.daily!;
+      best = score > d.best;
+      d.best = Math.max(d.best, score);
+      this.platform.submitScore(score, "daily");
+    } else {
+      best = score > this.save.bestScore;
       this.save.bestScore = Math.max(this.save.bestScore, score);
-      this.save.bestFloor = Math.max(this.save.bestFloor, w.floor);
-      this.save.wins = (this.save.wins ?? 0) + 1;
-      this.persist();
-      if (best) this.platform.submitScore(score);
-      this.audio.stopMusic();
-      this.setState("won");
-    }, 2200);
+      if (best) this.platform.submitScore(score, "score");
+    }
+    this.lastResult = { floor: w.floor, kills: w.kills, time: w.runTime, embers, score, best, daily: this.daily };
+    this.save.embers += embers;
+    this.save.bestFloor = Math.max(this.save.bestFloor, w.floor);
+    if (won) this.save.wins = (this.save.wins ?? 0) + 1;
+    this.persist();
+    this.boards = {};
+    this.audio.stopMusic();
+    this.setState(won ? "won" : "dead");
   }
 
   private onFloorCleared(): void {
@@ -233,21 +268,10 @@ export class Game {
   }
 
   private onDeath(): void {
-    const w = this.world;
     // let the death play out for a moment before the screen
     setTimeout(() => {
       if (this.state !== "play" && this.state !== "pause") return;
-      const embers = Math.round(((w.floor - 1) * 8 + w.kills / 10 + w.embersBonus) * (w.mod.embers ?? 1));
-      const score = w.floor * 1000 + w.kills * 5 + w.hero.level * 50;
-      const best = score > this.save.bestScore;
-      this.lastResult = { floor: w.floor, kills: w.kills, time: w.runTime, embers, score, best };
-      this.save.embers += embers;
-      this.save.bestScore = Math.max(this.save.bestScore, score);
-      this.save.bestFloor = Math.max(this.save.bestFloor, w.floor);
-      this.persist();
-      if (best) this.platform.submitScore(score);
-      this.audio.stopMusic();
-      this.setState("dead");
+      this.finishRun(false);
     }, 2600);
   }
 
@@ -484,6 +508,8 @@ export class Game {
       case "heroes": this.drawHeroes(); break;
       case "card": this.drawCard(); break;
       case "forge": this.drawForge(); break;
+      case "daily": this.drawDaily(); break;
+      case "records": this.drawRecords(); break;
       case "play":
         if (w.cine) {
           this.drawCine();
@@ -491,7 +517,7 @@ export class Game {
           break;
         }
         drawPointers(ui, w, cx, cy, W, H, this.now);
-        drawHud(ui, w, W, H, this.now, this.banner, this.touch, false);
+        drawHud(ui, w, W, H, this.now, this.banner, this.touch, this.daily);
         if (this.touch) drawTouch(ui, this.input, w, W, H, this.now);
         else this.input.zones = [];
         this.drawTutorial();
@@ -528,23 +554,37 @@ export class Game {
     const ty = Math.round(H * 0.14);
     const th = this.heading(t("title"), ty, 3);
     text(ui, t("subtitle"), W / 2, ty + th + 8, { align: "center", color: C.dim });
-    const bw = 150, bh = 20, bx = Math.round(W / 2 - bw / 2);
-    let y = Math.round(H * 0.5);
+    const bw = 160, bh = H >= 300 ? 20 : 17, gap = H >= 300 ? 6 : 4, bx = Math.round(W / 2 - bw / 2);
+    let y = Math.round(Math.min(H * 0.46, H - 34 - 6 * (bh + gap)));
     if (button(ui, this.menu, now, bx, y, bw, bh, t("play"), { color: C.gold })) {
       this.audio.unlock();
+      this.daily = false;
       this.setState("heroes", 2);
       return;
     }
-    y += bh + 6;
+    y += bh + gap;
+    if (button(ui, this.menu, now, bx, y, bw, bh, t("daily"), { color: rgba("#ff9a8a") })) {
+      this.audio.unlock();
+      this.setState("daily");
+      return;
+    }
+    ui.image(icon("hud", "daily"), bx + 12, y + bh / 2);
+    y += bh + gap;
     if (button(ui, this.menu, now, bx, y, bw, bh, t("forge"))) this.setState("forge");
-    y += bh + 6;
+    y += bh + gap;
+    if (button(ui, this.menu, now, bx, y, bw, bh, t("records"))) {
+      this.recordsTab = "score";
+      this.setState("records");
+    }
+    ui.image(icon("hud", "crown"), bx + 12, y + bh / 2);
+    y += bh + gap;
     if (button(ui, this.menu, now, bx, y, bw, bh, t("language"))) {
       const next: Lang = getLang() === "ru" ? "en" : "ru";
       setLang(next);
       this.save.lang = next;
       this.persist();
     }
-    y += bh + 6;
+    y += bh + gap;
     if (button(ui, this.menu, now, bx, y, bw, bh, `${t("sound")}: ${this.save.sound ? t("on") : t("off")}`)) {
       this.save.sound = !this.save.sound;
       this.audio.setEnabled(this.save.sound && this.platform.audioAllowed());
@@ -567,17 +607,32 @@ export class Game {
     };
     if (input.pressed("left")) pick(-1);
     if (input.pressed("right")) pick(1);
-    const hero = HEROES[this.heroIdx], weapon = WEAPONS[hero.weapon], wide = W >= 460;
+    const hero = HEROES[this.heroIdx], weapon = WEAPONS[hero.weapon], wide = W >= 460, locked = !this.save.unlocked.includes(hero.id);
     this.heading(t("chooseHero"), 10, H >= 320 ? 2 : 1);
+    // what you have to spend, top right
+    const emb = String(this.save.embers);
+    text(ui, emb, W - 8, 8, { align: "right", color: C.gold, outline: true });
+    ui.image(icon("hud", "ember"), W - 14 - measure(emb), 11);
     // the hero, big, on a pool of their light
     const cx = wide ? Math.round(W * 0.3) : Math.round(W / 2), cy = wide ? Math.round(H * 0.62) : Math.round(H * 0.44), [lr, lg, lb] = hero.lightColor;
     ui.disc(cx, cy, 46, 14, rgbaf(lr, lg, lb, 0.12));
     ui.disc(cx, cy, 30, 9, rgbaf(lr, lg, lb, 0.18));
     const idle = anim(`${hero.weapon}_idle`), f = idle.frames[frameAt(idle, now)][0]!;
+    // a hero not yet bought stands as a shadow with a lock on it; one just bought steps out of a burst of light
+    const since = now - this.unlockedAt, burst = since < 1.2 ? 1 - since / 1.2 : 0;
     ui.pal = this.heroIdx + 1;
-    ui.image(f, cx, cy, 3, 3);
+    ui.image(f, cx, cy, 3, 3, 0, locked ? rgbaf(0.11, 0.1, 0.16, 1) : 0xffffffff);
     ui.pal = 0;
-    if (hero.light === "wisp") {
+    if (locked) ui.image(icon("hud", "lock"), cx, cy - 46, 2, 2);
+    if (burst > 0) {
+      for (let k = 0; k < 16; k++) {
+        const a = (k / 16) * Math.PI * 2 + since * 2, r0 = 20 + since * 60, r1 = r0 + 14 + 10 * Math.sin(k * 3);
+        ui.line(cx + Math.cos(a) * r0, cy - 40 + Math.sin(a) * r0, cx + Math.cos(a) * r1, cy - 40 + Math.sin(a) * r1, 1, rgbaf(1, 0.85, 0.45, burst));
+      }
+      ui.disc(cx, cy - 40, 60 * (1 - burst) + 10, 60 * (1 - burst) + 10, rgbaf(1, 0.9, 0.6, burst * 0.35));
+      text(ui, t("newHero"), cx, cy + 14, { align: "center", color: withAlpha(C.gold, burst), outline: true });
+    }
+    if (hero.light === "wisp" && !locked) {
       const wf = anim("wisp_light"), r = wf.frames[frameAt(wf, now)][0]!;
       const tint = hero.id === "mage" ? 0xffffffff : rgbaf(lr, lg, lb, 1);
       ui.image(r, cx - 30, cy - 105 + Math.sin(now * 2.6) * 6, 2, 2, 0, tint);
@@ -593,7 +648,7 @@ export class Game {
     const ns = wide ? fitScale(tx(hero.name), "title", pw, 2) : 1;
     text(ui, tx(hero.name), px, y, { font: "title", scale: ns, color: C.gold, outline: true, shadow: rgba("#3a1a10") });
     y += FONT_H * ns + 4;
-    text(ui, tx(hero.title), px, y, { font: "mini", color: C.dim });
+    text(ui, locked ? `${tx(hero.title)}  ·  ${t("locked")}` : tx(hero.title), px, y, { font: "mini", color: locked ? C.goldDim : C.dim });
     y += 11;
     ui.image(icon("icons", `w_${hero.weapon}`), px + 10, y + 10);
     text(ui, tx(weapon.name), px + 24, y + 3, { color: C.text });
@@ -612,12 +667,26 @@ export class Game {
     HEROES.forEach((hd, k) => {
       const x = Math.round(W / 2 + (k - (n - 1) / 2) * 34), a = anim(`${hd.weapon}_idle`).frames[0][0]!;
       if (k === this.heroIdx) panel(ui, x - 14, ty - 22, 28, 30, C.gold, rgba("#221e30", 0.9));
+      const own = this.save.unlocked.includes(hd.id);
       ui.pal = k + 1;
-      ui.image(a, x, ty + 6, 1, 1, 0, k === this.heroIdx ? 0xffffffff : rgbaf(0.55, 0.55, 0.6, 1));
+      ui.image(a, x, ty + 6, 1, 1, 0, !own ? rgbaf(0.13, 0.12, 0.18, 1) : k === this.heroIdx ? 0xffffffff : rgbaf(0.55, 0.55, 0.6, 1));
       ui.pal = 0;
+      if (!own) ui.image(icon("hud", "lock"), x + 7, ty - 14);
     });
-    const bw = 120, by = H - 22;
-    if (button(ui, this.menu, now, Math.round(W / 2 - bw - 6), by, bw, 18, t("start"), { color: C.gold })) {
+    const bw = 120, by = H - 22, bx = Math.round(W / 2 - bw - 6);
+    if (locked) {
+      const afford = this.save.embers >= hero.cost, label = `${t("unlock")} ${hero.cost}`;
+      if (button(ui, this.menu, now, bx, by, bw, 18, label, { color: C.gold, disabled: !afford })) {
+        this.save.embers -= hero.cost;
+        this.save.unlocked.push(hero.id);
+        this.unlockedAt = now;
+        this.persist();
+        this.audio.play("levelup");
+        this.audio.play("chest");
+      }
+      ui.image(icon("hud", "ember"), bx + bw / 2 + measure(label) / 2 + 7, by + 9);
+      if (!afford) text(ui, t("notEnough"), bx + bw / 2, by - 9, { font: "mini", align: "center", color: C.red });
+    } else if (button(ui, this.menu, now, bx, by, bw, 18, t("start"), { color: C.gold })) {
       this.transition(() => this.startRun());
     }
     if (button(ui, this.menu, now, Math.round(W / 2 + 6), by, bw, 18, t("back")) || input.pressed("back")) this.setState("title");
@@ -646,6 +715,7 @@ export class Game {
     const ui = this.ui, W = this.r.w, H = this.r.h, w = this.world, B = w.biome, a = Math.min(1, this.cardT * 3);
     this.drawCardBack();
     const cy = Math.round(H * 0.38);
+    if (this.daily) text(ui, t("daily"), W / 2, cy - 44, { font: "mini", align: "center", color: withAlpha(rgba("#ff9a8a"), a) });
     this.heading(`${t("floor")} ${w.floor}`, cy - 30, 2, C.gold, a);
     this.heading(tx(B.name), cy + 2, 1, C.text, a, rgba("#0b0a12"));
     para(ui, tx(B.lore), Math.round(W / 2 - 150), cy + 24, 300, withAlpha(C.dim, a), "center");
@@ -706,6 +776,101 @@ export class Game {
     }
   }
 
+  /** The daily trial: the date, the rules, the hero of the day, the first floor's stairs, today's best. */
+  private drawDaily(): void {
+    const ui = this.ui, W = this.r.w, H = this.r.h, now = this.now, plan = this.dailyPlan(), hero = plan.hero, red = rgba("#ff9a8a");
+    const th = this.heading(t("daily"), 8, H >= 320 ? 2 : 1, red);
+    const date = new Date(plan.day * 86400000), dd = (n: number) => String(n).padStart(2, "0");
+    text(ui, `${dd(date.getUTCDate())}.${dd(date.getUTCMonth() + 1)}.${date.getUTCFullYear()}`, W / 2, 8 + th + 4, { font: "mini", align: "center", color: C.dim });
+    let y = 8 + th + 16;
+    const pw = Math.min(330, W - 20);
+    y += para(ui, t("dailyRules"), Math.round(W / 2 - pw / 2), y, pw, C.text, "center") + 6;
+    // the hero of the day on the left, the first floor's stairs on the right
+    const colW = Math.floor(Math.min(170, (W - 24) / 2)), lx = Math.round(W / 2 - colW - 4), rx = Math.round(W / 2 + 4);
+    const ph = Math.max(60, Math.min(124, H - y - 62));
+    panel(ui, lx, y, colW, ph);
+    panel(ui, rx, y, colW, ph);
+    text(ui, t("heroOfDay"), lx + colW / 2, y + 5, { font: "mini", align: "center", color: C.dim });
+    const idle = anim(`${hero.weapon}_idle`), big = ph >= 100 ? 2 : 1, [lr, lg, lb] = hero.lightColor;
+    ui.disc(lx + colW / 2, y + ph - 20, 26 * big, 7 * big, rgbaf(lr, lg, lb, 0.15));
+    ui.pal = HEROES.indexOf(hero) + 1;
+    ui.image(idle.frames[frameAt(idle, now)][0]!, lx + colW / 2, y + ph - 20, big, big);
+    ui.pal = 0;
+    text(ui, tx(hero.name), lx + colW / 2, y + ph - 14, { align: "center", color: C.gold, outline: true });
+    text(ui, t("firstFloor"), rx + colW / 2, y + 5, { font: "mini", align: "center", color: C.dim });
+    let ry = y + 16;
+    ry += para(ui, tx(plan.mod.name), rx + 8, ry, colW - 16, C.gold);
+    text(ui, t("risk"), rx + 8, ry + 2, { font: "mini", color: C.red });
+    ry += 10;
+    ry += para(ui, tx(plan.mod.risk), rx + 8, ry, colW - 16, C.text);
+    text(ui, t("reward"), rx + 8, ry + 2, { font: "mini", color: C.green });
+    ry += 10;
+    para(ui, tx(plan.mod.reward), rx + 8, ry, colW - 16, C.text);
+    y += ph + 6;
+    // what you did today
+    const d = this.save.daily?.day === String(plan.day) ? this.save.daily : null;
+    text(ui, `${t("todayBest")}: ${d?.best ?? 0}    ${t("tries")}: ${d?.tries ?? 0}`, W / 2, y, { align: "center", color: C.goldDim });
+    const bw = 120, by = H - 24;
+    if (button(ui, this.menu, now, Math.round(W / 2 - bw - 6), by, bw, 18, t("begin"), { color: red })) {
+      this.daily = true;
+      this.transition(() => this.startRun());
+    }
+    if (button(ui, this.menu, now, Math.round(W / 2 + 6), by, bw, 18, t("back")) || this.input.pressed("back")) this.setState("title", 1);
+  }
+
+  /** Records: the platform's leaderboards (best runs, today's trial) and the player's own. */
+  private drawRecords(): void {
+    const ui = this.ui, W = this.r.w, H = this.r.h, now = this.now, tab = this.recordsTab;
+    const th = this.heading(t("records"), 8, H >= 320 ? 2 : 1);
+    const pw = Math.min(340, W - 16), px = Math.round(W / 2 - pw / 2), tw = Math.floor((pw - 6) / 2);
+    let y = 8 + th + 6;
+    for (const [k, name] of (["score", "daily"] as BoardName[]).entries()) {
+      const on = tab === name;
+      if (button(ui, this.menu, now, px + k * (tw + 6), y, tw, 16, name === "score" ? t("bestRuns") : t("daily"), { color: on ? C.gold : C.dim })) this.recordsTab = name;
+      if (on) ui.rect(px + k * (tw + 6) + 4, y + 15, tw - 8, 1, C.gold);
+    }
+    y += 22;
+    // ask once each time the screen opens (the boards allow a few requests a minute)
+    if (this.boards[tab] === undefined) {
+      this.boards[tab] = "loading";
+      void this.platform.leaderboard(tab).then((b) => (this.boards[tab] = b));
+    }
+    const b = this.boards[tab], listH = Math.max(40, H - y - 78);
+    panel(ui, px, y, pw, listH);
+    if (b === "loading") text(ui, t("loading"), W / 2, y + listH / 2 - 3, { align: "center", color: C.dim });
+    else if (!b) text(ui, t("noBoard"), W / 2, y + listH / 2 - 3, { align: "center", color: C.dim });
+    else if (!b.entries.length) text(ui, t("nobody"), W / 2, y + listH / 2 - 3, { align: "center", color: C.dim });
+    else {
+      const rows = Math.floor((listH - 8) / 11);
+      b.entries.slice(0, rows).forEach((e, k) => {
+        const ry = y + 5 + k * 11, col = e.me ? C.gold : C.text;
+        if (e.me) ui.rect(px + 2, ry - 2, pw - 4, 11, rgba("#3a2e18", 0.8));
+        if (e.rank <= 3) ui.image(icon("hud", "crown"), px + 12, ry + 3, 1, 1, 0, e.rank === 1 ? 0xffffffff : e.rank === 2 ? rgbaf(0.75, 0.8, 0.9, 1) : rgbaf(0.8, 0.55, 0.35, 1));
+        text(ui, String(e.rank), px + 30, ry, { align: "right", color: C.dim });
+        text(ui, e.name.toUpperCase().slice(0, 22), px + 38, ry, { color: col });
+        text(ui, String(e.score), px + pw - 8, ry, { align: "right", color: col });
+      });
+      if (!b.myRank) text(ui, t("signIn"), W / 2, y + listH - 9, { font: "mini", align: "center", color: C.dim });
+    }
+    y += listH + 6;
+    // the player's own records, whatever the platform
+    const sv = this.save, plan = this.dailyPlan(), d = sv.daily?.day === String(plan.day) ? sv.daily : null;
+    text(ui, t("yourRecords"), px, y, { font: "mini", color: C.dim });
+    y += 9;
+    const pairs: [string, string][] = tab === "score"
+      ? [[t("score"), String(sv.bestScore)], [t("bestFloorL"), String(sv.bestFloor)], [t("wins"), String(sv.wins ?? 0)], [t("runs"), String(sv.runs)]]
+      : [[t("todayBest"), String(d?.best ?? 0)], [t("tries"), String(d?.tries ?? 0)]];
+    const cw = Math.floor(pw / pairs.length);
+    pairs.forEach(([label, value], k) => {
+      text(ui, value, px + k * cw + cw / 2, y, { align: "center", color: C.gold, outline: true });
+      text(ui, label, px + k * cw + cw / 2, y + 10, { font: "mini", align: "center", color: C.dim });
+    });
+    if (button(ui, this.menu, now, Math.round(W / 2 - 50), H - 24, 100, 18, t("back")) || this.input.pressed("back")) {
+      this.boards = {};
+      this.setState("title", 3);
+    }
+  }
+
   /** The wipe: diamonds that grow from one corner to the other until they cover the screen, and shrink away again. */
   private drawWipe(): void {
     const wp = this.wipe;
@@ -742,7 +907,7 @@ export class Game {
       }
       y += rowH;
     }
-    if (button(ui, this.menu, now, Math.round(W / 2 - 50), H - 30, 100, 18, t("back")) || this.input.pressed("back")) this.setState("title", 1);
+    if (button(ui, this.menu, now, Math.round(W / 2 - 50), H - 30, 100, 18, t("back")) || this.input.pressed("back")) this.setState("title", 2);
   }
 
   private drawSpin(): void {
@@ -935,6 +1100,7 @@ export class Game {
     }
     y += bh + 6;
     if (button(ui, this.menu, now, bx, y, bw, bh, t("menu"))) {
+      this.daily = false;
       this.newWorld();
       this.attract();
       this.setState("title");
@@ -969,11 +1135,13 @@ export class Game {
     }
     y += bh + 6;
     if (button(ui, this.menu, now, bx, y, bw, bh, t("menu"))) {
+      this.daily = false;
       this.newWorld();
       this.attract();
       this.setState("title");
     }
-    if (res.best) text(ui, `${t("best")}! ${res.score}`, W / 2, H - 14, { font: "mini", align: "center", color: C.gold });
+    if (res.best) text(ui, res.daily ? `${t("newRecord")}: ${res.score}` : `${t("best")}! ${res.score}`, W / 2, H - 14, { font: "mini", align: "center", color: C.gold });
+    if (res.daily) text(ui, t("daily"), W / 2, Math.round(H * 0.12) - 9, { font: "mini", align: "center", color: rgba("#ff9a8a") });
     void measure;
   }
 }

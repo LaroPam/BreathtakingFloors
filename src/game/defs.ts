@@ -479,40 +479,42 @@ export interface HeroDef {
   lightColor: [number, number, number];
   /** The stock dummy's colours (k A B C D E F G J m) recoloured: plates lit to dark, cloth, seams, the mark. */
   palette: Record<string, string>;
+  /** Embers to unlock them at the hero select (0: free from the start). */
+  cost: number;
 }
 export const HEROES: HeroDef[] = [
   {
-    id: "knight", name: { ru: "РЫЦАРЬ ФОНАРЯ", en: "LANTERN KNIGHT" }, title: { ru: "СТАЛЬ И ТЁПЛЫЙ СВЕТ", en: "STEEL AND WARM LIGHT" },
+    id: "knight", cost: 0, name: { ru: "РЫЦАРЬ ФОНАРЯ", en: "LANTERN KNIGHT" }, title: { ru: "СТАЛЬ И ТЁПЛЫЙ СВЕТ", en: "STEEL AND WARM LIGHT" },
     perk: { ru: "+1 СЕРДЦЕ, ФОНАРЬ СВЕТИТ НА 20% ШИРЕ", en: "+1 HEART, A LANTERN 20% WIDER" },
     weapon: "sword", hearts: 6, speed: 1, dashCd: 1, dashes: 1, lantern: 1.2, light: "lantern", lightColor: [1, 0.82, 0.58],
     palette: { k: "#0a0910", A: "#d4deea", B: "#8e9cb6", C: "#5c6a8a", D: "#3c4662", E: "#c8344c", F: "#922238", G: "#5c1428", J: "#3a0c1c", m: "#ffd04a" },
   },
   {
-    id: "ranger", name: { ru: "СЛЕДОПЫТ", en: "RANGER" }, title: { ru: "ЛУК, КОЖА И ЛЁГКИЙ ШАГ", en: "BOW, LEATHER, A LIGHT STEP" },
+    id: "ranger", cost: 60, name: { ru: "СЛЕДОПЫТ", en: "RANGER" }, title: { ru: "ЛУК, КОЖА И ЛЁГКИЙ ШАГ", en: "BOW, LEATHER, A LIGHT STEP" },
     perk: { ru: "ДВА РЫВКА ПОДРЯД, БЕГАЕТ БЫСТРЕЕ, СТРЕЛЫ ПРОБИВАЮТ +1", en: "TWO DASHES, FASTER FEET, ARROWS PIERCE +1" },
     weapon: "bow", hearts: 4, speed: 1.12, dashCd: 0.85, dashes: 2, lantern: 1, light: "lantern", lightColor: [1, 0.85, 0.6],
     palette: { k: "#0a0910", A: "#d8c08a", B: "#a8864e", C: "#765a32", D: "#4e3a20", E: "#4e8a3a", F: "#36612a", G: "#22401c", J: "#16281a", m: "#ffe060" },
   },
   {
-    id: "mage", name: { ru: "ЧАРОДЕЙКА", en: "SORCERESS" }, title: { ru: "ОГОНЬ, ЛЁД И ГРОЗА", en: "FIRE, ICE AND STORM" },
+    id: "mage", cost: 90, name: { ru: "ЧАРОДЕЙКА", en: "SORCERESS" }, title: { ru: "ОГОНЬ, ЛЁД И ГРОЗА", en: "FIRE, ICE AND STORM" },
     perk: { ru: "ЗАКЛИНАНИЯ ЧЕРЕДУЮТ СТИХИИ И САМИ ВЫЗЫВАЮТ РЕАКЦИИ", en: "HER SPELLS TAKE TURNS AND SET OFF REACTIONS" },
     weapon: "spell", hearts: 4, speed: 0.98, dashCd: 1, dashes: 1, lantern: 1, light: "wisp", lightColor: [0.55, 0.85, 1],
     palette: { k: "#0a0910", A: "#c8b8f0", B: "#9480d0", C: "#64509e", D: "#40306e", E: "#e8c860", F: "#b8902e", G: "#7a5a1a", J: "#2a1a44", m: "#7ad0ff" },
   },
   {
-    id: "reaper", name: { ru: "ЖНЕЦ", en: "REAPER" }, title: { ru: "КОСА И ЗЕЛЁНЫЙ ОГОНЬ ДУШ", en: "A SCYTHE AND GREEN SOUL-FIRE" },
+    id: "reaper", cost: 140, name: { ru: "ЖНЕЦ", en: "REAPER" }, title: { ru: "КОСА И ЗЕЛЁНЫЙ ОГОНЬ ДУШ", en: "A SCYTHE AND GREEN SOUL-FIRE" },
     perk: { ru: "ЖАТВА: КАЖДЫЕ 25 УБИЙСТВ ВОЗВРАЩАЮТ СЕРДЦЕ", en: "HARVEST: EVERY 25 KILLS GIVE A HEART BACK" },
     weapon: "scythe", hearts: 5, speed: 0.95, dashCd: 1.1, dashes: 1, lantern: 1, light: "wisp", lightColor: [0.55, 1, 0.6],
     palette: { k: "#0a0910", A: "#7a7688", B: "#4e4a5c", C: "#33303e", D: "#22202a", E: "#2e7a52", F: "#1c5238", G: "#0f3022", J: "#08140e", m: "#7ee88a" },
   },
   {
-    id: "berserker", name: { ru: "БЕРСЕРК", en: "BERSERKER" }, title: { ru: "БРОНЗА, МЕХ И ЯРОСТЬ", en: "BRONZE, FUR AND FURY" },
+    id: "berserker", cost: 180, name: { ru: "БЕРСЕРК", en: "BERSERKER" }, title: { ru: "БРОНЗА, МЕХ И ЯРОСТЬ", en: "BRONZE, FUR AND FURY" },
     perk: { ru: "ЯРОСТЬ: ЧЕМ МЕНЬШЕ СЕРДЕЦ, ТЕМ СИЛЬНЕЕ УДАРЫ (ДО +70%)", en: "FURY: THE FEWER HEARTS, THE HARDER THE BLOWS (UP TO +70%)" },
     weapon: "greatsword", hearts: 7, speed: 0.95, dashCd: 1.15, dashes: 1, lantern: 0.95, light: "lantern", lightColor: [1, 0.7, 0.45],
     palette: { k: "#0a0910", A: "#e0b078", B: "#b07a44", C: "#7e4e2a", D: "#52301a", E: "#7a3424", F: "#54200f", G: "#341208", J: "#1c0804", m: "#ff8a2a" },
   },
   {
-    id: "shadow", name: { ru: "ТЕНЬ", en: "SHADE" }, title: { ru: "КОГТИ ИЗ СУМРАКА", en: "CLAWS OUT OF THE DUSK" },
+    id: "shadow", cost: 240, name: { ru: "ТЕНЬ", en: "SHADE" }, title: { ru: "КОГТИ ИЗ СУМРАКА", en: "CLAWS OUT OF THE DUSK" },
     perk: { ru: "+20% КРИТА, РЫВОК РЕЖЕТ ВСЕХ НА ПУТИ", en: "+20% CRIT, THE DASH CUTS ALL IN ITS WAY" },
     weapon: "claws", hearts: 4, speed: 1.15, dashCd: 0.8, dashes: 2, lantern: 0.9, light: "wisp", lightColor: [0.8, 0.5, 1],
     palette: { k: "#0a0910", A: "#6a6a8e", B: "#46466a", C: "#2c2c48", D: "#1a1a30", E: "#a06ae0", F: "#6a3aa8", G: "#3e1e6a", J: "#0c0a18", m: "#e05aff" },

@@ -4,7 +4,7 @@
 // https://developers.google.com/youtube/gaming/playables/reference/sdk
 
 import type { SaveData } from "../game/save";
-import { BasePlatform } from "./platform";
+import { BasePlatform, type BoardName } from "./platform";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 declare const ytgame: any;
@@ -62,7 +62,8 @@ export class YouTubePlatform extends BasePlatform {
   override canShowRewarded(): boolean {
     return false;
   }
-  override submitScore(score: number): void {
+  override submitScore(score: number, board: BoardName = "score"): void {
+    if (board !== "score") return;
     try {
       this.yt?.engagement.sendScore({ value: Math.floor(score) });
     } catch {

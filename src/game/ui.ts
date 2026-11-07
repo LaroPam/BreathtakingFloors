@@ -110,7 +110,7 @@ function bar(b: Batch, x: number, y: number, w: number, h: number, k: number, fi
 }
 
 /** The heads-up display during a run. */
-export function drawHud(b: Batch, w: World, W: number, H: number, time: number, banner: { text: string; t: number; color: number } | null, touch: boolean, _autofire: boolean): void {
+export function drawHud(b: Batch, w: World, W: number, H: number, time: number, banner: { text: string; t: number; color: number } | null, touch: boolean, daily: boolean): void {
   const h = w.hero;
 
   // ---- experience: a bar across the top, the level on a gem beneath its left end
@@ -175,7 +175,10 @@ export function drawHud(b: Batch, w: World, W: number, H: number, time: number, 
   });
 
   // ---- the floor, and what to do on it: three braziers, then the portal or the boss
-  text(b, `${t("floor")} ${w.floor}  ${tx(w.biome.name)}`, W / 2, 10, { align: "center", color: C.gold, outline: true });
+  const floorLine = `${t("floor")} ${w.floor}  ${tx(w.biome.name)}`;
+  text(b, floorLine, W / 2, 10, { align: "center", color: C.gold, outline: true });
+  // the daily trial wears its seal by the floor's name
+  if (daily) b.image(icon("hud", "daily"), W / 2 - measure(floorLine) / 2 - 9, 13);
   const bi = w.bossIndex();
   if (w.portal) text(b, t("portalOpen"), W / 2, 21, { font: "mini", align: "center", color: rgba("#c684ff") });
   else if (bi >= 0) {

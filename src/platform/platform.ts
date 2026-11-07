@@ -3,6 +3,22 @@
 
 import type { SaveData } from "../game/save";
 
+/** The two boards: the best runs ever, and today's daily trial. */
+export type BoardName = "score" | "daily";
+export interface BoardEntry {
+  rank: number;
+  name: string;
+  score: number;
+  me: boolean;
+}
+export interface Board {
+  entries: BoardEntry[];
+  /** The player's place (0: not on the board, or not signed in). */
+  myRank: number;
+}
+/** The day the daily trial belongs to (days since 1970, UTC): everyone plays the same floors that day. */
+export const dayNumber = (now = Date.now()): number => Math.floor(now / 86400000);
+
 export interface Platform {
   readonly name: "local" | "yandex" | "youtube";
   /** Connect to the platform's SDK. Never throws: a missing SDK degrades to local behaviour. */
@@ -29,8 +45,10 @@ export interface Platform {
   canShowRewarded(): boolean;
   showInterstitial(): Promise<void>;
   showRewarded(): Promise<boolean>;
-  /** A new best score (YouTube shows it to the player). */
-  submitScore(score: number): void;
+  /** A run's score: the best ever goes to the "score" board (YouTube shows it to the player), a daily try to "daily". */
+  submitScore(score: number, board?: BoardName): void;
+  /** A leaderboard to show, or null where the platform has none (the game then shows the player's own records). */
+  leaderboard(board: BoardName): Promise<Board | null>;
 }
 
 /** Shared by all builds: pause on a hidden tab, mobile detection, and browser storage as a fallback. */
@@ -91,5 +109,8 @@ export abstract class BasePlatform implements Platform {
   async showRewarded(): Promise<boolean> {
     return false;
   }
-  submitScore(_score: number): void {}
+  submitScore(_score: number, _board?: BoardName): void {}
+  async leaderboard(_board: BoardName): Promise<Board | null> {
+    return null;
+  }
 }

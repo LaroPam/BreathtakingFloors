@@ -15,6 +15,10 @@ export interface SaveData {
   tutorial: boolean;
   wins?: number;
   hero?: string;
+  /** Heroes bought at the hero select (the knight is always there). */
+  unlocked: string[];
+  /** The daily run: its date, the best score that day, how many tries. */
+  daily?: { day: string; best: number; tries: number };
 }
 
 export const defaultSave = (): SaveData => ({
@@ -30,6 +34,7 @@ export const defaultSave = (): SaveData => ({
   autofire: false,
   lang: null,
   tutorial: true,
+  unlocked: ["knight"],
 });
 
 /** Accept whatever was stored, filling in anything missing, so old saves keep working. */
@@ -44,5 +49,7 @@ export function sanitize(raw: unknown): SaveData {
     embers: Math.max(0, Math.floor(Number(r.embers) || 0)),
     forge: typeof r.forge === "object" && r.forge ? r.forge : {},
     reactions: Array.isArray(r.reactions) ? r.reactions.filter((x) => typeof x === "string") : [],
+    // saves from before heroes were bought keep the hero last played
+    unlocked: [...new Set(["knight", ...(Array.isArray(r.unlocked) ? r.unlocked.filter((x) => typeof x === "string") : typeof r.hero === "string" ? [r.hero] : [])])],
   };
 }

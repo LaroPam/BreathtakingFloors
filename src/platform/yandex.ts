@@ -2,7 +2,14 @@
 // LoadingAPI and GameplayAPI markup the moderators check. https://yandex.ru/dev/games/doc/ru/sdk/sdk-about
 
 import type { SaveData } from "../game/save";
-import { BasePlatform } from "./platform";
+import { BasePlatform, dayNumber, type Board, type BoardName } from "./platform";
+
+/**
+ * Yandex keeps one best score per player and never resets a board, so the daily board stores
+ * day * DAY + score: today's results always rank above older days' and among themselves by score, and a player's
+ * best rolls over to the new day by itself. Both boards must exist in the console under these technical names.
+ */
+const DAY = 1_000_000;
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type YSDK = any;
@@ -64,6 +71,30 @@ export class YandexPlatform extends BasePlatform {
       await this.player?.setData({ save: data }, false);
     } catch {
       /* saved locally; the cloud catches up next time */
+    }
+  }
+  override submitScore(score: number, board: BoardName = "score"): void {
+    const lb = this.sdk?.leaderboards;
+    if (!lb || !this.player || this.player.getMode?.() === "lite") return; // only signed-in players have a place
+    const value = board === "daily" ? dayNumber() * DAY + Math.min(DAY - 1, Math.floor(score)) : Math.floor(score);
+    lb.setScore(board, value).catch(() => {
+      /* offline or too soon (one write a second): the result stays in the save */
+    });
+  }
+  override async leaderboard(board: BoardName): Promise<Board | null> {
+    const lb = this.sdk?.leaderboards;
+    if (!lb) return null;
+    try {
+      const signed = !!this.player && this.player.getMode?.() !== "lite";
+      const res = await lb.getEntries(board, { quantityTop: 10, includeUser: signed, quantityAround: 2 });
+      const today = dayNumber(), me = this.player?.getUniqueID?.();
+      const entries = (res.entries as any[])
+        .filter((e) => board !== "daily" || Math.floor(e.score / DAY) === today)
+        .map((e) => ({ rank: e.rank, name: e.player?.publicName || "?", score: board === "daily" ? e.score % DAY : e.score, me: !!me && e.player?.uniqueID === me }));
+      const mine = entries.find((e) => e.me);
+      return { entries, myRank: mine ? mine.rank : 0 };
+    } catch {
+      return null;
     }
   }
   override canShowRewarded(): boolean {

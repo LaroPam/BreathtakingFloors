@@ -1,8 +1,9 @@
 // Small HUD icons, drawn pixel by pixel: hearts full and empty, stamina (the dash), experience, overdrive, kills,
-// time, braziers lit and cold. Each sits on its origin at the centre of a 16 x 16 cell.
+// time, braziers lit and cold, a lock, an ember (the forge's currency), the daily seal, a crown. Each sits on its origin
+// at the centre of a 16 x 16 cell.
 import { hex } from "../../../pixelfx/src/core/index.js";
 
-export const IDS = ["heart", "heart_empty", "stamina", "xp", "overdrive", "skull", "time", "brazier", "brazier_cold", "boss"];
+export const IDS = ["heart", "heart_empty", "stamina", "xp", "overdrive", "skull", "time", "brazier", "brazier_cold", "boss", "lock", "ember", "daily", "crown"];
 
 export const meta = {
   name: "HUD icons",
@@ -53,6 +54,22 @@ const ICONS = {
   brazier_cold: [
     [".........", ".........", ".........", "..kaaak..", "kkkkkkkkk", ".kiiiiik.", "..kiiik..", "...kik...", "..k.k.k..", ".k..k..k."],
     { k: "#0b0a12", a: "#5a5466", i: "#302c3a" },
+  ],
+  lock: [
+    ["..kkkk...", ".kwyyyk..", ".ky..yk..", ".ky..yk..", "kkkkkkkk.", "kyyyyyyok", "kyyykyyok", "kyyykyyok", "kooooooook", ".kkkkkkk."],
+    { k: "#0b0a12", w: "#fff6c4", y: "#f4d27a", o: "#a8864a" },
+  ],
+  ember: [
+    ["...k...", "..kyk..", "..kyk..", ".kyfyk.", ".kfwfk.", "kofwfok", "kofffok", ".kooook", "..kkkk."],
+    { k: "#0b0a12", w: "#ffffff", f: "#fff3a6", y: "#ffc23d", o: "#f2561d" },
+  ],
+  daily: [
+    [".k...k...", "kkkkkkkkk", "krrrrrrrk", "kwwwwwwwk", "kwkwkwkwk", "kwwwwwwwk", "kwkwkyywk", "kwwwwyywk", "kkkkkkkkk"],
+    { k: "#0b0a12", r: "#e8304a", w: "#e4dcc8", y: "#f4d27a" },
+  ],
+  crown: [
+    ["k...k...k", "kyk.kyk.k", "kyykyyyky", "kyyyyyyyk", "kyrywyryk", "kyyyyyyyk", "kkkkkkkkk"],
+    { k: "#0b0a12", y: "#f4d27a", r: "#ff3a5a", w: "#ffffff" },
   ],
   boss: [
     ["k.......k", "kk.kkk.kk", ".kkwwwkk.", "kwwwwwwwk", "kwrkwkrwk", "kwrkwkrwk", "kwwwkwwwk", ".kwwwwwk.", "..kwkwk..", "..kkkkk.."],
