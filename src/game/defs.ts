@@ -282,13 +282,14 @@ export interface Modifier {
   xp: number;
   embers: number;
   heal: boolean;
-  chest: boolean;
+  /** A level-up choice at the start of the floor. */
+  level: boolean;
   size: number;
 }
-const M = (m: Partial<Modifier> & Pick<Modifier, "id" | "name" | "risk" | "reward">): Modifier => ({ spawn: 1, speed: 1, dark: 0, elites: 1, xp: 1, embers: 1, heal: false, chest: false, size: 1, ...m });
+const M = (m: Partial<Modifier> & Pick<Modifier, "id" | "name" | "risk" | "reward">): Modifier => ({ spawn: 1, speed: 1, dark: 0, elites: 1, xp: 1, embers: 1, heal: false, level: false, size: 1, ...m });
 export const MODIFIERS: Modifier[] = [
   M({ id: "swarm", name: { ru: "ЛЕСТНИЦА РОЯ", en: "STAIR OF THE SWARM" }, risk: { ru: "ВРАГОВ НА 50% БОЛЬШЕ", en: "50% MORE ENEMIES" }, reward: { ru: "+40% ОПЫТА", en: "+40% EXPERIENCE" }, spawn: 1.5, xp: 1.4 }),
-  M({ id: "dark", name: { ru: "ЛЕСТНИЦА МРАКА", en: "STAIR OF GLOOM" }, risk: { ru: "ТЕМНЕЕ, ФОНАРЬ СЛАБЕЕ", en: "DARKER, A WEAKER LANTERN" }, reward: { ru: "СУНДУК В НАЧАЛЕ", en: "A CHEST TO START" }, dark: 0.35, chest: true }),
+  M({ id: "dark", name: { ru: "ЛЕСТНИЦА МРАКА", en: "STAIR OF GLOOM" }, risk: { ru: "ТЕМНЕЕ, ФОНАРЬ СЛАБЕЕ", en: "DARKER, A WEAKER LANTERN" }, reward: { ru: "НОВЫЙ УРОВЕНЬ В НАЧАЛЕ", en: "A LEVEL-UP TO START" }, dark: 0.35, level: true }),
   M({ id: "elite", name: { ru: "ЛЕСТНИЦА ЧЕМПИОНОВ", en: "STAIR OF CHAMPIONS" }, risk: { ru: "ВДВОЕ БОЛЬШЕ ЭЛИТЫ", en: "TWICE THE ELITES" }, reward: { ru: "+60% УГЛЕЙ", en: "+60% EMBERS" }, elites: 2, embers: 1.6 }),
   M({ id: "blood", name: { ru: "ЛЕСТНИЦА КРОВИ", en: "STAIR OF BLOOD" }, risk: { ru: "ВРАГИ БЫСТРЕЕ НА 20%", en: "ENEMIES 20% FASTER" }, reward: { ru: "ПОЛНОЕ ЛЕЧЕНИЕ", en: "A FULL HEAL" }, speed: 1.2, heal: true }),
   M({ id: "narrow", name: { ru: "УЗКАЯ ЛЕСТНИЦА", en: "NARROW STAIR" }, risk: { ru: "ЭТАЖ МЕНЬШЕ И ТЕСНЕЕ", en: "A SMALLER, TIGHTER FLOOR" }, reward: { ru: "+25% ОПЫТА И УГЛЕЙ", en: "+25% EXPERIENCE AND EMBERS" }, size: 0.75, xp: 1.25, embers: 1.25 }),
@@ -375,7 +376,7 @@ export const TASKS: TaskDef[] = [
   { id: "reactions", name: { ru: "ВЫЗОВИ {n} РЕАКЦИЙ", en: "SET OFF {n} REACTIONS" }, goals: [15, 25], reward: 40 },
   { id: "evolve", name: { ru: "ПОЛУЧИ ЭВОЛЮЦИЮ", en: "EVOLVE A RELIC" }, goals: [1], reward: 70 },
   { id: "spirits", name: { ru: "ВЫПОЛНИ {n} ЗАДАНИЯ ДУХОВ", en: "COMPLETE {n} SPIRIT QUESTS" }, goals: [2, 3], reward: 45 },
-  { id: "chests", name: { ru: "ОТКРОЙ {n} СУНДУКОВ", en: "OPEN {n} CHESTS" }, goals: [5, 8], reward: 35 },
+  { id: "chests", name: { ru: "ОТКРОЙ {n} СУНДУКОВ", en: "OPEN {n} CHESTS" }, goals: [2, 4], reward: 35 },
   { id: "grazes", name: { ru: "ЗАДЕНЬ {n} СНАРЯДОВ", en: "GRAZE {n} BOLTS" }, goals: [100, 150], reward: 35 },
   { id: "secrets", name: { ru: "ВСКРОЙ ТАЙНИКИ В СТЕНАХ: {n}", en: "BREAK OPEN HIDDEN CACHES: {n}" }, goals: [1, 2], reward: 40 },
   { id: "trial", name: { ru: "ДОЙДИ ДО {n} ЭТАЖА В ИСПЫТАНИИ ДНЯ", en: "REACH FLOOR {n} IN THE DAILY TRIAL" }, goals: [2], reward: 45 },

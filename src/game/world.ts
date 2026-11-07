@@ -515,7 +515,7 @@ export class World {
     this.corpses = [];
     this.addFx("beam", h.x, h.y, { glow: 1, key: 2 });
     if (mod.heal) h.hp = h.maxHp;
-    if (mod.chest) this.pendingChests++;
+    if (mod.level) this.pendingLevels++;
     this.layout();
     // a few enemies already waiting, far off
     for (let i = 0; i < 1 + Math.floor(floor / 3); i++) this.spawnAt(this.pickEnemy(0), ...this.edgePoint(300));
@@ -599,13 +599,13 @@ export class World {
       }
       g++;
     }
-    // a chest on the floor, now and then: loot, or from the second floor on maybe a mimic
+    // from the second floor, now and then, a chest on the floor: a mimic (real chests come only from the spirits)
     this.chests = [];
-    if (R.chance(0.55))
+    if (this.floor >= 2 && R.chance(0.3))
       for (let tries = 0; tries < 60; tries++) {
         const x = R.range(50, W - 50), y = R.range(70, H - 30);
         if (!spot(x, y, 10) || (x - W / 2) ** 2 + (y - H / 2) ** 2 < 160 * 160) continue;
-        this.chests.push({ x: Math.round(x), y: Math.round(y), mimic: this.floor >= 2 && R.chance(0.45), t: R.range(0, 3) });
+        this.chests.push({ x: Math.round(x), y: Math.round(y), mimic: true, t: R.range(0, 3) });
         break;
       }
     // the cursed altar: from the second floor, now and then
@@ -1718,10 +1718,18 @@ export class World {
     }
     if (this.rng.chance(d.elite ? 0.4 : 0.015)) this.drops.add(D_HEART, x, y, 1, 0, -20);
     const boss = d.ai === AI.Boss || d.ai === AI.BossFrog;
-    if (d.elite && !boss) this.drops.add(D_CHEST, x, y, 1, 0, 0);
-    // a mimic was full of what it pretended to be
+    // an elite pays in embers (chests come only from the spirits' tasks)
+    if (d.elite && !boss)
+      for (let q = 0; q < 4; q++) {
+        const a = this.rng.range(0, Math.PI * 2), s = this.rng.range(20, 60);
+        this.drops.add(D_EMBER, x, y - 2, 1, Math.cos(a) * s, Math.sin(a) * s);
+      }
+    // a mimic was full of what it pretended to be: soul shards and embers
     if (type === EN.mimic) {
-      this.pendingChests++;
+      for (let q = 0; q < 2; q++) {
+        const a = this.rng.range(0, Math.PI * 2), s = this.rng.range(20, 60);
+        this.drops.add(D_RED, x, y - 2, 20, Math.cos(a) * s, Math.sin(a) * s);
+      }
       this.embersBonus += 8;
       this.ev.count("mimic");
       for (let q = 0; q < 6; q++) this.drops.add(D_EMBER, x, y - 4, 1, this.rng.range(-60, 60), this.rng.range(-70, -10));
@@ -1739,7 +1747,7 @@ export class World {
       this.audio.play("boom", 0.5);
       for (let k = 0; k < 5; k++) this.addFx("explosion", x + this.rng.range(-30, 30), y + this.rng.range(-20, 10), { delay: k * 0.15 });
       this.embersBonus += 25 * (this.floor / 3);
-      this.pendingChests += 1;
+      this.pendingLevels += 1;
       E.remove(i);
       if (this.floor >= FLOORS) {
         this.won = true;
@@ -1757,7 +1765,7 @@ export class World {
     if (h.dead || h.exitT >= 0) return;
     // a dash goes through urns
     if (h.dashT > 0) this.smashUrns(h.x, h.y - 8, 12);
-    // chests: walk into a real one, come too close to a mimic
+    // a chest lying on the floor is always a mimic (real chests come from the spirits): it wakes when you come close
     for (let k = this.chests.length - 1; k >= 0; k--) {
       const c = this.chests[k], d2 = (h.x - c.x) ** 2 + (h.y - c.y) ** 2;
       c.t += dt;
@@ -1770,10 +1778,6 @@ export class World {
         this.burst(c.x, c.y - 8, 14, rgba("#d8a830"), 90, 0.5, 120);
         this.audio.play("roar", 1.7);
         this.shake = Math.max(this.shake, 0.45);
-      } else {
-        this.pendingChests++;
-        this.addFx("chest", c.x, c.y + 6, { glow: 0.9 });
-        this.audio.play("chest");
       }
     }
     // the hidden cache: its cracks show only inside the lantern's light, a draught of dust gives it away
@@ -1864,8 +1868,8 @@ export class World {
       const a = R.range(0.3, Math.PI - 0.3), s = R.range(40, 90);
       this.drops.add(kind, cx + R.range(-6, 6), 8, value, Math.cos(a) * s, Math.sin(a) * s);
     };
-    this.drops.add(D_CHEST, cx, 16, 1, 0, 40);
-    for (let q = R.int(4, 7); q > 0; q--) spill(D_EMBER, 1);
+    for (let q = 0; q < 2; q++) spill(D_RED, 20);
+    for (let q = R.int(5, 8); q > 0; q--) spill(D_EMBER, 1);
     for (let q = R.int(2, 4); q > 0; q--) spill(this.floor >= 4 ? D_GREEN : D_BLUE, this.floor >= 4 ? 5 : 1);
     if (h.hp < h.maxHp) spill(D_HEART, 1);
     this.ev.secret("opened");
@@ -1881,7 +1885,7 @@ export class World {
     this.addFx("poof", u.x, u.y + 2, { sx: 0.5, sy: 0.5, glow: 0.3 });
     this.audio.play("break");
     this.ev.count("urns");
-    // the loot: embers often, soul shards, now and then a heart, rarely a chest
+    // the loot: embers often, soul shards, now and then a heart
     const r = R.next(), h = this.hero, spill = (kind: number, value: number) => {
       const a = R.range(-Math.PI, 0), s = R.range(20, 60);
       this.drops.add(kind, u.x, u.y - 4, value, Math.cos(a) * s, Math.sin(a) * s);
@@ -1889,7 +1893,6 @@ export class World {
     if (r < 0.34) for (let q = R.int(1, 3); q > 0; q--) spill(D_EMBER, 1);
     else if (r < 0.74) for (let q = R.int(2, 4); q > 0; q--) spill(this.floor >= 4 && R.chance(0.3) ? D_GREEN : D_BLUE, this.floor >= 4 ? 5 : 1);
     else if (r < 0.82 && h.hp < h.maxHp) spill(D_HEART, 1);
-    else if (r < 0.84) this.drops.add(D_CHEST, u.x, u.y, 1, 0, 0);
   }
 
   // ============================================================================================ quests
@@ -3010,7 +3013,7 @@ export class World {
     if (this.curse) {
       // the floor is done under the curse: it lifts, and pays
       this.curse = false;
-      this.pendingChests += 2;
+      this.pendingLevels += 2;
       this.embersBonus += 10 + this.floor * 3;
       const h = this.hero;
       this.addFx("heal_ring", h.x, h.y, { tint: rgba("#ff8a6a"), glow: 0.8 });

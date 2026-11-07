@@ -17,7 +17,7 @@ import { defaultSave, sanitize, type SaveData } from "./save";
 import { button, slider, C, divider, glow as glowUi, drawHud, drawPointers, drawTouch, fmtTime, frame, header, inset, Menu, panel, para, plate , slot } from "./ui";
 import { CINE_DUR, World } from "./world";
 
-type State = "title" | "heroes" | "forge" | "daily" | "records" | "tasks" | "settings" | "card" | "play" | "spin" | "pause" | "codex" | "stairs" | "dead" | "won";
+type State = "title" | "heroes" | "forge" | "daily" | "records" | "tasks" | "settings" | "card" | "play" | "spin" | "pick" | "pause" | "codex" | "stairs" | "dead" | "won";
 type Choice = { type: "relic"; kind: RelicKind; level: number } | { type: "stat"; id: StatId } | { type: "evo"; kind: RelicKind } | { type: "legend"; weapon: WeaponId };
 
 /**
@@ -34,6 +34,19 @@ interface Spin {
   held: number;
   tick: number;
 }
+/**
+ * A choice of upgrades: a level-up (anything) or the start of a run (relics). The cards come up in a quarter of a
+ * second; the one taken flashes and the game goes on.
+ */
+interface Pick {
+  kind: "level" | "start";
+  options: Choice[];
+  /** The card taken, and how long ago (s); -1 while choosing. */
+  chosen: number;
+  t: number;
+}
+/** The chest's screen (s): it comes in and shakes, its lid flies up, then the reel rises out of it and spins. */
+const SPIN_LID = 0.42, SPIN_OPEN = 0.62;
 const RELIC_ICON = ["orbit", "lance", "coil", "flask", "halo", "void"];
 const iconKey = (c: Choice) => (c.type === "relic" ? RELIC_ICON[c.kind] : c.type === "evo" ? evolutionOf(c.kind).icon : c.type === "legend" ? `w_${c.weapon}` : c.id);
 
@@ -71,6 +84,7 @@ export class Game {
   private camY = 0;
   private banner: { text: string; t: number; color: number; sub?: string } | null = null;
   private spin: Spin | null = null;
+  private pick: Pick | null = null;
   /** A screen-covering wipe of diamonds (out: covering, then `then`; in: uncovering), and the floor's title card. */
   private wipe: { t: number; dur: number; out: boolean; then?: () => void } | null = null;
   private cardT = 0;
@@ -314,9 +328,8 @@ export class Game {
     this.audio.playMusic();
     this.cardT = 0;
     this.setState("card");
-    // every run starts with a relic from the roulette (the forge's Legacy spins a second, a rich week three)
+    // every run starts with a relic of the player's choice (the forge's Legacy gives a second, a rich week three)
     this.startSpins = spins;
-    w.pendingChests = this.startSpins;
   }
 
   private onVictory(): void {
@@ -556,13 +569,13 @@ export class Game {
     reel[target] = winner;
     // no twin of the winner right beside it, so the stop reads clearly
     for (const k of [target - 1, target + 1]) if (pool.length > 1) while (iconKey(reel[k]) === iconKey(winner)) reel[k] = this.roll(pool);
-    this.spin = { kind, reel, target, t: 0, dur: 1.9 + this.runRng.range(0, 0.4), held: -1, tick: 0 };
+    this.spin = { kind, reel, target, t: 0, dur: 1.3 + this.runRng.range(0, 0.3), held: -1, tick: 0 };
     this.setState("spin");
     this.audio.play(kind === "level" ? "levelup" : "chest");
   }
   /** Where the reel is (in badges) at time t: fast at first, easing into the stop with a small settle. */
   private reelPos(sp: Spin): number {
-    const u = Math.min(1, sp.t / sp.dur), e = 1 - (1 - u) ** 4;
+    const u = Math.max(0, Math.min(1, (sp.t - SPIN_OPEN) / sp.dur)), e = 1 - (1 - u) ** 4;
     const settle = u > 0.92 ? Math.sin(((u - 0.92) / 0.08) * Math.PI) * 0.06 : 0;
     return sp.target * e + settle;
   }
@@ -570,14 +583,17 @@ export class Game {
     const sp = this.spin!, input = this.input;
     const skip = !!input.click || input.pressed("confirm") || input.pressed("dash");
     if (sp.held < 0) {
+      const was = sp.t;
       sp.t += dt;
-      if (skip && sp.t > 0.25) sp.t = sp.dur;
+      if (skip && sp.t > 0.25) sp.t = SPIN_OPEN + sp.dur;
+      // the lid flies up
+      if (was < SPIN_LID && sp.t >= SPIN_LID) (this.audio.play("chest"), this.audio.play("boom", 2.2));
       const at = Math.round(this.reelPos(sp));
-      if (at !== sp.tick) {
+      if (at !== sp.tick && sp.t > SPIN_OPEN) {
         sp.tick = at;
         this.audio.play("click", 0.8 + (at / sp.target) * 0.6);
       }
-      if (sp.t >= sp.dur) {
+      if (sp.t >= SPIN_OPEN + sp.dur) {
         sp.held = 0;
         this.audio.play("levelup", 1.25);
         this.audio.play("chest");
@@ -587,7 +603,7 @@ export class Game {
     sp.held += dt;
     if (sp.held > 1.6 || (skip && sp.held > 0.3)) this.take(sp.reel[sp.target], sp.kind);
   }
-  private take(c: Choice, kind: Spin["kind"]): void {
+  private take(c: Choice, kind: Spin["kind"] | Pick["kind"]): void {
     const w = this.world;
     if (c.type === "relic") w.addRelic(c.kind);
     else if (c.type === "evo") (w.evolve(c.kind), (this.save.stats[`evo_${c.kind}`] = 1), this.bump("evolve"));
@@ -599,7 +615,7 @@ export class Game {
     else w.addStat(c.id);
     if (kind === "chest") this.bump("chests");
     if (kind === "level") w.pendingLevels = Math.max(0, w.pendingLevels - 1);
-    else w.pendingChests = Math.max(0, w.pendingChests - 1);
+    else if (kind === "chest") w.pendingChests = Math.max(0, w.pendingChests - 1);
     this.spin = null;
     this.setState("play");
   }
@@ -607,11 +623,46 @@ export class Game {
   private nextSpin(): void {
     const w = this.world;
     if (w.hero.dead || w.cine) return;
-    if (w.pendingChests > 0 && this.startSpins > 0) {
-      this.startSpins--;
-      this.startSpin("start");
-    } else if (w.pendingLevels > 0) this.startSpin("level");
+    if (this.startSpins > 0) this.startPick("start");
+    else if (w.pendingLevels > 0) this.startPick("level");
     else if (w.pendingChests > 0) this.startSpin("chest");
+  }
+
+  // =========================================================================================== the choice
+  /**
+   * Three different upgrades from the pool, drawn by weight (two if that is all there is). An evolution or a legend
+   * that is ready always takes one of the places.
+   */
+  private options(kind: Pick["kind"]): Choice[] {
+    const pool = this.pool(kind === "start"), out: Choice[] = [], key = (c: Choice) => `${c.type}:${iconKey(c)}`;
+    const ready = pool.filter(([c]) => c.type === "evo" || c.type === "legend");
+    if (ready.length) out.push(ready[this.runRng.int(0, ready.length - 1)][0]);
+    let left = pool.filter(([c]) => !out.some((o) => key(o) === key(c)));
+    while (out.length < 3 && left.length) {
+      const c = this.roll(left);
+      out.push(c);
+      left = left.filter(([q]) => key(q) !== key(c));
+    }
+    // the sure thing goes in the middle, where the eye lands
+    if (ready.length && out.length === 3) [out[0], out[1]] = [out[1], out[0]];
+    return out;
+  }
+  private startPick(kind: Pick["kind"]): void {
+    this.pick = { kind, options: this.options(kind), chosen: -1, t: 0 };
+    this.setState("pick", this.pick.options.length === 3 ? 1 : 0);
+    this.audio.play("levelup");
+  }
+  /** The taken card's flash plays out, then the upgrade is applied and the game goes on. */
+  private updatePick(dt: number): void {
+    const pk = this.pick!;
+    pk.t += dt;
+    if (pk.chosen < 0) return;
+    if (pk.t > 0.2) {
+      const c = pk.options[pk.chosen];
+      this.pick = null;
+      if (pk.kind === "start") this.startSpins = Math.max(0, this.startSpins - 1);
+      this.take(c, pk.kind);
+    }
   }
 
   // =========================================================================================== the frame
@@ -657,6 +708,7 @@ export class Game {
     // the music follows the biome, and turns to the boss's theme while one is here
     this.audio.theme = w.cine || w.bossIndex() >= 0 ? 3 : w.biome.id === "garden" ? 1 : w.biome.id === "frost" ? 2 : 0;
     if (this.state === "spin") this.updateSpin(dt);
+    if (this.state === "pick") this.updatePick(dt);
     if (this.state === "play" && !this.platformPaused && !this.wipe) {
       if (input.pressed("pause")) this.setState("pause");
       else {
@@ -713,12 +765,16 @@ export class Game {
     if (!down) drawWorld(s, w, cx, cy, W, H, this.now);
 
     const dim = this.state !== "play" && this.state !== "title" && !down;
+    // a choice or a chest dims the floor smoothly, and a choice made lets it light up again as the game goes on
+    const over = this.state === "pick" || this.state === "spin";
+    const closing = this.pick && this.pick.chosen >= 0 ? Math.min(1, this.pick.t / 0.2) : 0;
+    const dimK = over ? 0.5 * Math.min(1, (this.now - this.menu.openedAt) / 0.16) * (1 - closing) : 0.55;
     const light: Lighting = {
       ambient: down ? down.ambient : [w.ambient * w.biome.ambient[0], w.ambient * w.biome.ambient[1], w.ambient * w.biome.ambient[2]],
       steps: 7,
       vignette: down ? 0.8 : 0.55,
       tint: w.flash > 0 && this.save.flashes && !down ? [1, 0.95, 0.85] : [0.03, 0.025, 0.06],
-      tintK: w.flash > 0 && this.save.flashes && !down ? w.flash * 0.25 : dim ? 0.55 : 0,
+      tintK: w.flash > 0 && this.save.flashes && !down ? w.flash * 0.25 : dim ? dimK : 0,
     };
     if (this.state === "title") light.tintK = 0.2;
     if (w.curse && this.state === "play" && !(w.flash > 0 && this.save.flashes)) {
@@ -755,16 +811,17 @@ export class Game {
         // the reticle stands in for the pointer while aiming with the mouse
         break;
       case "spin": this.drawSpin(); break;
+      case "pick": this.drawPick(); break;
       case "pause": this.drawPause(); break;
       case "codex": this.drawCodex(); break;
       case "stairs": this.drawStairs(); break;
       case "dead": this.drawDead(); break;
       case "won": this.drawWon(); break;
     }
-    if (this.state !== "heroes") this.menu.end(this.state === "stairs", this.state !== "settings");
+    if (this.state !== "heroes") this.menu.end(this.state === "stairs" || (this.state === "pick" && this.pickRow), this.state !== "settings");
     // a screen comes up out of the dark
     const since = this.now - this.menu.openedAt;
-    if (this.state !== "play" && this.state !== "card" && since < 0.2) ui.rect(0, 0, W, H, rgba("#07060c", (1 - since / 0.2) * 0.7));
+    if (this.state !== "play" && this.state !== "card" && !over && since < 0.2) ui.rect(0, 0, W, H, rgba("#07060c", (1 - since / 0.2) * 0.7));
     // the system pointer hides while the reticle aims
     // no aiming with the mouse: in play the pointer only gets in the way of the view
     const cursor = this.state === "play" && this.input.mode === "kbm" && !this.touch ? "none" : "default";
@@ -1415,18 +1472,140 @@ export class Game {
   }
 
 
+  /** An upgrade in words: its name, what it does, a tag (new, its level, an evolution) and the tag's colour. */
+  private describe(c: Choice): { name: string; desc: string; tag: string; col: number } {
+    const w = this.world;
+    let name: string, desc: string, tag: string, col: number;
+    if (c.type === "legend") {
+      name = tx(LEGENDS[c.weapon]);
+      desc = tx(legendDesc(c.weapon));
+      tag = `${t("legendary")}: ${tx(weaponName(c.weapon, w.weaponEl))}`;
+      col = rgbaf(1, 0.85 + 0.15 * Math.sin(this.now * 8), 0.45, 1);
+    } else if (c.type === "evo") {
+      const e = evolutionOf(c.kind);
+      name = tx(e.name);
+      desc = tx(e.desc);
+      tag = `${t("evolution")}: ${tx(RELICS[c.kind].name)}`;
+      col = rgbaf(1, 0.85 + 0.15 * Math.sin(this.now * 8), 0.45, 1);
+    } else if (c.type === "relic") {
+      const def = RELICS[c.kind], e = evolutionOf(c.kind);
+      name = tx(def.name);
+      desc = c.level === 1 ? tx(def.desc) : tx(def.levels[c.level - 2]);
+      // at its last level, the relic says what it evolves with
+      tag = c.level === 1 ? `${t("new")}  ${tx(EL_NAME[def.el])}` : `${t("lv")} ${c.level}${c.level >= RELIC_MAX ? ` ${t("max")} · ${t("evoWith")}: ${tx(STATS.find((q) => q.id === e.stat)!.name)}` : ""}`;
+      col = rgba(EL_COLOR[def.el]);
+    } else {
+      const stat = STATS.find((q) => q.id === c.id)!, opens = EVOLUTIONS.some((e) => e.stat === stat.id && w.relicLevel(e.relic) >= RELIC_MAX && !w.evolved(e.relic) && !(w.statLevels[stat.id] ?? 0));
+      name = tx(stat.name);
+      desc = tx(stat.desc);
+      tag = `${t("lv")} ${(w.statLevels[stat.id] ?? 0) + 1}/${stat.max}${opens ? ` · ${t("evoKey")}` : ""}`;
+      col = opens ? rgba("#fff09a") : C.gold;
+    }
+    return { name, desc, tag, col };
+  }
+
+  /** Cards side by side when they fit, one under another on a narrow screen. */
+  private pickRow = true;
+  /**
+   * The choice: a heading and three cards rising into place one after another in a quarter of a second, the focused
+   * one lifted and lit. The card taken flashes and swells, the others drop away, and the game is back.
+   */
+  private drawPick(): void {
+    const pk = this.pick;
+    if (!pk) return;
+    const ui = this.ui, W = this.r.w, H = this.r.h, w = this.world, now = this.now, n = pk.options.length;
+    const out = pk.chosen >= 0 ? Math.min(1, pk.t / 0.2) : 0, a = 1 - out;
+    const big = H >= 300 ? 2 : 1, ty = Math.round(H * (H >= 300 ? 0.1 : 0.05));
+    const sub = pk.kind === "level" ? `${t("level")} ${w.hero.level} · ${t("pickOne")}` : t("pickOne");
+    const th = this.heading(pk.kind === "level" ? t("levelUp") : t("startRelic"), ty - Math.round(out * 6), big, C.gold, a, sub);
+    const gap = 10, row = W >= n * 128 + (n - 1) * gap + 24;
+    this.pickRow = row;
+    const cw = row ? Math.min(156, Math.floor((W - 24 - (n - 1) * gap) / n)) : Math.min(300, W - 24);
+    const texts = pk.options.map((c) => this.describe(c));
+    const inner = row ? cw - 16 : cw - 58;
+    const heights = texts.map((d) => (row ? 44 : 6) + 9 + wrap(d.name, inner).length * 10 + 5 + wrap(d.desc, inner).length * 10 + 8);
+    const ch = row ? Math.max(...heights) : Math.max(52, ...heights);
+    const total = row ? ch : n * ch + (n - 1) * 6, top = Math.max(ty + th + 10, Math.round(ty + th + 10 + (H - 8 - (ty + th + 10) - total) / 2.4));
+    pk.options.forEach((c, k) => {
+      const x0 = row ? Math.round(W / 2 - (n * cw + (n - 1) * gap) / 2 + k * (cw + gap)) : Math.round(W / 2 - cw / 2);
+      const y0 = row ? top : top + k * (ch + 6);
+      const { focused, hit: clicked, idx } = this.menu.item(x0, y0, cw, ch, now);
+      // the number keys take a card at once
+      const hit = clicked || (this.menu.ready(now) && this.input.pressed((["one", "two", "three"] as const)[k]));
+      if (hit && pk.chosen < 0) {
+        pk.chosen = idx;
+        pk.t = 0;
+        this.audio.play("pickup", 1.3);
+      }
+      const taken = pk.chosen === idx, gone = pk.chosen >= 0 && !taken;
+      if (gone && out > 0.5) return;
+      // rising into place; the focused card lifts; the taken one swells a little; the others drop away
+      const rise = Math.round((1 - this.menu.appear(now, idx)) * 18), lift = focused && pk.chosen < 0 ? 3 : 0;
+      const swell = taken ? Math.round(Math.sin(out * Math.PI) * 4) : 0;
+      const x = x0 - swell, y = y0 + rise - lift - swell + (gone ? Math.round(out * 16) : 0), cw2 = cw + swell * 2, ch2 = ch + swell * 2;
+      const d = texts[k], special = c.type === "evo" || c.type === "legend";
+      if (focused || taken || special) glowUi(ui, x + cw2 / 2, y + ch2 / 2, cw2 * 0.65, ch2 * 0.7, special ? C.gold : d.col, taken ? 0.5 : 0.22);
+      frame(ui, x, y, cw2, ch2, { edge: focused || taken || special ? C.gold : undefined });
+      // the badge: the upgrade's icon at twice its size in a dark socket
+      const r = icon("icons", iconKey(c)), bx = row ? x + cw2 / 2 : x + 26, by = row ? y + 24 : y + ch2 / 2;
+      ui.disc(bx, by, 17, 17, rgba("#07060c", 0.85));
+      ui.disc(bx, by, 16, 16, withAlpha(d.col, 0.18));
+      const bob = focused && pk.chosen < 0 ? Math.round(Math.sin(now * 5) * 1) : 0;
+      ui.image(r, bx - (r[5] + r[3] / 2) * 2, by + bob - (r[6] + r[4] / 2) * 2, 2, 2);
+      let line = row ? y + 46 : y + 7;
+      const tx0 = row ? x + 8 : x + 50, align = row ? "center" : "left", mid = row ? x + cw2 / 2 : tx0;
+      text(ui, d.tag, mid, line, { font: "mini", align, color: d.col });
+      line += 9;
+      line += para(ui, d.name, tx0, line, inner, focused || taken ? C.goldLight : C.gold, align);
+      if (row) divider(ui, x + cw2 / 2, line + 2, cw2 - 24, C.goldDeep);
+      line += 5;
+      para(ui, d.desc, tx0, line, inner, C.text, align);
+      // the key that takes it, in the corner
+      if (!this.touch && this.input.mode !== "pad") text(ui, String(k + 1), x + cw2 - 9, y + 6, { font: "mini", align: "right", color: C.goldDim });
+      // the flash of the taken card
+      if (taken && out < 0.6) ui.rect(x + 2, y + 2, cw2 - 4, ch2 - 4, rgba("#fff6d0", 0.5 * (1 - out / 0.6)));
+    });
+  }
+
   private drawSpin(): void {
     const sp = this.spin;
     if (!sp) return;
     const ui = this.ui, W = this.r.w, H = this.r.h, w = this.world, landed = sp.held >= 0;
     const title = sp.kind === "level" ? t("levelUp") : sp.kind === "chest" ? t("chest") : t("startRelic");
     const ty = Math.round(H * 0.18);
-    const th = this.heading(title, ty - 4, 2);
+    const th = this.heading(title, ty - 4, 2, C.gold, Math.min(1, sp.t / 0.2));
     if (sp.kind === "level") text(ui, `${t("level")} ${w.hero.level}`, W / 2, ty + th + 2, { font: "mini", align: "center", color: rgba("#9ad4ff") });
 
-    // the reel: a window of badges at 2x, the middle one framed
-    const S = 50, cy = Math.round(H * 0.42), cx = Math.round(W / 2), half = Math.min(4, Math.floor((W - 30) / S / 2));
-    const pos = this.reelPos(sp), ww = (half * 2 + 1) * S + 8;
+    // the chest: it slides up into view with a little overshoot, shakes, and its lid flies up in a burst of light
+    const S = 50, cx = Math.round(W / 2), half = Math.min(4, Math.floor((W - 30) / S / 2));
+    const chestY = Math.round(H * 0.42 + 76), inU = Math.min(1, sp.t / 0.24), back = 1 + 2.2 * (inU - 1) ** 3 + 1.2 * (inU - 1) ** 2;
+    const shake = sp.t > 0.24 && sp.t < SPIN_LID ? Math.round(Math.sin(sp.t * 70) * 1.5) : 0;
+    const open = Math.max(0, Math.min(1, (sp.t - SPIN_LID) / 0.2)), lit = sp.t >= SPIN_LID;
+    // once the reel has stopped, the chest sinks away and leaves the room to what it gave
+    const away = landed ? Math.min(1, sp.held / 0.25) ** 2 : 0;
+    const ch = anim("chest"), chY = chestY + Math.round((1 - back) * 60) + Math.round(away * 110);
+    if (lit && away < 1) {
+      // the light out of the open chest: a glow and rays turning, fading as the reel takes over
+      const fade = 1 - Math.max(0, Math.min(1, (sp.t - SPIN_OPEN - 0.3) / 0.6)) * 0.6;
+      glowUi(ui, cx, chY - 14, 46 * open, 26 * open, C.gold, 0.3 * fade);
+      for (let k = 0; k < 12; k++) {
+        const a = -Math.PI / 2 + ((k - 5.5) / 12) * 2.2 + Math.sin(this.now * 1.7 + k) * 0.05, r1 = 30 + 34 * open + 6 * Math.sin(this.now * 5 + k);
+        ui.line(cx + Math.cos(a) * 12, chY - 16 + Math.sin(a) * 8, cx + Math.cos(a) * r1, chY - 16 + Math.sin(a) * r1 * 0.8, 1, rgbaf(1, 0.85, 0.45, 0.55 * fade));
+      }
+    }
+    // the baked chest: shut until the lid flies up in its burst, then open with its gold spilled about it
+    if (away < 1) {
+      ui.disc(cx, chY + 2, 26, 6, rgba("#000000", 0.45));
+      const fr = ch.frames[frameAt(ch, lit ? 0.93 + Math.min(1, (sp.t - SPIN_LID) / 0.9) * 0.75 : 0.1)];
+      if (fr[0]) ui.image(fr[0], cx + shake, chY + 12, 2, 2);
+      if (fr[1] && lit) ui.image(fr[1], cx + shake, chY + 12, 2, 2, 0, rgbaf(1, 1, 1, 0.5 * (1 - away)));
+    }
+    if (sp.t < SPIN_LID) return;
+
+    // the reel rises out of the chest and opens to its width: a window of badges at 2x, the middle one framed
+    const rise = Math.min(1, (sp.t - SPIN_LID) / (SPIN_OPEN - SPIN_LID + 0.08)), e = 1 - (1 - rise) ** 3;
+    const cy = Math.round(chY - 30 + (H * 0.42 - (chY - 30)) * e);
+    const pos = this.reelPos(sp), full = (half * 2 + 1) * S + 8, ww = Math.round(40 + (full - 40) * e);
     panel(ui, cx - ww / 2, cy - 30, ww, 60, C.edge, rgba("#0e0c16", 0.94));
     const first = Math.floor(pos) - half - 1, last = Math.ceil(pos) + half + 1;
     for (let j = Math.max(0, first); j <= Math.min(sp.reel.length - 1, last); j++) {
@@ -1455,33 +1634,7 @@ export class Game {
         const a = (k / 10) * Math.PI * 2 + this.now * 1.5, r0 = 26, r1 = 34 + 4 * Math.sin(this.now * 6 + k);
         ui.line(cx + Math.cos(a) * r0, cy + Math.sin(a) * r0, cx + Math.cos(a) * r1, cy + Math.sin(a) * r1, 1, rgbaf(1, 0.85, 0.4, Math.min(1, sp.held * 3) * 0.8));
       }
-      const c = sp.reel[sp.target], a = Math.min(1, sp.held * 5);
-      let name: string, desc: string, tag: string, col: number;
-      if (c.type === "legend") {
-        name = tx(LEGENDS[c.weapon]);
-        desc = tx(legendDesc(c.weapon));
-        tag = `${t("legendary")}: ${tx(weaponName(c.weapon, w.weaponEl))}`;
-        col = rgbaf(1, 0.85 + 0.15 * Math.sin(this.now * 8), 0.45, 1);
-      } else if (c.type === "evo") {
-        const e = evolutionOf(c.kind);
-        name = tx(e.name);
-        desc = tx(e.desc);
-        tag = `${t("evolution")}: ${tx(RELICS[c.kind].name)}`;
-        col = rgbaf(1, 0.85 + 0.15 * Math.sin(this.now * 8), 0.45, 1);
-      } else if (c.type === "relic") {
-        const def = RELICS[c.kind], e = evolutionOf(c.kind);
-        name = tx(def.name);
-        desc = c.level === 1 ? tx(def.desc) : tx(def.levels[c.level - 2]);
-        // at its last level, the relic says what it evolves with
-        tag = c.level === 1 ? `${t("new")}  ${tx(EL_NAME[def.el])}` : `${t("lv")} ${c.level}${c.level >= RELIC_MAX ? ` ${t("max")} · ${t("evoWith")}: ${tx(STATS.find((q) => q.id === e.stat)!.name)}` : ""}`;
-        col = rgba(EL_COLOR[def.el]);
-      } else {
-        const stat = STATS.find((q) => q.id === c.id)!, opens = EVOLUTIONS.some((e) => e.stat === stat.id && w.relicLevel(e.relic) >= RELIC_MAX && !w.evolved(e.relic) && !(w.statLevels[stat.id] ?? 0));
-        name = tx(stat.name);
-        desc = tx(stat.desc);
-        tag = `${t("lv")} ${(w.statLevels[stat.id] ?? 0) + 1}/${stat.max}${opens ? ` · ${t("evoKey")}` : ""}`;
-        col = opens ? rgba("#fff09a") : C.gold;
-      }
+      const c = sp.reel[sp.target], a = Math.min(1, sp.held * 5), { name, desc, tag, col } = this.describe(c);
       let y = cy + 42;
       const cw = Math.min(320, W - 24), chh = 22 + (W >= 420 ? 20 : 12) + wrap(desc, 280).length * 10;
       frame(ui, W / 2 - cw / 2, y - 6, cw, chh, { edge: c.type === "evo" || c.type === "legend" ? C.gold : undefined });
