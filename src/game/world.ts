@@ -380,7 +380,7 @@ export class World {
   torches: number[] = [];
   motes: Mote[] = [];
   relics: Relic[] = [];
-  stats: Stats = { edge: 1, haste: 1, reach: 1, wave: 0, parry: 0, speed: 1, magnet: 44, dashCd: 1.0, odGain: 1, crit: 0.05, lantern: 1, might: 1 };
+  stats: Stats = { edge: 1, haste: 1, reach: 1, wave: 0, parry: 0, speed: 1, magnet: 44, dashCd: 3.5, odGain: 1, crit: 0.05, lantern: 1, might: 1 };
   statLevels: Partial<Record<StatId, number>> = {};
   floor = 1;
   biome: Biome = biomeOf(1);

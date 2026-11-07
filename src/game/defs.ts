@@ -627,7 +627,7 @@ export const HEROES: HeroDef[] = [
   {
     id: "knight", cost: 0, name: { ru: "РЫЦАРЬ ФОНАРЯ", en: "LANTERN KNIGHT" }, title: { ru: "СТАЛЬ И ТЁПЛЫЙ СВЕТ", en: "STEEL AND WARM LIGHT" },
     perk: { ru: "+1 СЕРДЦЕ, ФОНАРЬ СВЕТИТ НА 20% ШИРЕ", en: "+1 HEART, A LANTERN 20% WIDER" },
-    weapon: "sword", hearts: 6, speed: 1, dashCd: 1, dashes: 1, lantern: 1.2, light: "lantern", lightColor: [1, 0.82, 0.58],
+    weapon: "sword", hearts: 6, speed: 1, dashCd: 3.5, dashes: 1, lantern: 1.2, light: "lantern", lightColor: [1, 0.82, 0.58],
     might: 1, haste: 1, crit: 0.05,
     ability: { name: { ru: "ВСПЫШКА ФОНАРЯ", en: "LANTERN FLARE" }, desc: { ru: "ВЗРЫВ СВЕТА ЖЖЁТ ВСЕХ ВОКРУГ И СТИРАЕТ СНАРЯДЫ. 3 СЕКУНДЫ ЩИТ СВЕТА: НЕУЯЗВИМ, СНАРЯДЫ ГАСНУТ", en: "A BURST OF LIGHT BURNS ALL AROUND AND ERASES BOLTS. 3 SECONDS OF A WARD: UNHARMED, BOLTS DIE ON IT" } },
 
@@ -635,7 +635,7 @@ export const HEROES: HeroDef[] = [
   {
     id: "ranger", cost: 60, name: { ru: "СЛЕДОПЫТ", en: "RANGER" }, title: { ru: "ЛУК, КОЖА И ЛЁГКИЙ ШАГ", en: "BOW, LEATHER, A LIGHT STEP" },
     perk: { ru: "ДВА РЫВКА ПОДРЯД, БЕГАЕТ БЫСТРЕЕ, СТРЕЛЫ ПРОБИВАЮТ +1", en: "TWO DASHES, FASTER FEET, ARROWS PIERCE +1" },
-    weapon: "bow", hearts: 4, speed: 1.12, dashCd: 0.85, dashes: 2, lantern: 1, light: "lantern", lightColor: [1, 0.85, 0.6],
+    weapon: "bow", hearts: 4, speed: 1.12, dashCd: 3.2, dashes: 2, lantern: 1, light: "lantern", lightColor: [1, 0.85, 0.6],
     might: 0.9, haste: 1.15, crit: 0.1,
     ability: { name: { ru: "ГРАД СТРЕЛ", en: "ARROW RAIN" }, desc: { ru: "ДВАДЦАТЬ СТРЕЛ ПАДАЮТ С НЕБА НА БЛИЖАЙШИХ ВРАГОВ, КАЖДАЯ СИЛЬНЕЕ ВЫСТРЕЛА", en: "TWENTY ARROWS FALL FROM THE SKY ON THE NEAREST FOES, EACH HARDER THAN A SHOT" } },
 
@@ -643,7 +643,7 @@ export const HEROES: HeroDef[] = [
   {
     id: "mage", cost: 90, name: { ru: "ЧАРОДЕЙКА", en: "SORCERESS" }, title: { ru: "ОГОНЬ, ЛЁД И ГРОЗА", en: "FIRE, ICE AND STORM" },
     perk: { ru: "ЗАКЛИНАНИЯ ЧЕРЕДУЮТ СТИХИИ И САМИ ВЫЗЫВАЮТ РЕАКЦИИ", en: "HER SPELLS TAKE TURNS AND SET OFF REACTIONS" },
-    weapon: "spell", hearts: 4, speed: 0.98, dashCd: 1, dashes: 1, lantern: 1, light: "wisp", lightColor: [0.55, 0.85, 1],
+    weapon: "spell", hearts: 4, speed: 0.98, dashCd: 3.5, dashes: 1, lantern: 1, light: "wisp", lightColor: [0.55, 0.85, 1],
     might: 1.15, haste: 0.95, crit: 0.05,
     ability: { name: { ru: "БУРЯ СТИХИЙ", en: "ELEMENTAL STORM" }, desc: { ru: "ОГОНЬ, ЛЁД И МОЛНИЯ ПО ОЧЕРЕДИ БЬЮТ В САМЫЕ ГУСТЫЕ ТОЛПЫ И САМИ ВЫЗЫВАЮТ РЕАКЦИИ", en: "FIRE, ICE AND LIGHTNING STRIKE THE THICKEST CROWDS IN TURN AND SET OFF REACTIONS" } },
 
@@ -651,7 +651,7 @@ export const HEROES: HeroDef[] = [
   {
     id: "reaper", cost: 140, name: { ru: "ЖНЕЦ", en: "REAPER" }, title: { ru: "КОСА И ЗЕЛЁНЫЙ ОГОНЬ ДУШ", en: "A SCYTHE AND GREEN SOUL-FIRE" },
     perk: { ru: "ЖАТВА: КАЖДЫЕ 25 УБИЙСТВ ВОЗВРАЩАЮТ СЕРДЦЕ", en: "HARVEST: EVERY 25 KILLS GIVE A HEART BACK" },
-    weapon: "scythe", hearts: 5, speed: 0.95, dashCd: 1.1, dashes: 1, lantern: 1, light: "wisp", lightColor: [0.55, 1, 0.6],
+    weapon: "scythe", hearts: 5, speed: 0.95, dashCd: 3.8, dashes: 1, lantern: 1, light: "wisp", lightColor: [0.55, 1, 0.6],
     might: 1.1, haste: 0.9, crit: 0.08,
     ability: { name: { ru: "ЖАТВА", en: "HARVEST" }, desc: { ru: "КОСА ДУШ ПРОНОСИТСЯ ВОКРУГ: РАНЕНЫХ ДОБИВАЕТ СРАЗУ, КАЖДЫЕ 6 ДУШ ВОЗВРАЩАЮТ СЕРДЦЕ", en: "A SCYTHE OF SOULS SWEEPS AROUND: THE WOUNDED DIE AT ONCE, EVERY 6 SOULS GIVE A HEART BACK" } },
 
@@ -659,7 +659,7 @@ export const HEROES: HeroDef[] = [
   {
     id: "berserker", cost: 180, name: { ru: "БЕРСЕРК", en: "BERSERKER" }, title: { ru: "БРОНЗА, МЕХ И ЯРОСТЬ", en: "BRONZE, FUR AND FURY" },
     perk: { ru: "ЯРОСТЬ: ЧЕМ МЕНЬШЕ СЕРДЕЦ, ТЕМ СИЛЬНЕЕ УДАРЫ (ДО +70%)", en: "FURY: THE FEWER HEARTS, THE HARDER THE BLOWS (UP TO +70%)" },
-    weapon: "greatsword", hearts: 7, speed: 0.95, dashCd: 1.15, dashes: 1, lantern: 0.95, light: "lantern", lightColor: [1, 0.7, 0.45],
+    weapon: "greatsword", hearts: 7, speed: 0.95, dashCd: 4, dashes: 1, lantern: 0.95, light: "lantern", lightColor: [1, 0.7, 0.45],
     might: 1.25, haste: 0.85, crit: 0.05,
     ability: { name: { ru: "БОЕВОЙ КЛИЧ", en: "WAR CRY" }, desc: { ru: "РЁВ ОГЛУШАЕТ И ОТБРАСЫВАЕТ ВСЕХ РЯДОМ. 6 СЕКУНД УДАРЫ НА 50% СИЛЬНЕЕ И ЧАЩЕ", en: "A ROAR STUNS AND HURLS BACK ALL NEAR. FOR 6 SECONDS BLOWS LAND 50% HARDER AND FASTER" } },
 
@@ -667,7 +667,7 @@ export const HEROES: HeroDef[] = [
   {
     id: "shadow", cost: 240, name: { ru: "ТЕНЬ", en: "SHADE" }, title: { ru: "КОГТИ ИЗ СУМРАКА", en: "CLAWS OUT OF THE DUSK" },
     perk: { ru: "+20% КРИТА, РЫВОК РЕЖЕТ ВСЕХ НА ПУТИ", en: "+20% CRIT, THE DASH CUTS ALL IN ITS WAY" },
-    weapon: "claws", hearts: 4, speed: 1.15, dashCd: 0.8, dashes: 2, lantern: 0.9, light: "wisp", lightColor: [0.8, 0.5, 1],
+    weapon: "claws", hearts: 4, speed: 1.15, dashCd: 2.8, dashes: 2, lantern: 0.9, light: "wisp", lightColor: [0.8, 0.5, 1],
     might: 0.85, haste: 1.3, crit: 0.25,
     ability: { name: { ru: "ТАНЕЦ ТЕНЕЙ", en: "SHADOW DANCE" }, desc: { ru: "ПРЫЖКИ СКВОЗЬ ТЕНИ К СЕМИ ВРАГАМ ПОДРЯД, НЕУЯЗВИМА, КАЖДЫЙ УДАР КРИТИЧЕСКИЙ", en: "LEAPS THROUGH THE SHADOWS TO SEVEN FOES IN TURN, UNHARMED, EVERY BLOW CRITICAL" } },
 
