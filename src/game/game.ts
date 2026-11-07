@@ -835,7 +835,8 @@ export class Game {
       this.boards[tab] = "loading";
       void this.platform.leaderboard(tab).then((b) => (this.boards[tab] = b));
     }
-    const b = this.boards[tab], listH = Math.max(40, H - y - 78);
+    // room for the ten best and the player around their place, no taller
+    const b = this.boards[tab], listH = Math.max(40, Math.min(H - y - 78, 14 * 11 + 12));
     panel(ui, px, y, pw, listH);
     if (b === "loading") text(ui, t("loading"), W / 2, y + listH / 2 - 3, { align: "center", color: C.dim });
     else if (!b) text(ui, t("noBoard"), W / 2, y + listH / 2 - 3, { align: "center", color: C.dim });
