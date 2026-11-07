@@ -1,0 +1,10 @@
+node_modules/
+dist/
+dist-*/
+*.zip
+src/generated/
+records/
+pixelfx/records/
+pixelfx/sheets/
+.DS_Store
+*.log

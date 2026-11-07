@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+    <meta name="theme-color" content="#0b0a12" />
+    <title>Breathtaking Floors</title>
+    <!-- PLATFORM_SDK -->
+    <style>
+      html, body { margin: 0; height: 100%; background: #0b0a12; overflow: hidden; overscroll-behavior: none; }
+      body { touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
+      #game { position: fixed; left: 0; top: 0; width: 100%; height: 100%; display: block; image-rendering: pixelated; outline: none; }
+      /* the loading screen: a lantern swinging in the dark, a framed bar, a line of advice */
+      #boot { position: fixed; inset: 0; display: grid; place-items: center; pointer-events: none; color: #f4d27a;
+        font: 700 12px/1.5 ui-monospace, "Cascadia Mono", Menlo, Consolas, monospace; letter-spacing: 0.25em; text-transform: uppercase;
+        background: radial-gradient(circle at 50% 44%, rgba(255, 170, 70, 0.10), rgba(11, 10, 18, 0) 38%), #0b0a12; }
+      #boot .c { display: flex; flex-direction: column; align-items: center; gap: 14px; }
+      #boot svg { width: 48px; height: 72px; shape-rendering: crispEdges; transform-origin: 50% 0; animation: swing 2.4s ease-in-out infinite; filter: drop-shadow(0 0 14px rgba(255, 190, 90, 0.45)); }
+      #boot .fl { animation: flicker 0.18s steps(2) infinite alternate; }
+      #boot .bar { width: 168px; height: 6px; padding: 2px; background: #05040a; border: 2px solid #3a3448; border-top-color: #5e5676; border-bottom-color: #100e18; box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.45); }
+      #boot b { display: block; height: 100%; width: 0; background: linear-gradient(#fff3c4 0 33%, #f4c25a 33% 75%, #b07a2a 75%); transition: width 0.15s; }
+      #boot .t { color: #a8864a; }
+      #boot .tip { max-width: 300px; color: #8f88a8; font-size: 10px; letter-spacing: 0.12em; text-align: center; text-transform: none; }
+      @keyframes swing { 0%, 100% { transform: rotate(-7deg); } 50% { transform: rotate(7deg); } }
+      @keyframes flicker { from { opacity: 1; } to { opacity: 0.72; } }
+    </style>
+  </head>
+  <body>
+    <canvas id="game" tabindex="0"></canvas>
+    <div id="boot"><div class="c"><svg id="lantern" viewBox="0 0 12 18"></svg><div class="t" id="bootword">Loading</div><div class="bar"><b id="bootbar"></b></div><div class="tip" id="boottip"></div></div></div>
+    <script>
+      // the lantern, pixel by pixel; the word and a piece of advice in the player's language
+      (function () {
+        var rows = ["....kkkk....", "....k..k....", "...kkkkkk...", "..kMMMMMMk..", "..kmmmmmmk..", ".kmkggggkmk.", ".kmgggfggmk.", ".kmggfffgmk.", ".kmgfffogmk.", ".kmggfoggmk.", ".kmgggoggmk.", ".kmkggggkmk.", "..kmmmmmmk..", "..kMMMMMMk..", "...kkkkkk...", "....kmmk....", ".....kk....."];
+        var pal = { k: "#0b0a12", m: "#4a4458", M: "#8a82a8", g: "#ffc95a", f: "#fff6c4", o: "#ff8a2a" }, svg = "";
+        rows.forEach(function (r, y) { for (var x = 0; x < r.length; x++) { var c = r[x]; if (pal[c]) svg += '<rect x="' + x + '" y="' + y + '" width="1" height="1" fill="' + pal[c] + '"' + (c === "f" || c === "o" ? ' class="fl"' : "") + "/>"; } });
+        document.getElementById("lantern").innerHTML = svg;
+        var ru = /^(ru|be|uk|kk|uz|ky|tg|hy|az)/i.test(navigator.language || "");
+        var tips = ru
+          ? ["Призраков можно ранить только в свете.", "Рывок сквозь пули копит Выброс.", "Огонь и гроза вместе — взрыв.", "Дух на этаже ждёт с заданием.", "Реликвия 5 уровня может эволюционировать."]
+          : ["Ghosts can only be hurt in the light.", "Dashing through bullets charges Overdrive.", "Fire and storm together explode.", "A spirit on the floor waits with a task.", "A level 5 relic can evolve."];
+        document.getElementById("bootword").textContent = ru ? "Загрузка" : "Loading";
+        document.getElementById("boottip").textContent = tips[Math.floor(Math.random() * tips.length)];
+      })();
+    </script>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
