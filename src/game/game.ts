@@ -844,10 +844,15 @@ export class Game {
       this.setState("settings");
     }
     const info = `${t("embers")}: ${this.save.embers}    ${t("best")}: ${t("floor")} ${this.save.bestFloor}`;
-    // the fonts' authors along the bottom (Fantasy Warrior asks for attribution), what you have above them
+    // the fonts' authors along the bottom, what you have above them
     const credits = wrap(t("fontCredits"), W - 16, "mini");
     credits.forEach((l, k) => text(ui, l, W / 2, H - 9 - (credits.length - 1 - k) * 8, { font: "mini", align: "center", color: rgba("#5a5470") }));
     text(ui, info, W / 2, H - 20 - (credits.length - 1) * 8, { font: "mini", align: "center", color: C.goldDim });
+    // touched, and still no sound: say so (the browser or the page around the game kept it off)
+    if (this.audio.blocked) {
+      const lines = wrap(t("soundBlocked"), Math.min(W - 24, 360), "mini"), y0 = H - 32 - (credits.length - 1) * 8 - lines.length * 8;
+      lines.forEach((l, k) => text(ui, l, W / 2, y0 + k * 8, { font: "mini", align: "center", color: rgba("#ff9a8a"), shadow: C.ink }));
+    }
   }
 
   /** The hero select: the hero in their palette with their weapon, who they are, how they play. */

@@ -1,4 +1,4 @@
-// Pixel text from the atlas fonts (tools/bake/font.mjs): "title" Fantasy Warrior for headings, "big" Pixeloid Sans for
+// Pixel text from the atlas fonts (tools/bake/font.mjs): "title" Pixeloid Sans Bold for headings, "big" Pixeloid Sans for
 // the body, "mini" Tiny5 for small labels, each baked at its native pixel size with Latin and Cyrillic. A line is placed
 // by the top of its capitals, so accents and descenders reach above and below the box layouts reserve.
 

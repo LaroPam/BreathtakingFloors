@@ -43,10 +43,27 @@ export class Audio {
   private suspendedByGame = false;
 
   /** Create the audio context. Browsers allow it only inside a user gesture, so call this from one. */
+  /** When the browser was last asked to let the sound play (s, performance.now() / 1000). */
+  private askedAt = 0;
+  /** The page has been touched, yet the browser keeps the sound off (some embedding pages forbid it). */
+  get blocked(): boolean {
+    return !!this.ctx && this.ctx.state !== "running" && !this.suspendedByGame && performance.now() / 1000 - this.askedAt > 1;
+  }
   unlock(): void {
     if (this.ctx) {
-      if (this.ctx.state === "suspended" && !this.suspendedByGame) void this.ctx.resume();
+      if (this.ctx.state === "suspended" && !this.suspendedByGame) {
+        this.askedAt = performance.now() / 1000;
+        void this.ctx.resume().then(() => this.prime());
+      }
       return;
+    }
+    this.askedAt = performance.now() / 1000;
+    // on an iPhone the ringer switch mutes web sound unless the page asks to be played like music (Safari 16.4+)
+    const nav = navigator as Navigator & { audioSession?: { type: string } };
+    try {
+      if (nav.audioSession) nav.audioSession.type = "playback";
+    } catch {
+      /* not offered */
     }
     const AC = window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
     if (!AC) return;
@@ -72,6 +89,17 @@ export class Audio {
       d[i] = (s / 2147483647) * 2 - 1;
     }
     if (this.musicOn) this.startMusic();
+    if (ctx.state !== "running") void ctx.resume().then(() => this.prime());
+    else this.prime();
+  }
+  /** A silent sample, played inside the gesture: some browsers (Safari) open the sound only for a real play. */
+  private prime(): void {
+    const c = this.ctx;
+    if (!c) return;
+    const src = c.createBufferSource();
+    src.buffer = c.createBuffer(1, 1, c.sampleRate);
+    src.connect(c.destination);
+    src.start();
   }
 
   setEnabled(on: boolean): void {

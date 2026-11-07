@@ -2950,6 +2950,8 @@ export class World {
     const n = this.phase, total = this.waveTime(n);
     this.wave = { left: total, total, n };
     this.waitSaid = false;
+    // the old word gives way: the banner says what matters now
+    this.hint = null;
     this.spawnAcc = 0;
     this.ev.banner(tr("waveStart").replace("{n}", String(n)), rgba("#ff7a6a"), tr("waveSub").replace("{s}", String(total)));
     this.spawnPack(this.pickEnemy(n), false);

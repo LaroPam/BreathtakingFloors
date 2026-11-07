@@ -219,7 +219,8 @@ export function divider(b: Batch, cx: number, y: number, w: number, color = C.go
  */
 export function header(b: Batch, W: number, y: number, title: string, o: { max?: number; red?: boolean; sub?: string; a?: number; color?: number; room?: number } = {}): number {
   // the title as big as fits (in `room`, if something else stands at the sides)
-  const a = o.a ?? 1, sc = fitScale(title, "title", o.room ?? W - 24, o.max ?? 2), H = FONTS.title.h * sc;
+  // (max is in the old units: the title font's capitals are 7 px, so a heading may go half again as big)
+  const a = o.a ?? 1, sc = fitScale(title, "title", o.room ?? W - 24, Math.ceil((o.max ?? 2) * 1.5)), H = FONTS.title.h * sc;
   const grad: [number, number] = o.color !== undefined ? [o.color, o.color] : o.red ? GILD_RED : GILD;
   text(b, title, W / 2, y, { font: "title", align: "center", scale: sc, gradient: [withAlpha(grad[0], a), withAlpha(grad[1], a)], shadow: withAlpha(rgba("#2a1008"), a), outline: true });
   let used = H + 5;

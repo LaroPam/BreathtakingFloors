@@ -161,7 +161,8 @@ const RU = {
   evoWith: "ЭВОЛЮЦИЯ С",
   evoKey: "КЛЮЧ К ЭВОЛЮЦИИ",
   evoHint: "РЕЛИКВИЯ 5 УРОВНЯ + УЛУЧШЕНИЕ = ЭВОЛЮЦИЯ. СУНДУК ОТДАЁТ ЕЁ НАВЕРНЯКА",
-  fontCredits: "ШРИФТЫ: FANTASY WARRIOR - DOUGLAS VAUTOUR (CC BY 4.0), PIXELOID SANS - GGBOTNET, TINY5 (SIL OFL)",
+  soundBlocked: "ЗВУК НЕ ВКЛЮЧИЛСЯ: БРАУЗЕР ИЛИ СТРАНИЦА ЕГО НЕ ДАЛИ. КОСНИТЕСЬ ЭКРАНА ЕЩЁ РАЗ, НА IPHONE ВЫКЛЮЧИТЕ БЕЗЗВУЧНЫЙ РЕЖИМ",
+  fontCredits: "ШРИФТЫ: PIXELOID SANS - GGBOTNET, TINY5 - THE TINY5 PROJECT AUTHORS (SIL OFL)",
 };
 
 type Strings = typeof RU;
@@ -325,7 +326,8 @@ const EN: Strings = {
   evoWith: "EVOLVES WITH",
   evoKey: "KEY TO AN EVOLUTION",
   evoHint: "A LEVEL 5 RELIC + ITS UPGRADE = AN EVOLUTION. A CHEST ALWAYS GIVES IT",
-  fontCredits: "FONTS: FANTASY WARRIOR BY DOUGLAS VAUTOUR (CC BY 4.0), PIXELOID SANS BY GGBOTNET, TINY5 (SIL OFL)",
+  soundBlocked: "NO SOUND: THE BROWSER OR THE PAGE DID NOT ALLOW IT. TAP AGAIN; ON AN IPHONE, TURN OFF SILENT MODE",
+  fontCredits: "FONTS: PIXELOID SANS BY GGBOTNET, TINY5 BY THE TINY5 PROJECT AUTHORS (SIL OFL)",
 };
 
 let lang: Lang = "ru";
