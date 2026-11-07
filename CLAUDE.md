@@ -13,10 +13,14 @@ The user writes in Russian; docs and in-game text are Russian-first (English is 
 - `npm run check:clip` (nothing cut off its bake canvas), `npm run check:release` and `npm run check:sdk` (the built
   Yandex and YouTube bundles against the stores' rules; the last plays them with stand-in SDKs). See `docs/RELEASE.md`.
 - `node pixelfx/tools/render.mjs <id>`: the same for a library effect.
+- `npm run maps [seed]`: the nine floors' map plans (`src/game/map.ts`) drawn to `records/maps/`.
 
 ## Where things are
 
 - Content lives in `src/game/defs.ts` (elements, reactions, enemies, relics, stats, stair modifiers, forge).
+- Each floor is a tile map built by `src/game/map.ts` (rooms, halls, caves, isles; plans per floor in `MAP_PLANS`);
+  walls and drops are real, the horde walks the `Flow` distances round them. Three floors make a place (biome),
+  joined by stairs; a portal after each boss leads to the next place.
 - The simulation is `src/game/world.ts` over the typed-array stores in `src/game/pools.ts`. Swap-remove means
   grid indices can go stale mid-step; `Grid.query` skips indices past the live count, and loops over enemies run
   backwards.

@@ -74,6 +74,15 @@ export const ANIMS = [
   { name: "jelly", fx: "critters/jellyfish", fps: 10, light: CRITTER_LIGHT, body: true },
   { name: "bird", fx: "critters/bird", fps: 12, light: CRITTER_LIGHT, body: true, opts: { palette: PAL.blood } },
   { name: "moth", fx: "critters/butterfly", fps: 10, light: CRITTER_LIGHT, body: true, opts: { palette: PAL.heal } },
+  // each place's own creatures: the garden's in moss, spores and bog water, the frost's in ice
+  { name: "snake_moss", fx: "critters/snake", fps: 12, light: CRITTER_LIGHT, body: true, opts: { palette: PAL.leaf, belly: PAL.earth.slice(3, 6) } },
+  { name: "wisp_spore", fx: "critters/wisp", fps: 10, light: CRITTER_LIGHT, body: true, opts: { palette: PAL.poison } },
+  { name: "ghost_bog", fx: "critters/ghost", fps: 12, light: CRITTER_LIGHT, body: true, opts: { palette: PAL.cyber.slice(0, 7) } },
+  { name: "bat_ice", fx: "critters/bat", fps: 12, light: CRITTER_LIGHT, body: true, opts: { palette: PAL.ice.slice(0, 7), eyes: ["#1f4f94", "#58b4ec", "#d8f4ff", "#ffffff"] } },
+  { name: "ghost_ice", fx: "critters/ghost", fps: 12, light: CRITTER_LIGHT, body: true, opts: { palette: ["#162c5c", "#2f7fcc", "#58b4ec", "#9bdcff", "#d8f4ff", "#ffffff", "#ffffff"] } },
+  { name: "eye_frost", fx: "critters/eyeball", fps: 10, light: CRITTER_LIGHT, body: true, opts: { iris: PAL.ice.slice(1, 6), flesh: PAL.water.slice(0, 5) } },
+  { name: "wisp_frost", fx: "critters/wisp", fps: 10, light: CRITTER_LIGHT, body: true, opts: { palette: ICE_FIRE.slice(0, 7) } },
+  { name: "moth_frost", fx: "critters/butterfly", fps: 10, light: CRITTER_LIGHT, body: true },
 
   // ---- enemy bullets
   { name: "orb_red", art: "shots/orb", fps: 10 },

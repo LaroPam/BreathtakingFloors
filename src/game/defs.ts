@@ -119,6 +119,16 @@ const DEFS: Def[] = [
   E({ key: "slime_ice", name: { ru: "ЛЕДЯНОЙ СЛИЗЕНЬ", en: "FROST SLIME" }, anim: "slime_ice", ai: AI.Chase, hp: 34, speed: 32, xp: 2, glow: "#78ccf4", scale: 0.65, hops: true }),
   E({ key: "snake_ice", name: { ru: "ИНЕЙНАЯ ЗМЕЯ", en: "RIME SNAKE" }, anim: "snake_ice", ai: AI.Slither, hp: 26, speed: 78, xp: 2, scale: 0.75 }),
   E({ key: "skull_ice", name: { ru: "ХЛАДНЫЙ ЧЕРЕП", en: "COLD SKULL" }, anim: "skull_ice", ai: AI.Shooter, hp: 50, speed: 40, xp: 4, glow: "#78ccf4", every: 2.4, shot: 5, scale: 0.55 }),
+  // the garden's own: an adder in the moss, wisps of spores, the spirits of the bog
+  E({ key: "snake_moss", name: { ru: "МШИСТАЯ ГАДЮКА", en: "MOSS ADDER" }, anim: "snake_moss", ai: AI.Slither, hp: 22, speed: 74, xp: 2, scale: 0.75 }),
+  E({ key: "wisp_spore", name: { ru: "СПОРОВЫЙ ОГОНЁК", en: "SPORE WISP" }, anim: "wisp_spore", ai: AI.Bomber, hp: 20, speed: 56, xp: 2, glow: "#a8e04a", scale: 0.7 }),
+  E({ key: "ghost_bog", name: { ru: "БОЛОТНЫЙ ДУХ", en: "BOG SPIRIT" }, anim: "ghost_bog", ai: AI.Phantom, hp: 38, speed: 44, xp: 3, glow: "#4ce8d8", scale: 0.65 }),
+  // the frost's own: bats, wraiths, watchers, wisps and moths of the cold
+  E({ key: "bat_ice", name: { ru: "ЛЕДЯНОЙ НЕТОПЫРЬ", en: "FROST BAT" }, anim: "bat_ice", ai: AI.Flutter, hp: 18, speed: 66, xp: 2, glow: "#9bdcff", scale: 0.7 }),
+  E({ key: "ghost_ice", name: { ru: "ИНЕЙНЫЙ ПРИЗРАК", en: "RIME WRAITH" }, anim: "ghost_ice", ai: AI.Phantom, hp: 46, speed: 46, xp: 4, glow: "#d8f4ff", scale: 0.65 }),
+  E({ key: "eye_frost", name: { ru: "МОРОЗНОЕ ОКО", en: "FROST WATCHER" }, anim: "eye_frost", ai: AI.Turret, hp: 84, speed: 16, xp: 6, glow: "#78ccf4", every: 3.4, scale: 0.6 }),
+  E({ key: "wisp_frost", name: { ru: "ВЬЮЖНЫЙ ОГОНЁК", en: "BLIZZARD WISP" }, anim: "wisp_frost", ai: AI.Bomber, hp: 22, speed: 60, xp: 3, glow: "#9bdcff", scale: 0.7 }),
+  E({ key: "moth_frost", name: { ru: "СНЕЖНЫЙ МОТЫЛЁК", en: "SNOW MOTH" }, anim: "moth_frost", ai: AI.Healer, hp: 30, speed: 46, xp: 5, glow: "#9bdcff", scale: 0.7 }),
   E({ key: "slime_elite", name: { ru: "КРОВАВЫЙ СЛИЗЕНЬ", en: "BLOOD SLIME" }, anim: "slime_elite", ai: AI.Chase, hp: 150, speed: 36, xp: 15, glow: "#ff3a3a", elite: true, scale: 0.9, hops: true }),
   E({ key: "skull_elite", name: { ru: "ЧЕРЕП-КОЛДУН", en: "HEX SKULL" }, anim: "skull_elite", ai: AI.Shooter, hp: 200, speed: 42, xp: 20, glow: "#c684ff", elite: true, every: 1.9, shot: 3, scale: 0.7 }),
   E({ key: "eye_boss", name: { ru: "ВЕЛИКОЕ ОКО", en: "THE GREAT EYE" }, anim: "eye_boss", ai: AI.Boss, hp: 1700, speed: 22, xp: 100, glow: "#f53cd1", scale: 2, elite: true, title: { ru: "ХРАНИТЕЛЬ СКЛЕПА, ЧТО НЕ СМЫКАЕТ ВЕК", en: "WARDEN OF THE CRYPT, WHO NEVER BLINKS" } }),
@@ -133,6 +143,8 @@ export const EN = {
   slime: id("slime"), bat: id("bat"), skull: id("skull"), eye: id("eye"), ghost: id("ghost"), wisp: id("wisp"), frog: id("frog"),
   snake: id("snake"), jelly: id("jelly"), bird: id("bird"), moth: id("moth"), frogToxic: id("frog_toxic"), slimeIce: id("slime_ice"),
   snakeIce: id("snake_ice"), skullIce: id("skull_ice"), slimeElite: id("slime_elite"), skullElite: id("skull_elite"),
+  snakeMoss: id("snake_moss"), wispSpore: id("wisp_spore"), ghostBog: id("ghost_bog"), batIce: id("bat_ice"), ghostIce: id("ghost_ice"),
+  eyeFrost: id("eye_frost"), wispFrost: id("wisp_frost"), mothFrost: id("moth_frost"),
   eyeBoss: id("eye_boss"), frogKing: id("frog_king"), eyeVoid: id("eye_void"), mimic: id("mimic"),
 };
 
@@ -191,14 +203,14 @@ export function roster(floor: number, phase: number): [number, number][] {
     [[[EN.slime, 10]], [[EN.bat, 6]], [[EN.skull, 3]]],
     [[[EN.slime, 8], [EN.bat, 5]], [[EN.snake, 6]], [[EN.skull, 4], [EN.wisp, 3]]],
     [[[EN.slime, 6], [EN.snake, 5], [EN.bat, 4]], [[EN.wisp, 4], [EN.skull, 4]], [[EN.ghost, 4], [EN.eye, 2]]],
-    // the garden
-    [[[EN.frog, 8], [EN.bat, 5]], [[EN.snake, 6], [EN.moth, 2]], [[EN.bird, 4]]],
-    [[[EN.frog, 6], [EN.bird, 4], [EN.snake, 4]], [[EN.frogToxic, 4], [EN.moth, 2]], [[EN.jelly, 3], [EN.ghost, 3]]],
-    [[[EN.frogToxic, 5], [EN.bird, 5], [EN.snake, 5]], [[EN.jelly, 4], [EN.moth, 3]], [[EN.ghost, 4], [EN.wisp, 4]]],
-    // the frozen halls
-    [[[EN.slimeIce, 8], [EN.snakeIce, 5]], [[EN.ghost, 4], [EN.jelly, 3]], [[EN.skullIce, 4]]],
-    [[[EN.slimeIce, 6], [EN.snakeIce, 6], [EN.bat, 4]], [[EN.skullIce, 4], [EN.moth, 2]], [[EN.eye, 3], [EN.bird, 4]]],
-    [[[EN.slimeIce, 6], [EN.snakeIce, 6], [EN.bird, 4]], [[EN.skullIce, 4], [EN.jelly, 4], [EN.moth, 2]], [[EN.eye, 3], [EN.ghost, 4], [EN.wisp, 4]]],
+    // the garden: its own toads, swifts, moths, jellies, adders, spore wisps and bog spirits
+    [[[EN.frog, 8], [EN.snakeMoss, 5]], [[EN.bird, 5], [EN.moth, 2]], [[EN.wispSpore, 3]]],
+    [[[EN.frog, 6], [EN.bird, 4], [EN.snakeMoss, 4]], [[EN.frogToxic, 4], [EN.moth, 2]], [[EN.jelly, 3], [EN.ghostBog, 3]]],
+    [[[EN.frogToxic, 5], [EN.bird, 5], [EN.snakeMoss, 5]], [[EN.jelly, 4], [EN.moth, 3], [EN.wispSpore, 3]], [[EN.ghostBog, 4], [EN.jelly, 2]]],
+    // the frost: everything of the cold
+    [[[EN.slimeIce, 8], [EN.snakeIce, 5]], [[EN.batIce, 5], [EN.mothFrost, 2]], [[EN.skullIce, 4]]],
+    [[[EN.slimeIce, 6], [EN.snakeIce, 6], [EN.batIce, 4]], [[EN.skullIce, 4], [EN.wispFrost, 3], [EN.mothFrost, 2]], [[EN.eyeFrost, 3], [EN.ghostIce, 3]]],
+    [[[EN.slimeIce, 6], [EN.snakeIce, 6], [EN.batIce, 4]], [[EN.skullIce, 4], [EN.wispFrost, 4], [EN.mothFrost, 2]], [[EN.eyeFrost, 3], [EN.ghostIce, 4], [EN.wispFrost, 3]]],
   ];
   const f = P[Math.min(P.length - 1, floor - 1)], out: [number, number][] = [];
   for (let k = 0; k <= Math.min(2, phase); k++) out.push(...f[k]);
