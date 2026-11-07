@@ -290,7 +290,7 @@ export interface WorldEvents {
   quest(q: Quest): void;
   /** Something the day's tasks count happened. */
   count(id: TaskId, n?: number): void;
-  banner(text: string, color?: number): void;
+  banner(text: string, color?: number, sub?: string): void;
 }
 
 export class Hero {
@@ -442,6 +442,11 @@ export class World {
   moveX = 0;
   moveY = 0;
   private spawnAcc = 0;
+  /** The floor's wave: lit at a brazier, it lasts `left` of `total` seconds (survive it); null between waves. */
+  wave: { left: number; total: number; n: number } | null = null;
+  /** A word to the player: fades in, holds, fades out (the HUD shows it); t < 0 waits. */
+  hint: { text: string; t: number; dur: number } | null = null;
+  private waitSaid = false;
   private bossAttack = 0;
   private bossPhase = 0;
   private enemyAnims: Anim[];
@@ -465,7 +470,8 @@ export class World {
     this.floor = floor;
     this.mod = mod;
     this.biome = biomeOf(floor);
-    const size = Math.round((34 + Math.min(floor, 9) * 2) * mod.size);
+    // big enough that the braziers are a run apart: wider as the tower goes down
+    const size = Math.round((52 + Math.min(floor, 9) * 3) * mod.size);
     this.w = size * TILE;
     this.h = Math.round(size * 0.7) * TILE;
     this.grid.resize(this.w, this.h);
@@ -493,6 +499,10 @@ export class World {
     this.cleared = false;
     this.time = 0;
     this.spawnAcc = 0;
+    this.wave = null;
+    this.waitSaid = false;
+    // what to do here, once the hero has arrived (the first floor says it in full)
+    this.hint = { text: tr(floor === 1 ? "hintFloor1" : "hintFloor"), t: -1.4, dur: floor === 1 ? 7 : 4.5 };
     const h = this.hero;
     h.x = this.w / 2;
     h.y = this.h / 2;
@@ -508,7 +518,7 @@ export class World {
     if (mod.chest) this.pendingChests++;
     this.layout();
     // a few enemies already waiting, far off
-    for (let i = 0; i < 2 + Math.floor(floor / 2); i++) this.spawnAt(this.pickEnemy(0), ...this.edgePoint(260));
+    for (let i = 0; i < 1 + Math.floor(floor / 3); i++) this.spawnAt(this.pickEnemy(0), ...this.edgePoint(300));
   }
 
   /** Braziers, columns, torches on the back wall, things lying about, motes in the air. */
@@ -518,7 +528,7 @@ export class World {
     const base = R.range(0, Math.PI * 2);
     for (let k = 0; k < 3; k++) {
       const a = base + (k * Math.PI * 2) / 3 + R.range(-0.35, 0.35);
-      const d = R.range(0.6, 0.82);
+      const d = R.range(0.76, 0.9);
       this.braziers.push({ x: Math.round(W / 2 + Math.cos(a) * (W / 2 - 60) * d), y: Math.round(H / 2 + Math.sin(a) * (H / 2 - 50) * d), lit: false, progress: 0, litT: 0 });
     }
     const clear = (x: number, y: number, r: number) =>
@@ -629,7 +639,7 @@ export class World {
     return false;
   }
   levelNeed(level = this.hero.level): number {
-    return Math.round(4 + level * 4 + level * level * 0.7);
+    return Math.round(6 + level * 6 + level * level * 1.1);
   }
 
   /** Set the hero up for a run: who, their weapon, hearts, speed, dashes, light. */
@@ -694,7 +704,9 @@ export class World {
   spawnAt(type: number, x: number, y: number): number {
     const d = ENEMIES[type], f = this.floor;
     const curse = (this.curse ? 1.5 : 1) * (this.mutator === "legacy" ? 1.3 : 1);
-    const hp = d.hp * (1 + 0.25 * (f - 1)) * (1 + Math.min(0.8, this.time / 240)) * curse;
+    // tougher than they look: blows must land several times (bosses carry their own numbers)
+    const tough = d.ai === AI.Boss || d.ai === AI.BossFrog ? 1.15 : 1.7;
+    const hp = d.hp * tough * (1 + 0.25 * (f - 1)) * (1 + Math.min(0.8, this.time / 240)) * curse;
     const i = this.enemies.add(type, x, y, hp, this.rng.next(), this.mod.speed * (1 + (f - 1) * 0.025) * this.rng.range(0.9, 1.1) * (this.curse ? 1.2 : 1) * (this.mutator === "haste" ? 1.25 : 1));
     if (i >= 0) {
       this.enemies.face[i] = this.hero.x < x ? -1 : 1;
@@ -797,6 +809,7 @@ export class World {
       else f.t += dt;
       if (f.follow) (f.x = this.hero.x + f.follow[0]), (f.y = this.hero.y + f.follow[1]);
     }
+    if (this.hint && (this.hint.t += dt) > this.hint.dur) this.hint = null;
     this.fx = this.fx.filter((f) => {
       const a = anim(f.anim);
       return a.loop || f.t < a.dur;
@@ -1907,7 +1920,7 @@ export class World {
         break;
       }
       case "purge": q.need = 18 + f * 3; q.left = q.total = 45; break;
-      case "swift": q.need = unlit; q.left = q.total = 40 + 30 * unlit; break;
+      case "swift": q.need = unlit; q.left = q.total = 40 + (this.waveTime(3) + 30) * unlit; break;
       case "graze": q.need = 16 + f * 2; break;
       case "alchemy": q.need = 3 + Math.floor(f / 3); break;
       case "bounty": {
@@ -2866,6 +2879,12 @@ export class World {
         continue;
       }
       const near = !h.dead && (h.x - b.x) ** 2 + (h.y - b.y) ** 2 < 34 * 34;
+      // one wave at a time: a brazier waits while another burns
+      if (near && this.wave) {
+        b.progress = Math.max(0, b.progress - dt * 0.15);
+        if (!this.waitSaid) (this.waitSaid = true), this.say(tr("hintWait"), 3);
+        continue;
+      }
       b.progress = near ? b.progress + dt / 2.4 : Math.max(0, b.progress - dt * 0.15);
       if (near && this.rng.chance(dt * 25)) this.parts.add(b.x + this.rng.range(-8, 8), b.y - 26, this.rng.range(-8, 8), -40, 0.5, rgba("#ffae35"), 1, 0, 1);
       if (b.progress >= 1) {
@@ -2878,16 +2897,15 @@ export class World {
         this.addFx("explosion", b.x, b.y - 22, { sx: 0.4, sy: 0.4, glow: 0.9 });
         this.shake = 0.35;
         this.gainOd(15);
-        const phase = this.phase;
-        if (phase < 3) {
-          // the dark answers: a pack from the next group of the roster, and from floor 2 an elite at phase 2
-          this.ev.banner(tr("surge"), rgba("#ff7a6a"));
-          const [x, y] = this.edgePoint(200);
-          for (let k = 0; k < 3 + this.floor; k++) this.spawnAt(this.pickEnemy(phase), x + this.rng.range(-30, 30), y + this.rng.range(-20, 20));
-          if ((this.floor >= 2 && phase === 2) || (this.floor >= 5 && phase === 1) || this.mutator === "champions") this.spawnElite();
-        } else if (bossOf(this.floor) >= 0) this.spawnBoss();
-        else this.openPortal(this.w / 2, this.h / 2);
+        // the last brazier of a boss floor calls the boss; any other starts a wave to be survived
+        if (this.phase >= 3 && bossOf(this.floor) >= 0) this.spawnBoss();
+        else this.startWave();
       }
+    }
+    // the wave burns down; when it is out the dark falls back (no new enemies until the next brazier)
+    if (this.wave && !this.cine && !h.dead) {
+      this.wave.left -= dt;
+      if (this.wave.left <= 0) this.endWave();
     }
     // a boss gone without its death being seen (nothing should do this, but the way on must never be lost)
     if (this.bossSpawned && !this.portal && !this.cine && !this.won && this.floor < FLOORS && this.bossIndex() < 0) this.openPortal(...this.portalSpot());
@@ -2923,6 +2941,56 @@ export class World {
       if (m.y > H + 10) m.y -= H + 60;
     }
   }
+  /** How long the n-th wave of this floor lasts (s): longer deeper down and for each brazier lit. */
+  waveTime(n: number): number {
+    return Math.round(Math.min(50, 22 + this.floor * 2.5 + (n - 1) * 4));
+  }
+  /** A brazier is lit: the dark answers with a wave to be survived, a pack at once and more while it lasts. */
+  private startWave(): void {
+    const n = this.phase, total = this.waveTime(n);
+    this.wave = { left: total, total, n };
+    this.waitSaid = false;
+    this.spawnAcc = 0;
+    this.ev.banner(tr("waveStart").replace("{n}", String(n)), rgba("#ff7a6a"), tr("waveSub").replace("{s}", String(total)));
+    this.spawnPack(this.pickEnemy(n), false);
+    if ((this.floor >= 2 && n === 2) || (this.floor >= 5 && n === 1) || this.mutator === "champions") this.spawnElite();
+  }
+  /** The wave is survived: a breath, a reward, and the way on (the next brazier, or the portal). */
+  private endWave(): void {
+    const h = this.hero;
+    this.wave = null;
+    this.spawnAcc = 0;
+    this.gainOd(20);
+    this.embersBonus += 2 + this.floor;
+    if (h.hp < h.maxHp && this.rng.chance(0.6)) this.drops.add(D_HEART, h.x + this.rng.range(-30, 30), h.y + this.rng.range(-20, 20), 1, 0, -20);
+    this.addFx("heal_ring", h.x, h.y, { tint: rgba("#ffd27a"), glow: 0.7, sx: 0.8, sy: 0.8 });
+    this.audio.play("levelup", 0.8);
+    if (this.phase >= 3) {
+      this.openPortal(...this.portalSpot());
+      this.say(tr("hintPortal"), 4.5);
+    } else {
+      this.ev.banner(tr("waveDone"), rgba("#ffd27a"), tr("waveDoneSub").replace("{n}", String(3 - this.phase)));
+      this.say(tr("hintNext"), 4.5);
+    }
+  }
+  /** Where the hero should go now: the portal if open, else (between waves, no boss up) the nearest unlit brazier. */
+  objective(): [number, number] | null {
+    if (this.portal) return [this.portal.x, this.portal.y];
+    if (this.wave || this.bossIndex() >= 0 || this.cine) return null;
+    const h = this.hero;
+    let best: [number, number] | null = null, bd = Infinity;
+    for (const b of this.braziers)
+      if (!b.lit) {
+        const d = (b.x - h.x) ** 2 + (b.y - h.y) ** 2;
+        if (d < bd) (bd = d), (best = [b.x, b.y]);
+      }
+    return best;
+  }
+  /** A word to the player, faded in and out by the HUD. */
+  say(text: string, dur = 4): void {
+    this.hint = { text, t: 0, dur };
+  }
+
   /** Where a portal opens: a few steps from the hero towards the middle of the room, on open floor. */
   private portalSpot(): [number, number] {
     const h = this.hero, base = Math.atan2(this.h / 2 - h.y, this.w / 2 - h.x);
@@ -2984,21 +3052,103 @@ export class World {
     return pool[0][0];
   }
   /**
-   * The director keeps a number of enemies alive rather than spawning on a clock, so pressure is steady and never
-   * runs away: few at a floor's start, more with each brazier lit, a slow rise the longer the floor takes.
+   * The director: during a wave it keeps enemies coming in packs, more as the wave burns down; between waves only
+   * a few wanderers come, slowly, from far off; with the portal open, none; with a boss up, a few of its court.
+   * Each kind arrives its own way (spawnPack).
    */
   private director(dt: number): void {
     if (this.hero.dead || this.cleared || this.won || this.hero.exitT >= 0) return;
-    const E = this.enemies, phase = this.phase, boss = this.bossIndex() >= 0;
-    const target = Math.min(90, Math.round((4 + this.floor * 2.2) * (1 + 0.5 * phase) * this.mod.spawn * (1 + Math.min(0.5, this.time / 240)) * (boss ? 0.45 : this.portal ? 0.5 : 1) * (this.curse ? 1.25 : 1) * (this.mutator === "swarm" ? 1.5 : 1)));
+    const E = this.enemies, f = this.floor, boss = this.bossIndex() >= 0;
+    const more = this.mod.spawn * (this.curse ? 1.25 : 1) * (this.mutator === "swarm" ? 1.5 : 1);
+    let target = 0, every = 99, far = true;
+    if (boss) (target = Math.round((3 + f * 0.6) * more)), (every = 3.5), (far = false);
+    else if (this.wave) {
+      const k = 1 - this.wave.left / this.wave.total;
+      target = Math.min(64, Math.round((5 + f * 1.6) * (1 + 0.35 * (this.wave.n - 1)) * (0.8 + 0.5 * k) * more));
+      every = Math.max(1.1, 2.4 - f * 0.1 - k * 0.6);
+      far = false;
+    } else if (!this.portal) (target = Math.min(6, 2 + Math.floor(f / 2))), (every = 7);
     this.spawnAcc += dt;
-    if (E.n < target && this.spawnAcc >= 0.6) {
+    if (E.n < target && this.spawnAcc >= every) {
       this.spawnAcc = 0;
-      // packs of two or three from one side, so they arrive as a group you can read
-      const [x, y] = this.edgePoint(230), n = Math.min(target - E.n, this.rng.int(2, 3)), type = this.pickEnemy();
-      for (let k = 0; k < n; k++) this.spawnAt(this.rng.chance(0.7) ? type : this.pickEnemy(), x + this.rng.range(-24, 24), y + this.rng.range(-16, 16));
+      this.spawnPack(this.pickEnemy(), far);
     }
-    this.audio.intensity = Math.min(1, E.n / 70 + (boss ? 0.5 : 0));
+    this.audio.intensity = Math.min(1, E.n / 50 + (boss ? 0.5 : 0) + (this.wave ? 0.2 : 0));
+  }
+
+  /**
+   * A pack, the way its kind comes: slimes in a clump, bats and swifts from two or three sides at once, skulls in a
+   * line abreast, snakes in a file, ghosts out of the dark just past the lantern, toads and jellies in pairs,
+   * wisps from different edges, watchers and moths alone. `far`: well off screen (the wanderers between waves).
+   */
+  private spawnPack(type: number, far: boolean): void {
+    const d = ENEMIES[type], h = this.hero, R = this.rng, f = this.floor, dist = far ? 320 : 220, TAU = Math.PI * 2;
+    // between waves the wanderers come one or two at a time, never a whole pack
+    let room = far ? R.int(1, 2) : 99;
+    const at = (x: number, y: number) => {
+      if (room <= 0 || x < 20 || y < 24 || x > this.w - 20 || y > this.h - 12 || !this.free(x, y, 10)) return;
+      if (this.spawnAt(type, x, y) >= 0) room--, this.addFx("spawn", x, y, { sx: 0.35, sy: 0.35, glow: 0.4 });
+    };
+    if (d.elite) {
+      const [x, y] = this.edgePoint(dist);
+      return at(x, y);
+    }
+    switch (d.ai) {
+      case AI.Flutter:
+      case AI.Swooper: {
+        const sides = R.int(2, 3), n = R.int(1, 2) + (f >= 4 ? 1 : 0), base = R.range(0, TAU);
+        for (let s = 0; s < sides; s++) {
+          const a = base + (s * TAU) / sides + R.range(-0.3, 0.3);
+          for (let k = 0; k < n; k++) at(h.x + Math.cos(a) * (dist + R.range(0, 40)), h.y + Math.sin(a) * dist * 0.75 + R.range(-16, 16));
+        }
+        return;
+      }
+      case AI.Shooter: {
+        const [x, y] = this.edgePoint(dist), n = R.int(2, 3), side = Math.atan2(h.y - y, h.x - x) + Math.PI / 2;
+        for (let k = 0; k < n; k++) at(x + Math.cos(side) * (k - (n - 1) / 2) * 26, y + Math.sin(side) * (k - (n - 1) / 2) * 26);
+        return;
+      }
+      case AI.Slither: {
+        const [x, y] = this.edgePoint(dist), n = R.int(3, 4), a = Math.atan2(y - h.y, x - h.x);
+        for (let k = 0; k < n; k++) at(x + Math.cos(a) * k * 16, y + Math.sin(a) * k * 16);
+        return;
+      }
+      case AI.Phantom: {
+        const n = R.int(2, 3), r = Math.max(this.lanternR + 40, far ? dist : 0);
+        for (let k = 0; k < n; k++) {
+          const a = R.range(0, TAU);
+          at(h.x + Math.cos(a) * r, h.y + Math.sin(a) * r * 0.8);
+        }
+        return;
+      }
+      case AI.Leaper:
+      case AI.Drifter: {
+        const [x, y] = this.edgePoint(dist);
+        at(x, y);
+        at(x + R.range(-24, 24), y + R.range(-18, 18));
+        return;
+      }
+      case AI.Bomber: {
+        for (let k = R.int(1, 2); k > 0; k--) {
+          const [x, y] = this.edgePoint(dist);
+          at(x, y);
+        }
+        return;
+      }
+      case AI.Turret:
+      case AI.Healer: {
+        const [x, y] = this.edgePoint(dist);
+        return at(x, y);
+      }
+      default: {
+        // a clump, bigger deeper down
+        const [x, y] = this.edgePoint(dist), n = R.int(4, 6) + Math.floor(f / 3);
+        for (let k = 0; k < n; k++) {
+          const a = R.range(0, TAU), r = R.range(0, 24);
+          at(x + Math.cos(a) * r, y + Math.sin(a) * r * 0.8);
+        }
+      }
+    }
   }
 
   // ============================================================================================ choices

@@ -329,6 +329,29 @@ export function drawWorld(s: Scene, w: World, camX: number, camY: number, viewW:
     if (w.debug) s.front.disc(w.bx, w.by, w.brx, w.bry, rgba("#ff3040", 0.3));
   }
 
+  // ---- the way on: chevrons running out from the hero towards the nearest unlit brazier (between waves) or the
+  // portal, while it is more than a few steps away
+  const goal = w.objective();
+  if (goal && !h.dead && h.exitT < 0 && h.arriveT > 0.55) {
+    const dx = goal[0] - h.x, dy = goal[1] - h.y, d = Math.hypot(dx, dy);
+    if (d > 80) {
+      const ux = dx / d, uy = dy / d, col = w.portal ? rgba("#d8a8ff") : rgba("#ffcf5a");
+      for (let q = 0; q < 2; q++) {
+        const u = (time * 1.4 + q * 0.5) % 1, r = 30 + u * 26, al = Math.sin(u * Math.PI);
+        const cx = h.x + ux * r, cy = h.y - 12 + uy * r * 0.85;
+        // a chevron: two short strokes meeting at the tip, inked so it reads on any floor
+        for (const [pass, c] of [[1, rgba("#0b0a12", 0.8 * al)], [0, withAlpha(col, al)]] as const)
+          for (const side of [-1, 1])
+            for (let k = 0; k < 8; k++) {
+              const px = cx - ux * k * 0.9 + side * -uy * k * 0.95, py = cy - uy * k * 0.9 + side * ux * k * 0.95;
+              if (pass) s.front.rect(Math.round(px) - 1, Math.round(py) - 1, 4, 4, c, 1e6);
+              else s.front.rect(Math.round(px), Math.round(py), 2, 2, c, 1e6);
+            }
+        s.glow.disc(cx, cy, 3, 3, withAlpha(col, 0.35 * al));
+      }
+    }
+  }
+
   // ---- the enemy the hero is turned to: four corners closing on it (gold when it is in reach)
   if (w.target.r > 0 && !h.dead) {
     const tg = w.target, r = tg.r + 4 + Math.sin(time * 6) * 1.2, c = w.autoTarget ? rgba("#ffcf5a") : rgba("#c8c0d8", 0.6);

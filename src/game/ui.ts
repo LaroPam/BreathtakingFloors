@@ -424,7 +424,11 @@ export function drawHud(b: Batch, w: World, W: number, H: number, time: number, 
   b.image(icon("hud", "overdrive"), 10, py + 28);
   bar(b, 18, py + 26, Math.min(66, pw - 22), 4, h.od / 100, full ? rgbaf(1, 0.75 + 0.2 * pulse, 0.3 + 0.3 * pulse, 1) : rgba("#c8862a"), full ? rgba("#fff6c4") : rgba("#ffd27a"), full ? { shimmer: time * 0.8 } : {});
   // full: the hero's own ability is ready, by name
-  if (full) text(b, touch ? tx(h.def.ability.name) : tx(h.def.ability.name) + "  E", pw + 6, py + 26, { font: "mini", color: withAlpha(C.gold, 0.6 + 0.4 * pulse), outline: true });
+  if (full) {
+    // its name if there is room before the plate in the middle, else just that it is ready
+    const room = W / 2 - 120 - (pw + 6), name = tx(h.def.ability.name) + (touch ? "" : "  E");
+    text(b, measure(name, "mini") <= room ? name : t("readyKey") + (touch ? "" : " · E"), pw + 6, py + 26, { font: "mini", color: withAlpha(C.gold, 0.6 + 0.4 * pulse), outline: true });
+  }
 
   // ---- the hotbar: the weapon in a gold-rimmed slot (an element's gem in its corner), then a slot per relic
   const hy = py + 38, el = w.weaponEl;
@@ -490,9 +494,19 @@ export function drawHud(b: Batch, w: World, W: number, H: number, time: number, 
   // a trial wears its seal by the floor's name (the day's or the week's); a cursed floor its skull on the other side
   if (seal) b.image(icon("hud", seal), W / 2 - fw / 2 + 9, 16);
   if (w.curse) b.image(icon("hud", "curse"), W / 2 + fw / 2 + 8, 16, 1, 1, 0, rgbaf(1, 0.7 + 0.3 * Math.sin(time * 6), 0.7, 1));
+  // a wave burning: how long to hold out, a bar running down under the plate
+  let under = 38;
+  if (w.wave) {
+    const wv = w.wave, left = Math.max(0, Math.ceil(wv.left)), k = wv.left / wv.total, urgent = wv.left < 5;
+    const label = `${t("wave")} ${wv.n}  ·  ${t("hold")} ${fmtTime(left)}`, bw = Math.max(90, measure(label) + 16);
+    plate(b, W / 2 - bw / 2, under, bw, 18, rgba("#a8402e"));
+    text(b, label, W / 2, under + 4, { align: "center", color: urgent ? rgbaf(1, 0.8 + 0.2 * Math.sin(time * 10), 0.5, 1) : rgba("#ffd2b0"), shadow: C.ink });
+    b.rect(Math.round(W / 2 - bw / 2 + 4), under + 14, Math.round((bw - 8) * k), 2, rgba("#ff7a4a"));
+    under += 22;
+  }
   // the week's rule, under the plate, for the whole run
   const mut = w.mutator && MUTATORS.find((m) => m.id === w.mutator);
-  if (mut) text(b, tx(mut.name), W / 2, 38, { font: "mini", align: "center", color: rgba("#ff9a8a"), shadow: C.ink });
+  if (mut) text(b, tx(mut.name), W / 2, under, { font: "mini", align: "center", color: rgba("#ff9a8a"), shadow: C.ink });
   if (w.portal) text(b, t("portalOpen"), W / 2, 24, { font: "mini", align: "center", color: rgba("#c684ff") });
   else if (bi >= 0) {
     const name = tx(ENEMIES[w.enemies.type[bi]].name);

@@ -163,7 +163,7 @@ export class Game {
       victory: () => this.onVictory(),
       floorCleared: () => this.onFloorCleared(),
       reaction: (r) => this.onReaction(r),
-      banner: (text, color) => this.showBanner(text, color),
+      banner: (text, color, sub) => this.showBanner(text, color, sub),
       quest: (q) => {
         const name = tx(questDef(q.kind).name);
         if (q.state === "active") {
@@ -748,6 +748,7 @@ export class Game {
         if (this.touch) drawTouch(ui, this.input, w, W, H, this.now);
         else this.input.zones = [];
         this.drawTutorial();
+        this.drawHint();
         // the reticle stands in for the pointer while aiming with the mouse
         break;
       case "spin": this.drawSpin(); break;
@@ -768,6 +769,19 @@ export class Game {
     this.drawToast(this.dt);
     this.drawWipe();
     this.r.render(s, ui, cx, cy, light, [0.025, 0.02, 0.045]);
+  }
+
+  /** The world's word to the player (what to do now), on a plate low in the middle: it fades in, holds, fades out. */
+  private drawHint(): void {
+    const hint = this.world.hint;
+    if (!hint || hint.t < 0) return;
+    const ui = this.ui, W = this.r.w, H = this.r.h, a = Math.max(0, Math.min(1, hint.t / 0.45, (hint.dur - hint.t) / 0.7));
+    if (a <= 0) return;
+    const lines = wrap(hint.text, Math.min(W - 40, 360)), lw = Math.min(W - 16, Math.max(...lines.map((l) => measure(l))) + 20);
+    // above the first floor's controls, if they are still showing
+    const tut = this.save.tutorial && this.world.floor === 1 && this.world.time <= 14, y = Math.round(H * (tut ? 0.56 : 0.68) + (1 - a) * 6);
+    plate(ui, W / 2 - lw / 2, y - 5, lw, lines.length * 11 + 8, withAlpha(C.gold, a));
+    lines.forEach((l, k) => text(ui, l, W / 2, y + k * 11, { align: "center", color: withAlpha(rgba("#ffe8b0"), a), shadow: withAlpha(C.ink, a) }));
   }
 
   private drawTutorial(): void {
