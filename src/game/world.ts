@@ -344,6 +344,8 @@ export class World {
   seen = new Set<number>();
   /** Draw hitboxes (H). */
   debug = false;
+  /** Show damage numbers (a setting; reactions are always named). */
+  numbers = true;
   corpses: Corpse[] = [];
   racks: Rack[] = [];
   /** The boss's entrance while it plays. */
@@ -1162,7 +1164,7 @@ export class World {
     if (E.frozen[i] > 0) dmg *= 1.15;
     E.hp[i] -= dmg;
     E.flash[i] = 0.07;
-    if (!o.quiet) {
+    if (!o.quiet && (this.numbers || o.crit)) {
       this.body(i);
       const big = !!o.crit || dmg >= 60;
       this.popup(this.bx, this.by - this.bry - 6, String(Math.round(dmg)), o.crit ? rgba("#ffe03c") : el ? rgba(EL_COLOR[el]) : rgba("#ffffff"), big);

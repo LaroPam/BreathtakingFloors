@@ -115,6 +115,10 @@ export const ANIMS = [
   { name: "pillar_garden", art: "props/pillar", opts: { stone: ["#0c100c", "#1e261c", "#2e3a2a", "#465640", "#647a58"], decor: 1 } },
   { name: "pillar_frost", art: "props/pillar", opts: { stone: ["#0c121c", "#1c2a3c", "#2e4058", "#46607e", "#6a8ab0"], decor: 2 } },
   { name: "bones", art: "props/bones", variants: { variant: [0, 1, 2] } },
+  // things to break, a chest that bites, an altar of curses
+  { name: "urns", art: "props/urn", variants: { variant: [0, 1, 2, 3] } },
+  { name: "mimic", art: "props/mimic", fps: 12, body: true },
+  { name: "curse_altar", art: "props/curse-altar", fps: 8, light: { thr: 8, k: 0.9 } },
   { name: "mushrooms", art: "props/mushrooms", fps: 8 },
   { name: "grass", art: "props/grass", fps: 8 },
   { name: "crystal", fx: "ice/ice-crystal", fps: 8, light: { thr: 10, k: 0.8 }, opts: { height: 22 } },

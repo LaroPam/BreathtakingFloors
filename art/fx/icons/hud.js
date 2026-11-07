@@ -5,7 +5,7 @@ import { hex } from "../../../pixelfx/src/core/index.js";
 
 export const IDS = ["heart", "heart_empty", "stamina", "xp", "overdrive", "skull", "time", "brazier", "brazier_cold", "boss", "lock", "ember", "daily", "crown", "scroll",
   // on buttons
-  "play", "anvil", "globe", "speaker", "mute", "back", "resume", "book", "flag"];
+  "play", "anvil", "globe", "speaker", "mute", "back", "resume", "book", "flag", "gear", "trophy", "urn", "curse"];
 
 export const meta = {
   name: "HUD icons",
@@ -112,6 +112,22 @@ const ICONS = {
   flag: [
     ["kkkkkk.", "pwwwwwk", "pwwwwwk", "pkkkkk.", "p......", "p......", "p......"],
     { k: "#0b0a12", w: "#ff8a9a", p: "#a8683a" },
+  ],
+  gear: [
+    ["...kk....", ".k.ww.k..", ".kwiiwk..", "kwi..iwk.", "kwi..iwk.", ".kwiiwk..", ".k.ww.k..", "...kk...."],
+    { k: "#0b0a12", w: "#d8d8ec", i: "#8a8aa8" },
+  ],
+  trophy: [
+    ["kkkkkkkkk", "kywwyyyok", ".kyyyyok.", "..kyyok..", "...kyk...", "...kok...", "..kyyok..", ".kkkkkkk."],
+    { k: "#0b0a12", y: "#f4d27a", w: "#fff6c4", o: "#a8864a" },
+  ],
+  urn: [
+    ["..kkkk..", ".kwccck.", "..kcck..", ".kcwccck", "kcwccccdk", "kccccccdk", ".kcccdk.", "..kkkk.."],
+    { k: "#0b0a12", w: "#e8b080", c: "#b06a3a", d: "#6a3a1e" },
+  ],
+  curse: [
+    ["k.kkkkk.k", "kkrrrrrkk", ".krkrkrk.", ".krrrrrk.", "..krkrk..", "..kkkkk.."],
+    { k: "#0b0a12", r: "#c8303a" },
   ],
   boss: [
     ["k.......k", "kk.kkk.kk", ".kkwwwkk.", "kwwwwwwwk", "kwrkwkrwk", "kwrkwkrwk", "kwwwkwwwk", ".kwwwwwk.", "..kwkwk..", "..kkkkk.."],

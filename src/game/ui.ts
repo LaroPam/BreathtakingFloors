@@ -67,6 +67,9 @@ export class Menu {
     const u = Math.max(0, Math.min(1, (now - this.openedAt) * 7 - idx * 0.45));
     return 1 - (1 - u) ** 3;
   }
+  get keys(): Input {
+    return this.input;
+  }
   item(x: number, y: number, w: number, h: number, now: number): { focused: boolean; hit: boolean; pressed: boolean; idx: number } {
     const idx = this.count++, inp = this.input, m = inp.mouse;
     const inside = (p: { x: number; y: number } | null) => !!p && p.x >= x && p.x < x + w && p.y >= y && p.y < y + h;
@@ -80,11 +83,12 @@ export class Menu {
     }
     return { focused, hit, pressed: m.down && inside(m), idx };
   }
-  end(horizontal = false): void {
+  /** Move focus with the keys or a pad; `sideways` lets the other pair of directions move it too (not on a screen of sliders). */
+  end(horizontal = false, sideways = true): void {
     if (!this.count) return;
     const i = this.input, n = this.count;
     const next = horizontal ? i.pressed("right") : i.pressed("down"), prev = horizontal ? i.pressed("left") : i.pressed("up");
-    const alt = horizontal ? i.pressed("down") : i.pressed("right"), altPrev = horizontal ? i.pressed("up") : i.pressed("left");
+    const alt = sideways && (horizontal ? i.pressed("down") : i.pressed("right")), altPrev = sideways && (horizontal ? i.pressed("up") : i.pressed("left"));
     if (next || alt) this.focus = (this.focus + 1) % n;
     if (prev || altPrev) this.focus = (this.focus - 1 + n) % n;
     if (i.pressed("one") && n >= 1) this.focus = 0;
@@ -278,6 +282,31 @@ export function button(b: Batch, menu: Menu, now: number, x: number, y: number, 
   if (o.icon) b.image(o.icon, Math.round(lx - lw / 2 - 4 - o.icon[3] / 2), y + Math.floor(h / 2) + (h % 2 ? 1 : 0), 1, 1, 0, o.disabled ? rgbaf(0.5, 0.5, 0.55, 1) : 0xffffffff);
   text(b, label, lx, y + Math.floor((h - (font === "mini" ? 5 : 7)) / 2), { font, align: "center", color: ink, shadow: rgba("#05040a", 0.9) });
   return hit && !o.disabled;
+}
+
+/**
+ * A slider: a label, a framed groove filled to the value, a gem on it. Left and right nudge it when it has focus; a
+ * press or a drag on the groove sets it. Returns the new value when it changed, otherwise null.
+ */
+export function slider(b: Batch, menu: Menu, now: number, x: number, y: number, w: number, label: string, value: number, ic?: Rect): number | null {
+  const h = 18, { focused, idx } = menu.item(x, y, w, h, now), inp = menu.keys, dy = Math.round((1 - menu.appear(now, idx)) * 8);
+  y += dy;
+  frame(b, x, y, w, h, { edge: focused ? C.gold : undefined, corners: false });
+  if (ic) b.image(ic, x + 10, y + 9);
+  text(b, label, x + (ic ? 19 : 8), y + 6, { color: focused ? C.gold : C.text, shadow: C.ink });
+  const gx = x + Math.round(w * 0.48), gw = w - (gx - x) - 34, gy = y + 7;
+  bar(b, gx, gy, gw, 4, value, rgba("#c8862a"), rgba("#ffd27a"));
+  const kx = Math.round(gx + gw * value);
+  b.rect(kx - 2, gy - 3, 5, 10, C.ink);
+  b.rect(kx - 1, gy - 2, 3, 8, focused ? C.goldLight : C.gold);
+  text(b, `${Math.round(value * 100)}`, x + w - 6, y + 6, { align: "right", color: C.dim });
+  let v = value;
+  if (focused && inp.pressed("left")) v -= 0.1;
+  if (focused && inp.pressed("right")) v += 0.1;
+  const m = inp.mouse;
+  if (menu.ready(now) && m.down && m.y >= y && m.y < y + h && m.x >= gx - 4 && m.x <= gx + gw + 4) v = (m.x - gx) / gw;
+  v = Math.round(Math.max(0, Math.min(1, v)) * 20) / 20;
+  return v !== value ? v : null;
 }
 
 /** Text that wraps inside a width, returning the height it used. */

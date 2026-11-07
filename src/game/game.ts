@@ -12,10 +12,10 @@ import { drawWorld, Scene } from "./draw";
 import { getLang, langFor, setLang, t, tx, type Lang } from "./i18n";
 import { Rng } from "./rng";
 import { defaultSave, sanitize, type SaveData } from "./save";
-import { button, C, divider, glow as glowUi, drawHud, drawPointers, drawTouch, fmtTime, frame, header, inset, Menu, panel, para, plate, reticle, slot } from "./ui";
+import { button, slider, C, divider, glow as glowUi, drawHud, drawPointers, drawTouch, fmtTime, frame, header, inset, Menu, panel, para, plate, reticle, slot } from "./ui";
 import { CINE_DUR, World } from "./world";
 
-type State = "title" | "heroes" | "forge" | "daily" | "records" | "tasks" | "card" | "play" | "spin" | "pause" | "codex" | "stairs" | "dead" | "won";
+type State = "title" | "heroes" | "forge" | "daily" | "records" | "tasks" | "settings" | "card" | "play" | "spin" | "pause" | "codex" | "stairs" | "dead" | "won";
 type Choice = { type: "relic"; kind: RelicKind; level: number } | { type: "stat"; id: StatId } | { type: "evo"; kind: RelicKind };
 
 /**
@@ -84,7 +84,7 @@ export class Game {
     this.save = sanitize(await this.platform.load());
     setLang(this.save.lang ?? langFor(this.platform.language()));
     this.audio.setEnabled(this.save.sound && this.platform.audioAllowed());
-    this.audio.setVolumes(0.8, this.save.music ? 0.5 : 0);
+    this.applySettings();
     this.touch = this.platform.isMobile();
     this.heroIdx = Math.max(0, HEROES.findIndex((h) => h.id === this.save.hero));
     // the hero palettes the shader swaps the stock dummy's colours for
@@ -93,6 +93,14 @@ export class Game {
     this.newWorld();
     this.attract();
   }
+
+  /** Volumes from the save into the mixer; the comfort switches are read where they act. */
+  private applySettings(): void {
+    this.audio.setVolumes(this.save.vol.sfx, this.save.vol.music);
+    if (this.world) this.world.numbers = this.save.numbers;
+  }
+  /** Where the settings screen goes back to. */
+  private settingsFrom: State = "title";
 
   private persist(): void {
     if (this.savePending) return;
@@ -122,6 +130,7 @@ export class Game {
       count: (id, n) => this.bump(id, n ?? 1),
       weapon: (id, el) => this.showBanner(tx(weaponName(id, el)), el || WEAPONS[id].el ? rgba(EL_COLOR[el || WEAPONS[id].el!]) : C.gold),
     }, NO_MODIFIER);
+    this.world.numbers = this.save.numbers;
   }
 
   /** The title screen's backdrop: a quiet floor with the hero by a lit brazier. */
@@ -534,7 +543,7 @@ export class Game {
     s.clear();
     ui.clear();
     this.menu.begin();
-    const shake = w.shake > 0 && this.state === "play" ? w.shake * w.shake * 6 : 0;
+    const shake = w.shake > 0 && this.state === "play" && this.save.shake ? w.shake * w.shake * 6 : 0;
     const sx = shake ? (Math.random() - 0.5) * shake : 0, sy = shake ? (Math.random() - 0.5) * shake : 0;
     const cx = this.camX + sx, cy = this.camY + sy;
     drawWorld(s, w, cx, cy, W, H, this.now);
@@ -544,8 +553,8 @@ export class Game {
       ambient: [w.ambient * w.biome.ambient[0], w.ambient * w.biome.ambient[1], w.ambient * w.biome.ambient[2]],
       steps: 7,
       vignette: 0.55,
-      tint: w.flash > 0 ? [1, 0.95, 0.85] : [0.03, 0.025, 0.06],
-      tintK: w.flash > 0 ? w.flash * 0.25 : dim ? 0.55 : 0,
+      tint: w.flash > 0 && this.save.flashes ? [1, 0.95, 0.85] : [0.03, 0.025, 0.06],
+      tintK: w.flash > 0 && this.save.flashes ? w.flash * 0.25 : dim ? 0.55 : 0,
     };
     if (this.state === "title") light.tintK = 0.2;
     if (w.cine) {
@@ -562,6 +571,7 @@ export class Game {
       case "daily": this.drawDaily(); break;
       case "records": this.drawRecords(); break;
       case "tasks": this.drawTasks(); break;
+      case "settings": this.drawSettings(); break;
       case "play":
         if (w.cine) {
           this.drawCine();
@@ -583,7 +593,7 @@ export class Game {
       case "dead": this.drawDead(); break;
       case "won": this.drawWon(); break;
     }
-    if (this.state !== "heroes") this.menu.end(this.state === "stairs");
+    if (this.state !== "heroes") this.menu.end(this.state === "stairs", this.state !== "settings");
     // a screen comes up out of the dark
     const since = this.now - this.menu.openedAt;
     if (this.state !== "play" && this.state !== "card" && since < 0.2) ui.rect(0, 0, W, H, rgba("#07060c", (1 - since / 0.2) * 0.7));
@@ -619,7 +629,7 @@ export class Game {
     const th = this.heading(t("title"), ty, 3);
     text(ui, t("subtitle"), W / 2, ty + th + 2, { align: "center", color: rgba("#c8b8a0"), shadow: C.ink });
     const bw = 160, bh = H >= 300 ? 20 : 17, gap = H >= 300 ? 6 : 4, bx = Math.round(W / 2 - bw / 2);
-    let y = Math.round(Math.min(H * 0.46, H - 34 - 7 * (bh + gap)));
+    let y = Math.round(Math.min(H * 0.46, H - 34 - 6 * (bh + gap)));
     if (button(ui, this.menu, now, bx, y, bw, bh, t("play"), { primary: true, icon: icon("hud", "play") })) {
       this.audio.unlock();
       this.daily = false;
@@ -648,17 +658,9 @@ export class Game {
       this.setState("records");
     }
     y += bh + gap;
-    if (button(ui, this.menu, now, bx, y, bw, bh, t("language"), { icon: icon("hud", "globe") })) {
-      const next: Lang = getLang() === "ru" ? "en" : "ru";
-      setLang(next);
-      this.save.lang = next;
-      this.persist();
-    }
-    y += bh + gap;
-    if (button(ui, this.menu, now, bx, y, bw, bh, `${t("sound")}: ${this.save.sound ? t("on") : t("off")}`, { icon: icon("hud", this.save.sound ? "speaker" : "mute") })) {
-      this.save.sound = !this.save.sound;
-      this.audio.setEnabled(this.save.sound && this.platform.audioAllowed());
-      this.persist();
+    if (button(ui, this.menu, now, bx, y, bw, bh, t("settings"), { icon: icon("hud", "gear") })) {
+      this.settingsFrom = "title";
+      this.setState("settings");
     }
     const info = `${t("embers")}: ${this.save.embers}    ${t("best")}: ${t("floor")} ${this.save.bestFloor}`;
     // the fonts' authors along the bottom (Fantasy Warrior asks for attribution), what you have above them
@@ -896,6 +898,39 @@ export class Game {
       this.transition(() => this.startRun());
     }
     if (button(ui, this.menu, now, Math.round(W / 2 + 6), by, bw, 18, t("back"), { icon: icon("hud", "back") }) || this.input.pressed("back")) this.setState("title", 1);
+  }
+
+  /** Settings: the language, the volumes, and what can be turned off for comfort (shake, numbers, flashes). */
+  private drawSettings(): void {
+    const ui = this.ui, W = this.r.w, H = this.r.h, now = this.now, sv = this.save;
+    const th = this.heading(t("settings"), 8, H >= 300 ? 2 : 1);
+    const pw = Math.min(300, W - 24), px = Math.round(W / 2 - pw / 2), rh = 22;
+    let y = 8 + th + 8;
+    frame(ui, px - 10, y - 8, pw + 20, rh * 6 + 12);
+    const flip = (on: boolean) => (on ? t("on") : t("off"));
+    if (button(ui, this.menu, now, px, y, pw, 18, `${t("langShort")}: ${t("langName")}`, { icon: icon("hud", "globe") })) {
+      const next: Lang = getLang() === "ru" ? "en" : "ru";
+      setLang(next);
+      sv.lang = next;
+      this.persist();
+    }
+    y += rh;
+    const mv = slider(ui, this.menu, now, px, y, pw, t("music"), sv.vol.music, icon("hud", "speaker"));
+    if (mv !== null) (sv.vol.music = mv, this.applySettings(), this.persist());
+    y += rh;
+    const sv2 = slider(ui, this.menu, now, px, y, pw, t("sfx"), sv.vol.sfx, icon("hud", "speaker"));
+    if (sv2 !== null) (sv.vol.sfx = sv2, this.applySettings(), this.audio.play("pickup"), this.persist());
+    y += rh;
+    for (const [key, label] of [["shake", t("shake")], ["numbers", t("numbers")], ["flashes", t("flashes")]] as const) {
+      if (button(ui, this.menu, now, px, y, pw, 18, `${label}: ${flip(sv[key])}`, { color: sv[key] ? C.text : C.dim })) {
+        sv[key] = !sv[key];
+        this.applySettings();
+        this.persist();
+      }
+      y += rh;
+    }
+    text(ui, t("settingsHint"), W / 2, y + 6, { font: "mini", align: "center", color: C.dim });
+    if (button(ui, this.menu, now, Math.round(W / 2 - 50), H - 26, 100, 18, t("back"), { icon: icon("hud", "back") }) || this.input.pressed("back")) this.setState(this.settingsFrom, this.settingsFrom === "title" ? 5 : 2);
   }
 
   /** Today's tasks: each with its progress and reward, a claim button when done, the bonus for all three. */
@@ -1152,10 +1187,9 @@ export class Game {
     y += bh + gap;
     if (button(ui, this.menu, now, bx, y, bw, bh, t("codex"), { icon: icon("hud", "book") })) this.setState("codex");
     y += bh + gap;
-    if (button(ui, this.menu, now, bx, y, bw, bh, `${t("sound")}: ${this.save.sound ? t("on") : t("off")}`, { icon: icon("hud", this.save.sound ? "speaker" : "mute") })) {
-      this.save.sound = !this.save.sound;
-      this.audio.setEnabled(this.save.sound && this.platform.audioAllowed());
-      this.persist();
+    if (button(ui, this.menu, now, bx, y, bw, bh, t("settings"), { icon: icon("hud", "gear") })) {
+      this.settingsFrom = "pause";
+      this.setState("settings");
     }
     y += bh + gap;
     if (button(ui, this.menu, now, bx, y, bw, bh, t("quit"), { color: C.red, icon: icon("hud", "flag") })) {

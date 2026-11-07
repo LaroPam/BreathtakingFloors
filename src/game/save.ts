@@ -17,6 +17,14 @@ export interface SaveData {
   hero?: string;
   /** Heroes bought at the hero select (the knight is always there). */
   unlocked: string[];
+  /** Settings: volumes (0..1), and what can be turned off for comfort. */
+  vol: { music: number; sfx: number };
+  shake: boolean;
+  numbers: boolean;
+  flashes: boolean;
+  /** Lifetime counters (achievements read them) and the achievements earned. */
+  stats: Record<string, number>;
+  ach: string[];
   /** Today's three tasks: their goals, how far along, whether claimed, and the bonus for all three. */
   tasks?: { day: string; items: { id: string; goal: number; have: number; claimed: boolean }[]; bonus: boolean };
   /** The daily run: its date, the best score that day, how many tries. */
@@ -37,7 +45,15 @@ export const defaultSave = (): SaveData => ({
   lang: null,
   tutorial: true,
   unlocked: ["knight"],
+  vol: { music: 0.5, sfx: 0.8 },
+  shake: true,
+  numbers: true,
+  flashes: true,
+  stats: {},
+  ach: [],
 });
+
+const clamp01 = (v: unknown, d: number): number => (typeof v === "number" && isFinite(v) ? Math.max(0, Math.min(1, v)) : d);
 
 /** Accept whatever was stored, filling in anything missing, so old saves keep working. */
 export function sanitize(raw: unknown): SaveData {
@@ -51,6 +67,9 @@ export function sanitize(raw: unknown): SaveData {
     embers: Math.max(0, Math.floor(Number(r.embers) || 0)),
     forge: typeof r.forge === "object" && r.forge ? r.forge : {},
     reactions: Array.isArray(r.reactions) ? r.reactions.filter((x) => typeof x === "string") : [],
+    vol: { music: clamp01(r.vol?.music, r.music === false ? 0 : 0.5), sfx: clamp01(r.vol?.sfx, 0.8) },
+    stats: typeof r.stats === "object" && r.stats ? r.stats : {},
+    ach: Array.isArray(r.ach) ? r.ach.filter((x) => typeof x === "string") : [],
     // saves from before heroes were bought keep the hero last played
     unlocked: [...new Set(["knight", ...(Array.isArray(r.unlocked) ? r.unlocked.filter((x) => typeof x === "string") : typeof r.hero === "string" ? [r.hero] : [])])],
   };
