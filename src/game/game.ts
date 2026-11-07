@@ -13,7 +13,7 @@ import { drawWorld, Scene } from "./draw";
 import { getLang, langFor, setLang, t, tx, type Lang } from "./i18n";
 import { Rng } from "./rng";
 import { defaultSave, sanitize, type SaveData } from "./save";
-import { button, slider, C, divider, glow as glowUi, drawHud, drawPointers, drawTouch, fmtTime, frame, header, inset, Menu, panel, para, plate, reticle, slot } from "./ui";
+import { button, slider, C, divider, glow as glowUi, drawHud, drawPointers, drawTouch, fmtTime, frame, header, inset, Menu, panel, para, plate , slot } from "./ui";
 import { CINE_DUR, World } from "./world";
 
 type State = "title" | "heroes" | "forge" | "daily" | "records" | "tasks" | "settings" | "card" | "play" | "spin" | "pause" | "codex" | "stairs" | "dead" | "won";
@@ -295,7 +295,7 @@ export class Game {
     w.hero.hp = w.hero.maxHp;
     w.stats.might = hero.might * (1 + 0.1 * (f.might ?? 0));
     w.stats.magnet *= 1 + 0.25 * (f.reach ?? 0);
-    w.autoAim = this.touch;
+    w.autoAim = true;
     // the week's rule
     let spins = f.start ? 2 : 1;
     if (this.weekly) {
@@ -665,19 +665,9 @@ export class Game {
         if (input.pressed("ult")) h.wantUlt = true;
         w.moveX = input.move.x;
         w.moveY = input.move.y;
-        // aim: a stick wins, then the mouse; on touch with no stick held, the nearest enemy
-        if (input.aimStick) {
-          w.aimTarget = null;
-          w.autoAim = false;
-          h.aimX = input.aimDir.x;
-          h.aimY = input.aimDir.y;
-        } else if (input.mode === "kbm") {
-          w.autoAim = false;
-          w.aimTarget = { x: input.mouse.x + this.camX, y: input.mouse.y + this.camY };
-        } else {
-          w.aimTarget = null;
-          w.autoAim = true;
-        }
+        // aim: always the nearest enemy (or where he runs): to choose a target, walk up to it
+        w.aimTarget = null;
+        w.autoAim = true;
         // the sword swings by itself at whatever comes in reach; a held button or an aiming stick swings at will
         h.attacking = input.firing;
         // as many equal steps as this frame needs, none longer than 1/60 s: motion matches the display at 60, 120 or
@@ -759,7 +749,6 @@ export class Game {
         else this.input.zones = [];
         this.drawTutorial();
         // the reticle stands in for the pointer while aiming with the mouse
-        if (this.input.mode === "kbm" && !this.touch) reticle(ui, this.input.mouse.x, this.input.mouse.y, this.now, w.autoTarget);
         break;
       case "spin": this.drawSpin(); break;
       case "pause": this.drawPause(); break;
@@ -773,6 +762,7 @@ export class Game {
     const since = this.now - this.menu.openedAt;
     if (this.state !== "play" && this.state !== "card" && since < 0.2) ui.rect(0, 0, W, H, rgba("#07060c", (1 - since / 0.2) * 0.7));
     // the system pointer hides while the reticle aims
+    // no aiming with the mouse: in play the pointer only gets in the way of the view
     const cursor = this.state === "play" && this.input.mode === "kbm" && !this.touch ? "none" : "default";
     if (this.r.canvas.style.cursor !== cursor) this.r.canvas.style.cursor = cursor;
     this.drawToast(this.dt);

@@ -20,6 +20,10 @@ export const BULLET_ANIMS = ["crescent", "ice_lance", "orb_red", "orb_violet", "
 // drop kinds
 export const D_BLUE = 0, D_GREEN = 1, D_RED = 2, D_HEART = 3, D_CHEST = 4, D_EMBER = 5;
 export const B_ARROW = 6, B_FIREBALL = 7;
+/** The hero's hitbox against enemy shots: a small circle at the chest, the same for every hero (draw.ts shows it). */
+export const HERO_R = 4.5, HERO_HIT_Y = 13;
+/** An enemy shot's hit radius. */
+const FOE_SHOT_R = 5;
 BULLET_ANIMS.push("arrow", "fireball");
 const ATK_FPS = 20;
 const ELEMENTS = [El.Fire, El.Frost, El.Storm, El.Venom, El.Holy, El.Void];
@@ -47,6 +51,8 @@ export interface Fx {
   delay: number;
   /** Sort key offset (draw in front of or behind what stands at the same y). */
   key: number;
+  /** Stays with the hero, at this offset from his feet (a blow's trail goes where he goes). */
+  follow?: [number, number];
 }
 
 export interface Relic {
@@ -401,6 +407,10 @@ export class World {
   autoAim = false;
   /** Auto-aim found something to swing at. */
   autoTarget = false;
+  /** The enemy the hero is turned to (its middle and size), for the marker over it; r = 0: none. */
+  target = { x: 0, y: 0, r: 0 };
+  /** How close enemy shots are to the hero (0..1, eased): shows his hitbox. */
+  danger = 0;
   reactionsSeen = new Set<string>();
   /** Enemy kinds met this run (the first of each is announced). */
   seen = new Set<number>();
@@ -688,6 +698,8 @@ export class World {
     const i = this.enemies.add(type, x, y, hp, this.rng.next(), this.mod.speed * (1 + (f - 1) * 0.025) * this.rng.range(0.9, 1.1) * (this.curse ? 1.2 : 1) * (this.mutator === "haste" ? 1.25 : 1));
     if (i >= 0) {
       this.enemies.face[i] = this.hero.x < x ? -1 : 1;
+      // slimes of a pack do not all hop as one: each starts at its own point of the loop
+      if (d.hops) this.enemies.t[i] = this.rng.range(0, this.enemyAnims[type].dur);
       if (!this.seen.has(type)) {
         this.seen.add(type);
         if (!d.elite || d.scale === 1) this.ev.banner(tx(d.name), rgba(d.glow || "#e8e4f0"));
@@ -783,6 +795,7 @@ export class World {
     for (const f of this.fx) {
       if (f.delay > 0) f.delay -= dt;
       else f.t += dt;
+      if (f.follow) (f.x = this.hero.x + f.follow[0]), (f.y = this.hero.y + f.follow[1]);
     }
     this.fx = this.fx.filter((f) => {
       const a = anim(f.anim);
@@ -839,6 +852,7 @@ export class World {
     // aim: the mouse, a stick, or the nearest enemy
     const chestY = h.y - 18;
     this.autoTarget = false;
+    this.target.r = 0;
     if (this.aimTarget) {
       const dx = this.aimTarget.x - h.x, dy = this.aimTarget.y - chestY, d = Math.hypot(dx, dy);
       if (d > 4) {
@@ -852,6 +866,7 @@ export class World {
       this.body(near);
       const dx = this.bx - h.x, dy = this.by - chestY, d = Math.hypot(dx, dy) || 1;
       this.autoTarget = d < reach + Math.max(this.brx, this.bry) * (W.ranged ? 0 : 1) + 6;
+      this.target = { x: this.bx, y: this.by, r: Math.max(this.brx, this.bry) };
       if (this.autoAim) {
         h.aimX = dx / d;
         h.aimY = dy / d;
@@ -1047,8 +1062,10 @@ export class World {
       const el = B.kind === "fire" ? El.Fire : B.kind === "frost" ? El.Frost : wel;
       const pierce = B.kind === "arrow" ? 1 + (h.def.id === "ranger" ? 1 : 0) : B.kind === "frost" ? 2 : 0;
       for (let q = 0; q < n; q++) {
+        // it leaves from just past the hand, small, and grows to its size in flight (draw.ts), rather than appearing
+        // whole inside the hero
         const a = dir + (q - (n - 1) / 2) * spread;
-        this.bullets.add(TEAM_HERO, kind, hx, hy, Math.cos(a) * speed, Math.sin(a) * speed, 0.95, dmg, B.kind === "fire" ? 5 : 3.5, el, pierce);
+        this.bullets.add(TEAM_HERO, kind, hx + Math.cos(a) * 7, hy + Math.sin(a) * 7, Math.cos(a) * speed, Math.sin(a) * speed, 0.95, dmg, B.kind === "fire" ? 5 : 3.5, el, pierce);
       }
       this.audio.play(B.kind === "arrow" ? "shoot" : B.kind === "fire" ? "ignite" : "freeze", B.kind === "arrow" ? 0.6 : 1.3);
       // the release: a flash at the hand, a puff of sparks thrown forward
@@ -1085,11 +1102,12 @@ export class World {
     // an element colours the blow's trail (the fire whip's own fire is already in its art)
     const tint = h.weaponEl ? elTint(h.weaponEl) : 0xffffffff;
     if (hit === 0 && hasAnim(fxName)) {
-      if (B.fxMode === "flip") this.addFx(fxName, h.x, h.y + 1, { sx: h.face * (0.9 + 0.1 * s.reach), front: false, key: 3, glow: 0.9, tint });
+      // the trail goes with the hero (a whip's crack, a sword's arc do not hang where the blow began)
+      if (B.fxMode === "flip") this.addFx(fxName, h.x, h.y + 1, { sx: h.face * (0.9 + 0.1 * s.reach), front: false, key: 3, glow: 0.9, tint, follow: [0, 1] });
       else {
         // turned to the blow around the chest; mirrored when it goes left so its crescent stays upright
         const sy = Math.cos(dir) < 0 ? -1 : 1, c = Math.cos(dir), sn = Math.sin(dir), ly = -22 * sy;
-        this.addFx(fxName, cx + ly * sn, cy - ly * c, { rot: dir, sy, front: false, key: 3, glow: 0.9, sx: 0.9 + 0.1 * s.reach, tint });
+        this.addFx(fxName, cx + ly * sn, cy - ly * c, { rot: dir, sy, front: false, key: 3, glow: 0.9, sx: 0.9 + 0.1 * s.reach, tint, follow: [ly * sn, -18 - ly * c] });
       }
     }
     let hits = 0;
@@ -1713,7 +1731,7 @@ export class World {
       if (this.floor >= FLOORS) {
         this.won = true;
         this.ev.victory();
-      } else this.openPortal(x, y);
+      } else this.openPortal(...this.portalSpot());
       return;
     }
     if (d.elite) this.hitstop = Math.max(this.hitstop, 0.06);
@@ -2310,8 +2328,9 @@ export class World {
   }
 
   // ============================================================================================ enemies
+  /** An enemy's shot: big enough to see coming and to read (draw.ts shows it larger than it hits). */
   private shoot(x: number, y: number, a: number, speed: number, kind: number, life = 5): void {
-    this.bullets.add(TEAM_FOE, kind, x, y, Math.cos(a) * speed, Math.sin(a) * speed, life, 1, 3.5, 0, 0);
+    this.bullets.add(TEAM_FOE, kind, x, y, Math.cos(a) * speed, Math.sin(a) * speed, life, 1, FOE_SHOT_R, 0, 0);
   }
 
   private updateEnemies(dt: number): void {
@@ -2361,8 +2380,13 @@ export class World {
         switch (d.ai) {
           case AI.Chase:
           case AI.Phantom: {
-            // slimes move in hops: fast in the air, still on the ground
-            const hop = d.ai === AI.Chase ? 0.35 + 1.3 * Math.max(0, Math.sin(E.t[i] * 3.5 + E.phase[i] * 6)) : 1;
+            // a slime moves only while its animation has it in the air (the hop, 0.9 to 1.44 s of its 1.8 s loop),
+            // quick enough that it covers the same ground as a steady walk; on the floor it squashes and waits
+            let hop = 1;
+            if (d.hops) {
+              const a = this.enemyAnims[E.type[i]], u = (((E.t[i] % a.dur) + a.dur) % a.dur) / a.dur;
+              hop = u > 0.5 && u < 0.8 ? 1 / 0.3 : 0;
+            }
             mx = ux * sp * hop;
             my = uy * sp * hop;
             break;
@@ -2389,7 +2413,7 @@ export class World {
               E.cd[i] = d.every * this.rng.range(0.85, 1.15);
               this.body(i);
               const a = Math.atan2(h.y - 16 - this.by, h.x - this.bx), n = d.elite ? 3 : 1, spd = 84 + this.floor * 3;
-              for (let k = 0; k < n; k++) this.shoot(this.bx, this.by, a + (k - (n - 1) / 2) * 0.28, spd, d.shot);
+              for (let k = 0; k < n; k++) this.shoot(this.bx, this.by, a + (k - (n - 1) / 2) * 0.48, spd, d.shot);
               this.audio.play("enemyShot");
             }
             break;
@@ -2401,7 +2425,7 @@ export class World {
             if (E.cd[i] <= 0 && dist < 280) {
               E.cd[i] = d.every * this.rng.range(0.9, 1.1);
               this.body(i);
-              const n = 8 + Math.min(6, Math.floor(this.floor / 2)), off = E.phase[i] * 6 + E.t[i], spd = 58 + this.floor * 3;
+              const n = 6 + Math.min(4, Math.floor(this.floor / 3)), off = E.phase[i] * 6 + E.t[i], spd = 58 + this.floor * 3;
               for (let k = 0; k < n; k++) this.shoot(this.bx, this.by, off + (k * Math.PI * 2) / n, spd, B_ORB_RED);
               this.audio.play("enemyShot", 0.7);
             }
@@ -2586,7 +2610,7 @@ export class World {
       if (spits) {
         this.body(i);
         const a = Math.atan2(h.y - 14 - this.by, h.x - this.bx);
-        for (let k = -1; k <= 1; k++) this.shoot(this.bx, this.by, a + k * 0.3, 80, B_ORB_GREEN);
+        for (let k = -1; k <= 1; k++) this.shoot(this.bx, this.by, a + k * 0.48, 80, B_ORB_GREEN);
       }
     }
     if (E.t[i] > 2.55) (E.st[i] = 0, E.t[i] = 0, E.at[i] = every * this.rng.range(0.7, 1.3));
@@ -2635,10 +2659,10 @@ export class World {
     if (this.bossPhase === 1 && E.cd[i] <= 0) {
       // rings, each one turned a little, aimed shots between
       E.cd[i] = 0.65 / k;
-      const n = voidEye ? 22 : 16, off = E.t[i];
+      const n = voidEye ? 16 : 12, off = E.t[i];
       for (let a = 0; a < n; a++) this.shoot(sx, sy, off + (a * Math.PI * 2) / n, 66, B_ORB_RED, 6);
       const aim = Math.atan2(h.y - 16 - sy, h.x - sx);
-      for (let a = -1; a <= 1; a++) this.shoot(sx, sy, aim + a * 0.12, 115, B_ORB_GREEN, 4);
+      for (let a = -1; a <= 1; a++) this.shoot(sx, sy, aim + a * 0.3, 115, B_ORB_GREEN, 4);
       this.audio.play("enemyShot", 0.5);
     }
   }
@@ -2655,7 +2679,7 @@ export class World {
       this.addFx("slam", E.x[i], E.y[i], { sx: 0.8, sy: 0.8, glow: 0.8 });
       this.shake = 0.7;
       this.audio.play("boom", 0.7);
-      const n = enraged ? 20 : 14;
+      const n = enraged ? 14 : 10;
       for (let k = 0; k < n; k++) this.shoot(E.x[i], E.y[i] - 8, (k / n) * Math.PI * 2, 72, B_ORB_GREEN, 5);
       if ((h.x - E.x[i]) ** 2 + (h.y - E.y[i]) ** 2 < 44 * 44) this.hurtHero();
     }
@@ -2671,7 +2695,8 @@ export class World {
   // ============================================================================================ bullets
   private updateBullets(dt: number): void {
     const B = this.bullets, E = this.enemies, h = this.hero;
-    const hx = h.x, hy = h.y - 12;
+    const hx = h.x, hy = h.y - HERO_HIT_Y;
+    let near = false;
     for (let i = B.n - 1; i >= 0; i--) {
       B.t[i] += dt;
       B.life[i] -= dt;
@@ -2745,7 +2770,8 @@ export class World {
         });
         if (gone) B.remove(i);
       } else {
-        const dx = x - hx, dy = y - hy, dd = dx * dx + dy * dy, hitR = 3.5 + B.r[i];
+        const dx = x - hx, dy = y - hy, dd = dx * dx + dy * dy, hitR = HERO_R + B.r[i];
+        if (dd < 90 * 90) near = true;
         if (!h.dead && dd < hitR * hitR) {
           if (h.dashT > 0 || h.invuln > 0) {
             // passing through a bullet in a dash is a perfect graze
@@ -2774,6 +2800,8 @@ export class World {
         }
       }
     }
+    // enemy shots near: the hero's hitbox shows (draw.ts), so the player knows exactly what must not be touched
+    this.danger += ((near ? 1 : 0) - this.danger) * Math.min(1, dt * 8);
   }
 
   // ============================================================================================ drops
@@ -2861,6 +2889,8 @@ export class World {
         else this.openPortal(this.w / 2, this.h / 2);
       }
     }
+    // a boss gone without its death being seen (nothing should do this, but the way on must never be lost)
+    if (this.bossSpawned && !this.portal && !this.cine && !this.won && this.floor < FLOORS && this.bossIndex() < 0) this.openPortal(...this.portalSpot());
     if (this.portal) {
       this.portal.t += dt;
       if (!h.dead && h.exitT < 0 && this.portal.t > 0.8 && (h.x - this.portal.x) ** 2 + (h.y - this.portal.y) ** 2 < 18 * 18) {
@@ -2892,6 +2922,15 @@ export class World {
       if (m.y < -50) m.y += H + 60;
       if (m.y > H + 10) m.y -= H + 60;
     }
+  }
+  /** Where a portal opens: a few steps from the hero towards the middle of the room, on open floor. */
+  private portalSpot(): [number, number] {
+    const h = this.hero, base = Math.atan2(this.h / 2 - h.y, this.w / 2 - h.x);
+    for (let k = 0; k < 12; k++) {
+      const a = base + (k % 2 ? 1 : -1) * Math.ceil(k / 2) * 0.5, x = h.x + Math.cos(a) * 60, y = h.y + Math.sin(a) * 60;
+      if (x > 50 && x < this.w - 50 && y > 70 && y < this.h - 30 && this.free(x, y, 14)) return [x, y];
+    }
+    return [this.w / 2, this.h / 2];
   }
   private openPortal(x: number, y: number): void {
     if (this.portal) return;
