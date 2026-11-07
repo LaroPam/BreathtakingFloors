@@ -1,37 +1,25 @@
 #!/usr/bin/env node
-// Finds art cut off by the edge of its bake canvas: hero poses whose pixels fall outside the frame they are drawn in,
-// and effects whose frames reach the edge of theirs (where they would be faded and clipped).
+// Finds art cut off by the edge of its canvas: effects whose frames reach the edge of theirs (where they would be faded
+// and clipped), and hero poses that reach the edge of the grid src/hero/rig.js draws them on (every look, every pose).
 //   node tools/check/clip.mjs            report
 //   node tools/check/clip.mjs --strict   also exit 1 if anything is cut (for CI)
 
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createFrame, clearFrame, createFx } from "../../pixelfx/src/core/index.js";
-import { posed } from "../../pixelfx/src/core/rig.js";
+import { heroImage } from "../../src/hero/rig.js";
+import { LOOKS } from "../../src/hero/looks.js";
+import { heroPoses } from "../bake/weapons.mjs";
 import { loadEffect, isScreen } from "../../pixelfx/tools/lib/fxlib.mjs";
 import { ANIMS } from "../bake/manifest.mjs";
-import { RIG_CANVAS, FX_PAD } from "../bake/canvas.mjs";
+import { FX_PAD } from "../bake/canvas.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const PFX_DIR = join(ROOT, "pixelfx", "src", "fx"), ART_DIR = join(ROOT, "art", "fx");
 const bad = [];
 
 for (const e of ANIMS) {
-  if (e.rig) {
-    // the same canvas the bake uses for a pose
-    const { W, H, OX, OY } = RIG_CANVAS;
-    let lost = 0, frames = 0;
-    for (const pose of e.rig) {
-      const r = posed(pose), dx = Math.round(pose.x ?? 0), dy = Math.round(pose.y ?? 0);
-      let here = 0;
-      for (let i = 0; i < r.n; i++) {
-        const x = r.xs[i] + OX + dx, y = r.ys[i] + OY + dy;
-        if (x < 0 || y < 0 || x >= W || y >= H) here++;
-      }
-      if (here) (lost += here, frames++);
-    }
-    if (lost) bad.push(`rig     ${e.name}: ${frames} of ${e.rig.length} frames lose ${lost} px`);
-  } else if (e.fx || e.art) {
+  if (e.fx || e.art) {
     const { mod, meta } = await loadEffect(e.fx ?? e.art, e.fx ? PFX_DIR : ART_DIR);
     // screen effects and floor/wall tiles are meant to fill their canvas edge to edge
     if (isScreen(meta) || (e.art ?? "").startsWith("tiles/")) continue;
@@ -56,5 +44,17 @@ for (const e of ANIMS) {
     }
   }
 }
+// the heroes: every look in every pose, none reaching the edge of the grid they are drawn on
+const P = heroPoses(), sets = [];
+for (const [id, w] of Object.entries(P.weapons)) {
+  for (const k of ["idle", "run", "dash", "hurt"]) sets.push([`${id}_${k}`, w[k]]);
+  w.attacks.forEach((a, k) => sets.push([`${id}_a${k}`, a.stand], [`${id}_a${k}_run`, a.run]));
+}
+sets.push(["death", P.death]);
+for (const look of ["knight", "ranger", "mage", "reaper", "berserker", "shadow"])
+  for (const [name, poses] of sets) {
+    const n = poses.filter((p) => heroImage(LOOKS[look], p).edge).length;
+    if (n) bad.push(`hero    ${look} ${name}: ${n} of ${poses.length} frames reach the edge of the drawing grid`);
+  }
 console.log(bad.length ? bad.join("\n") : "nothing is cut off");
 if (bad.length && process.argv.includes("--strict")) process.exit(1);

@@ -2,7 +2,6 @@
 //
 //   { name, fx: "<category>/<name>" }   an effect from the vendored pixelfx library (pixelfx/src/fx)
 //   { name, art: "<category>/<name>" }  one of the game's own effects (art/fx), same contract
-//   { name, rig: [pose, ...] }          the hero, posed on pixelfx's 3D skeleton and recolored
 //
 // Options: fps (bake rate; loops are resampled to tile exactly), opts (the effect's options: palette, seed...),
 // maxT (cut a long one-shot short; the game fades its last frames), light ("full", false, or { thr, k }: drop glow
@@ -10,12 +9,12 @@
 // hitbox for every frame from the art itself), variants ({ option: [values] }: one frame per value).
 
 import { PAL } from "../../pixelfx/src/core/color.js";
-import { weaponAnims, DEATH, MODEL_WEAPONS } from "./weapons.mjs";
+import { weaponAnims, MODEL_WEAPONS } from "./weapons.mjs";
 import { IDS as UPGRADE_ICONS } from "../../art/fx/icons/upgrades.js";
 import { IDS as HUD_ICONS } from "../../art/fx/icons/hud.js";
 
-// ---- the heroes: one skeleton, baked in the stock dummy's colours and recoloured per hero by the game's shader.
-// Each weapon brings its own stance, run, dash and blows (tools/bake/weapons.mjs).
+// ---- the heroes are not here: src/hero draws them in the game, each in its own build and costume, from the poses
+// tools/bake/weapons.mjs samples (written to src/generated/poses.json with the atlas).
 
 const CRITTER_LIGHT = { thr: 80, k: 0.6 };
 const FX_LIGHT = { thr: 6, k: 0.85 };
@@ -35,8 +34,8 @@ const WALL = {
 };
 
 export const ANIMS = [
-  ...weaponAnims({ thr: 6, k: 0.85 }),
-  { name: "hero_death", rig: DEATH, fps: 8, loop: false },
+  // the blows' effects (the heroes themselves are drawn by the game, from src/generated/poses.json)
+  ...weaponAnims({ thr: 6, k: 0.85 }).filter((e) => !e.rig),
   // the weapons on their own, turning in 3D, for the altars
   ...Object.entries(MODEL_WEAPONS).map(([id, rigWeapon]) => ({ name: `model_${id}`, model: rigWeapon, fps: 10 })),
 

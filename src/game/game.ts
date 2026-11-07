@@ -4,10 +4,11 @@
 import type { Audio } from "../engine/audio";
 import type { Input } from "../engine/input";
 import { Batch, rgba, rgbaf, withAlpha, type Lighting, type Renderer } from "../engine/renderer";
-import { anim, DUMMY, FONTS, frameAt, icon, type Anim } from "../engine/atlas";
+import { anim, FONTS, frameAt, icon, type Anim, type Rect } from "../engine/atlas";
+import { heroSprites, initHeroSprites, lookId, type HeroAnim, type HeroSprites } from "./heroSprites";
 import { fitScale, measure, text, wrap } from "../engine/text";
 import { dayNumber, weekNumber, type Board, type BoardName, type Platform } from "../platform/platform";
-import { ACHIEVEMENTS, heroPal, bossOf, EL_COLOR, LEGENDS, legendDesc, type WeaponId, EL_NAME, ENEMIES, EVOLUTIONS, evolutionOf, FLOORS, FORGE, questDef, SPIRIT_PALETTE, TASK_BONUS, TASKS, type TaskId, HEROES, PALETTE_KEYS, WEAPONS, weaponName, MODIFIERS, MUTATORS, NO_MODIFIER, REACTIONS, RELIC_MAX, RELIC_SLOTS, RELICS, STATS, type Modifier, type Reaction, type RelicKind, type StatId } from "./defs";
+import { ACHIEVEMENTS, heroDef, bossOf, EL_COLOR, LEGENDS, legendDesc, type WeaponId, EL_NAME, ENEMIES, EVOLUTIONS, evolutionOf, FLOORS, FORGE, questDef, TASK_BONUS, TASKS, type TaskId, HEROES, WEAPONS, weaponName, MODIFIERS, MUTATORS, NO_MODIFIER, REACTIONS, RELIC_MAX, RELIC_SLOTS, RELICS, STATS, type Modifier, type Reaction, type RelicKind, type StatId } from "./defs";
 import { drawWorld, Scene } from "./draw";
 import { getLang, langFor, setLang, t, tx, type Lang } from "./i18n";
 import { Rng } from "./rng";
@@ -35,10 +36,21 @@ interface Spin {
 const RELIC_ICON = ["orbit", "lance", "coil", "flask", "halo", "void"];
 const iconKey = (c: Choice) => (c.type === "relic" ? RELIC_ICON[c.kind] : c.type === "evo" ? evolutionOf(c.kind).icon : c.type === "legend" ? `w_${c.weapon}` : c.id);
 
+/**
+ * Part of a sprite inside a box, nothing outside it: the window (wx, wy) w x h of the sprite's own space (from its
+ * anchor, the feet) drawn with its top-left at (x, y).
+ */
+function portrait(b: Batch, r: Rect, x: number, y: number, w: number, h: number, wx: number, wy: number, color = 0xffffffff): void {
+  const x0 = Math.max(wx, r[5]), y0 = Math.max(wy, r[6]), x1 = Math.min(wx + w, r[5] + r[3]), y1 = Math.min(wy + h, r[6] + r[4]);
+  if (x1 <= x0 || y1 <= y0) return;
+  b.push(x - wx, y - wy, x0, y0, x1 - x0, y1 - y0, r[1] + (x0 - r[5]), r[2] + (y0 - r[6]), 1, 1, 0, r[0], color, 0, y);
+}
+
 /** The largest whole scale (up to max) at which every frame of an animation fits: h above its anchor, w across it (centred). */
 function fitAnim(a: Anim, w: number, h: number, max = 2): number {
   let top = 0, half = 0;
   for (const [r] of a.frames) if (r) (top = Math.max(top, -r[6]), (half = Math.max(half, -r[5], r[5] + r[3])));
+  if (!top) return 1;
   for (let s = max; s > 1; s--) if (top * s <= h && half * 2 * s <= w) return s;
   return 1;
 }
@@ -90,7 +102,11 @@ export class Game {
   private touch = false;
   private savePending = false;
 
+  /** The heroes' frames, drawn as the game runs (also for tests: heroes.stats). */
+  readonly heroes: HeroSprites;
+
   constructor(private r: Renderer, private input: Input, private audio: Audio, private platform: Platform) {
+    this.heroes = initHeroSprites(r);
     this.menu = new Menu(input, audio);
     platform.onPause(() => this.platformPause(true));
     platform.onResume(() => this.platformPause(false));
@@ -104,10 +120,6 @@ export class Game {
     this.applySettings();
     this.touch = this.platform.isMobile();
     this.heroIdx = Math.max(0, HEROES.findIndex((h) => h.id === this.save.hero));
-    // the hero palettes the shader swaps the stock dummy's colours for
-    const hex = (c: string) => parseInt(c.slice(1), 16);
-    // slots: each hero's colours, the spirit's, each hero's victor colours (see heroPal)
-    this.r.setPalettes(PALETTE_KEYS.map((k) => hex(DUMMY[k])), [...HEROES.map((h) => h.palette), SPIRIT_PALETTE, ...HEROES.map((h) => h.victor)].map((p: Record<string, string>) => PALETTE_KEYS.map((k) => hex(p[k]))));
     this.newWorld();
     this.attract();
   }
@@ -122,6 +134,17 @@ export class Game {
 
   private wearsVictor(id: string): boolean {
     return this.save.skins.includes(id) && this.save.skinOn.includes(id);
+  }
+  /** A hero's animation with their own weapon (for the menus): drawn as it is needed (src/game/heroSprites.ts). */
+  private heroAnim(id: string, victor: boolean, name = "idle"): HeroAnim {
+    const hs = heroSprites(), a = hs.anim(lookId(id, victor), heroDef(id).weapon, name);
+    for (let f = 0; f < a.poses.length; f++) hs.ready(a, f);
+    return a;
+  }
+  /** A hero's frame at time t of an animation, for the menus. */
+  private heroFrame(id: string, victor: boolean, name = "idle", t = this.now): Rect {
+    const a = this.heroAnim(id, victor, name);
+    return a.frames[frameAt(a, t)][0]!;
   }
 
   private persist(): void {
@@ -169,7 +192,7 @@ export class Game {
           this.showBanner(t("secretOpened"), C.gold);
         }
       },
-      weapon: (id, el) => this.world.hero.legend ? this.showBanner(tx(LEGENDS[id]), C.gold, t("legendary")) : this.showBanner(tx(weaponName(id, el)), el || WEAPONS[id].el ? rgba(EL_COLOR[el || WEAPONS[id].el!]) : C.gold),
+      weapon: (id, el) => (heroSprites().prefetch(lookId(this.world.hero.def.id, this.world.hero.victor), id), this.world.hero.legend) ? this.showBanner(tx(LEGENDS[id]), C.gold, t("legendary")) : this.showBanner(tx(weaponName(id, el)), el || WEAPONS[id].el ? rgba(EL_COLOR[el || WEAPONS[id].el!]) : C.gold),
     }, NO_MODIFIER);
     this.world.numbers = this.save.numbers;
   }
@@ -267,9 +290,11 @@ export class Game {
     }
     w.setHero(hero);
     w.hero.victor = this.wearsVictor(hero.id);
+    // their frames for this weapon, drawn ahead behind the floor's title card
+    heroSprites().prefetch(lookId(hero.id, w.hero.victor), hero.weapon);
     w.hero.maxHp += f.heart ?? 0;
     w.hero.hp = w.hero.maxHp;
-    w.stats.might = 1 + 0.1 * (f.might ?? 0);
+    w.stats.might = hero.might * (1 + 0.1 * (f.might ?? 0));
     w.stats.magnet *= 1 + 0.25 * (f.reach ?? 0);
     w.autoAim = this.touch;
     // the week's rule
@@ -594,6 +619,8 @@ export class Game {
   frame(dt: number): void {
     this.now += dt;
     this.dt = dt;
+    // the heroes' frames not yet drawn: a little each frame, more while nothing is being played
+    heroSprites().update(this.state === "play" ? 2.5 : 7);
     const input = this.input;
     input.setScale(this.r.scale);
     input.poll();
@@ -838,12 +865,12 @@ export class Game {
     // the hero, big, on a pool of their light
     const cx = wide ? Math.round(W * 0.3) : Math.round(W / 2), cy = wide ? Math.round(H * 0.62) : Math.round(H * 0.44), [lr, lg, lb] = hero.lightColor;
     glowUi(ui, cx, cy, 56, 17, rgbaf(lr, lg, lb, 1), 0.55);
-    const idle = anim(`${hero.weapon}_idle`), f = idle.frames[frameAt(idle, now)][0]!;
+    const f = this.heroFrame(hero.id, this.wearsVictor(hero.id));
     // a hero not yet bought stands as a shadow with a lock on it; one just bought steps out of a burst of light
     const since = now - this.unlockedAt, burst = since < 1.2 ? 1 - since / 1.2 : 0;
-    ui.pal = heroPal(hero.id, this.wearsVictor(hero.id));
-    ui.image(f, cx, cy, 3, 3, 0, locked ? rgbaf(0.11, 0.1, 0.16, 1) : 0xffffffff);
-    ui.pal = 0;
+    // as big as fits between the heading and the floor, and short of the info pane: a raised scythe stays in its room
+    const room = wide ? 2 * Math.min(cx - 8, Math.round(W * 0.52) - 14 - cx) : W - 16, big = fitAnim(this.heroAnim(hero.id, this.wearsVictor(hero.id)), room, cy - 30, 3);
+    ui.image(f, cx, cy, big, big, 0, locked ? rgbaf(0.11, 0.1, 0.16, 1) : 0xffffffff);
     if (locked) ui.image(icon("hud", "lock"), cx, cy - 46, 2, 2);
     if (burst > 0) {
       for (let k = 0; k < 16; k++) {
@@ -862,9 +889,10 @@ export class Game {
     const px = wide ? Math.round(W * 0.52) : Math.round(W / 2 - 150), pw = wide ? Math.min(280, W - px - 16) : 300;
     if (button(ui, this.menu, now, Math.max(6, cx - 112), cy - 56, 20, 30, "<")) pick(-1);
     if (button(ui, this.menu, now, wide ? Math.min(cx + 92, px - 26) : cx + 92, cy - 56, 20, 30, ">")) pick(1);
-    let y = wide ? Math.round(H * 0.2) : cy + 18;
+    let y = wide ? Math.round(H * 0.12) : cy + 18;
     // a dark pane behind who they are, so the words read over a lit room
-    const ns0 = wide ? fitScale(tx(hero.name), "title", pw, 2) : 1, infoH = FONT_H * ns0 + 4 + 11 + 26 + wrap(tx(hero.perk), pw).length * 10 + 4 + 14 + 8;
+    const abLines = wrap(tx(hero.ability.desc), pw - 4, "mini").length, perkLines = wrap(tx(hero.perk), pw - 4, "mini").length;
+    const ns0 = wide ? fitScale(tx(hero.name), "title", pw, 2) : 1, infoH = FONT_H * ns0 + 4 + 11 + 24 + 11 + abLines * 8 + 4 + perkLines * 8 + 4 + 14 + 2 * 9 + 2;
     panel(ui, px - 8, y - 6, pw + 16, infoH + 10, C.edge, rgba("#0e0c16", 0.78));
     const ns = wide ? fitScale(tx(hero.name), "title", pw, 2) : 1;
     text(ui, tx(hero.name), px, y, { font: "title", scale: ns, color: C.gold, outline: true, shadow: rgba("#3a1a10") });
@@ -874,25 +902,38 @@ export class Game {
     ui.image(icon("icons", `w_${hero.weapon}`), px + 10, y + 10);
     text(ui, tx(weapon.name), px + 24, y + 3, { color: C.text });
     text(ui, tx(weapon.desc), px + 24, y + 13, { font: "mini", color: C.dim });
-    y += 26;
-    y += para(ui, tx(hero.perk), px, y, pw, rgba("#9ad4ff"));
-    y += 4;
+    y += 24;
+    // their own ability, on the Overdrive button
+    ui.image(icon("hud", "overdrive"), px + 5, y + 4);
+    text(ui, tx(hero.ability.name), px + 14, y, { color: rgba("#ffd27a") });
+    text(ui, t("ability"), px + pw, y + 1, { font: "mini", align: "right", color: C.goldDim });
+    y += 11;
+    y += para(ui, tx(hero.ability.desc), px + 2, y, pw - 4, C.text, "left", 8, "mini") + 4;
+    // and what is theirs alone, always
+    y += para(ui, tx(hero.perk), px + 2, y, pw - 4, rgba("#9ad4ff"), "left", 8, "mini") + 4;
     for (let k = 0; k < hero.hearts; k++) ui.image(icon("hud", "heart"), px + 6 + k * 10, y + 5);
     for (let k = 0; k < hero.dashes; k++) ui.image(icon("hud", "stamina"), px + 6 + hero.hearts * 10 + 8 + k * 9, y + 5);
     y += 14;
-    text(ui, t("speed"), px, y, { font: "mini", color: C.dim });
-    ui.rect(px + 40, y + 1, 60, 3, C.ink);
-    ui.rect(px + 40, y + 1, Math.round(60 * (hero.speed - 0.8) / 0.4), 3, C.green);
+    // four bars, two by two: how hard, how fast they strike, how fast they run, how often a blow is critical
+    const stat = (k: number, label: string, v: number, lo: number, hi: number, col: number) => {
+      const sx = px + (k % 2) * Math.round(pw / 2), sy = y + Math.floor(k / 2) * 9, bw2 = Math.round(pw / 2) - 48;
+      text(ui, label, sx, sy, { font: "mini", color: C.dim });
+      ui.rect(sx + 42, sy + 1, bw2, 3, C.ink);
+      ui.rect(sx + 42, sy + 1, Math.max(2, Math.round(bw2 * Math.max(0, Math.min(1, (v - lo) / (hi - lo))))), 3, col);
+    };
+    stat(0, t("might"), hero.might, 0.7, 1.3, rgba("#ff8a5a"));
+    stat(1, t("haste"), hero.haste, 0.75, 1.35, rgba("#ffd27a"));
+    stat(2, t("speed"), hero.speed, 0.85, 1.2, C.green);
+    stat(3, t("crit"), hero.crit, 0, 0.3, rgba("#c684ff"));
     // the four of them, small, the chosen one framed
     const ty = H - 54;
     HEROES.forEach((hd, k) => {
-      const x = Math.round(W / 2 + (k - (n - 1) / 2) * 34), a = anim(`${hd.weapon}_idle`).frames[0][0]!;
+      const x = Math.round(W / 2 + (k - (n - 1) / 2) * 34), a = this.heroFrame(hd.id, this.wearsVictor(hd.id), "idle", 0);
       slot(ui, x - 14, ty - 22, 28, k === this.heroIdx ? C.gold : undefined);
       if (k === this.heroIdx) ui.rect(x - 13, ty + 5, 26, 1, C.goldDim);
       const own = this.save.unlocked.includes(hd.id);
-      ui.pal = heroPal(hd.id, this.wearsVictor(hd.id));
-      ui.image(a, x, ty + 6, 1, 1, 0, !own ? rgbaf(0.13, 0.12, 0.18, 1) : k === this.heroIdx ? 0xffffffff : rgbaf(0.55, 0.55, 0.6, 1));
-      ui.pal = 0;
+      // a portrait: head and shoulders, cut to the frame (a long blade or a scythe does not poke out of it)
+      portrait(ui, a, x - 12, ty - 20, 24, 24, -12, -37, !own ? rgbaf(0.13, 0.12, 0.18, 1) : k === this.heroIdx ? 0xffffffff : rgbaf(0.55, 0.55, 0.6, 1));
       if (!own) ui.image(icon("hud", "lock"), x + 7, ty - 14);
       else if (this.save.skins.includes(hd.id)) ui.image(icon("hud", "crown"), x + 8, ty - 15);
     });
@@ -1060,11 +1101,9 @@ export class Game {
     panel(ui, rx, y, colW, ph);
     text(ui, t(week ? "heroOfWeek" : "heroOfDay"), lx + colW / 2, y + 5, { font: "mini", align: "center", color: C.dim });
     // as big as fits under the label: a reaper's scythe stands taller than a knight's sword
-    const idle = anim(`${hero.weapon}_idle`), big = fitAnim(idle, colW - 8, ph - 36), [lr, lg, lb] = hero.lightColor;
+    const idle = this.heroAnim(hero.id, false), big = fitAnim(idle, colW - 8, ph - 36), [lr, lg, lb] = hero.lightColor;
     glowUi(ui, lx + colW / 2, y + ph - 20, 30 * big, 9 * big, rgbaf(lr, lg, lb, 1), 0.5);
-    ui.pal = heroPal(hero.id, false);
-    ui.image(idle.frames[frameAt(idle, now)][0]!, lx + colW / 2, y + ph - 20, big, big);
-    ui.pal = 0;
+    ui.image(this.heroFrame(hero.id, false), lx + colW / 2, y + ph - 20, big, big);
     text(ui, tx(hero.name), lx + colW / 2, y + ph - 14, { align: "center", color: C.gold, outline: true });
     text(ui, t(week ? "rule" : "firstFloor"), rx + colW / 2, y + 5, { font: "mini", align: "center", color: C.dim });
     let ry = y + 16;
@@ -1556,11 +1595,9 @@ export class Game {
     if (this.tasksReady()) text(ui, t("tasksReady"), W / 2, H - 12, { font: "mini", align: "center", color: C.green });
     // the victor's colours, earned just now
     if (this.newSkin) {
-      const hd = HEROES.find((q) => q.id === this.newSkin)!, sy = H - 24, f = anim(`${hd.weapon}_idle`).frames[frameAt(anim(`${hd.weapon}_idle`), now)][0]!;
+      const hd = HEROES.find((q) => q.id === this.newSkin)!, sy = H - 24, f = this.heroFrame(hd.id, true);
       glowUi(ui, W / 2 - 70, sy - 6, 24, 10, C.gold, 0.5);
-      ui.pal = heroPal(hd.id, true);
       ui.image(f, W / 2 - 70, sy + 2);
-      ui.pal = 0;
       text(ui, `${t("skinNew")}: ${tx(hd.name)}`, W / 2 - 54, sy - 10, { color: C.gold, shadow: C.ink });
     }
   }

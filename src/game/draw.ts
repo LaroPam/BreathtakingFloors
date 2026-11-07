@@ -2,9 +2,10 @@
 // sorted by its feet, light into the illumination layer, the baked pixelfx glow into the glow layer, numbers in front.
 
 import { anim, frameAt, hasAnim, icon, type Anim } from "../engine/atlas";
+import { heroSprites, lookId, type HeroAnim } from "./heroSprites";
 import { Batch, rgba, rgbaf, SOFT, withAlpha } from "../engine/renderer";
 import { text } from "../engine/text";
-import { AI, EL_COLOR, ENEMIES, heroPal, HEROES, LEGENDS, questDef, RelicKind, WEAPONS, weaponName } from "./defs";
+import { AI, EL_COLOR, ENEMIES, LEGENDS, questDef, RelicKind, WEAPONS, weaponName } from "./defs";
 import { t as tr, tx } from "./i18n";
 import { BULLET_ANIMS, B_CRESCENT, B_FIREBALL, B_LANCE, CINE_DUR, D_CHEST, D_EMBER, D_GREEN, D_HEART, D_RED, SANCTUARY_R, STAR_EVERY, TILE, type World } from "./world";
 
@@ -72,8 +73,6 @@ const hash = (x: number, y: number) => {
 };
 
 const C_SHADOW = rgba("#000000", 0.38);
-/** The spirit's palette slot: after the heroes' (game.ts sets it up with them). */
-const SPIRIT_PAL = HEROES.length + 1;
 /** The colour an enemy's tell glows in, by the look of its bullets. */
 const TELL = [0, 0, 0, 0, 0, 0].map((_, k) => {
   const c = ["#ff5a6a", "#ff5a6a", "#ff5a6a", "#c684ff", "#8ad83a", "#78ccf4"][k];
@@ -323,29 +322,49 @@ export function drawWorld(s: Scene, w: World, camX: number, camY: number, viewW:
     if (w.debug) s.front.disc(w.bx, w.by, w.brx, w.bry, rgba("#ff3040", 0.3));
   }
 
-  // ---- the hero: body and weapon recoloured into the hero's palette, and the light they carry
-  const wid = h.weapon, pal = heroPal(h.def.id, h.victor);
-  const run = anim(`${wid}_run`), idle = anim(`${wid}_idle`), dash = anim(`${wid}_dash`), hurt = anim(`${wid}_hurt`);
+  // ---- an ability's blows on their way: arrows falling out of the dark, the floor marked where an element strikes
+  if (w.strikes.length) {
+    const arrowA = anim("arrow");
+    for (const st of w.strikes) {
+      if (st.kind === "arrow") {
+        if (st.t > 0.2) continue;
+        const u = 1 - st.t / 0.2;
+        drawAnim(s, arrowA, time, st.x, st.y - 10 - (1 - u) * 130, { rot: Math.PI / 2, key: st.y + 1, glow: 0.8 });
+      } else if (st.kind !== "blink") {
+        const col = st.kind === "fire" ? [1, 0.5, 0.2] : st.kind === "frost" ? [0.5, 0.85, 1] : [1, 0.95, 0.45], k = Math.max(0, Math.min(1, 1 - st.t / 0.7));
+        for (let q = 0; q < 24; q++) {
+          const a = (q / 24) * Math.PI * 2 + time * 1.5;
+          s.back.disc(st.x + Math.cos(a) * st.r, st.y + Math.sin(a) * st.r * 0.55, 1.2, 1.2, rgbaf(col[0], col[1], col[2], 0.7 * k));
+        }
+        s.illum.light(st.x, st.y, st.r * 0.9, st.r * 0.6, rgbaf(col[0], col[1], col[2], 0.25 * k));
+      }
+    }
+  }
+
+  // ---- the hero, drawn in their own look (src/game/heroSprites.ts), and the light they carry
+  const hs = heroSprites(), wid = h.weapon, look = lookId(h.def.id, h.victor);
+  const run = hs.anim(look, wid, "run"), idle = hs.anim(look, wid, "idle"), dash = hs.anim(look, wid, "dash"), hurt = hs.anim(look, wid, "hurt");
   const [gr, gg, gb] = GHOST_TINT[h.def.id] ?? [0.48, 0.82, 1];
+  if (w.ghosts.length) hs.ready(dash, 0);
   for (const g of w.ghosts) {
-    drawAnim(s, dash, 0, g.x, g.y, { sx: g.flip, key: g.y - 0.5, tint: rgbaf(gr, gg, gb, 1), alpha: (g.life / 0.22) * 0.7, glow: 0, pal });
-    s.glow.image(dash.frames[0][0]!, g.x, g.y, g.flip, 1, 0, rgbaf(gr * 0.4, gg * 0.6, gb, g.life * 1.2));
+    drawAnim(s, dash, 0, g.x, g.y, { frame: 0, sx: g.flip, key: g.y - 0.5, tint: rgbaf(gr, gg, gb, 1), alpha: (g.life / 0.22) * 0.7, glow: 0 });
+    if (dash.frames[0][0]) s.glow.image(dash.frames[0][0], g.x, g.y, g.flip, 1, 0, rgbaf(gr * 0.4, gg * 0.6, gb, g.life * 1.2));
   }
   let lightX = h.x, lightY = h.y - 14;
   if (h.dead) {
     // the fall: a stagger, the knees, the floor; then the body fades as the soul rises
-    const death = anim("hero_death"), fi = Math.min(death.frames.length - 1, Math.floor(h.deathT * 8));
+    const death = hs.anim(look, wid, "death"), fi = hs.ready(death, Math.floor(h.deathT * 8));
     const alpha = Math.max(0, Math.min(1, 1 - (h.deathT - 1.6) / 0.8));
     if (alpha > 0) {
       s.back.disc(h.x, h.y, 10, 3, C_SHADOW);
-      drawAnim(s, death, 0, h.x, h.y, { frame: fi, sx: h.face, key: h.y, alpha, pal, flash: h.deathT < 0.08 ? 1 : 0 });
+      drawAnim(s, death, 0, h.x, h.y, { frame: fi, sx: h.face, key: h.y, alpha, flash: h.deathT < 0.08 ? 1 : 0 });
     }
   } else {
-    let a: Anim, fi: number;
+    let a: HeroAnim, fi: number;
     const runPhase = frameAt(run, h.runT);
     if (h.atk >= 0) {
-      const base = anim(`${wid}_a${h.atk}`), f = Math.min(base.frames.length - 1, Math.floor(h.atkT * 20));
-      if (h.moving) (a = anim(`${wid}_a${h.atk}_run`), fi = f * 8 + runPhase);
+      const base = hs.anim(look, wid, `a${h.atk}`), f = Math.min(base.frames.length - 1, Math.floor(h.atkT * 20));
+      if (h.moving) (a = hs.anim(look, wid, `a${h.atk}_run`), fi = f * 8 + runPhase);
       else (a = base, fi = f);
     } else if (h.dashT > 0) (a = dash, fi = frameAt(dash, time));
     else if (h.hurtT > 0) (a = hurt, fi = 0);
@@ -354,6 +373,7 @@ export function drawWorld(s: Scene, w: World, camX: number, camY: number, viewW:
       a = run;
       fi = frameAt(run, backwards ? -h.runT : h.runT);
     } else (a = idle, fi = frameAt(idle, time));
+    fi = hs.ready(a, fi);
     // arriving: nothing in the first instant of the beam, then the body grows out of it; leaving: spun into the portal
     let sx = h.face, sy = 1, rot = 0, flash = h.hurtT > 0.2 ? 1 : 0, show = true;
     if (h.arriveT < 0.55) {
@@ -372,10 +392,11 @@ export function drawWorld(s: Scene, w: World, camX: number, camY: number, viewW:
       show = k > 0.02;
     }
     const squash = h.hurtT > 0.18 ? 0.1 : 0;
-    const blink = h.invuln > 0 && h.dashT <= 0 && h.exitT < 0 && h.arriveT > 0.55 && Math.floor(time * 16) % 2 === 0;
+    // hurt and briefly safe: he flickers (not under the Knight's ward, nor in the Shade's dance)
+    const blink = h.invuln > 0 && w.ward <= 0 && !w.strikes.some((q) => q.kind === "blink") && h.dashT <= 0 && h.exitT < 0 && h.arriveT > 0.55 && Math.floor(time * 16) % 2 === 0;
     if (show) {
       s.back.disc(h.x, h.y, 9 * Math.abs(sx), 3, C_SHADOW);
-      drawAnim(s, a, 0, h.x, h.y, { frame: fi, sx: sx * (1 + squash), sy: sy * (1 - squash), rot, key: h.y, alpha: blink ? 0.45 : 1, flash, pal });
+      drawAnim(s, a, 0, h.x, h.y, { frame: fi, sx: sx * (1 + squash), sy: sy * (1 - squash), rot, key: h.y, alpha: blink ? 0.45 : 1, flash });
     }
     // the light: a lantern in the free hand or at the belt, swinging; or a wisp floating at the shoulder
     const hand = a.hands?.[fi] ?? [8, -20, 5, -15];
@@ -387,6 +408,16 @@ export function drawWorld(s: Scene, w: World, camX: number, camY: number, viewW:
       const c = rgba(EL_COLOR[el]), p = 0.75 + 0.25 * Math.sin(time * 8);
       s.glow.light(h.handX, h.handY, 5 * p, 5 * p, withAlpha(c, 0.45));
       s.illum.light(h.handX, h.handY, 34 * p, 28 * p, withAlpha(c, 0.3));
+    }
+    // the Knight's ward: a ring of light turning round him, fading as it ends
+    if (w.ward > 0 && show) {
+      const k = Math.min(1, w.ward / 0.6), cy = h.y - 13;
+      s.illum.light(h.x, cy, 44, 38, rgbaf(1, 0.85, 0.55, 0.35 * k));
+      for (let q = 0; q < 18; q++) {
+        const a = (q / 18) * Math.PI * 2 + time * 2.2, x = h.x + Math.cos(a) * 26, y = cy + Math.sin(a) * 20;
+        s.glow.disc(x, y, 1.6, 1.6, rgbaf(1, 0.9, 0.6, 0.8 * k));
+        if (q % 3 === 0) s.front.disc(x, y, 1, 1, rgbaf(1, 0.97, 0.85, k));
+      }
     }
     const fury = w.fury;
     if (fury > 1.2 && show) s.illum.light(h.x, h.y - 16, 40 * fury, 34 * fury, rgbaf(1, 0.25, 0.15, (fury - 1) * 0.6 * (0.8 + 0.2 * Math.sin(time * 10))));
@@ -495,11 +526,11 @@ export function drawWorld(s: Scene, w: World, camX: number, camY: number, viewW:
   // ---- the floor's spirit: a lightbearer's ghost in cold light, floating; "!" while it waits with a task
   const sp = w.spirit;
   if (sp && inView(sp.x, sp.y, 60)) {
-    const idle = anim("sword_idle"), ending = sp.state === "done" || sp.state === "failed";
+    const idle = hs.anim("spirit", "sword", "idle"), ending = sp.state === "done" || sp.state === "failed";
     const fade = ending ? Math.max(0, 1 - sp.t / 1.6) : 1, alpha = (sp.state === "offer" ? 0.78 + 0.12 * Math.sin(time * 5) : sp.state === "active" ? 0.32 : 0.6) * fade;
-    const rise = sp.state === "done" ? sp.t * sp.t * 18 : 0, bob = Math.sin(time * 2) * 2 - 3 - rise, flip = h.x < sp.x ? -1 : 1, fi = frameAt(idle, time * 0.7);
+    const rise = sp.state === "done" ? sp.t * sp.t * 18 : 0, bob = Math.sin(time * 2) * 2 - 3 - rise, flip = h.x < sp.x ? -1 : 1, fi = hs.ready(idle, frameAt(idle, time * 0.7));
     s.back.disc(sp.x, sp.y, 9, 3, rgba("#000000", 0.2 * fade));
-    drawAnim(s, idle, 0, sp.x, sp.y + bob, { frame: fi, sx: flip, key: sp.y, alpha, pal: SPIRIT_PAL, glow: 0, tint: sp.state === "failed" ? rgbaf(0.55, 0.58, 0.68, 1) : rgbaf(0.72, 0.9, 1, 1) });
+    drawAnim(s, idle, 0, sp.x, sp.y + bob, { frame: fi, sx: flip, key: sp.y, alpha, glow: 0, tint: sp.state === "failed" ? rgbaf(0.55, 0.58, 0.68, 1) : rgbaf(0.85, 0.95, 1, 1) });
     s.glow.image(idle.frames[fi][0]!, sp.x, sp.y + bob, flip, 1, 0, rgbaf(0.25, 0.5, 0.8, 0.35 * alpha));
     s.illum.light(sp.x, sp.y - 16 + bob, 54, 46, rgbaf(0.55, 0.8, 1, 0.45 * alpha));
     if (sp.state === "offer") {
