@@ -2,7 +2,7 @@
 // LoadingAPI and GameplayAPI markup the moderators check. https://yandex.ru/dev/games/doc/ru/sdk/sdk-about
 
 import type { SaveData } from "../game/save";
-import { BasePlatform, dayNumber, type Board, type BoardName } from "./platform";
+import { BasePlatform, dayNumber, weekNumber, type Board, type BoardName } from "./platform";
 
 /**
  * Yandex keeps one best score per player and never resets a board, so the daily board stores
@@ -77,7 +77,9 @@ export class YandexPlatform extends BasePlatform {
   override submitScore(score: number, board: BoardName = "score"): void {
     const lb = this.sdk?.leaderboards;
     if (!lb || !this.player || this.player.getMode?.() === "lite") return; // only signed-in players have a place
-    const value = board === "daily" ? dayNumber() * DAY + Math.min(DAY - 1, Math.floor(score)) : Math.floor(score);
+    // a trial's board leads with its day or week, so the current one ranks first (see DAY)
+    const period = board === "daily" ? dayNumber() : board === "weekly" ? weekNumber() : 0;
+    const value = period ? period * DAY + Math.min(DAY - 1, Math.floor(score)) : Math.floor(score);
     lb.setScore(board, value).catch(() => {
       /* offline or too soon (one write a second): the result stays in the save */
     });
@@ -88,10 +90,10 @@ export class YandexPlatform extends BasePlatform {
     try {
       const signed = !!this.player && this.player.getMode?.() !== "lite";
       const res = await lb.getEntries(board, { quantityTop: 10, includeUser: signed, quantityAround: 2 });
-      const today = dayNumber(), me = this.player?.getUniqueID?.();
+      const period = board === "daily" ? dayNumber() : board === "weekly" ? weekNumber() : 0, me = this.player?.getUniqueID?.();
       const entries = (res.entries as any[])
-        .filter((e) => board !== "daily" || Math.floor(e.score / DAY) === today)
-        .map((e) => ({ rank: e.rank, name: e.player?.publicName || "?", score: board === "daily" ? e.score % DAY : e.score, me: !!me && e.player?.uniqueID === me }));
+        .filter((e) => !period || Math.floor(e.score / DAY) === period)
+        .map((e) => ({ rank: e.rank, name: e.player?.publicName || "?", score: period ? e.score % DAY : e.score, me: !!me && e.player?.uniqueID === me }));
       const mine = entries.find((e) => e.me);
       return { entries, myRank: mine ? mine.rank : 0 };
     } catch {

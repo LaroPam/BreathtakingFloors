@@ -11,7 +11,7 @@ import type { Audio } from "../engine/audio";
 import type { Input } from "../engine/input";
 import { Batch, rgba, rgbaf, withAlpha } from "../engine/renderer";
 import { fitScale, measure, text, wrap, type FontName } from "../engine/text";
-import { EL_COLOR, ENEMIES, questDef, RELIC_SLOTS } from "./defs";
+import { EL_COLOR, ENEMIES, MUTATORS, questDef, RELIC_SLOTS } from "./defs";
 import { t, tx } from "./i18n";
 import type { World } from "./world";
 
@@ -389,7 +389,7 @@ const RELIC_ICON = ["orbit", "lance", "coil", "flask", "halo", "void"];
 let bossLag = 1;
 
 /** The heads-up display during a run, gathered into plates: who you are (left), where you are (centre), how long (right). */
-export function drawHud(b: Batch, w: World, W: number, H: number, time: number, banner: { text: string; t: number; color: number; sub?: string } | null, touch: boolean, daily: boolean): void {
+export function drawHud(b: Batch, w: World, W: number, H: number, time: number, banner: { text: string; t: number; color: number; sub?: string } | null, touch: boolean, seal: "" | "daily" | "trophy"): void {
   const h = w.hero;
 
   // ---- experience: a framed bar across the top, the level on a badge at its left end
@@ -482,12 +482,15 @@ export function drawHud(b: Batch, w: World, W: number, H: number, time: number, 
   }
 
   // ---- where you are: the floor on a plate at the top centre, with what to do on it under the name
-  const floorLine = `${t("floor")} ${w.floor}  ·  ${tx(w.biome.name)}`, fw = measure(floorLine) + (daily ? 30 : 20), bi = w.bossIndex();
+  const floorLine = `${t("floor")} ${w.floor}  ·  ${tx(w.biome.name)}`, fw = measure(floorLine) + (seal ? 30 : 20), bi = w.bossIndex();
   plate(b, W / 2 - fw / 2, 9, fw, 25);
-  text(b, floorLine, W / 2 + (daily ? 5 : 0), 13, { align: "center", gradient: [rgba("#fff0b8"), rgba("#e0a84a")], shadow: C.ink });
-  // the daily trial wears its seal by the floor's name; a cursed floor its skull on the other side
-  if (daily) b.image(icon("hud", "daily"), W / 2 - fw / 2 + 9, 16);
+  text(b, floorLine, W / 2 + (seal ? 5 : 0), 13, { align: "center", gradient: [rgba("#fff0b8"), rgba("#e0a84a")], shadow: C.ink });
+  // a trial wears its seal by the floor's name (the day's or the week's); a cursed floor its skull on the other side
+  if (seal) b.image(icon("hud", seal), W / 2 - fw / 2 + 9, 16);
   if (w.curse) b.image(icon("hud", "curse"), W / 2 + fw / 2 + 8, 16, 1, 1, 0, rgbaf(1, 0.7 + 0.3 * Math.sin(time * 6), 0.7, 1));
+  // the week's rule, under the plate, for the whole run
+  const mut = w.mutator && MUTATORS.find((m) => m.id === w.mutator);
+  if (mut) text(b, tx(mut.name), W / 2, 38, { font: "mini", align: "center", color: rgba("#ff9a8a"), shadow: C.ink });
   if (w.portal) text(b, t("portalOpen"), W / 2, 24, { font: "mini", align: "center", color: rgba("#c684ff") });
   else if (bi >= 0) {
     const name = tx(ENEMIES[w.enemies.type[bi]].name);

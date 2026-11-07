@@ -32,6 +32,8 @@ export interface SaveData {
   tasks?: { day: string; items: { id: string; goal: number; have: number; claimed: boolean }[]; bonus: boolean };
   /** The daily run: its date, the best score that day, how many tries. */
   daily?: { day: string; best: number; tries: number };
+  /** The weekly run, the same for its week. */
+  weekly?: { day: string; best: number; tries: number };
 }
 
 export const defaultSave = (): SaveData => ({

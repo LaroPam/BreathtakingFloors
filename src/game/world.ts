@@ -393,6 +393,8 @@ export class World {
   curse = false;
   /** Hits the hero took on this floor (an achievement wants none). */
   floorHits = 0;
+  /** The weekly trial's rule, on every floor of the run ("" for none). */
+  mutator = "";
   moveX = 0;
   moveY = 0;
   private spawnAcc = 0;
@@ -555,7 +557,7 @@ export class World {
   }
 
   get lanternR(): number {
-    return 112 * this.stats.lantern * (1 - this.mod.dark * 0.5);
+    return 112 * this.stats.lantern * (1 - this.mod.dark * 0.5) * (this.mutator === "dark" ? 0.67 : 1);
   }
   get ambient(): number {
     return 0.26 - this.mod.dark * 0.1 - Math.min(0.05, this.floor * 0.006);
@@ -634,9 +636,9 @@ export class World {
   }
   spawnAt(type: number, x: number, y: number): number {
     const d = ENEMIES[type], f = this.floor;
-    const curse = this.curse ? 1.5 : 1;
+    const curse = (this.curse ? 1.5 : 1) * (this.mutator === "legacy" ? 1.3 : 1);
     const hp = d.hp * (1 + 0.25 * (f - 1)) * (1 + Math.min(0.8, this.time / 240)) * curse;
-    const i = this.enemies.add(type, x, y, hp, this.rng.next(), this.mod.speed * (1 + (f - 1) * 0.025) * this.rng.range(0.9, 1.1) * (this.curse ? 1.2 : 1));
+    const i = this.enemies.add(type, x, y, hp, this.rng.next(), this.mod.speed * (1 + (f - 1) * 0.025) * this.rng.range(0.9, 1.1) * (this.curse ? 1.2 : 1) * (this.mutator === "haste" ? 1.25 : 1));
     if (i >= 0) {
       this.enemies.face[i] = this.hero.x < x ? -1 : 1;
       if (!this.seen.has(type)) {
@@ -1431,7 +1433,7 @@ export class World {
     this.addFx("poof", cx, cy + this.bry, { sx: d.scale * (d.elite ? 1.2 : 0.8), sy: d.scale * (d.elite ? 1.2 : 0.8), glow: 0.5 });
     this.burst(cx, cy, d.elite ? 18 : 6, rgba(d.glow || "#c8c0d8"), 70, 0.45, 120);
     // soul shards: the value broken into the fewest pieces
-    let v = d.xp * this.mod.xp;
+    let v = d.xp * this.mod.xp * (this.mutator === "swarm" ? 1.33 : 1);
     while (v > 0) {
       const tier = v >= 20 ? D_RED : v >= 5 ? D_GREEN : D_BLUE, val = tier === D_RED ? 20 : tier === D_GREEN ? 5 : 1;
       const a = this.rng.range(0, Math.PI * 2), s = this.rng.range(10, 50);
@@ -2551,7 +2553,7 @@ export class World {
           this.ev.banner(tr("surge"), rgba("#ff7a6a"));
           const [x, y] = this.edgePoint(200);
           for (let k = 0; k < 3 + this.floor; k++) this.spawnAt(this.pickEnemy(phase), x + this.rng.range(-30, 30), y + this.rng.range(-20, 20));
-          if ((this.floor >= 2 && phase === 2) || (this.floor >= 5 && phase === 1)) this.spawnElite();
+          if ((this.floor >= 2 && phase === 2) || (this.floor >= 5 && phase === 1) || this.mutator === "champions") this.spawnElite();
         } else if (bossOf(this.floor) >= 0) this.spawnBoss();
         else this.openPortal(this.w / 2, this.h / 2);
       }
@@ -2646,7 +2648,7 @@ export class World {
   private director(dt: number): void {
     if (this.hero.dead || this.cleared || this.won || this.hero.exitT >= 0) return;
     const E = this.enemies, phase = this.phase, boss = this.bossIndex() >= 0;
-    const target = Math.min(90, Math.round((4 + this.floor * 2.2) * (1 + 0.5 * phase) * this.mod.spawn * (1 + Math.min(0.5, this.time / 240)) * (boss ? 0.45 : this.portal ? 0.5 : 1) * (this.curse ? 1.25 : 1)));
+    const target = Math.min(90, Math.round((4 + this.floor * 2.2) * (1 + 0.5 * phase) * this.mod.spawn * (1 + Math.min(0.5, this.time / 240)) * (boss ? 0.45 : this.portal ? 0.5 : 1) * (this.curse ? 1.25 : 1) * (this.mutator === "swarm" ? 1.5 : 1)));
     this.spawnAcc += dt;
     if (E.n < target && this.spawnAcc >= 0.6) {
       this.spawnAcc = 0;

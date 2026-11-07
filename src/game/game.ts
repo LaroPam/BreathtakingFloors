@@ -4,10 +4,10 @@
 import type { Audio } from "../engine/audio";
 import type { Input } from "../engine/input";
 import { Batch, rgba, rgbaf, withAlpha, type Lighting, type Renderer } from "../engine/renderer";
-import { anim, DUMMY, FONTS, frameAt, icon } from "../engine/atlas";
+import { anim, DUMMY, FONTS, frameAt, icon, type Anim } from "../engine/atlas";
 import { fitScale, measure, text, wrap } from "../engine/text";
-import { dayNumber, type Board, type BoardName, type Platform } from "../platform/platform";
-import { ACHIEVEMENTS, heroPal, bossOf, EL_COLOR, LEGENDS, legendDesc, type WeaponId, EL_NAME, ENEMIES, EVOLUTIONS, evolutionOf, FLOORS, FORGE, questDef, SPIRIT_PALETTE, TASK_BONUS, TASKS, type TaskId, HEROES, PALETTE_KEYS, WEAPONS, weaponName, MODIFIERS, NO_MODIFIER, REACTIONS, RELIC_MAX, RELIC_SLOTS, RELICS, STATS, type Modifier, type Reaction, type RelicKind, type StatId } from "./defs";
+import { dayNumber, weekNumber, type Board, type BoardName, type Platform } from "../platform/platform";
+import { ACHIEVEMENTS, heroPal, bossOf, EL_COLOR, LEGENDS, legendDesc, type WeaponId, EL_NAME, ENEMIES, EVOLUTIONS, evolutionOf, FLOORS, FORGE, questDef, SPIRIT_PALETTE, TASK_BONUS, TASKS, type TaskId, HEROES, PALETTE_KEYS, WEAPONS, weaponName, MODIFIERS, MUTATORS, NO_MODIFIER, REACTIONS, RELIC_MAX, RELIC_SLOTS, RELICS, STATS, type Modifier, type Reaction, type RelicKind, type StatId } from "./defs";
 import { drawWorld, Scene } from "./draw";
 import { getLang, langFor, setLang, t, tx, type Lang } from "./i18n";
 import { Rng } from "./rng";
@@ -34,6 +34,14 @@ interface Spin {
 }
 const RELIC_ICON = ["orbit", "lance", "coil", "flask", "halo", "void"];
 const iconKey = (c: Choice) => (c.type === "relic" ? RELIC_ICON[c.kind] : c.type === "evo" ? evolutionOf(c.kind).icon : c.type === "legend" ? `w_${c.weapon}` : c.id);
+
+/** The largest whole scale (up to max) at which every frame of an animation fits: h above its anchor, w across it (centred). */
+function fitAnim(a: Anim, w: number, h: number, max = 2): number {
+  let top = 0, half = 0;
+  for (const [r] of a.frames) if (r) (top = Math.max(top, -r[6]), (half = Math.max(half, -r[5], r[5] + r[3])));
+  for (let s = max; s > 1; s--) if (top * s <= h && half * 2 * s <= w) return s;
+  return 1;
+}
 
 const STEP = 1 / 60;
 /** Height of the title font's capitals. */
@@ -67,9 +75,13 @@ export class Game {
   private revived = false;
   private platformPaused = false;
   private runRng = new Rng(Date.now() & 0xffffff);
-  private lastResult = { floor: 0, kills: 0, time: 0, embers: 0, score: 0, best: false, daily: false };
-  /** This run is the daily trial (the same seed, hero and first floor for everyone today). */
+  private lastResult = { floor: 0, kills: 0, time: 0, embers: 0, score: 0, best: false, daily: false, weekly: false };
+  /** This run is a trial (the same seed, hero and first floor for everyone today, or this week). */
   private daily = false;
+  /** The trial is the weekly one (daily stays true: a trial is a trial for the forge and the records). */
+  private weekly = false;
+  /** Which trial the trials screen shows. */
+  private trialTab: "day" | "week" = "day";
   /** Leaderboards as last fetched ("loading" while a request is out). */
   private boards: Partial<Record<BoardName, Board | null | "loading">> = {};
   private recordsTab: BoardName | "ach" = "score";
@@ -216,19 +228,33 @@ export class Game {
     return { day, seed, hero: HEROES[r.int(0, HEROES.length - 1)], mod: MODIFIERS[r.int(0, MODIFIERS.length - 1)] };
   }
 
+  /** This week's trial: a seed from the week, the hero of the week and its rule (a mutator for the whole run). */
+  private weeklyPlan() {
+    const week = weekNumber(), seed = (Math.imul(week ^ 0x2545f491, 0x9e3779b1 | 0) ^ (week << 11)) >>> 0, r = new Rng(seed);
+    return { week, seed, hero: HEROES[r.int(0, HEROES.length - 1)], mut: MUTATORS[r.int(0, MUTATORS.length - 1)] };
+  }
+
+  /** The trial's record for this period (today's, or this week's), or null if not played yet. */
+  private trialRecord(weekly: boolean) {
+    const r = weekly ? this.save.weekly : this.save.daily, key = String(weekly ? this.weeklyPlan().week : this.dailyPlan().day);
+    return r?.day === key ? r : null;
+  }
+
   private startRun(): void {
     // a daily trial plays from the day's seed; any other run from the clock
-    const plan = this.dailyPlan();
-    this.runRng = new Rng(this.daily ? plan.seed : (Date.now() ^ (Math.random() * 1e9)) >>> 0);
+    if (!this.daily) this.weekly = false;
+    const plan = this.dailyPlan(), wplan = this.weeklyPlan();
+    this.runRng = new Rng(this.weekly ? wplan.seed : this.daily ? plan.seed : (Date.now() ^ (Math.random() * 1e9)) >>> 0);
     this.newWorld();
     if (!this.save.unlocked.includes(HEROES[this.heroIdx].id)) this.heroIdx = 0;
-    // the daily trial: its own hero, nothing from the forge, everyone equal
-    const w = this.world, f = this.daily ? {} : this.save.forge, hero = this.daily ? plan.hero : HEROES[this.heroIdx];
+    // a trial: its own hero, nothing from the forge, everyone equal
+    const w = this.world, f = this.daily ? {} : this.save.forge, hero = this.weekly ? wplan.hero : this.daily ? plan.hero : HEROES[this.heroIdx];
     if (!this.daily) this.save.hero = hero.id;
     else {
-      const d = this.save.daily?.day === String(plan.day) ? this.save.daily : { day: String(plan.day), best: 0, tries: 0 };
+      const key = String(this.weekly ? wplan.week : plan.day), d = this.trialRecord(this.weekly) ?? { day: key, best: 0, tries: 0 };
       d.tries++;
-      this.save.daily = d;
+      if (this.weekly) this.save.weekly = d;
+      else this.save.daily = d;
     }
     w.setHero(hero);
     w.hero.victor = this.wearsVictor(hero.id);
@@ -237,7 +263,16 @@ export class Game {
     w.stats.might = 1 + 0.1 * (f.might ?? 0);
     w.stats.magnet *= 1 + 0.25 * (f.reach ?? 0);
     w.autoAim = this.touch;
-    w.startFloor(1, this.daily ? plan.mod : NO_MODIFIER);
+    // the week's rule
+    let spins = f.start ? 2 : 1;
+    if (this.weekly) {
+      const m = wplan.mut.id;
+      w.mutator = m;
+      if (m === "glass") (w.hero.maxHp = 3, (w.hero.hp = 3), (w.stats.might *= 1.6));
+      if (m === "haste") w.stats.speed *= 1.25;
+      if (m === "legacy") spins = 3;
+    }
+    w.startFloor(1, this.daily && !this.weekly ? plan.mod : NO_MODIFIER);
     this.reached(1);
     this.revived = false;
     this.save.runs++;
@@ -245,8 +280,8 @@ export class Game {
     this.audio.playMusic();
     this.cardT = 0;
     this.setState("card");
-    // every run starts with a relic from the roulette (the forge's Legacy spins a second)
-    this.startSpins = f.start ? 2 : 1;
+    // every run starts with a relic from the roulette (the forge's Legacy spins a second, a rich week three)
+    this.startSpins = spins;
     w.pendingChests = this.startSpins;
   }
 
@@ -262,17 +297,17 @@ export class Game {
     const score = w.floor * 1000 + w.kills * 5 + w.hero.level * 50 + (won ? 5000 : 0);
     let best: boolean;
     if (this.daily) {
-      // the daily trial counts on its own board, not against the forge-made records
-      const d = this.save.daily!;
+      // a trial counts on its own board, not against the forge-made records
+      const d = (this.weekly ? this.save.weekly : this.save.daily)!;
       best = score > d.best;
       d.best = Math.max(d.best, score);
-      this.platform.submitScore(score, "daily");
+      this.platform.submitScore(score, this.weekly ? "weekly" : "daily");
     } else {
       best = score > this.save.bestScore;
       this.save.bestScore = Math.max(this.save.bestScore, score);
       if (best) this.platform.submitScore(score, "score");
     }
-    this.lastResult = { floor: w.floor, kills: w.kills, time: w.runTime, embers, score, best, daily: this.daily };
+    this.lastResult = { floor: w.floor, kills: w.kills, time: w.runTime, embers, score, best, daily: this.daily, weekly: this.weekly };
     this.save.embers += embers;
     this.save.bestFloor = Math.max(this.save.bestFloor, w.floor);
     if (won) {
@@ -683,7 +718,7 @@ export class Game {
           break;
         }
         drawPointers(ui, w, cx, cy, W, H, this.now);
-        drawHud(ui, w, W, H, this.now, this.banner, this.touch, this.daily);
+        drawHud(ui, w, W, H, this.now, this.banner, this.touch, this.weekly ? "trophy" : this.daily ? "daily" : "");
         if (this.touch) drawTouch(ui, this.input, w, W, H, this.now);
         else this.input.zones = [];
         this.drawTutorial();
@@ -737,12 +772,12 @@ export class Game {
     let y = Math.round(Math.min(H * 0.46, H - 34 - 6 * (bh + gap)));
     if (button(ui, this.menu, now, bx, y, bw, bh, t("play"), { primary: true, icon: icon("hud", "play") })) {
       this.audio.unlock();
-      this.daily = false;
+      this.daily = this.weekly = false;
       this.setState("heroes", 2);
       return;
     }
     y += bh + gap;
-    if (button(ui, this.menu, now, bx, y, bw, bh, t("daily"), { color: rgba("#ffb0a0"), icon: icon("hud", "daily") })) {
+    if (button(ui, this.menu, now, bx, y, bw, bh, t("trials"), { color: rgba("#ffb0a0"), icon: icon("hud", "daily") })) {
       this.audio.unlock();
       this.setState("daily");
       return;
@@ -902,7 +937,7 @@ export class Game {
     const ui = this.ui, W = this.r.w, H = this.r.h, w = this.world, B = w.biome, a = Math.min(1, this.cardT * 3);
     this.drawCardBack();
     const cy = Math.round(H * 0.36);
-    if (this.daily) text(ui, t("daily"), W / 2, cy - 44, { font: "mini", align: "center", color: withAlpha(rgba("#ff9a8a"), a) });
+    if (this.daily) text(ui, t(this.weekly ? "weekly" : "daily"), W / 2, cy - 44, { font: "mini", align: "center", color: withAlpha(rgba("#ff9a8a"), a) });
     const th = this.heading(`${t("floor")} ${w.floor}`, cy - 32, 2, C.gold, a);
     text(ui, tx(B.name), W / 2, cy - 32 + th + 4, { font: "title", align: "center", color: withAlpha(C.text, a), shadow: withAlpha(C.ink, a), outline: true });
     para(ui, tx(B.lore), Math.round(W / 2 - 150), cy - 32 + th + 22, 300, withAlpha(C.dim, a), "center");
@@ -976,46 +1011,68 @@ export class Game {
     }
   }
 
-  /** The daily trial: the date, the rules, the hero of the day, the first floor's stairs, today's best. */
+  /** The trials, today's and this week's: the rules, the hero, what makes it different, how long it lasts, the best so far. */
   private drawDaily(): void {
-    const ui = this.ui, W = this.r.w, H = this.r.h, now = this.now, plan = this.dailyPlan(), hero = plan.hero, red = rgba("#ff9a8a");
-    const th = this.heading(t("daily"), 8, H >= 320 ? 2 : 1, red);
-    const date = new Date(plan.day * 86400000), dd = (n: number) => String(n).padStart(2, "0");
-    text(ui, `${dd(date.getUTCDate())}.${dd(date.getUTCMonth() + 1)}.${date.getUTCFullYear()}`, W / 2, 8 + th + 4, { font: "mini", align: "center", color: C.dim });
-    let y = 8 + th + 16;
+    const ui = this.ui, W = this.r.w, H = this.r.h, now = this.now, week = this.trialTab === "week", red = rgba("#ff9a8a");
+    const plan = this.dailyPlan(), wplan = this.weeklyPlan(), hero = week ? wplan.hero : plan.hero;
+    const th = this.heading(t(week ? "weekly" : "daily"), 8, H >= 320 ? 2 : 1, red);
+    // Begin and Back first, so the keys start on Begin; the tabs after them
+    const bw = 120, by = H - 24;
+    if (button(ui, this.menu, now, Math.round(W / 2 - bw - 6), by, bw, 18, t("begin"), { primary: true, icon: icon("hud", "play") })) {
+      this.daily = true;
+      this.weekly = week;
+      this.transition(() => this.startRun());
+    }
+    if (button(ui, this.menu, now, Math.round(W / 2 + 6), by, bw, 18, t("back"), { icon: icon("hud", "back") }) || this.input.pressed("back")) this.setState("title", 1);
+    let y = 8 + th + 4;
+    const tw = 84;
+    for (const [k, id] of (["day", "week"] as const).entries()) {
+      const on = this.trialTab === id, x = Math.round(W / 2 - tw - 3 + k * (tw + 6));
+      if (button(ui, this.menu, now, x, y, tw, 16, t(id === "day" ? "dayTab" : "weekTab"), { color: on ? red : C.dim, font: "mini", icon: icon("hud", id === "week" ? "trophy" : "daily") })) this.trialTab = id;
+      if (on) ui.rect(x + 4, y + 15, tw - 8, 1, red);
+    }
+    y += 22;
+    // the dates, and how long the trial has left
+    const dd = (n: number) => String(n).padStart(2, "0"), day = (n: number) => new Date(n * 86400000), dm = (d: Date) => `${dd(d.getUTCDate())}.${dd(d.getUTCMonth() + 1)}`;
+    const first = week ? wplan.week * 7 - 3 : plan.day, end = (week ? wplan.week * 7 + 4 : plan.day + 1) * 86400000;
+    const dates = week ? `${dm(day(first))} – ${dm(day(first + 6))}` : `${dm(day(first))}.${day(first).getUTCFullYear()}`;
+    const left = Math.max(0, end - Date.now()), m = Math.floor(left / 60000), hh = Math.floor(m / 60) % 24, dn = Math.floor(m / 1440);
+    const until = dn ? `${dn}${t("dShort")} ${hh}${t("hShort")}` : `${hh}${t("hShort")} ${m % 60}${t("mShort")}`;
+    text(ui, `${dates}  ·  ${t("endsIn")} ${until}`, W / 2, y, { font: "mini", align: "center", color: C.dim });
+    y += 12;
     const pw = Math.min(330, W - 20);
-    y += para(ui, t("dailyRules"), Math.round(W / 2 - pw / 2), y, pw, C.text, "center") + 6;
-    // the hero of the day on the left, the first floor's stairs on the right
+    y += para(ui, t(week ? "weeklyRules" : "dailyRules"), Math.round(W / 2 - pw / 2), y, pw, C.text, "center") + 6;
+    // the hero on the left; on the right the first floor's stairs (a day) or the week's rule
     const colW = Math.floor(Math.min(170, (W - 24) / 2)), lx = Math.round(W / 2 - colW - 4), rx = Math.round(W / 2 + 4);
     const ph = Math.max(60, Math.min(124, H - y - 62));
     panel(ui, lx, y, colW, ph);
     panel(ui, rx, y, colW, ph);
-    text(ui, t("heroOfDay"), lx + colW / 2, y + 5, { font: "mini", align: "center", color: C.dim });
-    const idle = anim(`${hero.weapon}_idle`), big = ph >= 100 ? 2 : 1, [lr, lg, lb] = hero.lightColor;
+    text(ui, t(week ? "heroOfWeek" : "heroOfDay"), lx + colW / 2, y + 5, { font: "mini", align: "center", color: C.dim });
+    // as big as fits under the label: a reaper's scythe stands taller than a knight's sword
+    const idle = anim(`${hero.weapon}_idle`), big = fitAnim(idle, colW - 8, ph - 36), [lr, lg, lb] = hero.lightColor;
     glowUi(ui, lx + colW / 2, y + ph - 20, 30 * big, 9 * big, rgbaf(lr, lg, lb, 1), 0.5);
     ui.pal = heroPal(hero.id, false);
     ui.image(idle.frames[frameAt(idle, now)][0]!, lx + colW / 2, y + ph - 20, big, big);
     ui.pal = 0;
     text(ui, tx(hero.name), lx + colW / 2, y + ph - 14, { align: "center", color: C.gold, outline: true });
-    text(ui, t("firstFloor"), rx + colW / 2, y + 5, { font: "mini", align: "center", color: C.dim });
+    text(ui, t(week ? "rule" : "firstFloor"), rx + colW / 2, y + 5, { font: "mini", align: "center", color: C.dim });
     let ry = y + 16;
-    ry += para(ui, tx(plan.mod.name), rx + 8, ry, colW - 16, C.gold);
-    text(ui, t("risk"), rx + 8, ry + 2, { font: "mini", color: C.red });
-    ry += 10;
-    ry += para(ui, tx(plan.mod.risk), rx + 8, ry, colW - 16, C.text);
-    text(ui, t("reward"), rx + 8, ry + 2, { font: "mini", color: C.green });
-    ry += 10;
-    para(ui, tx(plan.mod.reward), rx + 8, ry, colW - 16, C.text);
-    y += ph + 6;
-    // what you did today
-    const d = this.save.daily?.day === String(plan.day) ? this.save.daily : null;
-    text(ui, `${t("todayBest")}: ${d?.best ?? 0}    ${t("tries")}: ${d?.tries ?? 0}`, W / 2, y, { align: "center", color: C.goldDim });
-    const bw = 120, by = H - 24;
-    if (button(ui, this.menu, now, Math.round(W / 2 - bw - 6), by, bw, 18, t("begin"), { primary: true, icon: icon("hud", "play") })) {
-      this.daily = true;
-      this.transition(() => this.startRun());
+    if (week) {
+      ry += para(ui, tx(wplan.mut.name), rx + 8, ry, colW - 16, red) + 4;
+      para(ui, tx(wplan.mut.desc), rx + 8, ry, colW - 16, C.text);
+    } else {
+      ry += para(ui, tx(plan.mod.name), rx + 8, ry, colW - 16, C.gold);
+      text(ui, t("risk"), rx + 8, ry + 2, { font: "mini", color: C.red });
+      ry += 10;
+      ry += para(ui, tx(plan.mod.risk), rx + 8, ry, colW - 16, C.text);
+      text(ui, t("reward"), rx + 8, ry + 2, { font: "mini", color: C.green });
+      ry += 10;
+      para(ui, tx(plan.mod.reward), rx + 8, ry, colW - 16, C.text);
     }
-    if (button(ui, this.menu, now, Math.round(W / 2 + 6), by, bw, 18, t("back"), { icon: icon("hud", "back") }) || this.input.pressed("back")) this.setState("title", 1);
+    y += ph + 6;
+    // what you did in it so far
+    const d = this.trialRecord(week);
+    text(ui, `${t(week ? "weekBest" : "todayBest")}: ${d?.best ?? 0}    ${t("tries")}: ${d?.tries ?? 0}`, W / 2, y, { align: "center", color: C.goldDim });
   }
 
   /** Settings: the language, the volumes, and what can be turned off for comfort (shake, numbers, flashes). */
@@ -1144,11 +1201,11 @@ export class Game {
   private drawRecords(): void {
     const ui = this.ui, W = this.r.w, H = this.r.h, now = this.now, tab = this.recordsTab;
     const th = this.heading(t("records"), 8, H >= 320 ? 2 : 1);
-    const pw = Math.min(360, W - 16), px = Math.round(W / 2 - pw / 2), tw = Math.floor((pw - 12) / 3);
+    const pw = Math.min(360, W - 16), px = Math.round(W / 2 - pw / 2), tw = Math.floor((pw - 18) / 4);
     let y = 8 + th + 6;
-    for (const [k, name] of (["score", "daily", "ach"] as const).entries()) {
-      const on = tab === name, label = name === "score" ? t("bestRuns") : name === "daily" ? t("daily") : t("achievements");
-      if (button(ui, this.menu, now, px + k * (tw + 6), y, tw, 16, label, { color: on ? C.gold : C.dim, font: tw < 100 ? "mini" : "big" })) (this.recordsTab = name, this.achPage = 0);
+    for (const [k, name] of (["score", "daily", "weekly", "ach"] as const).entries()) {
+      const on = tab === name, label = name === "score" ? t("bestRuns") : name === "daily" ? t("dayTab") : name === "weekly" ? t("weekTab") : t("achievements");
+      if (button(ui, this.menu, now, px + k * (tw + 6), y, tw, 16, label, { color: on ? C.gold : C.dim, font: "mini" })) (this.recordsTab = name, this.achPage = 0);
       if (on) ui.rect(px + k * (tw + 6) + 4, y + 15, tw - 8, 1, C.gold);
     }
     y += 22;
@@ -1198,12 +1255,12 @@ export class Game {
     }
     y += listH + 6;
     // the player's own records, whatever the platform
-    const sv = this.save, plan = this.dailyPlan(), d = sv.daily?.day === String(plan.day) ? sv.daily : null;
+    const sv = this.save, d = this.trialRecord(tab === "weekly");
     text(ui, t("yourRecords"), px, y, { font: "mini", color: C.dim });
     y += 9;
     const pairs: [string, string][] = tab === "score"
       ? [[t("score"), String(sv.bestScore)], [t("bestFloorL"), String(sv.bestFloor)], [t("wins"), String(sv.wins ?? 0)], [t("runs"), String(sv.runs)]]
-      : [[t("todayBest"), String(d?.best ?? 0)], [t("tries"), String(d?.tries ?? 0)]];
+      : [[t(tab === "weekly" ? "weekBest" : "todayBest"), String(d?.best ?? 0)], [t("tries"), String(d?.tries ?? 0)]];
     const cw = Math.floor(pw / pairs.length);
     pairs.forEach(([label, value], k) => {
       text(ui, value, px + k * cw + cw / 2, y, { align: "center", color: C.gold, outline: true });
@@ -1477,7 +1534,7 @@ export class Game {
     y += bh + 6;
     if (button(ui, this.menu, now, bx, y, bw, bh, t("menu"), { icon: icon("hud", "back") })) {
       this.newSkin = "";
-      this.daily = false;
+      this.daily = this.weekly = false;
       this.newWorld();
       this.attract();
       this.setState("title");
@@ -1516,7 +1573,7 @@ export class Game {
   private drawDead(): void {
     const ui = this.ui, W = this.r.w, H = this.r.h, now = this.now, res = this.lastResult;
     const ty = Math.round(H * 0.08);
-    if (res.daily) text(ui, t("daily"), W / 2, ty - 7, { font: "mini", align: "center", color: rgba("#ff9a8a") });
+    if (res.daily) text(ui, t(res.weekly ? "weekly" : "daily"), W / 2, ty - 7, { font: "mini", align: "center", color: rgba("#ff9a8a") });
     const th = this.heading(t("died"), ty, 2, C.red);
     let y = this.resultCard(ty + th + 4, [["brazier", t("reached"), String(res.floor), C.gold], ["skull", t("kills"), String(res.kills), C.text], ["time", t("time"), fmtTime(res.time), C.text], ["ember", t("earned"), `+${res.embers}`, C.gold]], res.score) + 10;
     const bw = 190, bh = 20, bx = Math.round(W / 2 - bw / 2);
@@ -1531,7 +1588,7 @@ export class Game {
     }
     y += bh + 6;
     if (button(ui, this.menu, now, bx, y, bw, bh, t("menu"), { icon: icon("hud", "back") })) {
-      this.daily = false;
+      this.daily = this.weekly = false;
       this.newWorld();
       this.attract();
       this.setState("title");
@@ -1539,7 +1596,7 @@ export class Game {
     // a new best gleams under it all; a task reward waiting says so
     let fy = H - 12;
     if (res.best) {
-      text(ui, res.daily ? `${t("newRecord")}: ${res.score}` : `${t("best")}! ${res.score}`, W / 2, fy, { font: "mini", align: "center", color: rgbaf(1, 0.85 + 0.15 * Math.sin(now * 6), 0.45, 1) });
+      text(ui, res.daily ? `${t(res.weekly ? "newWeekRecord" : "newRecord")}: ${res.score}` : `${t("best")}! ${res.score}`, W / 2, fy, { font: "mini", align: "center", color: rgbaf(1, 0.85 + 0.15 * Math.sin(now * 6), 0.45, 1) });
       fy -= 9;
     }
     if (this.tasksReady()) text(ui, t("tasksReady"), W / 2, fy, { font: "mini", align: "center", color: C.green });

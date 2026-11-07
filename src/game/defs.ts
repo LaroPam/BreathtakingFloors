@@ -382,6 +382,23 @@ export const TASKS: TaskDef[] = [
 /** Embers for finishing all three of the day's tasks. */
 export const TASK_BONUS = 50;
 
+// ------------------------------------------------------------------------------------------------ the weekly trial
+/** The rule of the week: one twist on every floor of the weekly trial. */
+export type MutatorId = "glass" | "dark" | "swarm" | "champions" | "haste" | "legacy";
+export interface Mutator {
+  id: MutatorId;
+  name: Text;
+  desc: Text;
+}
+export const MUTATORS: Mutator[] = [
+  { id: "glass", name: { ru: "СТЕКЛЯННАЯ ПУШКА", en: "GLASS CANNON" }, desc: { ru: "ВСЕГО ТРИ СЕРДЦА, НО УРОН НА 60% БОЛЬШЕ", en: "ONLY THREE HEARTS, BUT 60% MORE DAMAGE" } },
+  { id: "dark", name: { ru: "НЕДЕЛЯ МРАКА", en: "WEEK OF GLOOM" }, desc: { ru: "ФОНАРЬ СВЕТИТ НА ТРЕТЬ СЛАБЕЕ НА ВСЕХ ЭТАЖАХ", en: "THE LANTERN SHINES A THIRD LESS ON EVERY FLOOR" } },
+  { id: "swarm", name: { ru: "РОЙ", en: "THE SWARM" }, desc: { ru: "ВРАГОВ НА ПОЛОВИНУ БОЛЬШЕ, ОПЫТА НА ТРЕТЬ БОЛЬШЕ", en: "HALF AGAIN AS MANY FOES, A THIRD MORE SOULS" } },
+  { id: "champions", name: { ru: "ЧЕМПИОНЫ", en: "CHAMPIONS" }, desc: { ru: "С КАЖДОЙ ЖАРОВНЕЙ ПРИХОДИТ ЭЛИТА", en: "AN ELITE COMES WITH EVERY BRAZIER" } },
+  { id: "haste", name: { ru: "СПЕШКА", en: "HASTE" }, desc: { ru: "ВСЕ НА ЧЕТВЕРТЬ БЫСТРЕЕ: И ТЫ, И ВРАГИ", en: "EVERYONE A QUARTER FASTER: YOU AND THEM" } },
+  { id: "legacy", name: { ru: "ЩЕДРОЕ НАЧАЛО", en: "A RICH START" }, desc: { ru: "ТРИ РЕЛИКВИИ НА СТАРТЕ, НО ВРАГИ КРЕПЧЕ НА 30%", en: "THREE RELICS TO START, BUT FOES 30% TOUGHER" } },
+];
+
 // ------------------------------------------------------------------------------------------------ achievements
 /**
  * Achievements: earned once, for good, each paying embers. A counted one reads a lifetime counter (save.stats, or one

@@ -3,8 +3,8 @@
 
 import type { SaveData } from "../game/save";
 
-/** The two boards: the best runs ever, and today's daily trial. */
-export type BoardName = "score" | "daily";
+/** The boards: the best runs ever, today's daily trial, this week's weekly trial. */
+export type BoardName = "score" | "daily" | "weekly";
 export interface BoardEntry {
   rank: number;
   name: string;
@@ -18,6 +18,8 @@ export interface Board {
 }
 /** The day the daily trial belongs to (days since 1970, UTC): everyone plays the same floors that day. */
 export const dayNumber = (now = Date.now()): number => Math.floor(now / 86400000);
+/** The week the weekly trial belongs to (weeks from Monday, UTC). */
+export const weekNumber = (now = Date.now()): number => Math.floor((dayNumber(now) + 3) / 7);
 
 export interface Platform {
   readonly name: "local" | "yandex" | "youtube";
