@@ -73,7 +73,10 @@ export class Menu {
   item(x: number, y: number, w: number, h: number, now: number): { focused: boolean; hit: boolean; pressed: boolean; idx: number } {
     const idx = this.count++, inp = this.input, m = inp.mouse;
     const inside = (p: { x: number; y: number } | null) => !!p && p.x >= x && p.x < x + w && p.y >= y && p.y < y + h;
-    if (inp.mode === "kbm" && m.moved && inside(m)) this.focus = idx;
+    if (inp.mode === "kbm" && m.moved && inside(m) && this.focus !== idx) {
+      this.focus = idx;
+      this.audio.play("hover");
+    }
     const focused = this.focus === idx && inp.mode !== "touch";
     const live = this.ready(now);
     const hit = live && (inside(inp.click) || (this.focus === idx && inp.pressed("confirm")));
@@ -91,6 +94,7 @@ export class Menu {
     const alt = sideways && (horizontal ? i.pressed("down") : i.pressed("right")), altPrev = sideways && (horizontal ? i.pressed("up") : i.pressed("left"));
     if (next || alt) this.focus = (this.focus + 1) % n;
     if (prev || altPrev) this.focus = (this.focus - 1 + n) % n;
+    if (next || alt || prev || altPrev) this.audio.play("hover");
     if (i.pressed("one") && n >= 1) this.focus = 0;
     if (i.pressed("two") && n >= 2) this.focus = 1;
     if (i.pressed("three") && n >= 3) this.focus = 2;

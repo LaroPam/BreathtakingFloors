@@ -385,6 +385,8 @@ export class World {
   altar: CurseAltar | null = null;
   /** The floor's curse is on: enemies tougher and faster until the floor is done. */
   curse = false;
+  /** Hits the hero took on this floor (an achievement wants none). */
+  floorHits = 0;
   moveX = 0;
   moveY = 0;
   private spawnAcc = 0;
@@ -431,6 +433,7 @@ export class World {
     this.cine = null;
     this.quest = null;
     this.curse = false;
+    this.floorHits = 0;
     this.bossSpawned = false;
     this.bossUid = 0;
     this.cleared = false;
@@ -1179,6 +1182,7 @@ export class World {
     const h = this.hero;
     if (h.invuln > 0 || h.dead) return;
     h.hp -= 1;
+    this.floorHits++;
     if (this.quest?.state === "active" && (this.quest.kind === "untouched" || this.quest.kind === "graze")) this.endQuest(false);
     h.invuln = 1.1;
     h.hurtT = 0.3;

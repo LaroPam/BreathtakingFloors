@@ -8,7 +8,21 @@ type Sfx =
 
 const LIMITS: Partial<Record<Sfx, number>> = { break: 0.04, coin: 0.03, hover: 0.04, burn: 0.08, venom: 0.08, holy: 0.08, void: 0.08, hit: 0.035, kill: 0.03, pickup: 0.025, shoot: 0.03, enemyShot: 0.05, zap: 0.05, graze: 0.06, boom: 0.06, freeze: 0.05, reaction: 0.05 };
 
+/** The music's moods: the three biomes and a boss fight. Chords as MIDI notes, one per bar. */
+const THEMES: { bpm: number; prog: number[][]; arp: OscillatorType; bass: OscillatorType; bright: number }[] = [
+  // the crypt: A minor, a dark groove
+  { bpm: 100, prog: [[57, 60, 64], [53, 57, 60], [55, 59, 62], [52, 56, 59]], arp: "square", bass: "sawtooth", bright: 1 },
+  // the garden: D dorian, slower and warmer, soft arpeggios
+  { bpm: 92, prog: [[50, 53, 57], [55, 59, 62], [48, 52, 55], [50, 53, 57]], arp: "triangle", bass: "triangle", bright: 1.2 },
+  // the frozen halls: E phrygian, slow, ringing like bells
+  { bpm: 84, prog: [[52, 55, 59], [53, 57, 60], [50, 53, 57], [52, 55, 59]], arp: "sine", bass: "triangle", bright: 1.6 },
+  // a boss: C minor, fast and driving
+  { bpm: 118, prog: [[48, 51, 55], [44, 48, 51], [46, 50, 53], [43, 47, 50]], arp: "square", bass: "sawtooth", bright: 1.1 },
+];
+
 export class Audio {
+  /** Which mood the music plays in (THEMES): 0 crypt, 1 garden, 2 frozen halls, 3 a boss. */
+  theme = 0;
   private ctx: AudioContext | null = null;
   private master!: GainNode;
   private sfxBus!: GainNode;
@@ -257,17 +271,17 @@ export class Audio {
   private schedule(): void {
     const c = this.ctx;
     if (!c || c.state !== "running") return;
-    const spb = 60 / 100 / 2; // eighth notes at 100 bpm
-    // A minor: the bass walks a four-bar progression, the arpeggio picks from its chord
-    const prog = [[57, 60, 64], [53, 57, 60], [55, 59, 62], [52, 56, 59]];
+    const T = THEMES[this.theme] ?? THEMES[0], spb = 60 / T.bpm / 2; // eighth notes
+    // the bass walks the theme's four-bar progression, the arpeggio picks from its chord
+    const prog = T.prog;
     while (this.nextBeat < c.currentTime + 0.35) {
       const t = this.nextBeat, b = this.beat, bar = Math.floor(b / 8) % 4, chord = prog[bar], k = this.intensity;
       const midi = (m: number) => 440 * 2 ** ((m - 69) / 12);
-      if (b % 8 === 0) this.voice("sawtooth", midi(chord[0] - 24), t, spb * 8, 0.05, 400, 0.6);
+      if (b % 8 === 0) this.voice(T.bass, midi(chord[0] - 24), t, spb * 8, 0.05, 400, 0.6);
       if (b % 2 === 0) this.voice("triangle", midi(chord[0] - 12), t, spb * 0.9, 0.06 + 0.04 * k, 900, 0.005);
       if (k > 0.15 || b % 4 === 2) {
-        const n = chord[(b * 7 + bar) % 3] + (b % 4 === 3 ? 12 : 0);
-        this.voice("square", midi(n), t, spb * 0.6, 0.018 + 0.02 * k, 1400 + 1600 * k, 0.003);
+        const n = chord[(b * 7 + bar) % 3] + (b % 4 === 3 ? 12 : 0), bell = T.arp === "sine";
+        this.voice(T.arp, midi(n + (bell ? 12 : 0)), t, spb * (bell ? 1.8 : 0.6), (0.018 + 0.02 * k) * (bell ? 1.6 : 1), (1400 + 1600 * k) * T.bright, 0.003);
       }
       if (b % 4 === 0) this.kick(t, 0.18 + 0.12 * k);
       if (k > 0.35 && b % 2 === 1) this.hat(t, 0.03 + 0.03 * k);

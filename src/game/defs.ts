@@ -382,6 +382,45 @@ export const TASKS: TaskDef[] = [
 /** Embers for finishing all three of the day's tasks. */
 export const TASK_BONUS = 50;
 
+// ------------------------------------------------------------------------------------------------ achievements
+/**
+ * Achievements: earned once, for good, each paying embers. A counted one reads a lifetime counter (save.stats, or one
+ * worked out from the save: reactions known, heroes owned, forge levels, evolutions seen); the rest are earned by an
+ * event (game.ts calls unlock).
+ */
+export interface AchDef {
+  id: string;
+  name: Text;
+  desc: Text;
+  /** Its badge: [atlas animation, key]. */
+  icon: [string, string];
+  reward: number;
+  stat?: string;
+  goal?: number;
+}
+export const ACHIEVEMENTS: AchDef[] = [
+  { id: "floor1", icon: ["hud", "brazier"], reward: 10, stat: "floorsCleared", goal: 1, name: { ru: "ПЕРВЫЕ СТУПЕНИ", en: "FIRST STEPS" }, desc: { ru: "ПРОЙДИ ПЕРВЫЙ ЭТАЖ", en: "CLEAR A FLOOR" } },
+  { id: "eye", icon: ["hud", "boss"], reward: 30, name: { ru: "НЕМИГАЮЩИЙ", en: "UNBLINKING" }, desc: { ru: "ПОБЕДИ ВЕЛИКОЕ ОКО", en: "DEFEAT THE GREAT EYE" } },
+  { id: "toad", icon: ["hud", "boss"], reward: 40, name: { ru: "КОРОЛЬ ПАЛ", en: "THE KING IS DEAD" }, desc: { ru: "ПОБЕДИ ЖАБЬЕГО КОРОЛЯ", en: "DEFEAT THE TOAD KING" } },
+  { id: "victory", icon: ["hud", "crown"], reward: 100, name: { ru: "СВЕТ ВЕРНУЛСЯ", en: "THE LIGHT RETURNS" }, desc: { ru: "ОЧИСТИ БАШНЮ ДО САМОГО ДНА", en: "CLEANSE THE TOWER TO ITS BOTTOM" } },
+  { id: "kills1k", icon: ["hud", "skull"], reward: 25, stat: "kills", goal: 1000, name: { ru: "ТЫСЯЧА", en: "A THOUSAND" }, desc: { ru: "УБЕЙ 1000 ВРАГОВ ЗА ВСЕ ЗАБЕГИ", en: "SLAY 1000 FOES OVER ALL RUNS" } },
+  { id: "kills10k", icon: ["hud", "skull"], reward: 60, stat: "kills", goal: 10000, name: { ru: "ЖНЕЦ ТЬМЫ", en: "REAPER OF THE DARK" }, desc: { ru: "УБЕЙ 10 000 ВРАГОВ ЗА ВСЕ ЗАБЕГИ", en: "SLAY 10 000 FOES OVER ALL RUNS" } },
+  { id: "alchemist", icon: ["icons", "coil"], reward: 40, stat: "reactionsKnown", goal: 9, name: { ru: "АЛХИМИК", en: "ALCHEMIST" }, desc: { ru: "ОТКРОЙ ВСЕ 9 РЕАКЦИЙ", en: "DISCOVER ALL 9 REACTIONS" } },
+  { id: "evolve", icon: ["icons", "e_orbit"], reward: 20, stat: "evosKnown", goal: 1, name: { ru: "ПРЕОБРАЖЕНИЕ", en: "TRANSFIGURED" }, desc: { ru: "ПОЛУЧИ ЭВОЛЮЦИЮ", en: "EVOLVE A RELIC" } },
+  { id: "evolveAll", icon: ["icons", "e_void"], reward: 80, stat: "evosKnown", goal: 6, name: { ru: "ВСЕ ЛИКИ", en: "ALL FACES" }, desc: { ru: "ПОЛУЧИ КАЖДУЮ ИЗ 6 ЭВОЛЮЦИЙ", en: "EVOLVE EACH OF THE 6 RELICS" } },
+  { id: "spirits", icon: ["hud", "scroll"], reward: 30, stat: "spirits", goal: 10, name: { ru: "ДРУГ ДУХОВ", en: "FRIEND OF SPIRITS" }, desc: { ru: "ВЫПОЛНИ 10 ЗАДАНИЙ ДУХОВ", en: "COMPLETE 10 SPIRIT QUESTS" } },
+  { id: "untouched", icon: ["hud", "heart"], reward: 30, name: { ru: "НИ ЦАРАПИНЫ", en: "NOT A SCRATCH" }, desc: { ru: "ПРОЙДИ ЭТАЖ, НЕ ПОЛУЧИВ УДАРА", en: "CLEAR A FLOOR WITHOUT TAKING A HIT" } },
+  { id: "swift", icon: ["hud", "time"], reward: 30, name: { ru: "СКОРОХОД", en: "FLEET OF FOOT" }, desc: { ru: "ПРОЙДИ ЭТАЖ БЫСТРЕЕ 90 СЕКУНД", en: "CLEAR A FLOOR IN UNDER 90 SECONDS" } },
+  { id: "mimic", icon: ["hud", "ember"], reward: 15, stat: "mimic", goal: 1, name: { ru: "ЗУБАСТЫЙ СУНДУК", en: "A CHEST WITH TEETH" }, desc: { ru: "УБЕЙ МИМИКА", en: "SLAY A MIMIC" } },
+  { id: "curse", icon: ["hud", "curse"], reward: 25, stat: "curse", goal: 1, name: { ru: "ПРОКЛЯТЫЙ", en: "ACCURSED" }, desc: { ru: "ПРОЙДИ ЭТАЖ ПОД ПРОКЛЯТИЕМ", en: "CLEAR A FLOOR UNDER A CURSE" } },
+  { id: "urns", icon: ["hud", "urn"], reward: 20, stat: "urns", goal: 100, name: { ru: "ГОНЧАРНЫЙ ПОГРОМ", en: "POTTERY RAMPAGE" }, desc: { ru: "РАЗБЕЙ 100 УРН", en: "BREAK 100 URNS" } },
+  { id: "grazes", icon: ["hud", "stamina"], reward: 20, stat: "grazes", goal: 500, name: { ru: "ТАНЕЦ СРЕДИ ПУЛЬ", en: "DANCER AMONG BULLETS" }, desc: { ru: "ЗАДЕНЬ 500 ПУЛЬ", en: "GRAZE 500 BULLETS" } },
+  { id: "heroes", icon: ["hud", "lock"], reward: 50, stat: "heroesKnown", goal: 6, name: { ru: "ПОЛНЫЙ ОТРЯД", en: "THE FULL COMPANY" }, desc: { ru: "ОТКРОЙ ВСЕХ ГЕРОЕВ", en: "UNLOCK EVERY HERO" } },
+  { id: "forge", icon: ["hud", "anvil"], reward: 40, stat: "forgeLevels", goal: 8, name: { ru: "КУЗНЕЦ", en: "SMITH" }, desc: { ru: "КУПИ ВСЁ В КУЗНИЦЕ", en: "BUY EVERYTHING IN THE FORGE" } },
+  { id: "tasks", icon: ["hud", "daily"], reward: 25, name: { ru: "ПРИЛЕЖНЫЙ", en: "DILIGENT" }, desc: { ru: "ВЫПОЛНИ ВСЕ ТРИ ЗАДАНИЯ ДНЯ", en: "COMPLETE ALL THREE DAILY TASKS" } },
+  { id: "trial", icon: ["hud", "daily"], reward: 25, name: { ru: "ИСПЫТАННЫЙ", en: "TRIED AND TRUE" }, desc: { ru: "ДОЙДИ ДО 3 ЭТАЖА В ИСПЫТАНИИ ДНЯ", en: "REACH FLOOR 3 IN THE DAILY TRIAL" } },
+];
+
 // ------------------------------------------------------------------------------------------------ weapons
 export type WeaponId = "sword" | "hammer" | "spear" | "scythe" | "daggers" | "greatsword" | "claws" | "whip" | "bow" | "spell";
 /**

@@ -7,7 +7,7 @@ import { Batch, rgba, rgbaf, withAlpha, type Lighting, type Renderer } from "../
 import { anim, DUMMY, FONTS, frameAt, icon } from "../engine/atlas";
 import { fitScale, measure, text, wrap } from "../engine/text";
 import { dayNumber, type Board, type BoardName, type Platform } from "../platform/platform";
-import { bossOf, EL_COLOR, EL_NAME, ENEMIES, EVOLUTIONS, evolutionOf, FLOORS, FORGE, questDef, SPIRIT_PALETTE, TASK_BONUS, TASKS, type TaskId, HEROES, PALETTE_KEYS, WEAPONS, weaponName, MODIFIERS, NO_MODIFIER, REACTIONS, RELIC_MAX, RELIC_SLOTS, RELICS, STATS, type Modifier, type Reaction, type RelicKind, type StatId } from "./defs";
+import { ACHIEVEMENTS, bossOf, EL_COLOR, EL_NAME, ENEMIES, EVOLUTIONS, evolutionOf, FLOORS, FORGE, questDef, SPIRIT_PALETTE, TASK_BONUS, TASKS, type TaskId, HEROES, PALETTE_KEYS, WEAPONS, weaponName, MODIFIERS, NO_MODIFIER, REACTIONS, RELIC_MAX, RELIC_SLOTS, RELICS, STATS, type Modifier, type Reaction, type RelicKind, type StatId } from "./defs";
 import { drawWorld, Scene } from "./draw";
 import { getLang, langFor, setLang, t, tx, type Lang } from "./i18n";
 import { Rng } from "./rng";
@@ -58,6 +58,8 @@ export class Game {
   private codexPage = 0;
   private unlockedAt = -9;
   private claimedAt = -9;
+  /** Achievements earned and waiting to be shown. */
+  private toasts: { id: string; t: number }[] = [];
   private startSpins = 0;
   private stairs: Modifier[] = [];
   private revived = false;
@@ -68,7 +70,8 @@ export class Game {
   private daily = false;
   /** Leaderboards as last fetched ("loading" while a request is out). */
   private boards: Partial<Record<BoardName, Board | null | "loading">> = {};
-  private recordsTab: BoardName = "score";
+  private recordsTab: BoardName | "ach" = "score";
+  private achPage = 0;
   private gameplayOn = false;
   private touch = false;
   private savePending = false;
@@ -127,7 +130,11 @@ export class Game {
           this.showBanner(name, rgba("#9ad4ff"), goal);
         } else this.showBanner(q.state === "done" ? t("questDone") : t("questFailed"), q.state === "done" ? C.green : C.red);
       },
-      count: (id, n) => this.bump(id, n ?? 1),
+      count: (id, n) => {
+        this.bump(id, n ?? 1);
+        // the bosses each have their own
+        if (id === "boss") this.unlock(this.world.floor === 3 ? "eye" : this.world.floor === 6 ? "toad" : "");
+      },
       curse: (state) => {
         if (state === "taken") {
           this.audio.play("curse");
@@ -233,6 +240,7 @@ export class Game {
   }
 
   private onVictory(): void {
+    this.unlock("victory");
     setTimeout(() => this.finishRun(true), 2200);
   }
 
@@ -265,6 +273,9 @@ export class Game {
 
   private onFloorCleared(): void {
     const w = this.world;
+    this.stat("floorsCleared");
+    if (w.floorHits === 0) this.unlock("untouched");
+    if (w.time < 90) this.unlock("swift");
     this.save.bestFloor = Math.max(this.save.bestFloor, w.floor);
     this.persist();
     const pool = [...MODIFIERS];
@@ -287,6 +298,7 @@ export class Game {
     if (!this.save.reactions.includes(r.id)) {
       this.save.reactions.push(r.id);
       this.persist();
+      this.checkAch();
       this.showBanner(`${t("discovered")}: ${tx(r.name)}`, rgba(r.color));
     }
   }
@@ -341,6 +353,8 @@ export class Game {
   }
   /** Something a task counts happened: add to it (or raise it, for "how far"), announce it when it is done. */
   private bump(id: TaskId, n = 1, max = false): void {
+    // the lifetime counter first (achievements read it)
+    if (!max) this.stat(id, n);
     for (const it of this.tasks().items) {
       if (it.id !== id || it.have >= it.goal) continue;
       it.have = Math.min(it.goal, max ? Math.max(it.have, n) : it.have + n);
@@ -351,6 +365,58 @@ export class Game {
       }
     }
   }
+  // =========================================================================================== achievements
+  /** Add to a lifetime counter, then see whether an achievement came of it. */
+  private stat(key: string, n = 1): void {
+    this.save.stats[key] = (this.save.stats[key] ?? 0) + n;
+    this.checkAch();
+  }
+  /** A counter as achievements read it: kept in the save, or worked out from it. */
+  private statValue(key: string): number {
+    const sv = this.save;
+    if (key === "reactionsKnown") return sv.reactions.length;
+    if (key === "heroesKnown") return sv.unlocked.length;
+    if (key === "forgeLevels") return Object.values(sv.forge).reduce((a, b) => a + b, 0);
+    if (key === "evosKnown") return Object.keys(sv.stats).filter((k) => k.startsWith("evo_")).length;
+    return sv.stats[key] ?? 0;
+  }
+  private checkAch(): void {
+    for (const a of ACHIEVEMENTS) if (a.stat && !this.save.ach.includes(a.id) && this.statValue(a.stat) >= a.goal!) this.unlock(a.id);
+  }
+  /** An achievement is earned: its embers, a fanfare, a plate sliding in at the top right. */
+  private unlock(id: string): void {
+    const a = ACHIEVEMENTS.find((q) => q.id === id);
+    if (!a || this.save.ach.includes(id)) return;
+    this.save.ach.push(id);
+    this.save.embers += a.reward;
+    this.toasts.push({ id, t: 0 });
+    this.audio.play("achieve");
+    this.persist();
+  }
+  /** The plate of the newest achievement: slides in, holds, slides away; the next waits its turn. */
+  private drawToast(dt: number): void {
+    const tst = this.toasts[0];
+    if (!tst) return;
+    tst.t += dt;
+    if (tst.t > 3.4) {
+      this.toasts.shift();
+      return;
+    }
+    const a = ACHIEVEMENTS.find((q) => q.id === tst.id)!, ui = this.ui, W = this.r.w;
+    const k = Math.min(1, tst.t / 0.25, (3.4 - tst.t) / 0.25), e = 1 - (1 - Math.max(0, k)) ** 3;
+    const name = tx(a.name), w = Math.max(150, measure(name) + 44), x = Math.round(W - 4 - w * e), y = this.state === "play" ? 38 : 6;
+    frame(ui, x, y, w, 28, { edge: C.gold });
+    slot(ui, x + 4, y + 4, 20, C.goldDim);
+    ui.image(icon(a.icon[0], a.icon[1]), x + 14, y + 14, a.icon[0] === "icons" ? 0.8 : 1, a.icon[0] === "icons" ? 0.8 : 1);
+    text(ui, t("achievement"), x + 29, y + 5, { font: "mini", color: C.goldDim });
+    text(ui, name, x + 29, y + 14, { color: C.goldLight, shadow: C.ink });
+    text(ui, `+${a.reward}`, x + w - 14, y + 5, { font: "mini", align: "right", color: C.gold });
+    ui.image(icon("hud", "ember"), x + w - 8, y + 8);
+    // a glint running across it as it arrives
+    const gx = x + ((tst.t * 260) % (w + 40)) - 20;
+    if (tst.t < 1.2) ui.rect(Math.max(x + 2, gx), y + 2, 3, 24, rgba("#fff6c4", 0.25));
+  }
+
   /** Is there a task reward to collect? */
   private tasksReady(): boolean {
     const T = this.tasks();
@@ -360,6 +426,7 @@ export class Game {
   private reached(floor: number): void {
     this.bump("floor", floor, true);
     if (this.daily) this.bump("trial", floor, true);
+    if (this.daily && floor >= 3) this.unlock("trial");
   }
 
   // =========================================================================================== the roulette
@@ -436,7 +503,7 @@ export class Game {
   private take(c: Choice, kind: Spin["kind"]): void {
     const w = this.world;
     if (c.type === "relic") w.addRelic(c.kind);
-    else if (c.type === "evo") (w.evolve(c.kind), this.bump("evolve"));
+    else if (c.type === "evo") (w.evolve(c.kind), (this.save.stats[`evo_${c.kind}`] = 1), this.bump("evolve"));
     else w.addStat(c.id);
     if (kind === "chest") this.bump("chests");
     if (kind === "level") w.pendingLevels = Math.max(0, w.pendingLevels - 1);
@@ -456,8 +523,10 @@ export class Game {
   }
 
   // =========================================================================================== the frame
+  private dt = 0;
   frame(dt: number): void {
     this.now += dt;
+    this.dt = dt;
     const input = this.input;
     input.setScale(this.r.scale);
     input.poll();
@@ -491,6 +560,8 @@ export class Game {
       }
     }
     if (this.state === "play" && !this.platformPaused && w.hero.arriveT > 0.9 && !this.wipe) this.nextSpin();
+    // the music follows the biome, and turns to the boss's theme while one is here
+    this.audio.theme = w.cine || w.bossIndex() >= 0 ? 3 : w.biome.id === "garden" ? 1 : w.biome.id === "frost" ? 2 : 0;
     if (this.state === "spin") this.updateSpin(dt);
     if (this.state === "play" && !this.platformPaused && !this.wipe) {
       if (input.pressed("pause")) this.setState("pause");
@@ -610,6 +681,7 @@ export class Game {
     // the system pointer hides while the reticle aims
     const cursor = this.state === "play" && this.input.mode === "kbm" && !this.touch ? "none" : "default";
     if (this.r.canvas.style.cursor !== cursor) this.r.canvas.style.cursor = cursor;
+    this.drawToast(this.dt);
     this.drawWipe();
     this.r.render(s, ui, cx, cy, light, [0.025, 0.02, 0.045]);
   }
@@ -761,6 +833,7 @@ export class Game {
         this.save.unlocked.push(hero.id);
         this.unlockedAt = now;
         this.persist();
+        this.checkAch();
         this.audio.play("levelup");
         this.audio.play("chest");
       }
@@ -943,6 +1016,41 @@ export class Game {
     if (button(ui, this.menu, now, Math.round(W / 2 - 50), H - 26, 100, 18, t("back"), { icon: icon("hud", "back") }) || this.input.pressed("back")) this.setState(this.settingsFrom, this.settingsFrom === "title" ? 5 : 2);
   }
 
+  /** Achievements: a card each, earned ones gilded, the rest dim with how far along; paged to fit the screen. */
+  private drawAchievements(px: number, y: number, pw: number): void {
+    const ui = this.ui, W = this.r.w, H = this.r.h, now = this.now, sv = this.save;
+    const cols = pw >= 330 ? 2 : 1, cw = Math.floor((pw - (cols - 1) * 6) / cols), ch = 34;
+    const rows = Math.max(1, Math.floor((H - y - 58) / (ch + 4))), per = rows * cols, pages = Math.ceil(ACHIEVEMENTS.length / per);
+    this.achPage = Math.min(this.achPage, pages - 1);
+    const got = sv.ach.length;
+    text(ui, `${got}/${ACHIEVEMENTS.length}`, px + pw, y - 32, { font: "mini", align: "right", color: C.goldDim });
+    ACHIEVEMENTS.slice(this.achPage * per, (this.achPage + 1) * per).forEach((a, k) => {
+      const x = px + (k % cols) * (cw + 6), cy = y + Math.floor(k / cols) * (ch + 4), won = sv.ach.includes(a.id);
+      frame(ui, x, cy, cw, ch, { edge: won ? C.goldDim : undefined, corners: won });
+      slot(ui, x + 5, cy + 5, 24, won ? C.gold : undefined);
+      const small = a.icon[0] === "icons";
+      ui.image(icon(a.icon[0], a.icon[1]), x + 17, cy + 17, small ? 0.9 : 1, small ? 0.9 : 1, 0, won ? 0xffffffff : rgbaf(0.25, 0.23, 0.3, 1));
+      text(ui, tx(a.name), x + 34, cy + 5, { color: won ? C.gold : C.text, shadow: C.ink });
+      text(ui, `+${a.reward}`, x + cw - 14, cy + 5, { font: "mini", align: "right", color: won ? C.goldDim : C.dim });
+      ui.image(icon("hud", "ember"), x + cw - 8, cy + 8, 1, 1, 0, won ? 0xffffffff : rgbaf(0.5, 0.5, 0.55, 1));
+      const desc = wrap(tx(a.desc), cw - 40, "mini");
+      text(ui, desc[0], x + 34, cy + 15, { font: "mini", color: C.dim });
+      if (a.stat && a.goal! > 1 && !won) {
+        const v = Math.min(a.goal!, this.statValue(a.stat)), bw = cw - 70;
+        ui.rect(x + 34, cy + 26, bw, 2, C.ink);
+        ui.rect(x + 34, cy + 26, Math.round((bw * v) / a.goal!), 2, C.sky);
+        text(ui, `${v}/${a.goal}`, x + cw - 6, cy + 24, { font: "mini", align: "right", color: C.dim });
+      } else if (desc[1]) text(ui, desc[1], x + 34, cy + 23, { font: "mini", color: C.dim });
+    });
+    // the pages
+    if (pages > 1) {
+      const by = H - 50;
+      if (button(ui, this.menu, now, W / 2 - 60, by, 20, 16, "<")) this.achPage = (this.achPage - 1 + pages) % pages;
+      text(ui, `${this.achPage + 1}/${pages}`, W / 2, by + 5, { align: "center", color: C.dim });
+      if (button(ui, this.menu, now, W / 2 + 40, by, 20, 16, ">")) this.achPage = (this.achPage + 1) % pages;
+    }
+  }
+
   /** Today's tasks: each with its progress and reward, a claim button when done, the bonus for all three. */
   private drawTasks(): void {
     const ui = this.ui, W = this.r.w, H = this.r.h, now = this.now, T = this.tasks();
@@ -984,6 +1092,7 @@ export class Game {
     const all = T.items.filter((it) => it.claimed).length;
     row(t("allThree"), all, 3, TASK_BONUS, T.bonus, () => {
       T.bonus = true;
+      this.unlock("tasks");
       this.save.embers += TASK_BONUS;
       this.claimedAt = now;
       this.audio.play("levelup");
@@ -1000,14 +1109,22 @@ export class Game {
   private drawRecords(): void {
     const ui = this.ui, W = this.r.w, H = this.r.h, now = this.now, tab = this.recordsTab;
     const th = this.heading(t("records"), 8, H >= 320 ? 2 : 1);
-    const pw = Math.min(340, W - 16), px = Math.round(W / 2 - pw / 2), tw = Math.floor((pw - 6) / 2);
+    const pw = Math.min(360, W - 16), px = Math.round(W / 2 - pw / 2), tw = Math.floor((pw - 12) / 3);
     let y = 8 + th + 6;
-    for (const [k, name] of (["score", "daily"] as BoardName[]).entries()) {
-      const on = tab === name;
-      if (button(ui, this.menu, now, px + k * (tw + 6), y, tw, 16, name === "score" ? t("bestRuns") : t("daily"), { color: on ? C.gold : C.dim })) this.recordsTab = name;
+    for (const [k, name] of (["score", "daily", "ach"] as const).entries()) {
+      const on = tab === name, label = name === "score" ? t("bestRuns") : name === "daily" ? t("daily") : t("achievements");
+      if (button(ui, this.menu, now, px + k * (tw + 6), y, tw, 16, label, { color: on ? C.gold : C.dim, font: tw < 100 ? "mini" : "big" })) (this.recordsTab = name, this.achPage = 0);
       if (on) ui.rect(px + k * (tw + 6) + 4, y + 15, tw - 8, 1, C.gold);
     }
     y += 22;
+    if (tab === "ach") {
+      this.drawAchievements(px, y, pw);
+      if (button(ui, this.menu, now, Math.round(W / 2 - 50), H - 24, 100, 18, t("back"), { icon: icon("hud", "back") }) || this.input.pressed("back")) {
+        this.boards = {};
+        this.setState("title", 4);
+      }
+      return;
+    }
     // ask once each time the screen opens (the boards allow a few requests a minute)
     if (this.boards[tab] === undefined) {
       this.boards[tab] = "loading";
@@ -1093,6 +1210,7 @@ export class Game {
         f[item.id] = lv + 1;
         this.audio.play("chest");
         this.persist();
+        this.checkAch();
       }
       y += rowH;
     }
