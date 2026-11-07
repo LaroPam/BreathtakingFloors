@@ -21,7 +21,8 @@
     "fx:check": "node pixelfx/tools/check.mjs",
     "art": "node tools/art.mjs",
     "check:clip": "node tools/check/clip.mjs --strict",
-    "check:release": "node tools/check/release.mjs"
+    "check:release": "node tools/check/release.mjs",
+    "check:sdk": "node tools/check/sdk.mjs"
   },
   "devDependencies": {
     "typescript": "6.0.3",

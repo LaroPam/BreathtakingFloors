@@ -5,9 +5,10 @@ import type { SaveData } from "../game/save";
 import { BasePlatform, dayNumber, weekNumber, type Board, type BoardName } from "./platform";
 
 /**
- * Yandex keeps one best score per player and never resets a board, so the daily board stores
- * day * DAY + score: today's results always rank above older days' and among themselves by score, and a player's
- * best rolls over to the new day by itself. Both boards must exist in the console under these technical names.
+ * Yandex keeps one best score per player and never resets a board, so a trial's board stores period * DAY + score
+ * (the day for "daily", the week for "weekly"): the current period's results rank above older ones and among
+ * themselves by score, and a player's best rolls over to the new period by itself. All three boards (score, daily,
+ * weekly) must exist in the console under these technical names.
  */
 const DAY = 1_000_000;
 

@@ -805,7 +805,8 @@ export class Game {
     y += bh + gap;
     if (button(ui, this.menu, now, bx, y, bw, bh, t("records"), { icon: icon("hud", "crown") })) {
       this.recordsTab = "score";
-      this.setState("records");
+      // the keys start on the tab last open
+      this.setState("records", (["score", "daily", "weekly", "ach"] as const).indexOf(this.recordsTab));
     }
     y += bh + gap;
     if (button(ui, this.menu, now, bx, y, bw, bh, t("settings"), { icon: icon("hud", "gear") })) {
@@ -1258,8 +1259,11 @@ export class Game {
           if (!ok) return;
           // the signed-in player gets this save, and the boards are asked again
           this.persist();
-          const best = this.save.bestScore;
+          const best = this.save.bestScore, day = this.trialRecord(false), week = this.trialRecord(true);
           if (best) this.platform.submitScore(best, "score");
+          // this period's trials too, a second apart (the boards take one write a second)
+          if (day?.best) setTimeout(() => this.platform.submitScore(day.best, "daily"), 1100);
+          if (week?.best) setTimeout(() => this.platform.submitScore(week.best, "weekly"), 2200);
           this.boards = {};
         });
     }

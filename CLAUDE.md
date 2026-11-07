@@ -10,6 +10,8 @@ The user writes in Russian; docs and in-game text are Russian-first (English is 
 - `npm run typecheck`, `npm run build`, `npm run build:yandex`, `npm run build:youtube` (the last two write zips).
 - `npm run bake -- --preview`: rebuild `src/generated/` (gitignored) and write atlas pages to `records/`.
 - `npm run art -- <category>/<name>`: contact sheet of a game effect from `art/fx`.
+- `npm run check:clip` (nothing cut off its bake canvas), `npm run check:release` and `npm run check:sdk` (the built
+  Yandex and YouTube bundles against the stores' rules; the last plays them with stand-in SDKs). See `docs/RELEASE.md`.
 - `node pixelfx/tools/render.mjs <id>`: the same for a library effect.
 
 ## Where things are

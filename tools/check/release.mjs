@@ -55,9 +55,9 @@ function audit(name, dir, rules) {
   const badNames = rel.filter((r) => r.split("/").some((seg) => !/^[A-Za-z0-9_.-]+$/.test(seg)));
   check(!badNames.length, `file names are plain ASCII (letters, digits, _ - .)${badNames.length ? ": " + badNames.join(", ") : ""}`);
   check(list.length <= rules.maxFiles, `${list.length} files (at most ${rules.maxFiles})`);
-  check(total <= rules.maxTotal, `${(total / MiB).toFixed(2)} MiB in all (at most ${rules.maxTotal / MiB} MiB)`);
+  check(total <= rules.maxTotal, `${(total / MiB).toFixed(2)} MiB in all (at most ${+(rules.maxTotal / MiB).toFixed(1)} MiB)`);
   const biggest = Math.max(...sizes), bigName = rel[sizes.indexOf(biggest)];
-  check(biggest <= rules.maxFile, `largest file ${bigName}: ${(biggest / 1024).toFixed(0)} KiB (at most ${rules.maxFile / MiB} MiB)`);
+  check(biggest <= rules.maxFile, `largest file ${bigName}: ${(biggest / 1024).toFixed(0)} KiB (at most ${+(rules.maxFile / MiB).toFixed(1)} MiB)`);
   if (rules.softFile) {
     const over = rel.filter((_, i) => sizes[i] > rules.softFile);
     check(!over.length, `files over ${rules.softFile / 1024} KiB: ${over.length ? over.length + " (" + over.slice(0, 4).join(", ") + (over.length > 4 ? ", ..." : "") + ")" : "none"}`, true);
