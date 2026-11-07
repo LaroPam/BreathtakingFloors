@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 import { createFrame, clearFrame, createFx } from "../../pixelfx/src/core/index.js";
 import { heroImage } from "../../src/hero/rig.js";
 import { LOOKS } from "../../src/hero/looks.js";
-import { heroPoses } from "../bake/weapons.mjs";
+import { heroPoses, runGrid } from "../bake/weapons.mjs";
 import { loadEffect, isScreen } from "../../pixelfx/tools/lib/fxlib.mjs";
 import { ANIMS } from "../bake/manifest.mjs";
 import { FX_PAD } from "../bake/canvas.mjs";
@@ -48,7 +48,7 @@ for (const e of ANIMS) {
 const P = heroPoses(), sets = [];
 for (const [id, w] of Object.entries(P.weapons)) {
   for (const k of ["idle", "run", "dash", "hurt"]) sets.push([`${id}_${k}`, w[k]]);
-  w.attacks.forEach((a, k) => sets.push([`${id}_a${k}`, a.stand], [`${id}_a${k}_run`, a.run]));
+  w.attacks.forEach((a, k) => sets.push([`${id}_a${k}`, a.stand], [`${id}_a${k}_run`, runGrid(a.stand, P.legs)]));
 }
 sets.push(["death", P.death]);
 for (const look of ["knight", "ranger", "mage", "reaper", "berserker", "shadow"])

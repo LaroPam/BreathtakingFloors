@@ -14,10 +14,11 @@ interface PoseSet {
   run: Pose[];
   dash: Pose[];
   hurt: Pose[];
-  attacks: { hits: number[]; stand: Pose[]; run: Pose[] }[];
+  attacks: { hits: number[]; stand: Pose[]; run?: Pose[] }[];
 }
 type FpsKey = "idle" | "run" | "dash" | "hurt" | "attack" | "death";
-const POSES = POSES_JSON as unknown as { fps: Record<FpsKey, number>; weapons: Record<string, PoseSet>; death: Pose[] };
+type Legs = { ffx: number; ffy: number; fbx: number; fby: number; crouch: number; wind: number; sway: number };
+const POSES = POSES_JSON as unknown as { fps: Record<FpsKey, number>; weapons: Record<string, PoseSet>; legs: Legs[]; death: Pose[] };
 export const HERO_FPS = POSES.fps;
 
 /**
@@ -29,7 +30,15 @@ function posesOf(weapon: string, name: string): Pose[] {
   const w = POSES.weapons[weapon] ?? POSES.weapons.sword;
   if (name[0] === "a") {
     const at = w.attacks[parseInt(name.slice(1), 10)] ?? w.attacks[0];
-    return name.endsWith("_run") ? at.run : at.stand;
+    if (!name.endsWith("_run")) return at.stand;
+    // a blow while running: the blow standing, on each of the run's 8 phases of legs (as tools/bake/weapons.mjs runGrid)
+    if (!at.run) {
+      at.run = [];
+      for (const p of at.stand)
+        for (const L of POSES.legs)
+          at.run.push({ ...p, ffx: L.ffx, ffy: L.ffy, fbx: L.fbx, fby: L.fby, crouch: Math.max((p.crouch as number) ?? 0, L.crouch), x: 0, wind: Math.max((p.wind as number) ?? 0, L.wind), sway: L.sway });
+    }
+    return at.run;
   }
   return w[name as "idle"];
 }

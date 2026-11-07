@@ -197,7 +197,8 @@ export function weaponModelFrames(rigWeapon, n = 12) {
 
 /**
  * Every pose the heroes take, for the game to draw them itself (src/game/heroSprites.ts): per weapon its idle, run,
- * dash and hurt, and each blow standing and over the run's 8 phases (frame-major); the fall; the frame rates.
+ * dash and hurt and each blow standing; the run's 8 phases of legs (a blow while running is the blow standing on
+ * those legs: runGrid, which the game repeats); the fall; the frame rates.
  */
 export function heroPoses() {
   const round = (p) => Object.fromEntries(Object.entries(p).map(([k, v]) => [k, typeof v === "number" ? +v.toFixed(2) : v]));
@@ -206,7 +207,15 @@ export function heroPoses() {
   for (const [id, w] of Object.entries(WEAPONS))
     weapons[id] = {
       idle: byName.get(`${id}_idle`), run: byName.get(`${id}_run`), dash: byName.get(`${id}_dash`), hurt: byName.get(`${id}_hurt`),
-      attacks: w.attacks.map((a, k) => ({ hits: a.hits, stand: byName.get(`${id}_a${k}`), run: byName.get(`${id}_a${k}_run`) })),
+      attacks: w.attacks.map((a, k) => ({ hits: a.hits, stand: byName.get(`${id}_a${k}`) })),
     };
-  return { fps: { idle: 5, run: 14, dash: 12, hurt: 1, attack: 20, death: 8 }, weapons, death: DEATH.map(round) };
+  const legs = [0, 1, 2, 3, 4, 5, 6, 7].map((q) => { const L = runLegs(q); return round({ ffx: L.ffx, ffy: L.ffy, fbx: L.fbx, fby: L.fby, crouch: L.crouch, wind: L.wind, sway: L.sway }); });
+  return { fps: { idle: 5, run: 14, dash: 12, hurt: 1, attack: 20, death: 8 }, weapons, legs, death: DEATH.map(round) };
+}
+
+/** A blow while running: each frame of it on each of the run's 8 phases of legs, frame-major (frame * 8 + phase). */
+export function runGrid(stand, legs) {
+  const out = [];
+  for (const p of stand) for (const L of legs) out.push({ ...p, ffx: L.ffx, ffy: L.ffy, fbx: L.fbx, fby: L.fby, crouch: Math.max(p.crouch ?? 0, L.crouch), x: 0, wind: Math.max(p.wind ?? 0, L.wind), sway: L.sway });
+  return out;
 }

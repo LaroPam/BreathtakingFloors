@@ -122,7 +122,8 @@ const KNIGHT = {
 // ================================================================================================= the ranger
 const RANGER = {
   id: "ranger",
-  build: { chest: [3.3, 4.1, 5.3], upper: [1.95, 1.5], thigh: [3.0, 2.1] },
+  // (under a hood the face sits forward, towards us, so it shows in the opening)
+  build: { chest: [3.3, 4.1, 5.3], upper: [1.95, 1.5], thigh: [3.0, 2.1], face: [2.3, 2.6, 2.2], faceOff: [1.45, -0.45, 0.55] },
   mats: {
     green: { ramp: ["#7cc050", "#4f8a36", "#30602a", "#1a3a1a"], soft: true },
     greenIn: { ramp: ["#3a6a2a", "#2a5020", "#1c3a16", "#10240e"], soft: true },
@@ -222,7 +223,7 @@ const MAGE = {
 // ================================================================================================= the reaper
 const REAPER = {
   id: "reaper",
-  build: { chest: [3.1, 4.2, 4.9], waist: [2.5, 2.8], shoulder: 2.1, upper: [1.5, 1.15], elbow: 1.2, fore: [1.2, 0.95], hand: 1.6, thigh: [2.4, 1.6], knee: 1.5, shin: [1.6, 1.05], foot: [1.4, 1.0], head: [2.8, 3.2, 2.7], face: [2.3, 2.7, 2.2] },
+  build: { chest: [3.1, 4.2, 4.9], waist: [2.5, 2.8], shoulder: 2.1, upper: [1.5, 1.15], elbow: 1.2, fore: [1.2, 0.95], hand: 1.6, thigh: [2.4, 1.6], knee: 1.5, shin: [1.6, 1.05], foot: [1.4, 1.0], head: [2.8, 3.2, 2.7], face: [2.2, 2.6, 2.1], faceOff: [1.45, -0.4, 0.55] },
   mats: {
     cloth: { ramp: ["#56526a", "#3a364a", "#262232", "#16141e"], soft: true },
     clothIn: { ramp: ["#1e1b26", "#16141c", "#100e16", "#0a080e"], soft: true },
@@ -319,7 +320,7 @@ const BERSERKER = {
 const SHADOW = {
   id: "shadow",
   measure: { shoulderOut: 5.5 },
-  build: { chest: [3.1, 3.9, 5.0], waist: [2.7, 3.0], upper: [1.8, 1.35], fore: [1.4, 1.1], hand: 1.7, thigh: [2.8, 1.95], shin: [1.95, 1.2], foot: [1.6, 1.15], head: [2.9, 3.2, 2.7], face: [2.35, 2.65, 2.3] },
+  build: { chest: [3.1, 3.9, 5.0], waist: [2.7, 3.0], upper: [1.8, 1.35], fore: [1.4, 1.1], hand: 1.7, thigh: [2.8, 1.95], shin: [1.95, 1.2], foot: [1.6, 1.15], head: [2.9, 3.2, 2.7], face: [2.2, 2.55, 2.15], faceOff: [1.45, -0.4, 0.55] },
   mats: {
     dusk: { ramp: ["#8c88b4", "#625e8c", "#433f68", "#2a2746"], soft: true },
     duskIn: { ramp: ["#3a3656", "#2c2944", "#201e34", "#141224"], soft: true },
