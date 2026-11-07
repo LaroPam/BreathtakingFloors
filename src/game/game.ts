@@ -46,14 +46,13 @@ function portrait(b: Batch, r: Rect, x: number, y: number, w: number, h: number,
   b.push(x - wx, y - wy, x0, y0, x1 - x0, y1 - y0, r[1] + (x0 - r[5]), r[2] + (y0 - r[6]), 1, 1, 0, r[0], color, 0, y);
 }
 
-/** The largest whole scale (up to max) at which every frame of an animation fits: h above its anchor, w across it (centred). */
-function fitAnim(a: Anim, w: number, h: number, max = 2): number {
-  let top = 0, half = 0;
-  for (const [r] of a.frames) if (r) (top = Math.max(top, -r[6]), (half = Math.max(half, -r[5], r[5] + r[3])));
-  if (!top) return 1;
-  for (let s = max; s > 1; s--) if (top * s <= h && half * 2 * s <= w) return s;
-  return 1;
+/** The box every frame of an animation fits in, from its anchor (px, at scale 1): left, right, and how high. */
+function animBox(a: Anim): { x0: number; x1: number; top: number } {
+  let x0 = 0, x1 = 0, top = 0;
+  for (const [r] of a.frames) if (r) (x0 = Math.min(x0, r[5]), (x1 = Math.max(x1, r[5] + r[3])), (top = Math.max(top, -r[6])));
+  return { x0, x1, top };
 }
+
 
 const STEP = 1 / 60;
 /** Height of the title font's capitals. */
@@ -243,8 +242,8 @@ export class Game {
    * A heading in the blackletter title font, centred, at the largest scale (up to max) that fits the screen.
    * Returns its height, so what follows can sit under it.
    */
-  private heading(str: string, y: number, max: number, color = C.gold, a = 1, sub?: string): number {
-    return header(this.ui, this.r.w, y, str, { max, a, sub, red: color === C.red, color: color === C.gold || color === C.red ? undefined : color });
+  private heading(str: string, y: number, max: number, color = C.gold, a = 1, sub?: string, room?: number): number {
+    return header(this.ui, this.r.w, y, str, { max, a, sub, room, red: color === C.red, color: color === C.gold || color === C.red ? undefined : color });
   }
 
   // =========================================================================================== runs
@@ -858,86 +857,111 @@ export class Game {
     };
     if (input.pressed("left")) pick(-1);
     if (input.pressed("right")) pick(1);
-    const hero = HEROES[this.heroIdx], weapon = WEAPONS[hero.weapon], wide = W >= 460, locked = !this.save.unlocked.includes(hero.id);
-    this.heading(t("chooseHero"), 10, H >= 320 ? 2 : 1);
-    // what you have to spend, top right
+    const hero = HEROES[this.heroIdx], weapon = WEAPONS[hero.weapon], locked = !this.save.unlocked.includes(hero.id), victor = this.wearsVictor(hero.id);
+    const [lr, lg, lb] = hero.lightColor;
+    // Every piece has its own room and nothing is drawn over another: the heading (narrowed to clear the purse), the
+    // strip of portraits and the buttons at the bottom, and between them the stage where the hero stands and the pane
+    // that says who they are, side by side on a landscape screen, stacked (the pane above the strip) on a tall one.
+    const wide = W >= 380 && W >= H * 1.15, purseW = measure(String(this.save.embers)) + 20;
+    const top = 8 + this.heading(t("chooseHero"), 8, H >= 320 ? 2 : 1, C.gold, 1, undefined, W - 2 * (purseW + 14)) + 4;
     this.purse(W - 6, 6);
-    // the hero, big, on a pool of their light
-    const cx = wide ? Math.round(W * 0.3) : Math.round(W / 2), cy = wide ? Math.round(H * 0.62) : Math.round(H * 0.44), [lr, lg, lb] = hero.lightColor;
-    glowUi(ui, cx, cy, 56, 17, rgbaf(lr, lg, lb, 1), 0.55);
-    const f = this.heroFrame(hero.id, this.wearsVictor(hero.id));
+    const by = H - 22, stripY = by - 10 - 28;
+    // the pane: its width, then its height from what it has to say (the name smaller if it would not fit)
+    const pw = wide ? Math.min(300, Math.round(W * 0.5) - 20) : Math.min(340, W - 24);
+    const abLines = wrap(tx(hero.ability.desc), pw - 4, "mini").length, perkLines = wrap(tx(hero.perk), pw - 4, "mini").length;
+    const wdLines = wrap(tx(weapon.desc), pw - 24, "mini"), wdH = 24 + (wdLines.length - 1) * 8;
+    const heightFor = (sc: number) => FONT_H * sc + 4 + 11 + wdH + 11 + abLines * 8 + 4 + perkLines * 8 + 4 + 14 + 2 * 9 + 2;
+    let ns = fitScale(tx(hero.name), "title", pw, 2);
+    if (wide && heightFor(ns) > stripY - 10 - top) ns = 1;
+    const infoH = heightFor(ns), px = wide ? W - 12 - pw : Math.round(W / 2 - pw / 2), paneY = wide ? top + 6 : stripY - 10 - infoH;
+    // the stage: everything left of the pane (or above it), down to the strip
+    const sx0 = 8, sy0 = top, sw = wide ? px - 16 - sx0 : W - 16, sh = (wide ? stripY : paneY - 6) - 8 - sy0;
+    const skinH = 14, arrowW = 20, feetY = sy0 + sh - skinH - 6, cx = sx0 + Math.round(sw / 2);
+    // the hero as big as fits between the arrows and under the heading (no blade or scythe pokes out of the stage),
+    // the box they fill (weapon and all) centred between the arrows
+    const a = this.heroAnim(hero.id, victor), box = animBox(a), room = sw - 2 * (arrowW + 8);
+    let big = 1;
+    for (let k = 3; k > 1; k--) if ((box.x1 - box.x0) * k <= room && box.top * k <= feetY - sy0 - 4) (big = k), (k = 0);
+    const rise = box.top * big, hx = cx - Math.round(((box.x0 + box.x1) / 2) * big);
+    glowUi(ui, hx, feetY, 19 * big, 6 * big, rgbaf(lr, lg, lb, 1), 0.55);
     // a hero not yet bought stands as a shadow with a lock on it; one just bought steps out of a burst of light
-    const since = now - this.unlockedAt, burst = since < 1.2 ? 1 - since / 1.2 : 0;
-    // as big as fits between the heading and the floor, and short of the info pane: a raised scythe stays in its room
-    const room = wide ? 2 * Math.min(cx - 8, Math.round(W * 0.52) - 14 - cx) : W - 16, big = fitAnim(this.heroAnim(hero.id, this.wearsVictor(hero.id)), room, cy - 30, 3);
-    ui.image(f, cx, cy, big, big, 0, locked ? rgbaf(0.11, 0.1, 0.16, 1) : 0xffffffff);
-    if (locked) ui.image(icon("hud", "lock"), cx, cy - 46, 2, 2);
+    const since = now - this.unlockedAt, burst = since < 1.2 ? 1 - since / 1.2 : 0, mid = feetY - 13 * big;
+    ui.image(this.heroFrame(hero.id, victor), hx, feetY, big, big, 0, locked ? rgbaf(0.11, 0.1, 0.16, 1) : 0xffffffff);
+    if (locked) ui.image(icon("hud", "lock"), hx, feetY - 15 * big, 2, 2);
     if (burst > 0) {
       for (let k = 0; k < 16; k++) {
-        const a = (k / 16) * Math.PI * 2 + since * 2, r0 = 20 + since * 60, r1 = r0 + 14 + 10 * Math.sin(k * 3);
-        ui.line(cx + Math.cos(a) * r0, cy - 40 + Math.sin(a) * r0, cx + Math.cos(a) * r1, cy - 40 + Math.sin(a) * r1, 1, rgbaf(1, 0.85, 0.45, burst));
+        const an = (k / 16) * Math.PI * 2 + since * 2, r0 = 20 + since * 60, r1 = r0 + 14 + 10 * Math.sin(k * 3);
+        ui.line(hx + Math.cos(an) * r0, mid + Math.sin(an) * r0, hx + Math.cos(an) * r1, mid + Math.sin(an) * r1, 1, rgbaf(1, 0.85, 0.45, burst));
       }
-      ui.disc(cx, cy - 40, 60 * (1 - burst) + 10, 60 * (1 - burst) + 10, rgbaf(1, 0.9, 0.6, burst * 0.35));
-      text(ui, t("newHero"), cx, cy + 14, { align: "center", color: withAlpha(C.gold, burst), outline: true });
+      ui.disc(hx, mid, 60 * (1 - burst) + 10, 60 * (1 - burst) + 10, rgbaf(1, 0.9, 0.6, burst * 0.35));
     }
     if (hero.light === "wisp" && !locked) {
-      const wf = anim("wisp_light"), r = wf.frames[frameAt(wf, now)][0]!;
+      const wf = anim("wisp_light"), r = wf.frames[frameAt(wf, now)][0]!, ws = Math.max(1, big - 1);
       const tint = hero.id === "mage" ? 0xffffffff : rgbaf(lr, lg, lb, 1);
-      ui.image(r, cx - 30, cy - 105 + Math.sin(now * 2.6) * 6, 2, 2, 0, tint);
+      ui.image(r, hx - 10 * big, Math.max(sy0 + 10, feetY - 34 * big) + Math.sin(now * 2.6) * 2 * ws, ws, ws, 0, tint);
     }
-    // who they are (the arrows either side of the hero keep clear of it)
-    const px = wide ? Math.round(W * 0.52) : Math.round(W / 2 - 150), pw = wide ? Math.min(280, W - px - 16) : 300;
-    if (button(ui, this.menu, now, Math.max(6, cx - 112), cy - 56, 20, 30, "<")) pick(-1);
-    if (button(ui, this.menu, now, wide ? Math.min(cx + 92, px - 26) : cx + 92, cy - 56, 20, 30, ">")) pick(1);
-    let y = wide ? Math.round(H * 0.12) : cy + 18;
-    // a dark pane behind who they are, so the words read over a lit room
-    const abLines = wrap(tx(hero.ability.desc), pw - 4, "mini").length, perkLines = wrap(tx(hero.perk), pw - 4, "mini").length;
-    const ns0 = wide ? fitScale(tx(hero.name), "title", pw, 2) : 1, infoH = FONT_H * ns0 + 4 + 11 + 24 + 11 + abLines * 8 + 4 + perkLines * 8 + 4 + 14 + 2 * 9 + 2;
+    // the arrows at the stage's two sides, level with the hero's middle
+    const ay = Math.round(Math.max(sy0 + 2, feetY - Math.min(rise, 40 * big) / 2 - 15));
+    if (button(ui, this.menu, now, sx0 + 2, ay, arrowW, 30, "<")) pick(-1);
+    if (button(ui, this.menu, now, sx0 + sw - arrowW - 2, ay, arrowW, 30, ">")) pick(1);
+    // under the feet: the victor's look to put on or off, once a run is won with this hero (or how to earn it)
+    if (this.save.skins.includes(hero.id)) {
+      const bw2 = Math.min(112, sw - 8);
+      if (button(ui, this.menu, now, cx - bw2 / 2, feetY + 6, bw2, skinH, victor ? t("skinVictor") : t("skinPlain"), { font: "mini", color: victor ? C.gold : C.dim, icon: icon("hud", "crown") })) {
+        this.save.skinOn = victor ? this.save.skinOn.filter((q) => q !== hero.id) : [...this.save.skinOn, hero.id];
+        this.world.hero.victor = !victor;
+        this.persist();
+      }
+    } else if (!locked) {
+      const lines = wrap(t("skinLocked"), sw - 8, "mini").slice(0, 2);
+      lines.forEach((l, k) => text(ui, l, cx, feetY + 7 + k * 8 - (lines.length - 1) * 4, { font: "mini", align: "center", color: rgba("#5a5470") }));
+    }
+    if (burst > 0) text(ui, t("newHero"), cx, feetY + 8, { align: "center", color: withAlpha(C.gold, burst), outline: true });
+
+    // ---- the pane: who they are, what they hold, their ability and their trait, hearts, dashes and four bars
+    let y = paneY;
     panel(ui, px - 8, y - 6, pw + 16, infoH + 10, C.edge, rgba("#0e0c16", 0.78));
-    const ns = wide ? fitScale(tx(hero.name), "title", pw, 2) : 1;
     text(ui, tx(hero.name), px, y, { font: "title", scale: ns, color: C.gold, outline: true, shadow: rgba("#3a1a10") });
     y += FONT_H * ns + 4;
     text(ui, locked ? `${tx(hero.title)}  ·  ${t("locked")}` : tx(hero.title), px, y, { font: "mini", color: locked ? C.goldDim : C.dim });
     y += 11;
     ui.image(icon("icons", `w_${hero.weapon}`), px + 10, y + 10);
     text(ui, tx(weapon.name), px + 24, y + 3, { color: C.text });
-    text(ui, tx(weapon.desc), px + 24, y + 13, { font: "mini", color: C.dim });
-    y += 24;
-    // their own ability, on the Overdrive button
+    wdLines.forEach((l, k) => text(ui, l, px + 24, y + 13 + k * 8, { font: "mini", color: C.dim }));
+    y += wdH;
     ui.image(icon("hud", "overdrive"), px + 5, y + 4);
     text(ui, tx(hero.ability.name), px + 14, y, { color: rgba("#ffd27a") });
     text(ui, t("ability"), px + pw, y + 1, { font: "mini", align: "right", color: C.goldDim });
     y += 11;
     y += para(ui, tx(hero.ability.desc), px + 2, y, pw - 4, C.text, "left", 8, "mini") + 4;
-    // and what is theirs alone, always
     y += para(ui, tx(hero.perk), px + 2, y, pw - 4, rgba("#9ad4ff"), "left", 8, "mini") + 4;
     for (let k = 0; k < hero.hearts; k++) ui.image(icon("hud", "heart"), px + 6 + k * 10, y + 5);
     for (let k = 0; k < hero.dashes; k++) ui.image(icon("hud", "stamina"), px + 6 + hero.hearts * 10 + 8 + k * 9, y + 5);
     y += 14;
-    // four bars, two by two: how hard, how fast they strike, how fast they run, how often a blow is critical
     const stat = (k: number, label: string, v: number, lo: number, hi: number, col: number) => {
-      const sx = px + (k % 2) * Math.round(pw / 2), sy = y + Math.floor(k / 2) * 9, bw2 = Math.round(pw / 2) - 48;
-      text(ui, label, sx, sy, { font: "mini", color: C.dim });
-      ui.rect(sx + 42, sy + 1, bw2, 3, C.ink);
-      ui.rect(sx + 42, sy + 1, Math.max(2, Math.round(bw2 * Math.max(0, Math.min(1, (v - lo) / (hi - lo))))), 3, col);
+      const bx2 = px + (k % 2) * Math.round(pw / 2), by2 = y + Math.floor(k / 2) * 9, bw2 = Math.round(pw / 2) - 48;
+      text(ui, label, bx2, by2, { font: "mini", color: C.dim });
+      ui.rect(bx2 + 42, by2 + 1, bw2, 3, C.ink);
+      ui.rect(bx2 + 42, by2 + 1, Math.max(2, Math.round(bw2 * Math.max(0, Math.min(1, (v - lo) / (hi - lo))))), 3, col);
     };
     stat(0, t("might"), hero.might, 0.7, 1.3, rgba("#ff8a5a"));
     stat(1, t("haste"), hero.haste, 0.75, 1.35, rgba("#ffd27a"));
     stat(2, t("speed"), hero.speed, 0.85, 1.2, C.green);
     stat(3, t("crit"), hero.crit, 0, 0.3, rgba("#c684ff"));
-    // the four of them, small, the chosen one framed
-    const ty = H - 54;
+
+    // ---- the six of them as portraits, the chosen one framed
+    const ty = stripY + 22;
     HEROES.forEach((hd, k) => {
-      const x = Math.round(W / 2 + (k - (n - 1) / 2) * 34), a = this.heroFrame(hd.id, this.wearsVictor(hd.id), "idle", 0);
+      const x = Math.round(W / 2 + (k - (n - 1) / 2) * 34), f = this.heroFrame(hd.id, this.wearsVictor(hd.id), "idle", 0);
       slot(ui, x - 14, ty - 22, 28, k === this.heroIdx ? C.gold : undefined);
       if (k === this.heroIdx) ui.rect(x - 13, ty + 5, 26, 1, C.goldDim);
       const own = this.save.unlocked.includes(hd.id);
-      // a portrait: head and shoulders, cut to the frame (a long blade or a scythe does not poke out of it)
-      portrait(ui, a, x - 12, ty - 20, 24, 24, -12, -37, !own ? rgbaf(0.13, 0.12, 0.18, 1) : k === this.heroIdx ? 0xffffffff : rgbaf(0.55, 0.55, 0.6, 1));
+      // head and shoulders, cut to the frame (a long blade or a scythe does not poke out of it)
+      portrait(ui, f, x - 12, ty - 20, 24, 24, -12, -37, !own ? rgbaf(0.13, 0.12, 0.18, 1) : k === this.heroIdx ? 0xffffffff : rgbaf(0.55, 0.55, 0.6, 1));
       if (!own) ui.image(icon("hud", "lock"), x + 7, ty - 14);
       else if (this.save.skins.includes(hd.id)) ui.image(icon("hud", "crown"), x + 8, ty - 15);
     });
-    const bw = 120, by = H - 22, bx = Math.round(W / 2 - bw - 6);
+    const bw = 120, bx = Math.round(W / 2 - bw - 6);
     if (locked) {
       const afford = this.save.embers >= hero.cost, label = `${t("unlock")} ${hero.cost}`;
       if (button(ui, this.menu, now, bx, by, bw, 18, label, { primary: true, disabled: !afford, icon: icon("hud", "ember") })) {
@@ -954,17 +978,8 @@ export class Game {
       this.transition(() => this.startRun());
     }
     if (button(ui, this.menu, now, Math.round(W / 2 + 6), by, bw, 18, t("back"), { icon: icon("hud", "back") }) || input.pressed("back")) this.setState("title");
-    // the victor's look, once a run is won with this hero
-    const sy = wide ? cy + 10 : cy - 122;
-    if (this.save.skins.includes(hero.id)) {
-      const on = this.wearsVictor(hero.id);
-      if (button(ui, this.menu, now, cx - 56, sy, 112, 14, on ? t("skinVictor") : t("skinPlain"), { font: "mini", color: on ? C.gold : C.dim, icon: icon("hud", "crown") })) {
-        this.save.skinOn = on ? this.save.skinOn.filter((q) => q !== hero.id) : [...this.save.skinOn, hero.id];
-        this.world.hero.victor = !on;
-        this.persist();
-      }
-    } else if (!locked && wide) text(ui, t("skinLocked"), cx, sy + 4, { font: "mini", align: "center", color: rgba("#5a5470") });
   }
+
 
   /** A boss enters: black bars close in, its name lands with a thud, the line under it fades in. */
   private drawCine(): void {
@@ -1096,14 +1111,18 @@ export class Game {
     y += para(ui, t(week ? "weeklyRules" : "dailyRules"), Math.round(W / 2 - pw / 2), y, pw, C.text, "center") + 6;
     // the hero on the left; on the right the first floor's stairs (a day) or the week's rule
     const colW = Math.floor(Math.min(170, (W - 24) / 2)), lx = Math.round(W / 2 - colW - 4), rx = Math.round(W / 2 + 4);
-    const ph = Math.max(60, Math.min(124, H - y - 62));
+    const idle = this.heroAnim(hero.id, false), box = animBox(idle);
+    // never shorter than the hero standing in it, weapon raised and all
+    const ph = Math.max(60, box.top + 40, Math.min(124, H - y - 62));
     panel(ui, lx, y, colW, ph);
     panel(ui, rx, y, colW, ph);
     text(ui, t(week ? "heroOfWeek" : "heroOfDay"), lx + colW / 2, y + 5, { font: "mini", align: "center", color: C.dim });
-    // as big as fits under the label: a reaper's scythe stands taller than a knight's sword
-    const idle = this.heroAnim(hero.id, false), big = fitAnim(idle, colW - 8, ph - 36), [lr, lg, lb] = hero.lightColor;
-    glowUi(ui, lx + colW / 2, y + ph - 20, 30 * big, 9 * big, rgbaf(lr, lg, lb, 1), 0.5);
-    ui.image(this.heroFrame(hero.id, false), lx + colW / 2, y + ph - 20, big, big);
+    // as big as fits under the label (a reaper's scythe stands taller than a knight's sword), its box centred
+    let big = 1;
+    for (let k = 2; k > 1; k--) if ((box.x1 - box.x0) * k <= colW - 8 && box.top * k <= ph - 36) (big = k), (k = 0);
+    const hx = Math.round(lx + colW / 2 - ((box.x0 + box.x1) / 2) * big), [lr, lg, lb] = hero.lightColor;
+    glowUi(ui, hx, y + ph - 20, 30 * big, 9 * big, rgbaf(lr, lg, lb, 1), 0.5);
+    ui.image(this.heroFrame(hero.id, false), hx, y + ph - 20, big, big);
     text(ui, tx(hero.name), lx + colW / 2, y + ph - 14, { align: "center", color: C.gold, outline: true });
     text(ui, t(week ? "rule" : "firstFloor"), rx + colW / 2, y + 5, { font: "mini", align: "center", color: C.dim });
     let ry = y + 16;
