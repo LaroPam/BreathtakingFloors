@@ -8,8 +8,9 @@ import { anim, FONTS, frameAt, icon, type Anim, type Rect } from "../engine/atla
 import { heroSprites, initHeroSprites, lookId, type HeroAnim, type HeroSprites } from "./heroSprites";
 import { fitScale, measure, text, wrap } from "../engine/text";
 import { dayNumber, weekNumber, type Board, type BoardName, type Platform } from "../platform/platform";
-import { ACHIEVEMENTS, heroDef, bossOf, EL_COLOR, LEGENDS, legendDesc, type WeaponId, EL_NAME, ENEMIES, EVOLUTIONS, evolutionOf, FLOORS, FORGE, questDef, TASK_BONUS, TASKS, type TaskId, HEROES, WEAPONS, weaponName, MODIFIERS, MUTATORS, NO_MODIFIER, REACTIONS, RELIC_MAX, RELIC_SLOTS, RELICS, STATS, type Modifier, type Reaction, type RelicKind, type StatId } from "./defs";
+import { ACHIEVEMENTS, heroDef, biomeOf, bossOf, EL_COLOR, LEGENDS, legendDesc, type WeaponId, EL_NAME, ENEMIES, EVOLUTIONS, evolutionOf, FLOORS, FORGE, questDef, TASK_BONUS, TASKS, type TaskId, HEROES, WEAPONS, weaponName, MODIFIERS, MUTATORS, NO_MODIFIER, REACTIONS, RELIC_MAX, RELIC_SLOTS, RELICS, STATS, type Modifier, type Reaction, type RelicKind, type StatId } from "./defs";
 import { drawWorld, Scene } from "./draw";
+import { stairwell } from "./stairwell";
 import { getLang, langFor, setLang, t, tx, type Lang } from "./i18n";
 import { Rng } from "./rng";
 import { defaultSave, sanitize, type SaveData } from "./save";
@@ -706,16 +707,18 @@ export class Game {
     this.menu.begin();
     const shake = w.shake > 0 && this.state === "play" && this.save.shake ? w.shake * w.shake * 6 : 0;
     const sx = shake ? (Math.random() - 0.5) * shake : 0, sy = shake ? (Math.random() - 0.5) * shake : 0;
-    const cx = this.camX + sx, cy = this.camY + sy;
-    drawWorld(s, w, cx, cy, W, H, this.now);
+    // between floors the floor behind is gone: the stairwell down to the next one takes its place
+    const down = this.state === "stairs" ? stairwell(s, W, H, this.now, biomeOf(w.floor + 1)) : null;
+    const cx = down ? 0 : this.camX + sx, cy = down ? 0 : this.camY + sy;
+    if (!down) drawWorld(s, w, cx, cy, W, H, this.now);
 
-    const dim = this.state !== "play" && this.state !== "title";
+    const dim = this.state !== "play" && this.state !== "title" && !down;
     const light: Lighting = {
-      ambient: [w.ambient * w.biome.ambient[0], w.ambient * w.biome.ambient[1], w.ambient * w.biome.ambient[2]],
+      ambient: down ? down.ambient : [w.ambient * w.biome.ambient[0], w.ambient * w.biome.ambient[1], w.ambient * w.biome.ambient[2]],
       steps: 7,
-      vignette: 0.55,
-      tint: w.flash > 0 && this.save.flashes ? [1, 0.95, 0.85] : [0.03, 0.025, 0.06],
-      tintK: w.flash > 0 && this.save.flashes ? w.flash * 0.25 : dim ? 0.55 : 0,
+      vignette: down ? 0.8 : 0.55,
+      tint: w.flash > 0 && this.save.flashes && !down ? [1, 0.95, 0.85] : [0.03, 0.025, 0.06],
+      tintK: w.flash > 0 && this.save.flashes && !down ? w.flash * 0.25 : dim ? 0.55 : 0,
     };
     if (this.state === "title") light.tintK = 0.2;
     if (w.curse && this.state === "play" && !(w.flash > 0 && this.save.flashes)) {
@@ -768,7 +771,7 @@ export class Game {
     if (this.r.canvas.style.cursor !== cursor) this.r.canvas.style.cursor = cursor;
     this.drawToast(this.dt);
     this.drawWipe();
-    this.r.render(s, ui, cx, cy, light, [0.025, 0.02, 0.045]);
+    this.r.render(s, ui, cx, cy, light, [0.025, 0.02, 0.045], down?.well);
   }
 
   /** The world's word to the player (what to do now), on a plate low in the middle: it fades in, holds, fades out. */
