@@ -8,7 +8,7 @@ import { anim, FONTS, frameAt, icon, type Anim, type Rect } from "../engine/atla
 import { heroSprites, initHeroSprites, lookId, type HeroAnim, type HeroSprites } from "./heroSprites";
 import { fitScale, measure, text, wrap } from "../engine/text";
 import { dayNumber, weekNumber, type Board, type BoardName, type Platform } from "../platform/platform";
-import { ACHIEVEMENTS, heroDef, biomeOf, bossOf, EL_COLOR, LEGENDS, legendDesc, type WeaponId, EL_NAME, ENEMIES, EVOLUTIONS, evolutionOf, FLOORS, FORGE, questDef, TASK_BONUS, TASKS, type TaskId, HEROES, WEAPONS, weaponName, MODIFIERS, MUTATORS, NO_MODIFIER, REACTIONS, RELIC_MAX, RELIC_SLOTS, RELICS, STATS, type Modifier, type Reaction, type RelicKind, type StatId } from "./defs";
+import { ACHIEVEMENTS, heroDef, biomeOf, bossOf, floorInfo, stageOf, EL_COLOR, LEGENDS, legendDesc, type WeaponId, EL_NAME, ENEMIES, EVOLUTIONS, evolutionOf, FLOORS, FORGE, questDef, TASK_BONUS, TASKS, type TaskId, HEROES, WEAPONS, weaponName, MODIFIERS, MUTATORS, NO_MODIFIER, REACTIONS, RELIC_MAX, RELIC_SLOTS, RELICS, STATS, type Modifier, type Reaction, type RelicKind, type StatId } from "./defs";
 import { drawWorld, Scene } from "./draw";
 import { stairwell } from "./stairwell";
 import { getLang, langFor, setLang, t, tx, type Lang } from "./i18n";
@@ -376,6 +376,17 @@ export class Game {
     if (w.time < 90) this.unlock("swift");
     this.save.bestFloor = Math.max(this.save.bestFloor, w.floor);
     this.persist();
+    // after a location's boss, its portal leads straight on to the next location
+    if (bossOf(w.floor) >= 0) {
+      this.transition(() => {
+        w.startFloor(w.floor + 1, NO_MODIFIER, "portal");
+        this.reached(w.floor);
+        this.cardT = 0;
+        this.setState("card");
+      });
+      return;
+    }
+    // within a location the way down is a choice of two stairs
     const pool = [...MODIFIERS];
     this.stairs = [];
     for (let k = 0; k < 2; k++) this.stairs.push(pool.splice(this.runRng.int(0, pool.length - 1), 1)[0]);
@@ -385,7 +396,7 @@ export class Game {
   private descend(mod: Modifier): void {
     this.transition(() => {
       const w = this.world;
-      w.startFloor(w.floor + 1, mod);
+      w.startFloor(w.floor + 1, mod, "stairs");
       this.reached(w.floor);
       this.cardT = 0;
       this.setState("card");
@@ -744,9 +755,9 @@ export class Game {
     const k = 1 - Math.exp(-dt * (c ? 4.5 : 8));
     this.camX += (tx - this.camX) * k;
     this.camY += (ty - this.camY) * k;
-    // keep the floor's edges in view without showing more void than needed
-    // (up top the back wall comes down below the HUD, so its torches and cracks are not hidden behind the plates)
-    const mx = 30, top = 96, bottom = 30;
+    // keep the view on the map (its frame of wall is part of it); a little more room up top, so the top walls'
+    // torches and cracks come down below the HUD's plates
+    const mx = 0, top = 40, bottom = 0;
     this.camX = W > w.w + mx * 2 ? w.w / 2 - W / 2 : Math.max(-mx, Math.min(w.w + mx - W, this.camX));
     this.camY = H > w.h + top + bottom ? w.h / 2 - H / 2 - (top - bottom) / 2 : Math.max(-top, Math.min(w.h + bottom - H, this.camY));
   }
@@ -1075,8 +1086,11 @@ export class Game {
     const cy = Math.round(H * 0.36);
     if (this.daily) text(ui, t(this.weekly ? "weekly" : "daily"), W / 2, cy - 44, { font: "mini", align: "center", color: withAlpha(rgba("#ff9a8a"), a) });
     const th = this.heading(`${t("floor")} ${w.floor}`, cy - 32, 2, C.gold, a);
-    text(ui, tx(B.name), W / 2, cy - 32 + th + 4, { font: "title", align: "center", color: withAlpha(C.text, a), shadow: withAlpha(C.ink, a), outline: true });
-    para(ui, tx(B.lore), Math.round(W / 2 - 150), cy - 32 + th + 22, 300, withAlpha(C.dim, a), "center");
+    // the floor's own name, the place it belongs to (and which of its three floors), and its line
+    const info = floorInfo(w.floor), stage = stageOf(w.floor);
+    text(ui, tx(info.name), W / 2, cy - 32 + th + 4, { font: "title", align: "center", color: withAlpha(C.text, a), shadow: withAlpha(C.ink, a), outline: true });
+    text(ui, `${tx(B.name)} · ${stage}/3${stage === 1 && w.floor > 1 ? ` · ${t("newPlace")}` : ""}`, W / 2, cy - 32 + th + 19, { font: "mini", align: "center", color: withAlpha(stage === 3 ? rgba("#ff9a8a") : C.goldDim, a) });
+    para(ui, tx(info.lore), Math.round(W / 2 - 150), cy - 32 + th + 30, 300, withAlpha(C.dim, a), "center");
     // the road down: nine floors on a thread, the bosses' marked, those behind lit, ours ringed
     const my = cy - 32 + th + 52, step = Math.min(18, Math.floor((W - 40) / FLOORS));
     const x0 = Math.round(W / 2 - ((FLOORS - 1) / 2) * step);

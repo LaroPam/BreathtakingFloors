@@ -163,6 +163,24 @@ export const BIOMES: Biome[] = [
   { id: "frost", name: { ru: "ЛЕДЯНЫЕ ЗАЛЫ", en: "THE FROZEN HALLS" }, lore: { ru: "ХОЛОД ПОДНИМАЕТСЯ С САМОГО ДНА БАШНИ", en: "THE COLD RISES FROM THE TOWER'S VERY BOTTOM" }, floor: "floor_frost", wall: "wall_frost", pillar: "pillar_frost", torch: "torch_blue", ambient: [0.8, 0.95, 1.3], torchLight: "#6ab8ff", motes: "snow" },
 ];
 export const FLOORS = 9;
+/**
+ * Each floor's own name and a line for its title card. A place keeps its name; its three floors are its first look,
+ * the same place changed, and the change at its height (with the boss).
+ */
+export const FLOOR_INFO: { name: Text; lore: Text }[] = [
+  { name: { ru: "ВЕРХНИЕ ГАЛЕРЕИ", en: "THE UPPER GALLERIES" }, lore: { ru: "ЗДЕСЬ ЛЕЖАТ ТЕ, КТО НЁС СВЕТ ВНИЗ ДО ТЕБЯ", en: "HERE LIE THOSE WHO CARRIED LIGHT DOWN BEFORE YOU" } },
+  { name: { ru: "ОССУАРИЙ", en: "THE OSSUARY" }, lore: { ru: "КОСТИ СЛОЖЕНЫ РЯДАМИ. КТО-ТО ИХ СЧИТАЛ", en: "THE BONES ARE STACKED IN ROWS. SOMEONE COUNTED THEM" } },
+  { name: { ru: "СЕРДЦЕ КАТАКОМБ", en: "THE HEART OF THE CATACOMBS" }, lore: { ru: "ПОЛ ТРЕСНУЛ, И СНИЗУ ПОДНИМАЕТСЯ ЖАР", en: "THE FLOOR HAS SPLIT, AND HEAT RISES FROM BELOW" } },
+  { name: { ru: "ЗАРОСШИЕ АЛЛЕИ", en: "THE OVERGROWN WALKS" }, lore: { ru: "САД РОС БЕЗ СОЛНЦА И НАУЧИЛСЯ СВЕТИТЬСЯ САМ", en: "THE GARDEN GREW WITHOUT A SUN AND LEARNED TO GLOW" } },
+  { name: { ru: "ЗАТОПЛЕННЫЙ САД", en: "THE DROWNED GARDEN" }, lore: { ru: "ВОДА ПРИШЛА ТИХО И ОСТАЛАСЬ. ИДИ ПО МОСТАМ", en: "THE WATER CAME QUIETLY AND STAYED. KEEP TO THE BRIDGES" } },
+  { name: { ru: "СЕРДЦЕ САДА", en: "THE GARDEN'S HEART" }, lore: { ru: "КОРНИ ДЕРЖАТ БАШНЮ КРЕПЧЕ КАМНЯ", en: "THE ROOTS HOLD THE TOWER TIGHTER THAN STONE" } },
+  { name: { ru: "ИНЕЙНЫЕ ГАЛЕРЕИ", en: "THE RIME GALLERIES" }, lore: { ru: "ХОЛОД ПОДНИМАЕТСЯ С САМОГО ДНА БАШНИ", en: "THE COLD RISES FROM THE TOWER'S VERY BOTTOM" } },
+  { name: { ru: "ЛЕДЯНЫЕ ПЕЩЕРЫ", en: "THE ICE CAVES" }, lore: { ru: "ЛЁД СКОЛЬЗКИЙ: ДЕРЖИСЬ КАМНЯ, КОГДА ЖАРКО", en: "THE ICE IS SLIPPERY: KEEP TO THE STONE WHEN IT GETS HOT" } },
+  { name: { ru: "ТРОН ПУСТОТЫ", en: "THE THRONE OF THE VOID" }, lore: { ru: "ПОД БАШНЕЙ НЕТ ДНА. ЕСТЬ ТОЛЬКО ТОТ, КТО СМОТРИТ", en: "THERE IS NO BOTTOM UNDER THE TOWER. ONLY THE ONE WHO WATCHES" } },
+];
+export const floorInfo = (floor: number) => FLOOR_INFO[Math.max(0, Math.min(FLOOR_INFO.length - 1, floor - 1))];
+/** Where a floor stands in its place: 1 its first look, 2 changed, 3 the height of the change. */
+export const stageOf = (floor: number): number => ((Math.max(1, floor) - 1) % 3) + 1;
 export const biomeOf = (floor: number): Biome => BIOMES[Math.min(BIOMES.length - 1, Math.floor((floor - 1) / 3))];
 export const bossOf = (floor: number): number => (floor === 3 ? EN.eyeBoss : floor === 6 ? EN.frogKing : floor === 9 ? EN.eyeVoid : -1);
 

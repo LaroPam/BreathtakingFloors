@@ -1,13 +1,14 @@
 // Turning the world into sprites: the room (floor, walls, torches, columns, things lying about), everything standing
 // sorted by its feet, light into the illumination layer, the baked pixelfx glow into the glow layer, numbers in front.
 
-import { anim, frameAt, hasAnim, icon, type Anim } from "../engine/atlas";
+import { anim, frameAt, hasAnim, icon, type Anim, type Rect } from "../engine/atlas";
 import { heroSprites, lookId, type HeroAnim } from "./heroSprites";
 import { TEAM_HERO } from "./pools";
 import { Batch, rgba, rgbaf, SOFT, withAlpha } from "../engine/renderer";
 import { text } from "../engine/text";
-import { AI, EL_COLOR, ENEMIES, LEGENDS, questDef, RelicKind, WEAPONS, weaponName } from "./defs";
+import { AI, EL_COLOR, ENEMIES, LEGENDS, questDef, RelicKind, stageOf, WEAPONS, weaponName } from "./defs";
 import { t as tr, tx } from "./i18n";
+import { FLOOR, LOOK_BRIDGE, LOOK_ICE, LOOK_VEIN, PIT, WALL } from "./map";
 import { BULLET_ANIMS, HERO_HIT_Y, HERO_R, B_CRESCENT, B_FIREBALL, B_LANCE, CINE_DUR, D_CHEST, D_EMBER, D_GREEN, D_HEART, D_RED, SANCTUARY_R, STAR_EVERY, TILE, type World } from "./world";
 
 export class Scene {
@@ -112,66 +113,211 @@ const FX_LIGHT: Record<string, [number, string, number]> = {
   slam: [90, "#ffb060", 0.8],
 };
 // the walls' and the room's edges, per biome
-const EDGE = { crypt: ["#100e18", "#2a2436"], garden: ["#0c100c", "#24301f"], frost: ["#0c121c", "#22324a"] } as const;
+const EDGE = { crypt: ["#1a1724", "#3a3348"], garden: ["#141a13", "#33402f"], frost: ["#131b28", "#304460"] } as const;
+/** What a drop looks like in each biome: a chasm with embers far down, dark water, the starry void. */
+interface PitLook {
+  fill: string;
+  deep: string;
+  kind: "chasm" | "water" | "void";
+  /** A bridge's planks: base, the gaps between them, the lit edge. */
+  planks: [string, string, string];
+}
+const PIT_LOOK: Record<"crypt" | "garden" | "frost", PitLook> = {
+  crypt: { fill: "#07060c", deep: "#2a0f0c", kind: "chasm", planks: ["#5a3a24", "#2a1a10", "#7c5634"] },
+  garden: { fill: "#0a1c20", deep: "#14383a", kind: "water", planks: ["#5e4428", "#2c2012", "#80603a"] },
+  frost: { fill: "#030309", deep: "#14102a", kind: "void", planks: ["#4a6078", "#1c2838", "#8aa6c4"] },
+};
+/** One tile of a drop. */
+function drawPit(s: Scene, P: PitLook, x: number, y: number, tx: number, ty: number, time: number): void {
+  s.back.rect(x, y, TILE, TILE, rgba(P.fill));
+  const hv = hash(tx * 3 + 1, ty * 5 + 2);
+  if (P.kind === "water") {
+    // slow ripples of lighter water, and a glint now and then
+    const ph = (time * 0.8 + hv * 6.3) % 6.3, ry = y + 3 + Math.floor(hv * 9);
+    s.back.rect(x + Math.floor(hv * 6), ry, 5 + Math.floor(Math.sin(ph) * 2 + 2), 1, rgba(P.deep));
+    if (Math.sin(ph * 1.7) > 0.96) s.glow.rect(x + 4 + Math.floor(hv * 8), ry - 1, 2, 1, rgbaf(0.6, 0.9, 0.9, 0.6));
+  } else if (P.kind === "chasm") {
+    // the dark goes red far down; an ember rises out of it now and then
+    if (hv < 0.5) s.back.rect(x + Math.floor(hv * 10), y + Math.floor(hash(ty, tx) * 12), 3, 2, rgba(P.deep));
+    const u = (time * 0.35 + hv * 5) % 1;
+    if (hv > 0.82) s.glow.rect(x + Math.floor(hv * 13), y + 14 - Math.floor(u * 14), 1, 1, rgbaf(1, 0.45, 0.15, Math.sin(u * Math.PI) * 0.8));
+  } else {
+    // stars in the void, twinkling
+    if (hv > 0.55) {
+      const tw = 0.4 + 0.6 * Math.max(0, Math.sin(time * 1.3 + hv * 40));
+      s.glow.rect(x + Math.floor(hv * 13), y + Math.floor(hash(ty, tx) * 13), 1, 1, rgbaf(0.7, 0.75, 1, tw * 0.8));
+    }
+    if (hv < 0.12) s.back.rect(x + 2, y + 5, 6, 3, rgba(P.deep));
+  }
+}
+/**
+ * One tile of a bridge over a drop: planks laid across the way it runs, dark gaps between them, the edges along
+ * the drop lit and roped.
+ */
+function drawBridge(s: Scene, P: PitLook, x: number, y: number, across: boolean, up: boolean, down: boolean, left: boolean, right: boolean): void {
+  const [base, gap, edge] = P.planks.map((c) => rgba(c));
+  s.back.rect(x, y, TILE, TILE, base);
+  for (let k = 0; k < 4; k++) {
+    if (across) s.back.rect(x + k * 4 + 3, y, 1, TILE, gap);
+    else s.back.rect(x, y + k * 4 + 3, TILE, 1, gap);
+  }
+  if (up) s.back.rect(x, y, TILE, 2, edge);
+  if (down) (s.back.rect(x, y + TILE - 2, TILE, 2, gap), s.back.rect(x, y + TILE, TILE, 3, rgba("#000000", 0.5)));
+  if (left) s.back.rect(x, y, 2, TILE, edge);
+  if (right) s.back.rect(x + TILE - 2, y, 2, TILE, gap);
+}
+/**
+ * A flight of stairs set into the floor, seen from above: a stone frame, steps going down into the dark (darker
+ * each one, narrower with the depth) or, for the way up, rising towards the light. `open` 0 is shut under an iron
+ * grate, 1 open with the next floor's light rising out of it.
+ */
+function drawStairs(s: Scene, x: number, y: number, biome: "crypt" | "garden" | "frost", up: boolean, open: number, time: number): void {
+  const S = STAIR_STONE[biome].map((c) => rgba(c)), x0 = Math.round(x - 22), y0 = Math.round(y - 18), w = 44, h = 36;
+  // the frame: a kerb of cut stone, lit along its top
+  s.back.rect(x0 - 3, y0 - 3, w + 6, h + 6, S[0]);
+  s.back.rect(x0 - 3, y0 - 3, w + 6, 1, S[3]);
+  s.back.rect(x0 - 3, y0 - 3, 1, h + 6, S[2]);
+  s.back.rect(x0 + w + 2, y0 - 3, 1, h + 6, S[1]);
+  s.back.rect(x0, y0, w, h, rgba("#06050a"));
+  // the steps: the near one at the floor's level, each further one lower (down) or higher (up)
+  const n = 6;
+  for (let k = 0; k < n; k++) {
+    const depth = up ? (n - 1 - k) / (n - 1) : k / (n - 1), inset = Math.round((up ? 0 : k) * 0.8), sy = y0 + h - (k + 1) * 5 - 1;
+    const tone = Math.max(0, Math.min(3, Math.round(3 - depth * 3.4)));
+    s.back.rect(x0 + inset, sy, w - inset * 2, 5, S[Math.max(0, tone - 1)]);
+    s.back.rect(x0 + inset, sy, w - inset * 2, 1, S[tone]);
+  }
+  // the side walls of the flight
+  s.back.rect(x0, y0, 3, h, S[1]);
+  s.back.rect(x0 + w - 3, y0, 3, h, S[0]);
+  if (!up) {
+    // the depth: dark at the far end, and once open, the light of the floor below coming up
+    s.back.rect(x0 + 4, y0, w - 8, 4, rgba("#06050a"));
+    if (open > 0) {
+      const p = 0.8 + 0.2 * Math.sin(time * 2.5);
+      s.illum.light(x, y0 + 8, 70 * open, 50 * open, rgbaf(0.55, 0.85, 1, 0.8 * open * p));
+      s.glow.rect(x0 + 6, y0 + 1, w - 12, 2, rgbaf(0.6, 0.9, 1, 0.5 * open * p));
+    }
+    // the grate: iron bars over the opening, swinging away as it opens
+    if (open < 1) {
+      const lift = Math.round(open * 30), iron = rgba("#2a2836"), hi = rgba("#6a6680");
+      for (let bx = x0 + 3; bx < x0 + w - 2; bx += 6) (s.back.rect(bx - lift, y0, 2, h, iron), s.back.rect(bx - lift, y0, 1, h, hi));
+      for (const by of [y0 + 6, y0 + h - 8]) (s.back.rect(x0 - lift, by, w, 2, iron), s.back.rect(x0 - lift, by, w, 1, hi));
+    }
+  } else s.illum.light(x, y0, 30, 22, rgbaf(1, 0.85, 0.6, 0.25));
+}
+const STAIR_STONE: Record<"crypt" | "garden" | "frost", string[]> = {
+  crypt: ["#221e2e", "#3a3550", "#5a5476", "#8a82a8"],
+  garden: ["#1c241c", "#344232", "#526650", "#7a9470"],
+  frost: ["#1a2434", "#2e4460", "#4a6a90", "#7aa0cc"],
+};
+/** The lower `h` px of a sprite anchored at its foot (a wall's face as tall as the wall is thick). */
+function clipUp(b: Batch, r: Rect, x: number, y: number, h: number): void {
+  const top = Math.max(-h, r[6]), bottom = r[6] + r[4];
+  if (bottom <= top) return;
+  b.push(x, y, r[5], top, r[3], bottom - top, r[1], r[2] + (top - r[6]), 1, 1, 0, r[0], 0xffffffff, 0, y);
+}
 const DECOR_LIGHT: Record<string, [number, string, number]> = { candle: [40, "#ffb060", 0.55], mushrooms: [34, "#3ad0c8", 0.4], crystal: [44, "#62c8f4", 0.45] };
 
 export function drawWorld(s: Scene, w: World, camX: number, camY: number, viewW: number, viewH: number, time: number): void {
   const h = w.hero, B = w.biome, inView = (x: number, y: number, m = 40) => x > camX - m && x < camX + viewW + m && y > camY - m && y < camY + viewH + m * 2;
 
-  // ---- the floor in view
-  const floor = anim(B.floor), wall = anim(B.wall);
-  const tx0 = Math.max(0, Math.floor(camX / TILE)), tx1 = Math.min(Math.ceil(w.w / TILE) - 1, Math.floor((camX + viewW) / TILE));
-  const ty0 = Math.max(0, Math.floor(camY / TILE)), ty1 = Math.min(Math.ceil(w.h / TILE) - 1, Math.floor((camY + viewH) / TILE));
+  // ---- the map in view: floor, drops, walls (a dark top, and a face where a wall meets the floor below it)
+  // (the place's floor and walls as this stage of it has them: worn and changed deeper down)
+  const stage = stageOf(w.floor), m = w.map, ledge = anim("ledge"), [dark, lit] = EDGE[B.id];
+  const floor = anim(stage > 1 ? `${B.floor}_${stage}` : B.floor), wall = anim(stage > 1 ? `${B.wall}_${stage}` : B.wall);
+  const pit = PIT_LOOK[B.id], cDark = rgba(dark), cLit = rgba(lit);
+  const tx0 = Math.max(0, Math.floor(camX / TILE) - 1), tx1 = Math.min(m.cols - 1, Math.floor((camX + viewW) / TILE) + 1);
+  // (a wall's face rises up to three tiles above its foot: rows just below the view still show)
+  const ty0 = Math.max(0, Math.floor(camY / TILE) - 1), ty1 = Math.min(m.rows - 1, Math.floor((camY + viewH) / TILE) + 4);
+  const sc = w.secret, scC = sc ? sc.x / TILE : -9, scR = sc ? sc.y / TILE - 1 : -9;
   for (let ty = ty0; ty <= ty1; ty++)
     for (let tx = tx0; tx <= tx1; tx++) {
-      const v = Math.floor(hash(tx, ty + w.floor * 100) * floor.frames.length);
-      s.back.image(floor.frames[v][0]!, tx * TILE, ty * TILE);
+      const v = m.at(tx, ty), x = tx * TILE, y = ty * TILE, hv = hash(tx, ty + w.floor * 100);
+      if (v === FLOOR) {
+        const look = m.look[ty * m.cols + tx];
+        if (look === LOOK_BRIDGE) {
+          drawPit(s, pit, x, y, tx, ty, time);
+          drawBridge(s, pit, x, y, m.at(tx, ty - 1) !== FLOOR || m.at(tx, ty + 1) !== FLOOR ? m.at(tx - 1, ty) === FLOOR || m.at(tx + 1, ty) === FLOOR : false, m.at(tx, ty - 1) !== FLOOR, m.at(tx, ty + 1) !== FLOOR, m.at(tx - 1, ty) !== FLOOR, m.at(tx + 1, ty) !== FLOOR);
+          continue;
+        }
+        s.back.image(floor.frames[Math.floor(hv * floor.frames.length)][0]!, x, y);
+        if (look === LOOK_ICE) {
+          // a sheet of ice: pale over the stone, a glint wandering over it
+          s.back.rect(x, y, TILE, TILE, rgba("#bfe8ff", 0.32));
+          if (m.look[(ty - 1) * m.cols + tx] !== LOOK_ICE) s.back.rect(x, y, TILE, 1, rgba("#e8f8ff", 0.6));
+          const g = (time * 0.7 + hv * 7) % 3;
+          if (g < 0.4) s.glow.rect(x + Math.floor(hv * 12) + 2, y + Math.floor(hash(ty, tx) * 12) + 2, 1, 1, rgbaf(0.9, 0.97, 1, Math.sin((g / 0.4) * Math.PI)));
+        } else if (look === LOOK_VEIN) {
+          // a crack with fire under it: dark lips, a glowing seam, a little light breathing out
+          const vx = x + 3 + Math.floor(hv * 8), vy = y + 4 + Math.floor(hash(ty, tx) * 6), pulse = 0.7 + 0.3 * Math.sin(time * 2.4 + hv * 9);
+          s.back.rect(vx - 1, vy, 7, 3, rgba("#0b0a12"));
+          s.back.rect(vx + 2, vy + 2, 6, 2, rgba("#0b0a12"));
+          s.glow.rect(vx, vy + 1, 5, 1, rgbaf(1, 0.45, 0.12, pulse));
+          s.glow.rect(vx + 3, vy + 2, 4, 1, rgbaf(1, 0.6, 0.2, pulse * 0.8));
+          if (hv < 0.35) s.illum.light(x + 8, y + 8, 22, 18, rgbaf(1, 0.4, 0.12, 0.3 * pulse));
+        }
+        continue;
+      }
+      if (v === PIT) {
+        drawPit(s, pit, x, y, tx, ty, time);
+        // the floor's cut edge hanging into the drop
+        if (m.at(tx, ty - 1) === FLOOR) s.back.image(ledge.frames[Math.floor(hv * ledge.frames.length)][0]!, x, y);
+        continue;
+      }
+      // a wall's top: dark, its rim lit where it stands over floor or a drop
+      s.back.rect(x, y, TILE, TILE, cDark);
+      if (m.at(tx - 1, ty) !== WALL) s.back.rect(x, y, 1, TILE, cLit);
+      if (m.at(tx + 1, ty) !== WALL) s.back.rect(x + TILE - 1, y, 1, TILE, cLit);
+      if (m.at(tx, ty - 1) !== WALL) s.back.rect(x, y, TILE, 1, cLit);
     }
-  // ---- the back wall, the side walls and the front edge: an enclosed room
-  const [dark, lit] = EDGE[B.id];
-  const sc = w.secret, scT = sc ? sc.x / TILE : -9;
-  if (camY < 4)
-    for (let tx = Math.max(-1, tx0 - 1); tx <= Math.min(Math.ceil(w.w / TILE), tx1 + 1); tx++) {
-      // a cache broken open takes the place of its two columns
-      if (sc && sc.hp <= 0 && (tx === scT || tx === scT + 1)) continue;
-      const v = Math.floor(hash(tx, w.floor * 7) * wall.frames.length);
-      s.back.image(wall.frames[v][0]!, tx * TILE, 0);
+  // the faces, over the tops they rise into: up to three tiles of courses wherever a wall meets the floor
+  for (let ty = ty0; ty <= ty1; ty++)
+    for (let tx = tx0; tx <= tx1; tx++) {
+      if (m.at(tx, ty) !== WALL || m.at(tx, ty + 1) === WALL) continue;
+      // a cache broken open takes the place of its two faces
+      if (sc && sc.hp <= 0 && ty === scR && (tx === scC || tx === scC + 1)) continue;
+      const tall = 1 + (m.at(tx, ty - 1) === WALL ? 1 + (m.at(tx, ty - 2) === WALL ? 1 : 0) : 0);
+      const r = wall.frames[Math.floor(hash(tx, ty * 7 + w.floor * 7) * wall.frames.length)][0]!;
+      clipUp(s.back, r, tx * TILE, (ty + 1) * TILE, tall * TILE);
+      // a soft shadow the wall casts on the floor at its foot
+      if (m.at(tx, ty + 1) === FLOOR) {
+        s.back.rect(tx * TILE, (ty + 1) * TILE, TILE, 3, rgba("#000000", 0.35), -1e6);
+        s.back.rect(tx * TILE, (ty + 1) * TILE + 3, TILE, 3, rgba("#000000", 0.18), -1e6);
+      }
     }
   // ---- the hidden cache: cracks the lantern brings out (shuddering when struck), or the hole once it is open
-  if (sc && camY < 60) {
+  if (sc && inView(sc.x + TILE, sc.y - 20, 60)) {
     const sa = anim(`secret_${B.id}`), cx = sc.x + TILE;
     if (sc.hp <= 0) {
-      s.back.image(sa.frames[1][0]!, sc.x, 0);
+      s.back.image(sa.frames[1][0]!, sc.x, sc.y);
       // a warm breath from inside, fading after it opens
       const k = Math.max(0, 1 - sc.hitT / 4);
-      if (k > 0) s.illum.light(cx, -16, 46, 36, rgbaf(1, 0.8, 0.4, 0.7 * k));
+      if (k > 0) s.illum.light(cx, sc.y - 16, 46, 36, rgbaf(1, 0.8, 0.4, 0.7 * k));
     } else if (sc.seen > 0.02) {
       const jit = sc.hitT < 0.25 ? Math.round(Math.sin(sc.hitT * 80) * 1.5) : 0;
       const a = Math.min(1, sc.seen);
-      s.back.image(sa.frames[0][0]!, sc.x + jit, 0, 1, 1, 0, rgbaf(1, 1, 1, a));
+      s.back.image(sa.frames[0][0]!, sc.x + jit, sc.y, 1, 1, 0, rgbaf(1, 1, 1, a));
       // gold glinting in the split, and a little warm light breathing out of it
-      if (sa.frames[0][1]) s.glow.image(sa.frames[0][1]!, sc.x + jit, 0, 1, 1, 0, rgbaf(1, 1, 1, a * (0.75 + 0.25 * Math.sin(time * 3))));
-      s.illum.light(cx, -22, 30, 24, rgbaf(1, 0.8, 0.45, 0.45 * a * (0.85 + 0.15 * Math.sin(time * 2.3))));
+      if (sa.frames[0][1]) s.glow.image(sa.frames[0][1]!, sc.x + jit, sc.y, 1, 1, 0, rgbaf(1, 1, 1, a * (0.75 + 0.25 * Math.sin(time * 3))));
+      s.illum.light(cx, sc.y - 22, 30, 24, rgbaf(1, 0.8, 0.45, 0.45 * a * (0.85 + 0.15 * Math.sin(time * 2.3))));
     }
   }
-  s.back.rect(-14, -52, 14, w.h + 62, rgba(dark));
-  s.back.rect(-2, -48, 2, w.h + 48, rgba(lit));
-  s.back.rect(w.w, -52, 14, w.h + 62, rgba(dark));
-  s.back.rect(w.w, -48, 2, w.h + 48, rgba(lit));
-  s.back.rect(-14, w.h, w.w + 28, 14, rgba(dark));
-  s.back.rect(0, w.h, w.w, 2, rgba(lit));
-  s.back.rect(-14, -52, w.w + 28, 4, rgba(dark));
-  // a soft shadow the wall casts on the floor's top rows
-  s.back.rect(0, 0, w.w, 3, rgba("#000000", 0.35));
-  s.back.rect(0, 3, w.w, 3, rgba("#000000", 0.18));
 
-  // ---- torches on the back wall
+  // ---- the stairs: down to the next floor (behind a grate until the last wave is over), and up, where he came in
+  if (w.stairs && inView(w.stairs.x, w.stairs.y, 60)) drawStairs(s, w.stairs.x, w.stairs.y, B.id, false, w.stairs.open ? Math.min(1, w.stairs.t / 0.5) : 0, time);
+  if (w.arrivedBy === "stairs") {
+    const ux = m.start[0] * TILE + 8, uy = m.start[1] * TILE - 10;
+    if (m.clear(ux, uy, 14) && inView(ux, uy, 60)) drawStairs(s, ux, uy, B.id, true, 1, time);
+  }
+
+  // ---- torches on the walls' faces
   const torch = anim(B.torch);
-  for (const x of w.torches) {
-    if (!inView(x, 0, 80)) continue;
-    drawAnim(s, torch, time + x * 0.013, x, -10, { layer: "back", glow: 0.9 });
+  for (const [x, y] of w.torches) {
+    if (!inView(x, y, 80)) continue;
+    drawAnim(s, torch, time + x * 0.013, x, y - 10, { layer: "back", glow: 0.9 });
     const f = 1 + Math.sin(time * 9 + x) * 0.05 + Math.sin(time * 23 + x * 0.3) * 0.03;
-    s.illum.light(x, -18, 105 * f, 80 * f, withAlpha(rgba(B.torchLight), 0.8));
+    s.illum.light(x, y - 18, 105 * f, 80 * f, withAlpha(rgba(B.torchLight), 0.8));
   }
   // god rays: pale shafts falling from high windows (the garden and the halls)
   if (B.id !== "crypt")
@@ -333,9 +479,10 @@ export function drawWorld(s: Scene, w: World, camX: number, camY: number, viewW:
   // portal, while it is more than a few steps away
   const goal = w.objective();
   if (goal && !h.dead && h.exitT < 0 && h.arriveT > 0.55) {
-    const dx = goal[0] - h.x, dy = goal[1] - h.y, d = Math.hypot(dx, dy);
-    if (d > 80) {
-      const ux = dx / d, uy = dy / d, col = w.portal ? rgba("#d8a8ff") : rgba("#ffcf5a");
+    // (pointing the way round the walls, not straight through them)
+    const d = Math.hypot(goal[0] - h.x, goal[1] - h.y), [ux, uy] = w.guide;
+    if (d > 80 && (ux || uy)) {
+      const col = w.portal ? rgba("#d8a8ff") : w.stairs?.open ? rgba("#9ae0ff") : rgba("#ffcf5a");
       for (let q = 0; q < 2; q++) {
         const u = (time * 1.4 + q * 0.5) % 1, r = 30 + u * 26, al = Math.sin(u * Math.PI);
         const cx = h.x + ux * r, cy = h.y - 12 + uy * r * 0.85;
@@ -415,15 +562,22 @@ export function drawWorld(s: Scene, w: World, camX: number, camY: number, viewW:
     } else (a = idle, fi = frameAt(idle, time));
     fi = hs.ready(a, fi);
     // arriving: nothing in the first instant of the beam, then the body grows out of it; leaving: spun into the portal
-    let sx = h.face, sy = 1, rot = 0, flash = h.hurtT > 0.2 ? 1 : 0, show = true;
-    if (h.arriveT < 0.55) {
+    let sx = h.face, sy = 1, rot = 0, flash = h.hurtT > 0.2 ? 1 : 0, show = true, fade = 1;
+    if (h.arriveT < 0.55 && w.arrivedBy === "stairs") {
+      // come down the stairs: he steps out of the dark at their foot
+      fade = Math.min(1, h.arriveT / 0.45);
+    } else if (h.arriveT < 0.55) {
       const u = (h.arriveT - 0.25) / 0.3;
       show = u > 0;
       sy = Math.max(0.05, 1 - (1 - Math.min(1, u)) ** 3);
       sx = h.face * (1.4 - 0.4 * Math.min(1, u));
       flash = u < 0.8 ? 1 : 0;
     }
-    if (h.exitT >= 0) {
+    if (h.exitT >= 0 && !w.portal && w.stairs) {
+      // down the stairs: he walks into the dark, step by step
+      fade = Math.max(0, 1 - h.exitT / 0.8);
+      show = fade > 0.05;
+    } else if (h.exitT >= 0) {
       const k = Math.max(0, 1 - h.exitT / 0.75);
       sx *= k;
       sy = k;
@@ -436,7 +590,7 @@ export function drawWorld(s: Scene, w: World, camX: number, camY: number, viewW:
     const blink = h.invuln > 0 && w.ward <= 0 && !w.strikes.some((q) => q.kind === "blink") && h.dashT <= 0 && h.exitT < 0 && h.arriveT > 0.55 && Math.floor(time * 16) % 2 === 0;
     if (show) {
       s.back.disc(h.x, h.y, 9 * Math.abs(sx), 3, C_SHADOW);
-      drawAnim(s, a, 0, h.x, h.y, { frame: fi, sx: sx * (1 + squash), sy: sy * (1 - squash), rot, key: h.y, alpha: blink ? 0.45 : 1, flash });
+      drawAnim(s, a, 0, h.x, h.y, { frame: fi, sx: sx * (1 + squash), sy: sy * (1 - squash), rot, key: h.y, alpha: blink ? 0.45 : fade, flash });
     }
     // the light: a lantern in the free hand or at the belt, swinging; or a wisp floating at the shoulder
     const hand = a.hands?.[fi] ?? [8, -20, 5, -15];

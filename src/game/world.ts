@@ -6,12 +6,13 @@ import { attackFrames, attackHits, HERO_FPS, heroHands, lookId } from "./heroSpr
 import type { Audio } from "../engine/audio";
 import { rgba, rgbaf } from "../engine/renderer";
 import {
-  AI, biomeOf, bossOf, El, EL_COLOR, EN, ENEMIES, evolutionOf, FLOORS, heroDef, QUESTS, RELIC_MAX, RELICS, RelicKind, reactionFor, roster, WEAPON_IDS, WEAPONS,
+  AI, biomeOf, bossOf, El, EL_COLOR, EN, ENEMIES, evolutionOf, FLOORS, heroDef, QUESTS, RELIC_MAX, RELICS, RelicKind, reactionFor, roster, stageOf, WEAPON_IDS, WEAPONS,
   type Biome, type Blow, type HeroDef, type Modifier, type QuestKind, type Reaction, type StatId, type TaskId, type WeaponId,
 } from "./defs";
 import { getLang, t as tr, tx } from "./i18n";
 import { Bullets, Drops, Enemies, Grid, Particles, TEAM_FOE, TEAM_HERO } from "./pools";
 import { Rng } from "./rng";
+import { buildMap, Flow, FLOOR, LOOK_ICE, MAP_PLANS, TileMap, WALL } from "./map";
 
 export const TILE = 16;
 // bullet kinds (what they look like)
@@ -204,6 +205,8 @@ export interface Strike {
 export interface Secret {
   /** The left edge of its two wall columns (on the tile grid). */
   x: number;
+  /** The foot of the wall it is in (px): where the wall meets the floor. */
+  y: number;
   /** Blows still needed; 0 once it is open. */
   hp: number;
   /** How much of the cracks the lantern shows right now (0..1). */
@@ -377,7 +380,19 @@ export class World {
   braziers: Brazier[] = [];
   pillars: Pillar[] = [];
   decor: Decor[] = [];
-  torches: number[] = [];
+  /** Torches on the walls' faces: where each stands (x, and the foot of its wall). */
+  torches: [number, number][] = [];
+  /** The floor's map, and the ways over it: to the hero (walkers, flyers) and to where the hero should go. */
+  map = new TileMap(4, 4);
+  private toHero = new Flow(this.map, false);
+  private toHeroFly = new Flow(this.map, true);
+  private toGoal = new Flow(this.map, false);
+  private flowT = 0;
+  private goalKey = -1;
+  /** The way the guide points from the hero (a unit vector), and the stairs down once they open. */
+  guide: [number, number] = [0, 0];
+  stairs: { x: number; y: number; open: boolean; t: number } | null = null;
+  private way: [number, number] = [0, 0];
   motes: Mote[] = [];
   relics: Relic[] = [];
   stats: Stats = { edge: 1, haste: 1, reach: 1, wave: 0, parry: 0, speed: 1, magnet: 44, dashCd: 3.5, odGain: 1, crit: 0.05, lantern: 1, might: 1 };
@@ -466,14 +481,24 @@ export class World {
   }
 
   // ============================================================================================ floor setup
-  startFloor(floor: number, mod: Modifier): void {
+  /** How the hero came onto this floor: down the stairs (within a location) or through a portal (a new one). */
+  arrivedBy: "stairs" | "portal" = "portal";
+  startFloor(floor: number, mod: Modifier, via: "stairs" | "portal" = "portal"): void {
     this.floor = floor;
+    this.arrivedBy = via;
     this.mod = mod;
     this.biome = biomeOf(floor);
-    // big enough that the braziers are a run apart: wider as the tower goes down
-    const size = Math.round((52 + Math.min(floor, 9) * 3) * mod.size);
-    this.w = size * TILE;
-    this.h = Math.round(size * 0.7) * TILE;
+    // the floor's own map, built the way its plan says (a narrow stair makes it smaller)
+    const plan = MAP_PLANS[Math.min(MAP_PLANS.length, floor) - 1];
+    this.map = buildMap({ ...plan, cols: Math.round(plan.cols * mod.size), rows: Math.round(plan.rows * mod.size) }, this.rng);
+    this.toHero = new Flow(this.map, false);
+    this.toHeroFly = new Flow(this.map, true);
+    this.toGoal = new Flow(this.map, false);
+    this.flowT = 0;
+    this.goalKey = -1;
+    this.stairs = null;
+    this.w = this.map.cols * TILE;
+    this.h = this.map.rows * TILE;
     this.grid.resize(this.w, this.h);
     this.enemies.n = 0;
     this.bullets.n = 0;
@@ -504,8 +529,10 @@ export class World {
     // what to do here, once the hero has arrived (the first floor says it in full)
     this.hint = { text: tr(floor === 1 ? "hintFloor1" : "hintFloor"), t: -1.4, dur: floor === 1 ? 7 : 4.5 };
     const h = this.hero;
-    h.x = this.w / 2;
-    h.y = this.h / 2;
+    h.x = this.map.start[0] * TILE + 8;
+    h.y = this.map.start[1] * TILE + 12;
+    // down the stairs: he steps off the foot of the flight he came down
+    if (via === "stairs" && this.map.clear(h.x, h.y - 22, 14)) h.y += 4;
     h.dead = false;
     h.invuln = 1.6;
     h.atk = -1;
@@ -513,57 +540,133 @@ export class World {
     h.exitT = -1;
     h.vx = h.vy = 0;
     this.corpses = [];
-    this.addFx("beam", h.x, h.y, { glow: 1, key: 2 });
+    if (via === "portal") this.addFx("beam", h.x, h.y, { glow: 1, key: 2 });
+    else this.dust(h.x, h.y, 8, 40);
     if (mod.heal) h.hp = h.maxHp;
     if (mod.level) this.pendingLevels++;
     this.layout();
+    this.toHero.compute(this.map.start[0], this.map.start[1]);
+    this.toHeroFly.compute(this.map.start[0], this.map.start[1]);
     // a few enemies already waiting, far off
     for (let i = 0; i < 1 + Math.floor(floor / 3); i++) this.spawnAt(this.pickEnemy(0), ...this.edgePoint(300));
   }
 
-  /** Braziers, columns, torches on the back wall, things lying about, motes in the air. */
+  /**
+   * Braziers, the stairs, columns, torches on the walls, things lying about, motes in the air: all on the floor's
+   * map, spread by walking distance from the way in.
+   */
   private layout(): void {
-    const R = this.rng, W = this.w, H = this.h;
+    const R = this.rng, m = this.map, W = this.w, H = this.h, [c0, r0] = m.start, sx = c0 * TILE + 8, sy = r0 * TILE + 8;
+    const walk = new Flow(m, false);
+    walk.compute(c0, r0);
+    // open ground to put things on: floor with room around it, reachable from the way in
+    const ground: [number, number, number][] = [];
+    let far = 1;
+    for (let r = 0; r < m.rows; r++)
+      for (let c = 0; c < m.cols; c++) {
+        const k = r * m.cols + c, d = walk.at(c, r);
+        if (m.t[k] !== FLOOR || m.open[k] < 3 || m.look[k] !== 0 || d >= Flow.FAR) continue;
+        ground.push([c * TILE + 8, r * TILE + 8, d]);
+        far = Math.max(far, d);
+      }
+    const pickFar = (from: [number, number][], minWalk: number) => {
+      let best: [number, number, number] | null = null, bs = -1;
+      for (let k = 0; k < 500 && ground.length; k++) {
+        const g = ground[Math.floor(R.next() * ground.length)];
+        if (g[2] < minWalk) continue;
+        let near = Infinity;
+        for (const [x, y] of from) near = Math.min(near, Math.hypot(g[0] - x, (g[1] - y) * 1.3));
+        const sc = near * R.range(0.85, 1.15);
+        if (sc > bs) (bs = sc), (best = g);
+      }
+      return best;
+    };
+    // the stairs down (not on a boss's floor, where a portal comes instead): at the far end of the walk
+    this.stairs = null;
+    const taken: [number, number][] = [[sx, sy]];
+    if (bossOf(this.floor) < 0 && this.floor < FLOORS) {
+      const end = ground.filter((g) => g[2] >= far * 0.82);
+      const g = end.length ? end[Math.floor(R.next() * end.length)] : ground[ground.length - 1];
+      if (g) (this.stairs = { x: g[0], y: g[1], open: false, t: 0 }), taken.push([g[0], g[1]]);
+    }
+    // three braziers, each as far as can be from the way in, the stairs and the others
     this.braziers = [];
-    const base = R.range(0, Math.PI * 2);
     for (let k = 0; k < 3; k++) {
-      const a = base + (k * Math.PI * 2) / 3 + R.range(-0.35, 0.35);
-      const d = R.range(0.76, 0.9);
-      this.braziers.push({ x: Math.round(W / 2 + Math.cos(a) * (W / 2 - 60) * d), y: Math.round(H / 2 + Math.sin(a) * (H / 2 - 50) * d), lit: false, progress: 0, litT: 0 });
+      const g = pickFar(taken, far * 0.22) ?? ground[Math.floor(R.next() * ground.length)];
+      if (!g) break;
+      this.braziers.push({ x: g[0], y: g[1], lit: false, progress: 0, litT: 0 });
+      taken.push([g[0], g[1]]);
     }
     const clear = (x: number, y: number, r: number) =>
-      (x - W / 2) ** 2 + (y - H / 2) ** 2 > 80 * 80 && this.braziers.every((b) => (x - b.x) ** 2 + (y - b.y) ** 2 > (r + 36) ** 2) && this.pillars.every((p) => (x - p.x) ** 2 + (y - p.y) ** 2 > (r + p.r + 50) ** 2);
+      m.clear(x, y, r) && (x - sx) ** 2 + (y - sy) ** 2 > 80 * 80 && this.braziers.every((b) => (x - b.x) ** 2 + (y - b.y) ** 2 > (r + 36) ** 2) &&
+      this.pillars.every((p) => (x - p.x) ** 2 + (y - p.y) ** 2 > (r + p.r + 20) ** 2) && (!this.stairs || (x - this.stairs.x) ** 2 + (y - this.stairs.y) ** 2 > (r + 34) ** 2);
+    // columns where the map wants them (in big rooms, down the galleries)
     this.pillars = [];
-    const want = Math.round((W * H) / 52000);
-    for (let tries = 0; tries < 200 && this.pillars.length < want; tries++) {
-      const x = R.range(70, W - 70), y = R.range(80, H - 50);
-      if (clear(x, y, 10)) this.pillars.push({ x: Math.round(x), y: Math.round(y), r: 10 });
-    }
+    for (const [x, y] of m.columns) if (clear(x, y, 10)) this.pillars.push({ x, y, r: 10 });
+    // torches on the walls' faces: a face is a wall with floor at its foot; one every few steps along it
     this.torches = [];
-    for (let x = 48 + R.int(0, 30); x < W - 30; x += 88 + R.int(0, 40)) this.torches.push(x);
-    // now and then a stretch of the back wall hides a cache: two columns clear of the torches and the corners
+    const faces: [number, number][] = [];
+    for (let r = 1; r < m.rows - 1; r++) {
+      let run = 0;
+      for (let c = 0; c < m.cols; c++) {
+        const face = m.at(c, r) === WALL && m.at(c, r + 1) === FLOOR && m.at(c, r - 1) === WALL && m.at(c, r - 2) === WALL;
+        if (face) {
+          faces.push([c, r]);
+          if (++run % 7 === 4) this.torches.push([c * TILE + 8, (r + 1) * TILE]);
+        } else run = 0;
+      }
+    }
+    // now and then a stretch of wall hides a cache: two faces side by side, clear of the torches
     this.secret = null;
     if (R.chance(0.5 + 0.03 * this.floor))
-      for (let tries = 0; tries < 30; tries++) {
-        const x = R.int(2, Math.floor(W / TILE) - 4) * TILE;
-        if (this.torches.some((t) => t > x - 26 && t < x + TILE * 2 + 26)) continue;
-        this.secret = { x, hp: 3, seen: 0, found: false, hitT: 9 };
+      for (let tries = 0; tries < 40 && faces.length; tries++) {
+        const [c, r] = faces[Math.floor(R.next() * faces.length)], x = c * TILE, y = (r + 1) * TILE;
+        if (m.at(c + 1, r) !== WALL || m.at(c + 1, r + 1) !== FLOOR || m.at(c + 1, r - 2) !== WALL) continue;
+        if (this.torches.some(([tx, ty]) => ty === y && tx > x - 26 && tx < x + TILE * 2 + 26)) continue;
+        if ((x - sx) ** 2 + (y - sy) ** 2 < 120 * 120) continue;
+        this.secret = { x, y, hp: 3, seen: 0, found: false, hitT: 9 };
         break;
       }
+    // a random place on open ground (and any floor tile, for small things)
+    const anyGround = (): [number, number] => {
+      const g = ground[Math.floor(R.next() * ground.length)] ?? [sx, sy];
+      return [g[0] + R.range(-6, 6), g[1] + R.range(-6, 6)];
+    };
+    const anyFloor = (): [number, number] => {
+      for (let k = 0; k < 20; k++) {
+        const c = R.int(1, m.cols - 2), r = R.int(1, m.rows - 2);
+        if (m.at(c, r) === FLOOR && m.look[r * m.cols + c] === 0) return [c * TILE + R.range(2, 14), r * TILE + R.range(2, 14)];
+      }
+      return anyGround();
+    };
     // things lying about: flat ones under everything, standing ones sorted with the rest
     this.decor = [];
+    // (each stage of a place has its own: the ossuary is strewn with bones, the garden's heart grows mushrooms...)
+    const stage = stageOf(this.floor), id = this.biome.id;
     const kinds: [string, boolean, number][] =
-      this.biome.id === "crypt" ? [["bones", true, 3], ["candle", false, 1]] : this.biome.id === "garden" ? [["grass", false, 1], ["mushrooms", false, 1], ["grass", false, 1]] : [["crystal", false, 1]];
-    const count = Math.round((W * H) / (this.biome.id === "frost" ? 26000 : 14000));
+      id === "crypt" ? (stage === 2 ? [["bones", true, 3], ["bones", true, 3], ["bones", true, 3], ["candle", false, 1]] : stage === 3 ? [["bones", true, 3], ["candle", false, 1], ["candle", false, 1]] : [["bones", true, 3], ["candle", false, 1]])
+      : id === "garden" ? (stage === 3 ? [["mushrooms", false, 1], ["mushrooms", false, 1], ["grass", false, 1]] : [["grass", false, 1], ["mushrooms", false, 1], ["grass", false, 1]])
+      : [["crystal", false, 1]];
+    const count = Math.round(ground.length / (id === "frost" ? (stage === 2 ? 16 : 26) : stage === 2 ? 10 : 14));
     for (let k = 0; k < count; k++) {
-      const [name, flat, frames] = R.pick(kinds), x = R.range(24, W - 24), y = R.range(30, H - 12);
+      const [name, flat, frames] = R.pick(kinds), [x, y] = anyFloor();
       if (!clear(x, y, 4) && R.chance(0.8)) continue;
       this.decor.push({ anim: name, x: Math.round(x), y: Math.round(y), frame: R.int(0, frames - 1), flip: R.chance(0.5) ? -1 : 1, flat, phase: R.range(0, 5) });
     }
+    // where walls hold few torches (caves, islands), lights of the place itself stand about: candles, glowing
+    // mushrooms, crystals, one every few dozen steps of open ground
+    const glowKind = id === "crypt" ? "candle" : id === "garden" ? "mushrooms" : "crystal";
+    const want = Math.max(0, Math.round(ground.length / 55) - this.torches.length * 2);
+    for (let k = 0, tries = 0; k < want && tries < want * 6; tries++) {
+      const [x, y] = anyGround();
+      if (!clear(x, y, 6) || this.decor.some((d) => d.anim === glowKind && (d.x - x) ** 2 + (d.y - y) ** 2 < 90 * 90)) continue;
+      this.decor.push({ anim: glowKind, x: Math.round(x), y: Math.round(y), frame: 0, flip: R.chance(0.5) ? -1 : 1, flat: false, phase: R.range(0, 5) });
+      k++;
+    }
     // a weapon altar on every floor, away from the start, with something other than what the hero holds
     this.racks = [];
-    for (let tries = 0; tries < 60; tries++) {
-      const x = R.range(60, W - 60), y = R.range(70, H - 40);
+    for (let tries = 0; tries < 80; tries++) {
+      const [x, y] = anyGround();
       if (!clear(x, y, 14)) continue;
       const pool = WEAPON_IDS.filter((id) => id !== this.hero.weapon), weapon = R.pick(pool);
       // from the second floor on, more and more of them are steeped in an element (not the spellbook, not the fire whip)
@@ -574,24 +677,24 @@ export class World {
     // the spirit of one who came before, somewhere away from the start and the altar, with a task fit for this floor
     this.spirit = null;
     const questKinds = QUESTS.filter((q) => q.from <= this.floor && (q.kind !== "alchemy" || this.elementsAtHand() >= 2)).map((q) => q.kind);
-    for (let tries = 0; tries < 80 && questKinds.length; tries++) {
-      const x = R.range(60, W - 60), y = R.range(80, H - 40);
+    for (let tries = 0; tries < 100 && questKinds.length; tries++) {
+      const [x, y] = anyGround();
       if (!clear(x, y, 12) || this.racks.some((r) => (x - r.x) ** 2 + (y - r.y) ** 2 < 110 * 110)) continue;
       this.spirit = { x: Math.round(x), y: Math.round(y), kind: R.pick(questKinds), state: "offer", t: 0 };
       break;
     }
     // a spot for a prop: off the columns, away from the start, the braziers, the altar and the spirit
     const spot = (x: number, y: number, r: number) =>
-      x > 20 && x < W - 20 && y > 30 && y < H - 12 && this.free(x, y, r) && (x - W / 2) ** 2 + (y - H / 2) ** 2 > 90 * 90 &&
+      this.free(x, y, r) && (x - sx) ** 2 + (y - sy) ** 2 > 90 * 90 && (!this.stairs || (x - this.stairs.x) ** 2 + (y - this.stairs.y) ** 2 > 40 * 40) &&
       this.braziers.every((b) => (x - b.x) ** 2 + (y - b.y) ** 2 > 40 * 40) && this.racks.every((q) => (x - q.x) ** 2 + (y - q.y) ** 2 > 36 * 36) &&
       (!this.spirit || (x - this.spirit.x) ** 2 + (y - this.spirit.y) ** 2 > 36 * 36);
-    // things to break: urns in twos and threes along the back wall and by the columns
+    // things to break: urns in twos and threes at the foot of the walls and by the columns
     this.urns = [];
     const urnKinds = this.biome.id === "crypt" ? [0, 0, 3] : this.biome.id === "garden" ? [1] : [2, 2, 3];
-    const groups = 3 + Math.round((W * H) / 110000);
-    for (let g = 0, tries = 0; g < groups && tries < 120; tries++) {
-      const pil = this.pillars.length && R.chance(0.5) ? R.pick(this.pillars) : null;
-      const bx = pil ? pil.x + R.range(-22, 10) : R.range(40, W - 60), by = pil ? pil.y + R.range(12, 18) : R.range(32, 42);
+    const groups = 3 + Math.round(ground.length / 300);
+    for (let g = 0, tries = 0; g < groups && tries < 160; tries++) {
+      const pil = this.pillars.length && R.chance(0.35) ? R.pick(this.pillars) : null, face = faces.length ? faces[Math.floor(R.next() * faces.length)] : null;
+      const bx = pil ? pil.x + R.range(-22, 10) : face ? face[0] * TILE + R.range(-4, 4) : sx, by = pil ? pil.y + R.range(12, 18) : face ? (face[1] + 1) * TILE + R.range(6, 10) : sy;
       if (!spot(bx, by, 8)) continue;
       for (let k = 0, n = R.int(2, 3); k < n; k++) {
         const x = Math.round(bx + k * 11 + R.range(-1.5, 1.5)), y = Math.round(by + R.range(-3, 3));
@@ -603,8 +706,8 @@ export class World {
     this.chests = [];
     if (this.floor >= 2 && R.chance(0.3))
       for (let tries = 0; tries < 60; tries++) {
-        const x = R.range(50, W - 50), y = R.range(70, H - 30);
-        if (!spot(x, y, 10) || (x - W / 2) ** 2 + (y - H / 2) ** 2 < 160 * 160) continue;
+        const [x, y] = anyGround();
+        if (!spot(x, y, 10) || (x - sx) ** 2 + (y - sy) ** 2 < 160 * 160) continue;
         this.chests.push({ x: Math.round(x), y: Math.round(y), mimic: true, t: R.range(0, 3) });
         break;
       }
@@ -612,13 +715,13 @@ export class World {
     this.altar = null;
     if (this.floor >= 2 && R.chance(0.45))
       for (let tries = 0; tries < 60; tries++) {
-        const x = R.range(60, W - 60), y = R.range(80, H - 40);
+        const [x, y] = anyGround();
         if (!spot(x, y, 16) || this.chests.some((c) => (x - c.x) ** 2 + (y - c.y) ** 2 < 60 * 60)) continue;
         this.altar = { x: Math.round(x), y: Math.round(y), progress: 0, taken: false };
         break;
       }
     this.motes = [];
-    for (let k = 0; k < 70; k++) this.motes.push({ x: R.range(0, W), y: R.range(-40, H), vx: R.range(-1, 1), vy: R.range(-1, 1), ph: R.range(0, 6.3) });
+    for (let k = 0; k < 90; k++) this.motes.push({ x: R.range(0, W), y: R.range(-40, H), vx: R.range(-1, 1), vy: R.range(-1, 1), ph: R.range(0, 6.3) });
   }
 
   get lanternR(): number {
@@ -689,17 +792,31 @@ export class World {
     }
   }
   private free(x: number, y: number, r: number): boolean {
+    if (!this.map.clear(x, y, r)) return false;
     for (const p of this.pillars) if ((x - p.x) ** 2 + (y - p.y) ** 2 < (p.r + r) ** 2) return false;
     return true;
   }
+  /**
+   * Somewhere `minDist` or a little more from the hero, on open floor the horde can walk from (not shut away
+   * behind walls far round), for something to come from.
+   */
   private edgePoint(minDist: number): [number, number] {
-    const h = this.hero;
-    for (let k = 0; k < 24; k++) {
+    const h = this.hero, m = this.map, F = this.toHero;
+    for (let k = 0; k < 40; k++) {
       const a = this.rng.range(0, Math.PI * 2), d = this.rng.range(minDist, minDist + 100);
       const x = h.x + Math.cos(a) * d, y = h.y + Math.sin(a) * d * 0.8;
-      if (x > 20 && y > 24 && x < this.w - 20 && y < this.h - 12 && this.free(x, y, 12)) return [x, y];
+      if (x < 20 || y < 24 || x > this.w - 20 || y > this.h - 12 || !this.free(x, y, 12)) continue;
+      // the walk there (10 a tile) no longer than about twice the straight way
+      const wd = (F.at(Math.floor(x / TILE), Math.floor(y / TILE)) / 10) * TILE;
+      if (wd < Flow.FAR && wd < d * 2.2 + 80) return [x, y];
     }
-    return [this.rng.range(30, this.w - 30), this.rng.range(40, this.h - 30)];
+    // any reachable open floor at about that walk
+    for (let k = 0; k < 400; k++) {
+      const c = this.rng.int(1, m.cols - 2), r = this.rng.int(1, m.rows - 2), wd = (F.at(c, r) / 10) * TILE;
+      if (wd < minDist * 0.8 || wd > minDist * 3 + 200 || F.at(c, r) >= Flow.FAR || !this.free(c * TILE + 8, r * TILE + 8, 10)) continue;
+      return [c * TILE + 8, r * TILE + 8];
+    }
+    return [m.start[0] * TILE + 8, m.start[1] * TILE + 8];
   }
   spawnAt(type: number, x: number, y: number): number {
     const d = ENEMIES[type], f = this.floor;
@@ -763,6 +880,7 @@ export class World {
     this.time += dt;
     this.runTime += dt;
     this.grid.build(this.enemies.x, this.enemies.y, this.enemies.n);
+    this.updateWays(dt);
     this.updateHero(dt);
     this.updateRelics(dt);
     this.updateEnemies(dt);
@@ -854,6 +972,12 @@ export class World {
       if (this.portal) {
         h.x += (this.portal.x - h.x) * Math.min(1, dt * 6);
         h.y += (this.portal.y - 6 - h.y) * Math.min(1, dt * 6);
+      } else if (this.stairs) {
+        // down the flight: to its head, then step by step into the dark
+        h.x += (this.stairs.x - h.x) * Math.min(1, dt * 7);
+        h.y += (this.stairs.y + 10 - h.exitT * 26 - h.y) * Math.min(1, dt * 7);
+        h.moving = true;
+        h.runT += dt * 0.8;
       }
       if (h.exitT > 0.9 && !this.cleared) {
         this.cleared = true;
@@ -924,13 +1048,20 @@ export class World {
     } else {
       // a little slower in the middle of a blow, so it has weight
       const speed = 92 * s.speed * (h.atk >= 0 ? 0.78 : 1) * (this.rage > 0 ? 1.15 : 1);
-      const k = 1 - Math.exp(-dt * 14);
-      h.vx += (this.moveX * speed - h.vx) * k;
-      h.vy += (this.moveY * speed - h.vy) * k;
+      // on ice the feet hold poorly: slow to start, slow to stop
+      const ice = this.map.look[Math.floor(h.y / TILE) * this.map.cols + Math.floor(h.x / TILE)] === LOOK_ICE;
+      const k = 1 - Math.exp(-dt * (ice ? 2.6 : 14));
+      h.vx += (this.moveX * speed * (ice ? 1.15 : 1) - h.vx) * k;
+      h.vy += (this.moveY * speed * (ice ? 1.15 : 1) - h.vy) * k;
     }
     h.moving = Math.hypot(this.moveX, this.moveY) > 0.1 || h.dashT > 0;
-    h.x = Math.max(12, Math.min(this.w - 12, h.x + h.vx * dt));
-    h.y = Math.max(24, Math.min(this.h - 4, h.y + h.vy * dt));
+    h.x += h.vx * dt;
+    h.y += h.vy * dt;
+    // walls and drops stop him; columns too
+    if (this.map.push(h, 5, false) && h.dashT <= 0) {
+      const ice = this.map.look[Math.floor(h.y / TILE) * this.map.cols + Math.floor(h.x / TILE)] === LOOK_ICE;
+      if (ice) (h.vx *= 0.5), (h.vy *= 0.5);
+    }
     this.pushOut(h, 6);
     if (h.moving) h.runT += dt * Math.min(1.4, 0.6 + Math.hypot(h.vx, h.vy) / 110);
     // a puff of dust on every footfall (the run cycle's two contact frames)
@@ -1502,8 +1633,9 @@ export class World {
       this.ghosts.push({ x: h.x, y: h.y, frame: 0, flip: h.face, life: 0.3 });
       this.addFx("blink", h.x, h.y - 14, { glow: 0.8, sx: 0.7, sy: 0.7, tint: rgba("#c684ff") });
       const side = h.x < st.x ? -1 : 1;
-      h.x = Math.max(12, Math.min(this.w - 12, st.x + side * 12));
-      h.y = Math.max(24, Math.min(this.h - 4, st.y));
+      h.x = st.x + side * 12;
+      h.y = st.y;
+      this.map.push(h, 5, false);
       h.face = side > 0 ? -1 : 1;
       this.pushOut(h, 6);
       this.addFx("blink", h.x, h.y - 14, { glow: 0.8, sx: 0.7, sy: 0.7, tint: rgba("#c684ff") });
@@ -1785,14 +1917,14 @@ export class World {
     if (sc) {
       sc.hitT += dt;
       if (sc.hp > 0) {
-        const cx = sc.x + TILE, L = this.lanternR, d = Math.hypot(h.x - cx, h.y + 8);
+        const cx = sc.x + TILE, L = this.lanternR, d = Math.hypot(h.x - cx, h.y - sc.y + 8);
         const want = Math.max(0, Math.min(1, (L * 0.95 - d) / (L * 0.35)));
         sc.seen += (want - sc.seen) * Math.min(1, dt * 4);
         if (!sc.found && sc.seen > 0.6) {
           sc.found = true;
           this.ev.secret("found");
         }
-        if (sc.seen > 0.3 && this.rng.chance(dt * 4)) this.parts.add(cx + this.rng.range(-7, 7), -this.rng.range(12, 26), this.rng.range(-5, 5), this.rng.range(6, 14), 1.4, rgba("#d8d0e8", 0.55 * sc.seen), 1, 8, 0);
+        if (sc.seen > 0.3 && this.rng.chance(dt * 4)) this.parts.add(cx + this.rng.range(-7, 7), sc.y - this.rng.range(12, 26), this.rng.range(-5, 5), this.rng.range(6, 14), 1.4, rgba("#d8d0e8", 0.55 * sc.seen), 1, 8, 0);
       }
     }
     // the cursed altar: a moment standing on it takes the curse
@@ -1837,7 +1969,7 @@ export class World {
     const sc = this.secret;
     if (!sc || sc.hp <= 0 || sc.hitT < 0.2) return;
     // the nearest point of the cracked stretch's lower part, where a blade reaches
-    const px = Math.max(sc.x + 2, Math.min(sc.x + TILE * 2 - 2, x)), py = Math.max(-30, Math.min(0, y)), dx = px - x, dy = py - y, d = Math.hypot(dx, dy);
+    const px = Math.max(sc.x + 2, Math.min(sc.x + TILE * 2 - 2, x)), py = Math.max(sc.y - 30, Math.min(sc.y, y)), dx = px - x, dy = py - y, d = Math.hypot(dx, dy);
     if (d > r + 4) return;
     if (arc < Math.PI && d > 2) {
       let da = Math.atan2(dy, dx) - dir;
@@ -1851,22 +1983,22 @@ export class World {
     if (!sc.found) (sc.found = true), this.ev.secret("found");
     for (let q = 0; q < (sc.hp ? 6 : 22); q++) {
       const a = R.range(0.15, Math.PI - 0.15), sp = R.range(30, sc.hp ? 70 : 120);
-      this.parts.add(cx + R.range(-10, 10), -R.range(8, 30), Math.cos(a) * sp, Math.sin(a) * sp * 0.6, R.range(0.35, 0.8), R.pick(stone), R.chance(0.4) ? 2 : 1, 240, 0);
+      this.parts.add(cx + R.range(-10, 10), sc.y - R.range(8, 30), Math.cos(a) * sp, Math.sin(a) * sp * 0.6, R.range(0.35, 0.8), R.pick(stone), R.chance(0.4) ? 2 : 1, 240, 0);
     }
-    this.dust(cx, 2, sc.hp ? 4 : 12, sc.hp ? 25 : 45);
+    this.dust(cx, sc.y + 2, sc.hp ? 4 : 12, sc.hp ? 25 : 45);
     if (sc.hp > 0) {
       this.audio.play("break", 0.55);
       this.shake = Math.max(this.shake, 0.25);
       return;
     }
     // broken open: rubble, a puff of old air, and what was hidden spills out onto the floor
-    this.addFx("poof", cx, 4, { glow: 0.4 });
+    this.addFx("poof", cx, sc.y + 4, { glow: 0.4 });
     this.audio.play("boom", 1.6);
     this.audio.play("chest");
     this.shake = Math.max(this.shake, 0.55);
     const h = this.hero, spill = (kind: number, value: number) => {
       const a = R.range(0.3, Math.PI - 0.3), s = R.range(40, 90);
-      this.drops.add(kind, cx + R.range(-6, 6), 8, value, Math.cos(a) * s, Math.sin(a) * s);
+      this.drops.add(kind, cx + R.range(-6, 6), sc.y + 8, value, Math.cos(a) * s, Math.sin(a) * s);
     };
     for (let q = 0; q < 2; q++) spill(D_RED, 20);
     for (let q = R.int(5, 8); q > 0; q--) spill(D_EMBER, 1);
@@ -2386,7 +2518,16 @@ export class World {
       E.stun[i] -= dt;
       if (E.chill[i] <= 0) E.chillN[i] = 0;
 
-      const dx = h.x - E.x[i], dy = h.y - E.y[i], dist = Math.hypot(dx, dy) || 1, ux = dx / dist, uy = dy / dist;
+      const dx = h.x - E.x[i], dy = h.y - E.y[i], dist = Math.hypot(dx, dy) || 1;
+      let ux = dx / dist, uy = dy / dist;
+      // walls between: the way the walking distances lead (ghosts go through walls, straight at him)
+      if (d.ai !== AI.Phantom) {
+        const F = FLYERS.has(d.ai) ? this.toHeroFly : this.toHero, walk = F.at(Math.floor(E.x[i] / TILE), Math.floor(E.y[i] / TILE)) * 1.6;
+        if (walk > dist * 1.2 + 26) {
+          F.way(E.x[i], E.y[i], this.way);
+          if (this.way[0] || this.way[1]) (ux = this.way[0]), (uy = this.way[1]);
+        }
+      }
       let slow = E.speedMul[i];
       if (E.chill[i] > 0) slow *= 0.55;
       if (this.inBrazierLight(E.x[i], E.y[i])) slow *= 0.7;
@@ -2587,14 +2728,18 @@ export class World {
       E.vx[i] = vx;
       E.vy[i] = vy;
       const ox = E.x[i], oy = E.y[i];
-      E.x[i] = Math.max(8, Math.min(this.w - 8, ox + vx * dt));
-      E.y[i] = Math.max(14, Math.min(this.h - 2, oy + vy * dt));
-      if (!FLYERS.has(d.ai)) {
+      E.x[i] = ox + vx * dt;
+      E.y[i] = oy + vy * dt;
+      if (d.ai !== AI.Phantom) {
         this.tmp.x = E.x[i];
         this.tmp.y = E.y[i];
-        this.pushOut(this.tmp, ri * 0.8);
+        this.map.push(this.tmp, Math.min(7, ri * 0.8), FLYERS.has(d.ai));
+        if (!FLYERS.has(d.ai)) this.pushOut(this.tmp, ri * 0.8);
         E.x[i] = this.tmp.x;
         E.y[i] = this.tmp.y;
+      } else {
+        E.x[i] = Math.max(8, Math.min(this.w - 8, E.x[i]));
+        E.y[i] = Math.max(14, Math.min(this.h - 2, E.y[i]));
       }
     }
   }
@@ -2690,6 +2835,12 @@ export class World {
     const [mx, my] = this.leaper(i, dt, enraged ? 1.4 : 2.0, false, 2.2);
     E.x[i] = Math.max(30, Math.min(this.w - 30, E.x[i] + mx * dt));
     E.y[i] = Math.max(30, Math.min(this.h - 10, E.y[i] + my * dt));
+    // it leaps over drops but not through walls
+    this.tmp.x = E.x[i];
+    this.tmp.y = E.y[i];
+    this.map.push(this.tmp, 10, true);
+    E.x[i] = this.tmp.x;
+    E.y[i] = this.tmp.y;
     if (wasAir && E.t[i] >= 1.78) {
       // landing: the floor cracks, a ring of bullets, the camera shakes
       this.addFx("slam", E.x[i], E.y[i], { sx: 0.8, sy: 0.8, glow: 0.8 });
@@ -2733,7 +2884,7 @@ export class World {
         }
       } else if (this.parts.n < 1500 && R.chance(dt * 2.5)) this.parts.add(x, y, 0, 0, 0.3, rgba(ORB_TRAIL[kind] || "#ff5a6a", 0.7), 1, 0, 1);
       // columns stop enemy bullets (and the hero's lances), not his crescents
-      if (B.kind[i] !== B_CRESCENT && !this.free(x, y + 14, 2)) {
+      if (this.map.wall(x, y + 14) || (B.kind[i] !== B_CRESCENT && this.pillars.some((p) => (x - p.x) ** 2 + (y + 14 - p.y) ** 2 < (p.r + 2) ** 2))) {
         this.burst(x, y, 4, B.team[i] === TEAM_FOE ? rgba("#ff8a9a") : rgba("#c4ecff"), 40, 0.25);
         B.remove(i);
         continue;
@@ -2847,6 +2998,12 @@ export class World {
       }
       D.x[i] += D.vx[i] * dt;
       D.y[i] += D.vy[i] * dt;
+      // what spills stays on the floor: it stops at walls and at the edge of a drop
+      if (!D.pulled[i] && this.map.tileAt(D.x[i], D.y[i] + 4) !== FLOOR) {
+        D.x[i] -= D.vx[i] * dt;
+        D.y[i] -= D.vy[i] * dt;
+        D.vx[i] = D.vy[i] = 0;
+      }
       if (d < 10 && D.pulled[i]) {
         if (kind === D_EMBER) {
           this.embersBonus += D.value[i];
@@ -2912,6 +3069,17 @@ export class World {
     }
     // a boss gone without its death being seen (nothing should do this, but the way on must never be lost)
     if (this.bossSpawned && !this.portal && !this.cine && !this.won && this.floor < FLOORS && this.bossIndex() < 0) this.openPortal(...this.portalSpot());
+    const st = this.stairs;
+    if (st?.open) {
+      st.t += dt;
+      if (!h.dead && h.exitT < 0 && st.t > 0.6 && Math.abs(h.x - st.x) < 15 && Math.abs(h.y - st.y) < 14) {
+        h.exitT = 0;
+        h.atk = -1;
+        h.invuln = 9;
+        this.audio.play("dash", 0.7);
+        this.dust(st.x, st.y + 8, 8, 30);
+      }
+    }
     if (this.portal) {
       this.portal.t += dt;
       if (!h.dead && h.exitT < 0 && this.portal.t > 0.8 && (h.x - this.portal.x) ** 2 + (h.y - this.portal.y) ** 2 < 18 * 18) {
@@ -2971,25 +3139,72 @@ export class World {
     this.addFx("heal_ring", h.x, h.y, { tint: rgba("#ffd27a"), glow: 0.7, sx: 0.8, sy: 0.8 });
     this.audio.play("levelup", 0.8);
     if (this.phase >= 3) {
-      this.openPortal(...this.portalSpot());
-      this.say(tr("hintPortal"), 4.5);
+      if (this.stairs) {
+        this.openStairs();
+        this.say(tr("hintStairs"), 4.5);
+      } else {
+        this.openPortal(...this.portalSpot());
+        this.say(tr("hintPortal"), 4.5);
+      }
     } else {
       this.ev.banner(tr("waveDone"), rgba("#ffd27a"), tr("waveDoneSub").replace("{n}", String(3 - this.phase)));
       this.say(tr("hintNext"), 4.5);
     }
   }
-  /** Where the hero should go now: the portal if open, else (between waves, no boss up) the nearest unlit brazier. */
+  /**
+   * Where the hero should go now: the portal or the stairs once open, else (between waves, no boss up) the unlit
+   * brazier nearest on foot.
+   */
   objective(): [number, number] | null {
     if (this.portal) return [this.portal.x, this.portal.y];
+    if (this.stairs?.open) return [this.stairs.x, this.stairs.y];
     if (this.wave || this.bossIndex() >= 0 || this.cine) return null;
-    const h = this.hero;
     let best: [number, number] | null = null, bd = Infinity;
     for (const b of this.braziers)
       if (!b.lit) {
-        const d = (b.x - h.x) ** 2 + (b.y - h.y) ** 2;
-        if (d < bd) (bd = d), (best = [b.x, b.y]);
+        const d = this.toHero.at(Math.floor(b.x / TILE), Math.floor(b.y / TILE));
+        if (d < bd || !best) (bd = d), (best = [b.x, b.y]);
       }
     return best;
+  }
+  /**
+   * The walking distances to the hero, made again as he moves (a few times a second), and the guide's way to the
+   * objective round the walls.
+   */
+  private updateWays(dt: number): void {
+    const h = this.hero, c = Math.floor(h.x / TILE), r = Math.floor(h.y / TILE), here = r * this.map.cols + c;
+    this.flowT -= dt;
+    if (this.flowT <= 0 || (here !== this.toHero.from && this.flowT < 0.15)) {
+      this.flowT = 0.25;
+      this.toHero.compute(c, r);
+      this.toHeroFly.compute(c, r);
+    }
+    const goal = this.objective();
+    if (!goal) {
+      this.guide = [0, 0];
+      return;
+    }
+    const key = Math.floor(goal[1] / TILE) * this.map.cols + Math.floor(goal[0] / TILE);
+    if (key !== this.goalKey) {
+      this.goalKey = key;
+      this.toGoal.compute(Math.floor(goal[0] / TILE), Math.floor(goal[1] / TILE));
+    }
+    // straight at it when the way is clear, else the first turn of the walk
+    if (this.map.sight(h.x, h.y - 4, goal[0], goal[1] - 4, false)) {
+      const dx = goal[0] - h.x, dy = goal[1] - h.y, d = Math.hypot(dx, dy) || 1;
+      this.guide = [dx / d, dy / d];
+    } else {
+      // look a few tiles down the walk, so the arrow does not jitter from tile to tile
+      let x = h.x, y = h.y;
+      for (let k = 0; k < 4; k++) {
+        this.toGoal.way(x, y, this.way);
+        if (!this.way[0] && !this.way[1]) break;
+        x += this.way[0] * TILE;
+        y += this.way[1] * TILE;
+      }
+      const dx = x - h.x, dy = y - h.y, d = Math.hypot(dx, dy) || 1;
+      this.guide = [dx / d, dy / d];
+    }
   }
   /** A word to the player, faded in and out by the HUD. */
   say(text: string, dur = 4): void {
@@ -3004,6 +3219,19 @@ export class World {
       if (x > 50 && x < this.w - 50 && y > 70 && y < this.h - 30 && this.free(x, y, 14)) return [x, y];
     }
     return [this.w / 2, this.h / 2];
+  }
+  /** The third fire is lit and its wave is over: the grate over the stairs down swings away. */
+  private openStairs(): void {
+    const st = this.stairs;
+    if (!st || st.open) return;
+    st.open = true;
+    st.t = 0;
+    this.addFx("poof", st.x, st.y + 6, { glow: 0.4 });
+    this.dust(st.x, st.y + 6, 14, 50);
+    this.audio.play("secret");
+    this.audio.play("break", 0.6);
+    this.shake = Math.max(this.shake, 0.3);
+    this.ev.banner(tr("stairsOpen"), rgba("#9ae0ff"));
   }
   private openPortal(x: number, y: number): void {
     if (this.portal) return;
