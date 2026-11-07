@@ -22,6 +22,10 @@ The user writes in Russian; docs and in-game text are Russian-first (English is 
   backwards.
 - Every sprite comes from the atlas. To show something new, add it to `tools/bake/manifest.mjs` and rebake.
   Use the pixelfx skill (`.claude/skills/pixelfx`) to make new effects in `art/fx`.
+- The heroes are the exception: each is a model of their own (`src/hero/looks.js` on the skeleton in
+  `src/hero/rig.js`), drawn by the game as frames are needed (`src/game/heroSprites.ts`). `npm run hero -- <look>`
+  writes contact sheets to `records/heroes/`. Poses come from `tools/bake/weapons.mjs` via `src/generated/poses.json`.
+  Each hero's ability is `World.overdrive` (by hero id); stats and ability text are in `HEROES` (`defs.ts`).
 - Text goes through `src/game/i18n.ts` (both languages) and the pixel font. Cyrillic glyphs are in `tools/bake/font.mjs`.
 - Platform behaviour (pause, audio, saves, ads, ready signals) lives only in `src/platform/*`.
 

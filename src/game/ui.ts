@@ -314,9 +314,9 @@ export function slider(b: Batch, menu: Menu, now: number, x: number, y: number, 
 }
 
 /** Text that wraps inside a width, returning the height it used. */
-export function para(b: Batch, str: string, x: number, y: number, w: number, color: number, align: "left" | "center" = "left", lh = 10): number {
-  const lines = wrap(str, w);
-  lines.forEach((l, i) => text(b, l, align === "center" ? x + w / 2 : x, y + i * lh, { color, align }));
+export function para(b: Batch, str: string, x: number, y: number, w: number, color: number, align: "left" | "center" = "left", lh = 10, font: FontName = "big"): number {
+  const lines = wrap(str, w, font);
+  lines.forEach((l, i) => text(b, l, align === "center" ? x + w / 2 : x, y + i * lh, { color, align, font }));
   return lines.length * lh;
 }
 
@@ -422,7 +422,8 @@ export function drawHud(b: Batch, w: World, W: number, H: number, time: number, 
   const full = h.od >= 100, pulse = 0.6 + 0.4 * Math.sin(time * 8);
   b.image(icon("hud", "overdrive"), 10, py + 28);
   bar(b, 18, py + 26, Math.min(66, pw - 22), 4, h.od / 100, full ? rgbaf(1, 0.75 + 0.2 * pulse, 0.3 + 0.3 * pulse, 1) : rgba("#c8862a"), full ? rgba("#fff6c4") : rgba("#ffd27a"), full ? { shimmer: time * 0.8 } : {});
-  if (full) text(b, touch ? t("overdriveReady") : t("overdriveReady") + "  E", pw + 6, py + 26, { font: "mini", color: withAlpha(C.gold, 0.6 + 0.4 * pulse), outline: true });
+  // full: the hero's own ability is ready, by name
+  if (full) text(b, touch ? tx(h.def.ability.name) : tx(h.def.ability.name) + "  E", pw + 6, py + 26, { font: "mini", color: withAlpha(C.gold, 0.6 + 0.4 * pulse), outline: true });
 
   // ---- the hotbar: the weapon in a gold-rimmed slot (an element's gem in its corner), then a slot per relic
   const hy = py + 38, el = w.weaponEl;

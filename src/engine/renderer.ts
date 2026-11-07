@@ -12,6 +12,9 @@
 
 import { PAGE_SIZE, PAGE_URLS, type Rect } from "./atlas";
 
+/** Pages of the texture array kept for images made while the game runs. */
+export const DYNAMIC_PAGES = 3;
+
 const FLOATS = 15; // per instance: pos(2) off(2) size(2) uv(2) scale(2) rot layer color(packed) flash palette
 const BYTES = FLOATS * 4;
 
@@ -322,7 +325,8 @@ export class Renderer {
     gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
     gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-    gl.texStorage3D(gl.TEXTURE_2D_ARRAY, 1, gl.RGBA8, PAGE_SIZE, PAGE_SIZE, Math.max(1, PAGE_URLS.length));
+    // the baked pages, then a few left empty for images drawn while the game runs (the heroes, src/game/heroSprites.ts)
+    gl.texStorage3D(gl.TEXTURE_2D_ARRAY, 1, gl.RGBA8, PAGE_SIZE, PAGE_SIZE, PAGE_URLS.length + DYNAMIC_PAGES);
     this.resize();
   }
 
@@ -337,6 +341,18 @@ export class Renderer {
     const flat = new Float32Array(160 * 3);
     rows.slice(0, 16).forEach((row, r) => row.forEach((c, k) => flat.set(f(c), (r * 10 + k) * 3)));
     gl.uniform3fv(this.loc["s.u_pals"]!, flat);
+  }
+
+  /** The layer of dynamic page k (0..DYNAMIC_PAGES-1) in the texture array. */
+  dynamicLayer(k: number): number {
+    return PAGE_URLS.length + k;
+  }
+  /** Put w x h RGBA pixels at (x, y) of a layer of the texture array. */
+  uploadImage(layer: number, x: number, y: number, w: number, h: number, rgba: Uint8Array): void {
+    const gl = this.gl;
+    gl.bindTexture(gl.TEXTURE_2D_ARRAY, this.texArray);
+    gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+    gl.texSubImage3D(gl.TEXTURE_2D_ARRAY, 0, x, y, layer, w, h, 1, gl.RGBA, gl.UNSIGNED_BYTE, rgba);
   }
 
   /** Load the atlas pages into the texture array. onProgress gets 0..1. */

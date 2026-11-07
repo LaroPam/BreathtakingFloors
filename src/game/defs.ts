@@ -355,8 +355,6 @@ export const QUESTS: QuestDef[] = [
   { kind: "alchemy", from: 2, name: { ru: "АЛХИМИЯ", en: "ALCHEMY" }, goal: { ru: "ВЫЗОВИ {n} РЕАКЦИИ СТИХИЙ", en: "SET OFF {n} REACTIONS" } },
 ];
 export const questDef = (kind: QuestKind): QuestDef => QUESTS.find((q) => q.kind === kind)!;
-/** The spirit's palette slot (after the heroes'): a ghost of the stock dummy in cold light. */
-export const SPIRIT_PALETTE = { k: "#1a2a3a", A: "#e8f8ff", B: "#a8d8f0", C: "#78b0d8", D: "#4a7aa8", E: "#9ad4ff", F: "#5aa0d8", G: "#3a6aa0", J: "#203a5a", m: "#ffffff" };
 
 /** Daily tasks: three a day, the same for everyone, progress carried over the day's runs, embers for each. */
 export type TaskId = "kills" | "braziers" | "floor" | "boss" | "reactions" | "evolve" | "spirits" | "chests" | "grazes" | "trial" | "urns" | "mimic" | "curse" | "secrets";
@@ -614,62 +612,63 @@ export interface HeroDef {
   /** What lights the way: a lantern in the hand (or at the belt), or a wisp at the shoulder. */
   light: "lantern" | "wisp";
   lightColor: [number, number, number];
-  /** The stock dummy's colours (k A B C D E F G J m) recoloured: plates lit to dark, cloth, seams, the mark. */
-  palette: Record<string, string>;
   /** Embers to unlock them at the hero select (0: free from the start). */
   cost: number;
-  /** The victor's colours, worn once a run has been won with them. */
-  victor: Record<string, string>;
+  /** How hard their blows land (x), how fast they come (x), the chance of a critical blow. */
+  might: number;
+  haste: number;
+  crit: number;
+  /** Their own ability, let loose when the Overdrive meter is full (world.ts: overdrive). */
+  ability: { name: Text; desc: Text };
 }
 export const HEROES: HeroDef[] = [
   {
     id: "knight", cost: 0, name: { ru: "РЫЦАРЬ ФОНАРЯ", en: "LANTERN KNIGHT" }, title: { ru: "СТАЛЬ И ТЁПЛЫЙ СВЕТ", en: "STEEL AND WARM LIGHT" },
     perk: { ru: "+1 СЕРДЦЕ, ФОНАРЬ СВЕТИТ НА 20% ШИРЕ", en: "+1 HEART, A LANTERN 20% WIDER" },
     weapon: "sword", hearts: 6, speed: 1, dashCd: 1, dashes: 1, lantern: 1.2, light: "lantern", lightColor: [1, 0.82, 0.58],
-    palette: { k: "#0a0910", A: "#d4deea", B: "#8e9cb6", C: "#5c6a8a", D: "#3c4662", E: "#c8344c", F: "#922238", G: "#5c1428", J: "#3a0c1c", m: "#ffd04a" },    victor: { k: "#1a1208", A: "#fff4c0", B: "#e8b850", C: "#a87828", D: "#6a4a18", E: "#f4f0f8", F: "#c8c0d8", G: "#8a82a0", J: "#3a2a10", m: "#ff4a5a" },
+    might: 1, haste: 1, crit: 0.05,
+    ability: { name: { ru: "ВСПЫШКА ФОНАРЯ", en: "LANTERN FLARE" }, desc: { ru: "ВЗРЫВ СВЕТА ЖЖЁТ ВСЕХ ВОКРУГ И СТИРАЕТ ПУЛИ. 3 СЕКУНДЫ ЩИТ СВЕТА: НЕУЯЗВИМ, ПУЛИ ГАСНУТ", en: "A BURST OF LIGHT BURNS ALL AROUND AND ERASES BULLETS. 3 SECONDS OF A WARD: UNHARMED, BULLETS DIE ON IT" } },
 
   },
   {
     id: "ranger", cost: 60, name: { ru: "СЛЕДОПЫТ", en: "RANGER" }, title: { ru: "ЛУК, КОЖА И ЛЁГКИЙ ШАГ", en: "BOW, LEATHER, A LIGHT STEP" },
     perk: { ru: "ДВА РЫВКА ПОДРЯД, БЕГАЕТ БЫСТРЕЕ, СТРЕЛЫ ПРОБИВАЮТ +1", en: "TWO DASHES, FASTER FEET, ARROWS PIERCE +1" },
     weapon: "bow", hearts: 4, speed: 1.12, dashCd: 0.85, dashes: 2, lantern: 1, light: "lantern", lightColor: [1, 0.85, 0.6],
-    palette: { k: "#0a0910", A: "#d8c08a", B: "#a8864e", C: "#765a32", D: "#4e3a20", E: "#4e8a3a", F: "#36612a", G: "#22401c", J: "#16281a", m: "#ffe060" },    victor: { k: "#0a0f14", A: "#f0f4ff", B: "#b8c4dc", C: "#7a86a0", D: "#4a5268", E: "#3ad08a", F: "#1a8a5a", G: "#0a4a30", J: "#062018", m: "#fff09a" },
+    might: 0.9, haste: 1.15, crit: 0.1,
+    ability: { name: { ru: "ГРАД СТРЕЛ", en: "ARROW RAIN" }, desc: { ru: "ДВАДЦАТЬ СТРЕЛ ПАДАЮТ С НЕБА НА БЛИЖАЙШИХ ВРАГОВ, КАЖДАЯ СИЛЬНЕЕ ВЫСТРЕЛА", en: "TWENTY ARROWS FALL FROM THE SKY ON THE NEAREST FOES, EACH HARDER THAN A SHOT" } },
 
   },
   {
     id: "mage", cost: 90, name: { ru: "ЧАРОДЕЙКА", en: "SORCERESS" }, title: { ru: "ОГОНЬ, ЛЁД И ГРОЗА", en: "FIRE, ICE AND STORM" },
     perk: { ru: "ЗАКЛИНАНИЯ ЧЕРЕДУЮТ СТИХИИ И САМИ ВЫЗЫВАЮТ РЕАКЦИИ", en: "HER SPELLS TAKE TURNS AND SET OFF REACTIONS" },
     weapon: "spell", hearts: 4, speed: 0.98, dashCd: 1, dashes: 1, lantern: 1, light: "wisp", lightColor: [0.55, 0.85, 1],
-    palette: { k: "#0a0910", A: "#c8b8f0", B: "#9480d0", C: "#64509e", D: "#40306e", E: "#e8c860", F: "#b8902e", G: "#7a5a1a", J: "#2a1a44", m: "#7ad0ff" },    victor: { k: "#140f1c", A: "#fff6d8", B: "#f0d898", C: "#b89848", D: "#7a5a20", E: "#ffffff", F: "#d8d0f0", G: "#9a90c0", J: "#2a2040", m: "#6ab0ff" },
+    might: 1.15, haste: 0.95, crit: 0.05,
+    ability: { name: { ru: "БУРЯ СТИХИЙ", en: "ELEMENTAL STORM" }, desc: { ru: "ОГОНЬ, ЛЁД И МОЛНИЯ ПО ОЧЕРЕДИ БЬЮТ В САМЫЕ ГУСТЫЕ ТОЛПЫ И САМИ ВЫЗЫВАЮТ РЕАКЦИИ", en: "FIRE, ICE AND LIGHTNING STRIKE THE THICKEST CROWDS IN TURN AND SET OFF REACTIONS" } },
 
   },
   {
     id: "reaper", cost: 140, name: { ru: "ЖНЕЦ", en: "REAPER" }, title: { ru: "КОСА И ЗЕЛЁНЫЙ ОГОНЬ ДУШ", en: "A SCYTHE AND GREEN SOUL-FIRE" },
     perk: { ru: "ЖАТВА: КАЖДЫЕ 25 УБИЙСТВ ВОЗВРАЩАЮТ СЕРДЦЕ", en: "HARVEST: EVERY 25 KILLS GIVE A HEART BACK" },
     weapon: "scythe", hearts: 5, speed: 0.95, dashCd: 1.1, dashes: 1, lantern: 1, light: "wisp", lightColor: [0.55, 1, 0.6],
-    palette: { k: "#0a0910", A: "#7a7688", B: "#4e4a5c", C: "#33303e", D: "#22202a", E: "#2e7a52", F: "#1c5238", G: "#0f3022", J: "#08140e", m: "#7ee88a" },    victor: { k: "#050505", A: "#f0e8d8", B: "#c8bca0", C: "#8a7e68", D: "#4a4234", E: "#3a3a46", F: "#22222a", G: "#121216", J: "#000000", m: "#c8ff8a" },
+    might: 1.1, haste: 0.9, crit: 0.08,
+    ability: { name: { ru: "ЖАТВА", en: "HARVEST" }, desc: { ru: "КОСА ДУШ ПРОНОСИТСЯ ВОКРУГ: РАНЕНЫХ ДОБИВАЕТ СРАЗУ, КАЖДЫЕ 6 ДУШ ВОЗВРАЩАЮТ СЕРДЦЕ", en: "A SCYTHE OF SOULS SWEEPS AROUND: THE WOUNDED DIE AT ONCE, EVERY 6 SOULS GIVE A HEART BACK" } },
 
   },
   {
     id: "berserker", cost: 180, name: { ru: "БЕРСЕРК", en: "BERSERKER" }, title: { ru: "БРОНЗА, МЕХ И ЯРОСТЬ", en: "BRONZE, FUR AND FURY" },
     perk: { ru: "ЯРОСТЬ: ЧЕМ МЕНЬШЕ СЕРДЕЦ, ТЕМ СИЛЬНЕЕ УДАРЫ (ДО +70%)", en: "FURY: THE FEWER HEARTS, THE HARDER THE BLOWS (UP TO +70%)" },
     weapon: "greatsword", hearts: 7, speed: 0.95, dashCd: 1.15, dashes: 1, lantern: 0.95, light: "lantern", lightColor: [1, 0.7, 0.45],
-    palette: { k: "#0a0910", A: "#e0b078", B: "#b07a44", C: "#7e4e2a", D: "#52301a", E: "#7a3424", F: "#54200f", G: "#341208", J: "#1c0804", m: "#ff8a2a" },    victor: { k: "#08080c", A: "#6a6a7a", B: "#46465a", C: "#2a2a38", D: "#16161e", E: "#ff7a2a", F: "#c83a10", G: "#7a1e08", J: "#2a0800", m: "#ffd84a" },
+    might: 1.25, haste: 0.85, crit: 0.05,
+    ability: { name: { ru: "БОЕВОЙ КЛИЧ", en: "WAR CRY" }, desc: { ru: "РЁВ ОГЛУШАЕТ И ОТБРАСЫВАЕТ ВСЕХ РЯДОМ. 6 СЕКУНД УДАРЫ НА 50% СИЛЬНЕЕ И ЧАЩЕ", en: "A ROAR STUNS AND HURLS BACK ALL NEAR. FOR 6 SECONDS BLOWS LAND 50% HARDER AND FASTER" } },
 
   },
   {
     id: "shadow", cost: 240, name: { ru: "ТЕНЬ", en: "SHADE" }, title: { ru: "КОГТИ ИЗ СУМРАКА", en: "CLAWS OUT OF THE DUSK" },
     perk: { ru: "+20% КРИТА, РЫВОК РЕЖЕТ ВСЕХ НА ПУТИ", en: "+20% CRIT, THE DASH CUTS ALL IN ITS WAY" },
     weapon: "claws", hearts: 4, speed: 1.15, dashCd: 0.8, dashes: 2, lantern: 0.9, light: "wisp", lightColor: [0.8, 0.5, 1],
-    palette: { k: "#0a0910", A: "#6a6a8e", B: "#46466a", C: "#2c2c48", D: "#1a1a30", E: "#a06ae0", F: "#6a3aa8", G: "#3e1e6a", J: "#0c0a18", m: "#e05aff" },    victor: { k: "#04060c", A: "#9aeeff", B: "#4ab0e0", C: "#2a6aa8", D: "#183a68", E: "#2a2a5a", F: "#1a1a40", G: "#0e0e26", J: "#000010", m: "#ffffff" },
+    might: 0.85, haste: 1.3, crit: 0.25,
+    ability: { name: { ru: "ТАНЕЦ ТЕНЕЙ", en: "SHADOW DANCE" }, desc: { ru: "ПРЫЖКИ СКВОЗЬ ТЕНИ К СЕМИ ВРАГАМ ПОДРЯД, НЕУЯЗВИМА, КАЖДЫЙ УДАР КРИТИЧЕСКИЙ", en: "LEAPS THROUGH THE SHADOWS TO SEVEN FOES IN TURN, UNHARMED, EVERY BLOW CRITICAL" } },
 
   },
 ];
-/** A hero's palette slot in the shader: their own colours, or (after the spirit's slot) the victor's. */
-export const heroPal = (id: string, victor: boolean): number => {
-  const k = Math.max(0, HEROES.findIndex((h) => h.id === id));
-  return victor ? HEROES.length + 2 + k : k + 1;
-};
 export const heroDef = (id: string): HeroDef => HEROES.find((h) => h.id === id) ?? HEROES[0];
-/** The order of palette roles the shader swaps. */
-export const PALETTE_KEYS = ["k", "A", "B", "C", "D", "E", "F", "G", "J", "m"];

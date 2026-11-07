@@ -14,14 +14,13 @@ import { mkdirSync, writeFileSync, readdirSync, rmSync, existsSync } from "node:
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createFrame, clearFrame, createFx, hex } from "../../pixelfx/src/core/index.js";
-import { posed, skeleton } from "../../pixelfx/src/core/rig.js";
 import { DUMMY_PAL } from "../../pixelfx/src/core/actor.js";
 import { loadEffect, edgeFade, isScreen } from "../../pixelfx/tools/lib/fxlib.mjs";
 import { encodePNG } from "../../pixelfx/tools/lib/png.mjs";
 import { ANIMS } from "./manifest.mjs";
 import { fontGlyphs } from "./font.mjs";
-import { weaponModelFrames } from "./weapons.mjs";
-import { FX_PAD, RIG_CANVAS } from "./canvas.mjs";
+import { weaponModelFrames, heroPoses } from "./weapons.mjs";
+import { FX_PAD } from "./canvas.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const PFX_DIR = join(ROOT, "pixelfx", "src", "fx"), ART_DIR = join(ROOT, "art", "fx");
@@ -94,27 +93,6 @@ function renderEffect(mod, meta, e, extraOpts = {}) {
   // a one-shot ends empty: drop the empty tail so the game knows when it is over
   if (!meta.loop) while (out.length > 1 && !out[out.length - 1].color && !out[out.length - 1].light) out.pop();
   return { fps: 1 / dt, loop: !!meta.loop, frames: out, cut: !meta.loop && (e.maxT ?? D) < D };
-}
-
-/** Pose the hero on pixelfx's skeleton. */
-function renderRig(e) {
-  // a canvas big enough for the longest weapon at full stretch (tools/check/clip.mjs makes sure of it)
-  const { W, H, OX, OY } = RIG_CANVAS, frames = [], hands = [];
-  for (const pose of e.rig) {
-    const r = posed(pose), buf = new Uint32Array(W * H), dy = Math.round(pose.y ?? 0);
-    const dx = Math.round(pose.x ?? 0);
-    for (let i = 0; i < r.n; i++) {
-      const x = r.xs[i] + OX + dx, y = r.ys[i] + OY + dy;
-      if (x < 0 || y < 0 || x >= W || y >= H) continue;
-      // the stock dummy's own colours: the game swaps them for each hero's palette as it draws
-      buf[y * W + x] = r.color[i] >>> 0;
-    }
-    frames.push({ color: trim(buf, W, H, OX, OY, hasColor), light: null });
-    // where the hands are (near holds the sword, far holds the lantern), for the game to hang things on
-    const J = skeleton(pose).joints, xo = Math.round(pose.x ?? 0);
-    hands.push([Math.round(J.handN[0]) + xo, Math.round(J.handN[1] + dy), Math.round(J.handF[0]) + xo, Math.round(J.handF[1] + dy)]);
-  }
-  return { fps: e.fps ?? 12, loop: e.loop ?? true, frames, cut: false, hands };
 }
 
 /**
@@ -195,8 +173,7 @@ const anims = {}, stats = [];
 for (const e of ANIMS) {
   if (only && !e.name.includes(only)) continue;
   let parts = [];
-  if (e.rig) parts = [renderRig(e)];
-  else if (e.model) parts = [renderModel(e)];
+  if (e.model) parts = [renderModel(e)];
   else {
     const fx = await loadEffect(e.fx ?? e.art, e.fx ? PFX_DIR : ART_DIR);
     if (e.variants) {
@@ -212,7 +189,7 @@ for (const e of ANIMS) {
     px += (f.color ? f.color.w * f.color.h : 0) + (f.light ? f.light.w * f.light.h : 0);
     return [c, l];
   });
-  anims[e.name] = { fps: +r.fps.toFixed(4), loop: r.loop, cut: r.cut, frames, ...(r.keys ? { keys: r.keys } : {}), ...(e.hits ? { hits: e.hits } : {}), ...(r.hands ? { hands: r.hands } : {}), ...(e.body ? { body: r.frames.map((f) => bodyOf(f.color)) } : {}) };
+  anims[e.name] = { fps: +r.fps.toFixed(4), loop: r.loop, cut: r.cut, frames, ...(r.keys ? { keys: r.keys } : {}), ...(e.hits ? { hits: e.hits } : {}), ...(e.body ? { body: r.frames.map((f) => bodyOf(f.color)) } : {}) };
   stats.push([e.name, frames.length, px]);
 }
 
@@ -253,6 +230,8 @@ pages.forEach((P, i) => {
 });
 const json = { version: 1, page: PAGE, pages: pages.length, anims, fonts, dummy: DUMMY_PAL };
 writeFileSync(join(OUT, "atlas.json"), JSON.stringify(json));
+// the heroes' poses: the game draws them itself (src/game/heroSprites.ts)
+writeFileSync(join(OUT, "poses.json"), JSON.stringify(heroPoses()));
 
 stats.sort((a, b) => b[2] - a[2]);
 const used = images.reduce((s, i) => s + (i.w + PAD) * (i.h + PAD), 0);

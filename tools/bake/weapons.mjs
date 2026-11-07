@@ -29,7 +29,7 @@ import { posedParts } from "../../pixelfx/src/core/rig.js";
 /** The legs (and bob) of the run cycle at phase k of 8. */
 export function runLegs(k) {
   const th = (k / 8) * Math.PI * 2, c = Math.cos(th), s = Math.sin(th);
-  return { crouch: 1 + 1.5 * Math.abs(c), ffx: 1 + 6 * c, ffy: -4 - Math.max(0, -s) * 5, fbx: 1 - 6 * c, fby: -4 - Math.max(0, s) * 5, bob: 1.5 * Math.abs(c), c };
+  return { crouch: 1 + 1.5 * Math.abs(c), ffx: 1 + 6 * c, ffy: -4 - Math.max(0, -s) * 5, fbx: 1 - 6 * c, fby: -4 - Math.max(0, s) * 5, bob: 1.5 * Math.abs(c), c, wind: +(0.55 + 0.12 * Math.abs(c)).toFixed(2), sway: +s.toFixed(2) };
 }
 
 // warm light for blades, cold for the spear's steel, sickly green for the scythe
@@ -123,15 +123,18 @@ export const WEAPONS = {
 
 function attackPoses(w, a, legs) {
   // the frame of the blow is where the feet stand; the body steps a little either side of it
-  const hitT = a.times[a.hits[0]], x0 = poseAt(a.act.poses, hitT).x ?? 0;
-  return a.times.map((t) => {
+  const hitT = a.times[a.hits[0]], x0 = poseAt(a.act.poses, hitT).x ?? 0, hit = a.hits[0];
+  return a.times.map((t, f) => {
     const p = { ...poseAt(a.act.poses, t) };
     p.x = Math.max(-5, Math.min(5, (p.x ?? 0) - x0));
     if (a.weapon) p.weapon = a.weapon;
     else if (w.guard.weapon && !p.weapon) p.weapon = w.guard.weapon;
     if (a.extra) Object.assign(p, a.extra);
     delete p.ghost;
-    if (legs) Object.assign(p, { ffx: legs.ffx, ffy: legs.ffy, fbx: legs.fbx, fby: legs.fby, crouch: Math.max(p.crouch ?? 0, legs.crouch), x: 0 });
+    // cloth (capes, scarves, hair) flares out on the blow and settles after it
+    p.wind = +(0.1 + 0.55 * Math.exp(-((f - hit) ** 2) / 3)).toFixed(2);
+    p.sway = +Math.max(-0.8, Math.min(0.8, (f - hit) * 0.2)).toFixed(2);
+    if (legs) Object.assign(p, { ffx: legs.ffx, ffy: legs.ffy, fbx: legs.fbx, fby: legs.fby, crouch: Math.max(p.crouch ?? 0, legs.crouch), x: 0, wind: Math.max(p.wind, legs.wind), sway: legs.sway });
     return p;
   });
 }
@@ -143,14 +146,14 @@ export function weaponAnims(light) {
     const G = w.guard, lantern = (p) => (w.oneHand ? { ...p, bx: 5, by: -15 } : p);
     const run = [0, 1, 2, 3, 4, 5, 6, 7].map((k) => {
       const L = runLegs(k);
-      return lantern({ ...G, lean: 3, crouch: L.crouch, ffx: L.ffx, ffy: L.ffy, fbx: L.fbx, fby: L.fby, fy: G.fy + L.bob * 0.5, ...(w.oneHand ? { bx: 4 + 2 * L.c, by: -15 } : { by: G.by + L.bob * 0.5 }) });
+      return lantern({ ...G, lean: 3, crouch: L.crouch, ffx: L.ffx, ffy: L.ffy, fbx: L.fbx, fby: L.fby, fy: G.fy + L.bob * 0.5, wind: L.wind, sway: L.sway, ...(w.oneHand ? { bx: 4 + 2 * L.c, by: -15 } : { by: G.by + L.bob * 0.5 }) });
     });
-    const idle = [0, 1, 2, 1].map((k) => lantern({ ...G, crouch: 3 + k * 0.6, fy: G.fy + k * 0.4, by: G.by + k * 0.3 }));
+    const idle = [0, 1, 2, 1].map((k, i) => lantern({ ...G, crouch: 3 + k * 0.6, fy: G.fy + k * 0.4, by: G.by + k * 0.3, wind: 0.06, sway: [-0.3, 0, 0.3, 0][i] }));
     const dash = [
-      { ...G, lean: 9, crouch: 4, fx: 4, fy: -18, bx: -4, by: -18, ffx: 7, ffy: -6, fbx: -8, fby: -5, y: -1, ...(G.weapon ? { sa: 2.6 } : {}) },
-      { ...G, lean: 7, crouch: 3, fx: 5, fy: -18, bx: -2, by: -18, ffx: 4, ffy: -4, fbx: -6, fby: -7, y: -2, ...(G.weapon ? { sa: 2.7 } : {}) },
+      { ...G, lean: 9, crouch: 4, fx: 4, fy: -18, bx: -4, by: -18, ffx: 7, ffy: -6, fbx: -8, fby: -5, y: -1, wind: 1, sway: 0.3, ...(G.weapon ? { sa: 2.6 } : {}) },
+      { ...G, lean: 7, crouch: 3, fx: 5, fy: -18, bx: -2, by: -18, ffx: 4, ffy: -4, fbx: -6, fby: -7, y: -2, wind: 1, sway: -0.3, ...(G.weapon ? { sa: 2.7 } : {}) },
     ];
-    const hurt = [{ ...G, lean: -5, crouch: 3, turn: 0.6, fx: 2, fy: -26, bx: 8, by: -24, ffx: -4, fbx: 5, ...(G.weapon ? { sa: -1.6 } : {}) }];
+    const hurt = [{ ...G, lean: -5, crouch: 3, turn: 0.6, fx: 2, fy: -26, bx: 8, by: -24, ffx: -4, fbx: 5, wind: 0.35, sway: -0.6, ...(G.weapon ? { sa: -1.6 } : {}) }];
     out.push({ name: `${id}_idle`, rig: idle, fps: 5, loop: true });
     out.push({ name: `${id}_run`, rig: run, fps: 14, loop: true });
     out.push({ name: `${id}_dash`, rig: dash, fps: 12, loop: true });
@@ -190,4 +193,29 @@ export function weaponModelFrames(rigWeapon, n = 12) {
     frames.push(wp ? { xs: wp.xs, ys: wp.ys, color: wp.color, n: wp.n } : { xs: [], ys: [], color: [], n: 0 });
   }
   return frames;
+}
+
+/**
+ * Every pose the heroes take, for the game to draw them itself (src/game/heroSprites.ts): per weapon its idle, run,
+ * dash and hurt and each blow standing; the run's 8 phases of legs (a blow while running is the blow standing on
+ * those legs: runGrid, which the game repeats); the fall; the frame rates.
+ */
+export function heroPoses() {
+  const round = (p) => Object.fromEntries(Object.entries(p).map(([k, v]) => [k, typeof v === "number" ? +v.toFixed(2) : v]));
+  const all = weaponAnims({}), byName = new Map(all.filter((e) => e.rig).map((e) => [e.name, e.rig.map(round)]));
+  const weapons = {};
+  for (const [id, w] of Object.entries(WEAPONS))
+    weapons[id] = {
+      idle: byName.get(`${id}_idle`), run: byName.get(`${id}_run`), dash: byName.get(`${id}_dash`), hurt: byName.get(`${id}_hurt`),
+      attacks: w.attacks.map((a, k) => ({ hits: a.hits, stand: byName.get(`${id}_a${k}`) })),
+    };
+  const legs = [0, 1, 2, 3, 4, 5, 6, 7].map((q) => { const L = runLegs(q); return round({ ffx: L.ffx, ffy: L.ffy, fbx: L.fbx, fby: L.fby, crouch: L.crouch, wind: L.wind, sway: L.sway }); });
+  return { fps: { idle: 5, run: 14, dash: 12, hurt: 1, attack: 20, death: 8 }, weapons, legs, death: DEATH.map(round) };
+}
+
+/** A blow while running: each frame of it on each of the run's 8 phases of legs, frame-major (frame * 8 + phase). */
+export function runGrid(stand, legs) {
+  const out = [];
+  for (const p of stand) for (const L of legs) out.push({ ...p, ffx: L.ffx, ffy: L.ffy, fbx: L.fbx, fby: L.fby, crouch: Math.max(p.crouch ?? 0, L.crouch), x: 0, wind: Math.max(p.wind ?? 0, L.wind), sway: L.sway });
+  return out;
 }
