@@ -7,7 +7,7 @@ import { Batch, rgba, rgbaf, withAlpha, type Lighting, type Renderer } from "../
 import { anim, DUMMY, FONTS, frameAt, icon } from "../engine/atlas";
 import { fitScale, measure, text, wrap } from "../engine/text";
 import { dayNumber, type Board, type BoardName, type Platform } from "../platform/platform";
-import { ACHIEVEMENTS, bossOf, EL_COLOR, EL_NAME, ENEMIES, EVOLUTIONS, evolutionOf, FLOORS, FORGE, questDef, SPIRIT_PALETTE, TASK_BONUS, TASKS, type TaskId, HEROES, PALETTE_KEYS, WEAPONS, weaponName, MODIFIERS, NO_MODIFIER, REACTIONS, RELIC_MAX, RELIC_SLOTS, RELICS, STATS, type Modifier, type Reaction, type RelicKind, type StatId } from "./defs";
+import { ACHIEVEMENTS, heroPal, bossOf, EL_COLOR, LEGENDS, legendDesc, type WeaponId, EL_NAME, ENEMIES, EVOLUTIONS, evolutionOf, FLOORS, FORGE, questDef, SPIRIT_PALETTE, TASK_BONUS, TASKS, type TaskId, HEROES, PALETTE_KEYS, WEAPONS, weaponName, MODIFIERS, NO_MODIFIER, REACTIONS, RELIC_MAX, RELIC_SLOTS, RELICS, STATS, type Modifier, type Reaction, type RelicKind, type StatId } from "./defs";
 import { drawWorld, Scene } from "./draw";
 import { getLang, langFor, setLang, t, tx, type Lang } from "./i18n";
 import { Rng } from "./rng";
@@ -16,7 +16,7 @@ import { button, slider, C, divider, glow as glowUi, drawHud, drawPointers, draw
 import { CINE_DUR, World } from "./world";
 
 type State = "title" | "heroes" | "forge" | "daily" | "records" | "tasks" | "settings" | "card" | "play" | "spin" | "pause" | "codex" | "stairs" | "dead" | "won";
-type Choice = { type: "relic"; kind: RelicKind; level: number } | { type: "stat"; id: StatId } | { type: "evo"; kind: RelicKind };
+type Choice = { type: "relic"; kind: RelicKind; level: number } | { type: "stat"; id: StatId } | { type: "evo"; kind: RelicKind } | { type: "legend"; weapon: WeaponId };
 
 /**
  * The roulette that picks an upgrade: a reel of badges spins fast, slows down and stops on the winner, which
@@ -33,7 +33,7 @@ interface Spin {
   tick: number;
 }
 const RELIC_ICON = ["orbit", "lance", "coil", "flask", "halo", "void"];
-const iconKey = (c: Choice) => (c.type === "relic" ? RELIC_ICON[c.kind] : c.type === "evo" ? evolutionOf(c.kind).icon : c.id);
+const iconKey = (c: Choice) => (c.type === "relic" ? RELIC_ICON[c.kind] : c.type === "evo" ? evolutionOf(c.kind).icon : c.type === "legend" ? `w_${c.weapon}` : c.id);
 
 const STEP = 1 / 60;
 /** Height of the title font's capitals. */
@@ -58,6 +58,8 @@ export class Game {
   private codexPage = 0;
   private unlockedAt = -9;
   private claimedAt = -9;
+  /** A hero who just earned the victor's colours (the victory screen says so). */
+  private newSkin = "";
   /** Achievements earned and waiting to be shown. */
   private toasts: { id: string; t: number }[] = [];
   private startSpins = 0;
@@ -92,7 +94,8 @@ export class Game {
     this.heroIdx = Math.max(0, HEROES.findIndex((h) => h.id === this.save.hero));
     // the hero palettes the shader swaps the stock dummy's colours for
     const hex = (c: string) => parseInt(c.slice(1), 16);
-    this.r.setPalettes(PALETTE_KEYS.map((k) => hex(DUMMY[k])), [...HEROES.map((h) => h.palette), SPIRIT_PALETTE].map((p: Record<string, string>) => PALETTE_KEYS.map((k) => hex(p[k]))));
+    // slots: each hero's colours, the spirit's, each hero's victor colours (see heroPal)
+    this.r.setPalettes(PALETTE_KEYS.map((k) => hex(DUMMY[k])), [...HEROES.map((h) => h.palette), SPIRIT_PALETTE, ...HEROES.map((h) => h.victor)].map((p: Record<string, string>) => PALETTE_KEYS.map((k) => hex(p[k]))));
     this.newWorld();
     this.attract();
   }
@@ -104,6 +107,10 @@ export class Game {
   }
   /** Where the settings screen goes back to. */
   private settingsFrom: State = "title";
+
+  private wearsVictor(id: string): boolean {
+    return this.save.skins.includes(id) && this.save.skinOn.includes(id);
+  }
 
   private persist(): void {
     if (this.savePending) return;
@@ -141,7 +148,7 @@ export class Game {
           this.showBanner(t("curseTaken"), rgba("#ff5a5a"), t("curseTakenSub"));
         } else this.showBanner(t("curseLifted"), C.gold, t("curseLiftedSub"));
       },
-      weapon: (id, el) => this.showBanner(tx(weaponName(id, el)), el || WEAPONS[id].el ? rgba(EL_COLOR[el || WEAPONS[id].el!]) : C.gold),
+      weapon: (id, el) => this.world.hero.legend ? this.showBanner(tx(LEGENDS[id]), C.gold, t("legendary")) : this.showBanner(tx(weaponName(id, el)), el || WEAPONS[id].el ? rgba(EL_COLOR[el || WEAPONS[id].el!]) : C.gold),
     }, NO_MODIFIER);
     this.world.numbers = this.save.numbers;
   }
@@ -150,6 +157,7 @@ export class Game {
   private attract(): void {
     const w = this.world;
     w.setHero(HEROES[this.heroIdx]);
+    w.hero.victor = this.wearsVictor(HEROES[this.heroIdx].id);
     w.startFloor(1, NO_MODIFIER);
     w.hero.arriveT = 9;
     w.fx = [];
@@ -223,6 +231,7 @@ export class Game {
       this.save.daily = d;
     }
     w.setHero(hero);
+    w.hero.victor = this.wearsVictor(hero.id);
     w.hero.maxHp += f.heart ?? 0;
     w.hero.hp = w.hero.maxHp;
     w.stats.might = 1 + 0.1 * (f.might ?? 0);
@@ -266,7 +275,12 @@ export class Game {
     this.lastResult = { floor: w.floor, kills: w.kills, time: w.runTime, embers, score, best, daily: this.daily };
     this.save.embers += embers;
     this.save.bestFloor = Math.max(this.save.bestFloor, w.floor);
-    if (won) this.save.wins = (this.save.wins ?? 0) + 1;
+    if (won) {
+      this.save.wins = (this.save.wins ?? 0) + 1;
+      // the hero who won wears the victor's colours from now on (they can take them off at the hero select)
+      const id = w.hero.def.id;
+      if (!this.save.skins.includes(id)) (this.save.skins.push(id), this.save.skinOn.push(id), (this.newSkin = id));
+    }
     this.persist();
     this.boards = {};
     this.audio.stopMusic();
@@ -436,9 +450,11 @@ export class Game {
   private pool(relicsOnly: boolean, evolutions = true): [Choice, number][] {
     const w = this.world, out: [Choice, number][] = [];
     // an evolution ready: a chest always gives it, a level-up favours it strongly
-    const evos = evolutions ? w.evolvable() : [];
-    if (evos.length && relicsOnly && this.startSpins <= 0) return evos.map((kind): [Choice, number] => [{ type: "evo", kind }, 1]);
-    for (const kind of evos) out.push([{ type: "evo", kind }, 40]);
+    // ...and so does a weapon ready to become legendary
+    const evos: Choice[] = evolutions ? w.evolvable().map((kind): Choice => ({ type: "evo", kind })) : [];
+    if (evolutions && w.legendReady()) evos.push({ type: "legend", weapon: w.hero.weapon });
+    if (evos.length && relicsOnly && this.startSpins <= 0) return evos.map((c): [Choice, number] => [c, 1]);
+    for (const c of evos) out.push([c, 40]);
     const slotsFree = w.relics.length < RELIC_SLOTS;
     for (const def of RELICS) {
       const lv = w.relicLevel(def.kind);
@@ -464,7 +480,7 @@ export class Game {
   private startSpin(kind: Spin["kind"]): void {
     const pool = this.pool(kind !== "level"), winner = this.roll(pool);
     // a long strip of badges, the winner placed near its end; a chest's sure evolution stops among ordinary relics
-    const filler = pool.every(([c]) => c.type === "evo") ? this.pool(true, false) : pool;
+    const filler = pool.every(([c]) => c.type === "evo" || c.type === "legend") ? this.pool(true, false) : pool;
     const n = 30 + this.runRng.int(0, 6), reel: Choice[] = [];
     for (let k = 0; k < n; k++) reel.push(this.roll(filler.length ? filler : pool));
     const target = n - 5;
@@ -506,6 +522,11 @@ export class Game {
     const w = this.world;
     if (c.type === "relic") w.addRelic(c.kind);
     else if (c.type === "evo") (w.evolve(c.kind), (this.save.stats[`evo_${c.kind}`] = 1), this.bump("evolve"));
+    else if (c.type === "legend") {
+      w.makeLegend();
+      this.unlock("legend");
+      this.showBanner(tx(LEGENDS[c.weapon]), C.gold, t("legendary"));
+    }
     else w.addStat(c.id);
     if (kind === "chest") this.bump("chests");
     if (kind === "level") w.pendingLevels = Math.max(0, w.pendingLevels - 1);
@@ -759,6 +780,7 @@ export class Game {
     const pick = (d: number) => {
       this.heroIdx = (this.heroIdx + d + n) % n;
       this.world.setHero(HEROES[this.heroIdx]);
+      this.world.hero.victor = this.wearsVictor(HEROES[this.heroIdx].id);
       this.audio.play("click");
     };
     if (input.pressed("left")) pick(-1);
@@ -773,7 +795,7 @@ export class Game {
     const idle = anim(`${hero.weapon}_idle`), f = idle.frames[frameAt(idle, now)][0]!;
     // a hero not yet bought stands as a shadow with a lock on it; one just bought steps out of a burst of light
     const since = now - this.unlockedAt, burst = since < 1.2 ? 1 - since / 1.2 : 0;
-    ui.pal = this.heroIdx + 1;
+    ui.pal = heroPal(hero.id, this.wearsVictor(hero.id));
     ui.image(f, cx, cy, 3, 3, 0, locked ? rgbaf(0.11, 0.1, 0.16, 1) : 0xffffffff);
     ui.pal = 0;
     if (locked) ui.image(icon("hud", "lock"), cx, cy - 46, 2, 2);
@@ -822,10 +844,11 @@ export class Game {
       slot(ui, x - 14, ty - 22, 28, k === this.heroIdx ? C.gold : undefined);
       if (k === this.heroIdx) ui.rect(x - 13, ty + 5, 26, 1, C.goldDim);
       const own = this.save.unlocked.includes(hd.id);
-      ui.pal = k + 1;
+      ui.pal = heroPal(hd.id, this.wearsVictor(hd.id));
       ui.image(a, x, ty + 6, 1, 1, 0, !own ? rgbaf(0.13, 0.12, 0.18, 1) : k === this.heroIdx ? 0xffffffff : rgbaf(0.55, 0.55, 0.6, 1));
       ui.pal = 0;
       if (!own) ui.image(icon("hud", "lock"), x + 7, ty - 14);
+      else if (this.save.skins.includes(hd.id)) ui.image(icon("hud", "crown"), x + 8, ty - 15);
     });
     const bw = 120, by = H - 22, bx = Math.round(W / 2 - bw - 6);
     if (locked) {
@@ -844,6 +867,16 @@ export class Game {
       this.transition(() => this.startRun());
     }
     if (button(ui, this.menu, now, Math.round(W / 2 + 6), by, bw, 18, t("back"), { icon: icon("hud", "back") }) || input.pressed("back")) this.setState("title");
+    // the victor's look, once a run is won with this hero
+    const sy = wide ? cy + 10 : cy - 122;
+    if (this.save.skins.includes(hero.id)) {
+      const on = this.wearsVictor(hero.id);
+      if (button(ui, this.menu, now, cx - 56, sy, 112, 14, on ? t("skinVictor") : t("skinPlain"), { font: "mini", color: on ? C.gold : C.dim, icon: icon("hud", "crown") })) {
+        this.save.skinOn = on ? this.save.skinOn.filter((q) => q !== hero.id) : [...this.save.skinOn, hero.id];
+        this.world.hero.victor = !on;
+        this.persist();
+      }
+    } else if (!locked && wide) text(ui, t("skinLocked"), cx, sy + 4, { font: "mini", align: "center", color: rgba("#5a5470") });
   }
 
   /** A boss enters: black bars close in, its name lands with a thud, the line under it fades in. */
@@ -960,7 +993,7 @@ export class Game {
     text(ui, t("heroOfDay"), lx + colW / 2, y + 5, { font: "mini", align: "center", color: C.dim });
     const idle = anim(`${hero.weapon}_idle`), big = ph >= 100 ? 2 : 1, [lr, lg, lb] = hero.lightColor;
     glowUi(ui, lx + colW / 2, y + ph - 20, 30 * big, 9 * big, rgbaf(lr, lg, lb, 1), 0.5);
-    ui.pal = HEROES.indexOf(hero) + 1;
+    ui.pal = heroPal(hero.id, false);
     ui.image(idle.frames[frameAt(idle, now)][0]!, lx + colW / 2, y + ph - 20, big, big);
     ui.pal = 0;
     text(ui, tx(hero.name), lx + colW / 2, y + ph - 14, { align: "center", color: C.gold, outline: true });
@@ -1283,7 +1316,12 @@ export class Game {
       }
       const c = sp.reel[sp.target], a = Math.min(1, sp.held * 5);
       let name: string, desc: string, tag: string, col: number;
-      if (c.type === "evo") {
+      if (c.type === "legend") {
+        name = tx(LEGENDS[c.weapon]);
+        desc = tx(legendDesc(c.weapon));
+        tag = `${t("legendary")}: ${tx(weaponName(c.weapon, w.weaponEl))}`;
+        col = rgbaf(1, 0.85 + 0.15 * Math.sin(this.now * 8), 0.45, 1);
+      } else if (c.type === "evo") {
         const e = evolutionOf(c.kind);
         name = tx(e.name);
         desc = tx(e.desc);
@@ -1305,7 +1343,7 @@ export class Game {
       }
       let y = cy + 42;
       const cw = Math.min(320, W - 24), chh = 22 + (W >= 420 ? 20 : 12) + wrap(desc, 280).length * 10;
-      frame(ui, W / 2 - cw / 2, y - 6, cw, chh, { edge: c.type === "evo" ? C.gold : undefined });
+      frame(ui, W / 2 - cw / 2, y - 6, cw, chh, { edge: c.type === "evo" || c.type === "legend" ? C.gold : undefined });
       text(ui, tag, W / 2, y, { font: "mini", align: "center", color: withAlpha(col, a) });
       y += 9;
       text(ui, name, W / 2, y, { align: "center", scale: W >= 420 ? 2 : 1, color: withAlpha(C.gold, a), outline: true, shadow: withAlpha(rgba("#3a1a10"), a) });
@@ -1360,6 +1398,7 @@ export class Game {
     if (this.codexPage) {
       this.heading(t("evolutions"), 8, 1);
       text(ui, t("evoHint"), W / 2, 22, { font: "mini", align: "center", color: C.dim });
+      text(ui, t("legendHint"), W / 2, H - 36, { font: "mini", align: "center", color: C.goldDim });
       const rowH = Math.min(34, Math.floor((H - 70) / EVOLUTIONS.length));
       EVOLUTIONS.forEach((e, k) => {
         const y = 32 + k * rowH, mine = this.world.evolved(e.relic), relic = RELICS[e.relic], col = rgba(EL_COLOR[relic.el]);
@@ -1430,18 +1469,29 @@ export class Game {
     let y = this.resultCard(ty + th + sh + 6, [["skull", t("kills"), String(res.kills), C.text], ["time", t("time"), fmtTime(res.time), C.text], ["ember", t("earned"), `+${res.embers}`, C.gold]], res.score) + 10;
     const bw = 190, bh = 20, bx = Math.round(W / 2 - bw / 2);
     if (button(ui, this.menu, now, bx, y, bw, bh, t("again"), { primary: true, icon: icon("hud", "play") })) {
+      this.newSkin = "";
       void this.platform.showInterstitial().then(() => this.startRun());
       this.setState("title");
       return;
     }
     y += bh + 6;
     if (button(ui, this.menu, now, bx, y, bw, bh, t("menu"), { icon: icon("hud", "back") })) {
+      this.newSkin = "";
       this.daily = false;
       this.newWorld();
       this.attract();
       this.setState("title");
     }
     if (this.tasksReady()) text(ui, t("tasksReady"), W / 2, H - 12, { font: "mini", align: "center", color: C.green });
+    // the victor's colours, earned just now
+    if (this.newSkin) {
+      const hd = HEROES.find((q) => q.id === this.newSkin)!, sy = H - 24, f = anim(`${hd.weapon}_idle`).frames[frameAt(anim(`${hd.weapon}_idle`), now)][0]!;
+      glowUi(ui, W / 2 - 70, sy - 6, 24, 10, C.gold, 0.5);
+      ui.pal = heroPal(hd.id, true);
+      ui.image(f, W / 2 - 70, sy + 2);
+      ui.pal = 0;
+      text(ui, `${t("skinNew")}: ${tx(hd.name)}`, W / 2 - 54, sy - 10, { color: C.gold, shadow: C.ink });
+    }
   }
 
   /** The end of a run on a card: a row per number with its icon, the score at the foot. Returns the card's bottom. */

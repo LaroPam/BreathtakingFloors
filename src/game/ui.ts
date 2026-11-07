@@ -426,8 +426,14 @@ export function drawHud(b: Batch, w: World, W: number, H: number, time: number, 
 
   // ---- the hotbar: the weapon in a gold-rimmed slot (an element's gem in its corner), then a slot per relic
   const hy = py + 38, el = w.weaponEl;
-  slot(b, 2, hy, 24, el ? rgba(EL_COLOR[el]) : C.goldDim);
+  slot(b, 2, hy, 24, h.legend ? rgbaf(1, 0.85 + 0.15 * Math.sin(time * 5), 0.45, 1) : el ? rgba(EL_COLOR[el]) : C.goldDim);
+  if (h.legend) glow(b, 14, hy + 12, 16, 16, C.gold, 0.35);
   b.image(icon("icons", `w_${h.weapon}`), 14, hy + 12);
+  if (h.legend) {
+    // a small gold star in the top corner
+    b.rect(5, hy + 2, 3, 1, C.ink), b.rect(6, hy + 1, 1, 3, C.ink);
+    b.rect(5, hy + 3, 3, 1, C.goldLight), b.rect(6, hy + 2, 1, 3, C.goldLight);
+  }
   if (el) {
     const ec = rgba(EL_COLOR[el]);
     b.rect(20, hy + 17, 3, 5, C.ink), b.rect(19, hy + 18, 5, 3, C.ink);

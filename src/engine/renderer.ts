@@ -72,7 +72,7 @@ uniform int u_additive;
 uniform float u_scale;
 // palette swap: texels of the stock dummy's colours become a hero's (row u_pals[(pal - 1) * 10 ..])
 uniform vec3 u_keys[10];
-uniform vec3 u_pals[80];
+uniform vec3 u_pals[160];
 in vec2 v_uv;
 in vec2 v_local;
 flat in float v_layer;
@@ -327,15 +327,15 @@ export class Renderer {
   }
 
   /**
-   * The colours to swap (the stock dummy's ten) and up to eight palettes of ten to swap them for, as 0xRRGGBB.
+   * The colours to swap (the stock dummy's ten) and up to sixteen palettes of ten to swap them for, as 0xRRGGBB.
    * A quad drawn with Batch.pal = n uses palette n.
    */
   setPalettes(keys: number[], rows: number[][]): void {
     const gl = this.gl, f = (c: number) => [((c >> 16) & 255) / 255, ((c >> 8) & 255) / 255, (c & 255) / 255];
     gl.useProgram(this.sprite);
     gl.uniform3fv(this.loc["s.u_keys"]!, keys.flatMap(f));
-    const flat = new Float32Array(80 * 3);
-    rows.slice(0, 8).forEach((row, r) => row.forEach((c, k) => flat.set(f(c), (r * 10 + k) * 3)));
+    const flat = new Float32Array(160 * 3);
+    rows.slice(0, 16).forEach((row, r) => row.forEach((c, k) => flat.set(f(c), (r * 10 + k) * 3)));
     gl.uniform3fv(this.loc["s.u_pals"]!, flat);
   }
 

@@ -4,7 +4,7 @@
 import { anim, frameAt, hasAnim, icon, type Anim } from "../engine/atlas";
 import { Batch, rgba, rgbaf, SOFT, withAlpha } from "../engine/renderer";
 import { text } from "../engine/text";
-import { AI, EL_COLOR, ENEMIES, HEROES, questDef, RelicKind, WEAPONS, weaponName } from "./defs";
+import { AI, EL_COLOR, ENEMIES, heroPal, HEROES, LEGENDS, questDef, RelicKind, WEAPONS, weaponName } from "./defs";
 import { t as tr, tx } from "./i18n";
 import { BULLET_ANIMS, B_CRESCENT, B_FIREBALL, B_LANCE, CINE_DUR, D_CHEST, D_EMBER, D_GREEN, D_HEART, D_RED, SANCTUARY_R, STAR_EVERY, TILE, type World } from "./world";
 
@@ -304,7 +304,7 @@ export function drawWorld(s: Scene, w: World, camX: number, camY: number, viewW:
   }
 
   // ---- the hero: body and weapon recoloured into the hero's palette, and the light they carry
-  const wid = h.weapon, pal = HEROES.findIndex((q) => q.id === h.def.id) + 1;
+  const wid = h.weapon, pal = heroPal(h.def.id, h.victor);
   const run = anim(`${wid}_run`), idle = anim(`${wid}_idle`), dash = anim(`${wid}_dash`), hurt = anim(`${wid}_hurt`);
   const [gr, gg, gb] = GHOST_TINT[h.def.id] ?? [0.48, 0.82, 1];
   for (const g of w.ghosts) {
@@ -416,7 +416,7 @@ export function drawWorld(s: Scene, w: World, camX: number, camY: number, viewW:
     if (near < 80 * 80 && !h.dead) {
       const a = Math.min(1, (80 - Math.sqrt(near)) / 25);
       // (in the glow layer as well, so it reads in the dark above the stone)
-      const name = tx(weaponName(r.weapon, r.el)), nc = el ? col : rgba("#e8dcff");
+      const name = tx(r.legend ? LEGENDS[r.weapon] : weaponName(r.weapon, r.el)), nc = r.legend ? rgba("#ffd84a") : el ? col : rgba("#e8dcff");
       text(s.front, name, r.x, r.y - 72 + bob, { font: "mini", align: "center", color: withAlpha(nc, a), shadow: withAlpha(rgba("#0b0a12"), a) });
       text(s.glow, name, r.x, r.y - 72 + bob, { font: "mini", align: "center", color: withAlpha(nc, a * 0.7) });
     }

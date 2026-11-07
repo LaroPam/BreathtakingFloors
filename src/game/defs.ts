@@ -408,6 +408,7 @@ export const ACHIEVEMENTS: AchDef[] = [
   { id: "alchemist", icon: ["icons", "coil"], reward: 40, stat: "reactionsKnown", goal: 9, name: { ru: "АЛХИМИК", en: "ALCHEMIST" }, desc: { ru: "ОТКРОЙ ВСЕ 9 РЕАКЦИЙ", en: "DISCOVER ALL 9 REACTIONS" } },
   { id: "evolve", icon: ["icons", "e_orbit"], reward: 20, stat: "evosKnown", goal: 1, name: { ru: "ПРЕОБРАЖЕНИЕ", en: "TRANSFIGURED" }, desc: { ru: "ПОЛУЧИ ЭВОЛЮЦИЮ", en: "EVOLVE A RELIC" } },
   { id: "evolveAll", icon: ["icons", "e_void"], reward: 80, stat: "evosKnown", goal: 6, name: { ru: "ВСЕ ЛИКИ", en: "ALL FACES" }, desc: { ru: "ПОЛУЧИ КАЖДУЮ ИЗ 6 ЭВОЛЮЦИЙ", en: "EVOLVE EACH OF THE 6 RELICS" } },
+  { id: "legend", icon: ["icons", "w_sword"], reward: 40, name: { ru: "ЛЕГЕНДА", en: "LEGEND" }, desc: { ru: "ВЫКУЙ ЛЕГЕНДАРНОЕ ОРУЖИЕ", en: "FORGE A LEGENDARY WEAPON" } },
   { id: "spirits", icon: ["hud", "scroll"], reward: 30, stat: "spirits", goal: 10, name: { ru: "ДРУГ ДУХОВ", en: "FRIEND OF SPIRITS" }, desc: { ru: "ВЫПОЛНИ 10 ЗАДАНИЙ ДУХОВ", en: "COMPLETE 10 SPIRIT QUESTS" } },
   { id: "untouched", icon: ["hud", "heart"], reward: 30, name: { ru: "НИ ЦАРАПИНЫ", en: "NOT A SCRATCH" }, desc: { ru: "ПРОЙДИ ЭТАЖ, НЕ ПОЛУЧИВ УДАРА", en: "CLEAR A FLOOR WITHOUT TAKING A HIT" } },
   { id: "swift", icon: ["hud", "time"], reward: 30, name: { ru: "СКОРОХОД", en: "FLEET OF FOOT" }, desc: { ru: "ПРОЙДИ ЭТАЖ БЫСТРЕЕ 90 СЕКУНД", en: "CLEAR A FLOOR IN UNDER 90 SECONDS" } },
@@ -537,6 +538,30 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
 };
 export const WEAPON_IDS = Object.keys(WEAPONS) as WeaponId[];
 
+/**
+ * Legendary weapons: a weapon steeped in an element, held with a relic of the same element at its last level, can
+ * be forged anew (a chest always offers it). It keeps its kind, takes a name, hits 40% harder and gains a signature:
+ * blades end every combo in a wave of their element, the bow's arrows split on a hit, the spellbook casts twice.
+ */
+export const LEGENDS: Record<WeaponId, Text> = {
+  sword: { ru: "КЛИНОК ЗАРИ", en: "DAWNBLADE" },
+  hammer: { ru: "ГРОМОВОЙ МОЛОТ", en: "THUNDERMAUL" },
+  spear: { ru: "КОПЬЁ КОМЕТЫ", en: "COMET SPEAR" },
+  scythe: { ru: "КОСА ЖАТВЫ", en: "HARVEST SCYTHE" },
+  daggers: { ru: "КЛЫКИ ТЕНИ", en: "SHADOW FANGS" },
+  greatsword: { ru: "ПАЛАЧ", en: "THE EXECUTIONER" },
+  claws: { ru: "КОГТИ БУРИ", en: "STORM TALONS" },
+  whip: { ru: "ПЛЕТЬ ВУЛКАНА", en: "VOLCANO LASH" },
+  bow: { ru: "НЕБЕСНЫЙ ЛУК", en: "SKYBOW" },
+  spell: { ru: "КНИГА БУРЬ", en: "TOME OF TEMPESTS" },
+};
+export const legendDesc = (id: WeaponId): Text =>
+  id === "bow"
+    ? { ru: "+40% УРОНА. СТРЕЛА ПРИ ПОПАДАНИИ РАСЩЕПЛЯЕТСЯ НАДВОЕ", en: "+40% DAMAGE. AN ARROW SPLITS IN TWO WHEN IT HITS" }
+    : id === "spell"
+      ? { ru: "+40% УРОНА. КАЖДОЕ ЗАКЛИНАНИЕ ЗВУЧИТ ДВАЖДЫ", en: "+40% DAMAGE. EVERY SPELL IS CAST TWICE" }
+      : { ru: "+40% УРОНА. КОНЕЦ КАЖДОЙ СЕРИИ УДАРОВ - ВОЛНА СТИХИИ", en: "+40% DAMAGE. EVERY COMBO ENDS IN A WAVE OF ITS ELEMENT" };
+
 /** Weapons found deeper down can carry an element: their blows apply it (and set off reactions). */
 const EL_ADJ: Partial<Record<El, { m: string; f: string; n: string; pl: string; en: string }>> = {
   [El.Fire]: { m: "ПЛАМЕННЫЙ", f: "ПЛАМЕННАЯ", n: "ПЛАМЕННОЕ", pl: "ПЛАМЕННЫЕ", en: "BLAZING" },
@@ -573,45 +598,58 @@ export interface HeroDef {
   palette: Record<string, string>;
   /** Embers to unlock them at the hero select (0: free from the start). */
   cost: number;
+  /** The victor's colours, worn once a run has been won with them. */
+  victor: Record<string, string>;
 }
 export const HEROES: HeroDef[] = [
   {
     id: "knight", cost: 0, name: { ru: "РЫЦАРЬ ФОНАРЯ", en: "LANTERN KNIGHT" }, title: { ru: "СТАЛЬ И ТЁПЛЫЙ СВЕТ", en: "STEEL AND WARM LIGHT" },
     perk: { ru: "+1 СЕРДЦЕ, ФОНАРЬ СВЕТИТ НА 20% ШИРЕ", en: "+1 HEART, A LANTERN 20% WIDER" },
     weapon: "sword", hearts: 6, speed: 1, dashCd: 1, dashes: 1, lantern: 1.2, light: "lantern", lightColor: [1, 0.82, 0.58],
-    palette: { k: "#0a0910", A: "#d4deea", B: "#8e9cb6", C: "#5c6a8a", D: "#3c4662", E: "#c8344c", F: "#922238", G: "#5c1428", J: "#3a0c1c", m: "#ffd04a" },
+    palette: { k: "#0a0910", A: "#d4deea", B: "#8e9cb6", C: "#5c6a8a", D: "#3c4662", E: "#c8344c", F: "#922238", G: "#5c1428", J: "#3a0c1c", m: "#ffd04a" },    victor: { k: "#1a1208", A: "#fff4c0", B: "#e8b850", C: "#a87828", D: "#6a4a18", E: "#f4f0f8", F: "#c8c0d8", G: "#8a82a0", J: "#3a2a10", m: "#ff4a5a" },
+
   },
   {
     id: "ranger", cost: 60, name: { ru: "СЛЕДОПЫТ", en: "RANGER" }, title: { ru: "ЛУК, КОЖА И ЛЁГКИЙ ШАГ", en: "BOW, LEATHER, A LIGHT STEP" },
     perk: { ru: "ДВА РЫВКА ПОДРЯД, БЕГАЕТ БЫСТРЕЕ, СТРЕЛЫ ПРОБИВАЮТ +1", en: "TWO DASHES, FASTER FEET, ARROWS PIERCE +1" },
     weapon: "bow", hearts: 4, speed: 1.12, dashCd: 0.85, dashes: 2, lantern: 1, light: "lantern", lightColor: [1, 0.85, 0.6],
-    palette: { k: "#0a0910", A: "#d8c08a", B: "#a8864e", C: "#765a32", D: "#4e3a20", E: "#4e8a3a", F: "#36612a", G: "#22401c", J: "#16281a", m: "#ffe060" },
+    palette: { k: "#0a0910", A: "#d8c08a", B: "#a8864e", C: "#765a32", D: "#4e3a20", E: "#4e8a3a", F: "#36612a", G: "#22401c", J: "#16281a", m: "#ffe060" },    victor: { k: "#0a0f14", A: "#f0f4ff", B: "#b8c4dc", C: "#7a86a0", D: "#4a5268", E: "#3ad08a", F: "#1a8a5a", G: "#0a4a30", J: "#062018", m: "#fff09a" },
+
   },
   {
     id: "mage", cost: 90, name: { ru: "ЧАРОДЕЙКА", en: "SORCERESS" }, title: { ru: "ОГОНЬ, ЛЁД И ГРОЗА", en: "FIRE, ICE AND STORM" },
     perk: { ru: "ЗАКЛИНАНИЯ ЧЕРЕДУЮТ СТИХИИ И САМИ ВЫЗЫВАЮТ РЕАКЦИИ", en: "HER SPELLS TAKE TURNS AND SET OFF REACTIONS" },
     weapon: "spell", hearts: 4, speed: 0.98, dashCd: 1, dashes: 1, lantern: 1, light: "wisp", lightColor: [0.55, 0.85, 1],
-    palette: { k: "#0a0910", A: "#c8b8f0", B: "#9480d0", C: "#64509e", D: "#40306e", E: "#e8c860", F: "#b8902e", G: "#7a5a1a", J: "#2a1a44", m: "#7ad0ff" },
+    palette: { k: "#0a0910", A: "#c8b8f0", B: "#9480d0", C: "#64509e", D: "#40306e", E: "#e8c860", F: "#b8902e", G: "#7a5a1a", J: "#2a1a44", m: "#7ad0ff" },    victor: { k: "#140f1c", A: "#fff6d8", B: "#f0d898", C: "#b89848", D: "#7a5a20", E: "#ffffff", F: "#d8d0f0", G: "#9a90c0", J: "#2a2040", m: "#6ab0ff" },
+
   },
   {
     id: "reaper", cost: 140, name: { ru: "ЖНЕЦ", en: "REAPER" }, title: { ru: "КОСА И ЗЕЛЁНЫЙ ОГОНЬ ДУШ", en: "A SCYTHE AND GREEN SOUL-FIRE" },
     perk: { ru: "ЖАТВА: КАЖДЫЕ 25 УБИЙСТВ ВОЗВРАЩАЮТ СЕРДЦЕ", en: "HARVEST: EVERY 25 KILLS GIVE A HEART BACK" },
     weapon: "scythe", hearts: 5, speed: 0.95, dashCd: 1.1, dashes: 1, lantern: 1, light: "wisp", lightColor: [0.55, 1, 0.6],
-    palette: { k: "#0a0910", A: "#7a7688", B: "#4e4a5c", C: "#33303e", D: "#22202a", E: "#2e7a52", F: "#1c5238", G: "#0f3022", J: "#08140e", m: "#7ee88a" },
+    palette: { k: "#0a0910", A: "#7a7688", B: "#4e4a5c", C: "#33303e", D: "#22202a", E: "#2e7a52", F: "#1c5238", G: "#0f3022", J: "#08140e", m: "#7ee88a" },    victor: { k: "#050505", A: "#f0e8d8", B: "#c8bca0", C: "#8a7e68", D: "#4a4234", E: "#3a3a46", F: "#22222a", G: "#121216", J: "#000000", m: "#c8ff8a" },
+
   },
   {
     id: "berserker", cost: 180, name: { ru: "БЕРСЕРК", en: "BERSERKER" }, title: { ru: "БРОНЗА, МЕХ И ЯРОСТЬ", en: "BRONZE, FUR AND FURY" },
     perk: { ru: "ЯРОСТЬ: ЧЕМ МЕНЬШЕ СЕРДЕЦ, ТЕМ СИЛЬНЕЕ УДАРЫ (ДО +70%)", en: "FURY: THE FEWER HEARTS, THE HARDER THE BLOWS (UP TO +70%)" },
     weapon: "greatsword", hearts: 7, speed: 0.95, dashCd: 1.15, dashes: 1, lantern: 0.95, light: "lantern", lightColor: [1, 0.7, 0.45],
-    palette: { k: "#0a0910", A: "#e0b078", B: "#b07a44", C: "#7e4e2a", D: "#52301a", E: "#7a3424", F: "#54200f", G: "#341208", J: "#1c0804", m: "#ff8a2a" },
+    palette: { k: "#0a0910", A: "#e0b078", B: "#b07a44", C: "#7e4e2a", D: "#52301a", E: "#7a3424", F: "#54200f", G: "#341208", J: "#1c0804", m: "#ff8a2a" },    victor: { k: "#08080c", A: "#6a6a7a", B: "#46465a", C: "#2a2a38", D: "#16161e", E: "#ff7a2a", F: "#c83a10", G: "#7a1e08", J: "#2a0800", m: "#ffd84a" },
+
   },
   {
     id: "shadow", cost: 240, name: { ru: "ТЕНЬ", en: "SHADE" }, title: { ru: "КОГТИ ИЗ СУМРАКА", en: "CLAWS OUT OF THE DUSK" },
     perk: { ru: "+20% КРИТА, РЫВОК РЕЖЕТ ВСЕХ НА ПУТИ", en: "+20% CRIT, THE DASH CUTS ALL IN ITS WAY" },
     weapon: "claws", hearts: 4, speed: 1.15, dashCd: 0.8, dashes: 2, lantern: 0.9, light: "wisp", lightColor: [0.8, 0.5, 1],
-    palette: { k: "#0a0910", A: "#6a6a8e", B: "#46466a", C: "#2c2c48", D: "#1a1a30", E: "#a06ae0", F: "#6a3aa8", G: "#3e1e6a", J: "#0c0a18", m: "#e05aff" },
+    palette: { k: "#0a0910", A: "#6a6a8e", B: "#46466a", C: "#2c2c48", D: "#1a1a30", E: "#a06ae0", F: "#6a3aa8", G: "#3e1e6a", J: "#0c0a18", m: "#e05aff" },    victor: { k: "#04060c", A: "#9aeeff", B: "#4ab0e0", C: "#2a6aa8", D: "#183a68", E: "#2a2a5a", F: "#1a1a40", G: "#0e0e26", J: "#000010", m: "#ffffff" },
+
   },
 ];
+/** A hero's palette slot in the shader: their own colours, or (after the spirit's slot) the victor's. */
+export const heroPal = (id: string, victor: boolean): number => {
+  const k = Math.max(0, HEROES.findIndex((h) => h.id === id));
+  return victor ? HEROES.length + 2 + k : k + 1;
+};
 export const heroDef = (id: string): HeroDef => HEROES.find((h) => h.id === id) ?? HEROES[0];
 /** The order of palette roles the shader swaps. */
 export const PALETTE_KEYS = ["k", "A", "B", "C", "D", "E", "F", "G", "J", "m"];

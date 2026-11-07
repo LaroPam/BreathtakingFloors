@@ -154,6 +154,8 @@ export interface Rack {
   weapon: WeaponId;
   /** Deeper down, a weapon on an altar can carry an element. */
   el: El;
+  /** A legendary weapon left on the altar keeps its name. */
+  legend: boolean;
   progress: number;
   /** The hero must step off before swapping again. */
   armed: boolean;
@@ -309,6 +311,10 @@ export class Hero {
   hitsDone = 0;
   /** The element the weapon was found with (None: plain steel). */
   weaponEl: El = El.None;
+  /** The weapon in hand is legendary (LEGENDS). */
+  legend = false;
+  /** Wearing the victor's colours. */
+  victor = false;
   /** Where the weapon hand is this frame (draw.ts writes it from the animation; sparks of an element fly from it). */
   handX = 0;
   handY = 0;
@@ -494,8 +500,8 @@ export class World {
       if (!clear(x, y, 14)) continue;
       const pool = WEAPON_IDS.filter((id) => id !== this.hero.weapon), weapon = R.pick(pool);
       // from the second floor on, more and more of them are steeped in an element (not the spellbook, not the fire whip)
-      const el = this.floor >= 2 && !WEAPONS[weapon].el && !WEAPONS[weapon].ranged && R.chance(0.25 + 0.06 * this.floor) ? R.pick(ELEMENTS) : El.None;
-      this.racks.push({ x: Math.round(x), y: Math.round(y), weapon, el, progress: 0, armed: true });
+      const el = this.floor >= 2 && !WEAPONS[weapon].el && weapon !== "spell" && R.chance(0.25 + 0.06 * this.floor) ? R.pick(ELEMENTS) : El.None;
+      this.racks.push({ x: Math.round(x), y: Math.round(y), weapon, el, legend: false, progress: 0, armed: true });
       break;
     }
     // the spirit of one who came before, somewhere away from the start and the altar, with a task fit for this floor
@@ -575,6 +581,7 @@ export class World {
     h.def = def;
     h.weapon = def.weapon;
     h.weaponEl = El.None;
+    h.legend = false;
     s.crit = 0.05 + (def.id === "shadow" ? 0.2 : 0);
     h.maxHp = def.hearts;
     h.hp = def.hearts;
@@ -857,6 +864,7 @@ export class World {
     }
     // an element smoulders, sparks or drips on the weapon hand; the Berserker's fury steams off him
     const el = this.weaponEl;
+    if (h.legend && h.handX && this.rng.chance(dt * 22)) this.parts.add(h.handX + this.rng.range(-4, 4), h.handY + this.rng.range(-5, 3), this.rng.range(-5, 5), -22, this.rng.range(0.3, 0.6), this.rng.chance(0.5) ? rgba("#ffd84a") : rgba("#fff6c4"), 1, 0, 1);
     if (el && h.handX && this.rng.chance(dt * (h.atk >= 0 ? 40 : 14)))
       this.parts.add(h.handX + this.rng.range(-3, 3), h.handY + this.rng.range(-3, 3), this.rng.range(-6, 6), el === El.Venom ? 14 : -18, this.rng.range(0.25, 0.5), rgba(EL_COLOR[el]), 1, el === El.Venom ? 60 : 0, 1);
     const fury = this.fury;
@@ -980,10 +988,10 @@ export class World {
   /** A blow lands. Melee hits what is in its shape and cuts bullets; shots and spells leave the hand. */
   private land(B: Blow, k: number, hit: number, of: number): void {
     const h = this.hero, s = this.stats, dir = h.atkDir, W = WEAPONS[h.weapon], wel = this.weaponEl;
-    const dmg = B.dmg * s.edge * s.might * this.fury;
+    const dmg = B.dmg * s.edge * s.might * this.fury * (h.legend ? 1.4 : 1);
     const cx = h.x, cy = h.y - 18;
     if (B.kind === "arrow" || B.kind === "fire" || B.kind === "frost") {
-      const [hx, hy] = this.handPos(), n = 1 + s.wave, spread = B.kind === "arrow" ? 0.1 : 0.22;
+      const [hx, hy] = this.handPos(), n = 1 + s.wave + (h.legend && B.kind !== "arrow" ? 1 : 0), spread = B.kind === "arrow" ? 0.1 : 0.22;
       const speed = (B.kind === "arrow" ? 380 : B.kind === "fire" ? 230 : 300) * (0.9 + 0.1 * s.reach);
       const kind = B.kind === "arrow" ? B_ARROW : B.kind === "fire" ? B_FIREBALL : B_LANCE;
       const el = B.kind === "fire" ? El.Fire : B.kind === "frost" ? El.Frost : wel;
@@ -1005,7 +1013,7 @@ export class World {
     if (B.kind === "storm") {
       // lightning out of the sky onto the foe nearest where the hero aims
       const ax = h.x + Math.cos(dir) * 90, ay = cy + Math.sin(dir) * 90;
-      for (let q = 0; q <= s.wave; q++) {
+      for (let q = 0; q <= s.wave + (h.legend ? 2 : 0); q++) {
         const j = this.nearestEnemy(ax, ay, 170);
         let tx = ax + this.rng.range(-30, 30) * q, ty = ay + 18 + this.rng.range(-20, 20) * q;
         if (j >= 0 && q === 0) (this.body(j), tx = this.bx, ty = this.enemies.y[j]);
@@ -1023,7 +1031,7 @@ export class World {
       return;
     }
     // ---- melee
-    const R = B.reach * s.reach, arc = B.arc * (0.85 + 0.15 * s.reach), fxName = `fx_${h.weapon}_${k}`;
+    const R = B.reach * s.reach * (h.legend ? 1.15 : 1), arc = B.arc * (0.85 + 0.15 * s.reach), fxName = `fx_${h.weapon}_${k}`;
     // an element colours the blow's trail (the fire whip's own fire is already in its art)
     const tint = h.weaponEl ? elTint(h.weaponEl) : 0xffffffff;
     if (hit === 0 && hasAnim(fxName)) {
@@ -1099,6 +1107,18 @@ export class World {
       this.gainOd(2.5 * cut);
       this.audio.play("graze", 0.8);
     }
+    // a legendary blade ends its combo in a wave of its element
+    if (h.legend && hit === of - 1 && k === W.blows.length - 1) {
+      const col = rgba(EL_COLOR[wel || El.Fire]);
+      for (let q = -1; q <= 1; q++) {
+        const a = dir + q * 0.22;
+        this.bullets.add(TEAM_HERO, B_CRESCENT, cx + Math.cos(a) * 16, cy + Math.sin(a) * 16, Math.cos(a) * 300, Math.sin(a) * 300, 0.6, dmg * 0.9, 9, wel, 3);
+      }
+      this.addFx("slam", cx + Math.cos(dir) * 26, h.y + 2, { sx: 0.6, sy: 0.6, glow: 0.9, tint: col });
+      this.burst(cx + Math.cos(dir) * 20, cy + Math.sin(dir) * 20, 12, col, 120, 0.4);
+      this.shake = Math.max(this.shake, 0.25);
+      this.audio.play("boom", 1.6);
+    }
     // waves of light: crescents thrown along the blow (once per blow)
     if (hit === of - 1)
       for (let q = 0; q < s.wave; q++) {
@@ -1150,11 +1170,13 @@ export class World {
       if (!r.armed) continue;
       r.progress += dt / 0.8;
       if (r.progress >= 1) {
-        const old = h.weapon, oldEl = h.weaponEl;
+        const old = h.weapon, oldEl = h.weaponEl, oldLegend = h.legend;
         h.weapon = r.weapon;
         h.weaponEl = r.el;
+        h.legend = r.legend;
         r.weapon = old;
         r.el = oldEl;
+        r.legend = oldLegend;
         r.progress = 0;
         r.armed = false;
         h.atk = -1;
@@ -1637,6 +1659,28 @@ export class World {
   // ============================================================================================ relics
   relicLevel(kind: RelicKind): number {
     return this.relics.find((r) => r.kind === kind)?.level ?? 0;
+  }
+  /** The elements the weapon in hand deals: its own, or the spellbook's three. */
+  weaponElements(): El[] {
+    if (this.hero.weapon === "spell") return [El.Fire, El.Frost, El.Storm];
+    return this.weaponEl ? [this.weaponEl] : [];
+  }
+  /** Ready to become legendary: an element in the weapon, a relic of that element at its last level. */
+  legendReady(): boolean {
+    const els = this.weaponElements();
+    return !this.hero.legend && els.length > 0 && this.relics.some((r) => r.level >= RELIC_MAX && els.includes(RELICS[r.kind].el));
+  }
+  /** The weapon is forged anew: gold light, a ring of its element. */
+  makeLegend(): void {
+    const h = this.hero;
+    h.legend = true;
+    const col = rgba(EL_COLOR[this.weaponEl || El.Fire]);
+    this.addFx("smite", h.x, h.y, { glow: 1, tint: rgba("#fff0c0") });
+    this.addFx("heal_ring", h.x, h.y, { glow: 0.9, tint: col });
+    this.burst(h.x, h.y - 20, 34, rgba("#ffd84a"), 130, 0.8);
+    this.flash = Math.max(this.flash, 0.6);
+    this.shake = Math.max(this.shake, 0.6);
+    this.audio.play("ult");
   }
   evolved(kind: RelicKind): boolean {
     return !!this.relics.find((r) => r.kind === kind)?.evo;
@@ -2376,6 +2420,15 @@ export class World {
             return true;
           }
           const dead = this.damage(j, B.dmg[i] * (crit ? 2 : 1), B.el[i] as El, { crit });
+          // the Skybow's arrow splits in two on its first hit
+          if (B.kind[i] === B_ARROW && this.hero.legend && !B.grazed[i]) {
+            B.grazed[i] = 1;
+            const a = Math.atan2(B.vy[i], B.vx[i]), sp = Math.hypot(B.vx[i], B.vy[i]);
+            for (const da of [-0.35, 0.35]) {
+              const q = this.bullets.add(TEAM_HERO, B_ARROW, x, y, Math.cos(a + da) * sp, Math.sin(a + da) * sp, 0.45, B.dmg[i] * 0.6, 3.5, B.el[i], 0);
+              if (q >= 0) this.bullets.grazed[q] = 1;
+            }
+          }
           this.addFx(B.kind[i] === B_LANCE ? "hit_frost" : crit ? "crit" : "hit_spark", ex, ey + 10, { rot: Math.atan2(-B.vy[i], -B.vx[i]), sx: 0.6, sy: 0.6, glow: 0.7 });
           if (B.el[i] && B.kind[i] !== B_LANCE) this.burst(ex, ey, 4, rgba(EL_COLOR[B.el[i] as El]), 60, 0.3);
           this.audio.play("hit", dead ? 0.8 : 1);
