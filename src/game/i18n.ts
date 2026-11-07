@@ -62,6 +62,11 @@ const RU = {
   cleared: "ЭТАЖ ПРОЙДЕН",
   reward: "НАГРАДА",
   risk: "РИСК",
+  evolution: "ЭВОЛЮЦИЯ",
+  evolutions: "ЭВОЛЮЦИИ",
+  evoWith: "ЭВОЛЮЦИЯ С",
+  evoKey: "КЛЮЧ К ЭВОЛЮЦИИ",
+  evoHint: "РЕЛИКВИЯ 5 УРОВНЯ + УЛУЧШЕНИЕ = ЭВОЛЮЦИЯ. СУНДУК ОТДАЁТ ЕЁ НАВЕРНЯКА",
   fontCredits: "ШРИФТЫ: FANTASY WARRIOR - DOUGLAS VAUTOUR (CC BY 4.0), PIXELOID SANS - GGBOTNET, TINY5 (SIL OFL)",
 };
 
@@ -127,6 +132,11 @@ const EN: Strings = {
   cleared: "FLOOR CLEARED",
   reward: "REWARD",
   risk: "RISK",
+  evolution: "EVOLUTION",
+  evolutions: "EVOLUTIONS",
+  evoWith: "EVOLVES WITH",
+  evoKey: "KEY TO AN EVOLUTION",
+  evoHint: "A LEVEL 5 RELIC + ITS UPGRADE = AN EVOLUTION. A CHEST ALWAYS GIVES IT",
   fontCredits: "FONTS: FANTASY WARRIOR BY DOUGLAS VAUTOUR (CC BY 4.0), PIXELOID SANS BY GGBOTNET, TINY5 (SIL OFL)",
 };
 

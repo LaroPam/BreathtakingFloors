@@ -6,7 +6,7 @@ import { Batch, rgba, rgbaf, SOFT, withAlpha } from "../engine/renderer";
 import { text } from "../engine/text";
 import { AI, EL_COLOR, ENEMIES, HEROES, RelicKind, WEAPONS, weaponName } from "./defs";
 import { tx } from "./i18n";
-import { BULLET_ANIMS, B_CRESCENT, B_FIREBALL, B_LANCE, CINE_DUR, D_CHEST, D_GREEN, D_HEART, D_RED, TILE, type World } from "./world";
+import { BULLET_ANIMS, B_CRESCENT, B_FIREBALL, B_LANCE, CINE_DUR, D_CHEST, D_GREEN, D_HEART, D_RED, SANCTUARY_R, STAR_EVERY, TILE, type World } from "./world";
 
 export class Scene {
   back = new Batch();
@@ -417,12 +417,33 @@ export function drawWorld(s: Scene, w: World, camX: number, camY: number, viewW:
   // ---- relics in the world
   const orbit = w.relics.find((q) => q.kind === RelicKind.Orbit);
   if (orbit && !h.dead) {
-    const n = w.orbitCount(orbit.level), ember = anim("ember");
+    // embers, or (evolved) small suns that swell as they gather for their flare
+    const n = w.orbitCount(orbit), ember = anim("ember"), swell = orbit.evo ? 1.35 + 0.25 * Math.max(0, 1 - orbit.timer / 0.5) : 1;
     for (let k = 0; k < n; k++) {
       const [ox, oy] = w.orbitPos(orbit, k, n);
-      drawAnim(s, ember, time + k * 0.2, ox, oy, { key: oy + 12, glow: 0.9 });
-      s.illum.light(ox, oy, 28, 24, rgbaf(1, 0.55, 0.2, 0.5));
+      drawAnim(s, ember, time + k * 0.2, ox, oy, { key: oy + 12, glow: 0.9, sx: swell, sy: swell });
+      if (orbit.evo) s.glow.light(ox, oy, 6, 6, rgbaf(1, 0.85, 0.4, 0.6));
+      s.illum.light(ox, oy, 28 * swell, 24 * swell, rgbaf(1, 0.55, 0.2, orbit.evo ? 0.65 : 0.5));
     }
+  }
+  // the Sanctuary: a ring of light about the hero, turning, pulsing as it burns
+  const halo = w.relics.find((q) => q.kind === RelicKind.Halo);
+  if (halo?.evo && !h.dead) {
+    const R = SANCTUARY_R, n = 40, pulse = 0.6 + 0.4 * Math.max(0, 1 - halo.timer / 0.2);
+    for (let k = 0; k < n; k++) {
+      const a = (k / n) * Math.PI * 2 + time * 0.6, x = Math.round(h.x + Math.cos(a) * R), y = Math.round(h.y - 4 + Math.sin(a) * R * 0.77);
+      if (k % 4 === 3) continue;
+      s.back.rect(x, y, 1, 1, rgbaf(1, 0.94, 0.6, 0.8));
+      s.glow.rect(x, y, 1, 1, rgbaf(1, 0.9, 0.5, 0.7 * pulse));
+    }
+    s.illum.light(h.x, h.y - 4, R * 1.05, R * 0.82, rgbaf(1, 0.92, 0.6, 0.18 * pulse));
+  }
+  // the Black Star: a disc of nothing in a burning ring, swelling before it collapses
+  if (w.star) {
+    const S = w.star, u = S.t / STAR_EVERY, k = 2.2 + 0.8 * u * u, vo2 = anim("void_orb");
+    drawAnim(s, vo2, time * 1.6, S.x, S.y, { sx: k, sy: k, key: S.y + 14, glow: 1 });
+    s.color.disc(S.x, S.y, 5 + 2 * u, 5 + 2 * u, rgba("#05030a"), S.y + 14.5);
+    s.illum.light(S.x, S.y, 60 + 30 * u, 50 + 25 * u, rgbaf(0.6, 0.25, 1, 0.5 + 0.3 * u));
   }
   const vo = anim("void_orb");
   for (const sp of w.spheres) {

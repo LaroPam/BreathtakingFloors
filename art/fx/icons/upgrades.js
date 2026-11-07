@@ -4,8 +4,9 @@
 import { mix, hex } from "../../../pixelfx/src/core/index.js";
 
 export const IDS = [
-  // relics
+  // relics, and what they evolve into
   "orbit", "lance", "coil", "flask", "halo", "void",
+  "e_orbit", "e_lance", "e_coil", "e_flask", "e_halo", "e_void",
   // the sword, the body, the light
   "edge", "haste", "reach", "wave", "parry", "speed", "maxhp", "magnet", "dashcd", "overdrive", "crit", "lantern",
   // weapons
@@ -36,6 +37,7 @@ const BADGE = {
 };
 const KIND = {
   orbit: "fire", lance: "frost", coil: "storm", flask: "venom", halo: "holy", void: "void",
+  e_orbit: "fire", e_lance: "frost", e_coil: "storm", e_flask: "venom", e_halo: "holy", e_void: "void",
   edge: "gold", haste: "gold", reach: "gold", wave: "gold", parry: "steel", speed: "steel", maxhp: "life",
   magnet: "steel", dashcd: "steel", overdrive: "holy", crit: "gold", lantern: "holy",
   w_sword: "arms", w_hammer: "arms", w_spear: "arms", w_scythe: "arms", w_daggers: "arms", w_bow: "arms", w_spell: "arms",
@@ -332,7 +334,98 @@ Object.assign(SYMBOLS, {
   },
 });
 
+/** An evolved relic's badge: its element's field in a gold rim, a stud at each corner, a glint. */
+function evoBadge(p, [dark, mid]) {
+  badge(p, [dark, mid, "#ffe08a"]);
+  for (const [x, y] of [[-9, -9], [8, -9], [-9, 8], [8, 8]]) {
+    p.px(x, y, H("#fff6c4"));
+    p.px(x + (x < 0 ? 1 : -1), y, H("#c89a3a"));
+    p.px(x, y + (y < 0 ? 1 : -1), H("#c89a3a"));
+  }
+  p.px(-6, -9, H("#ffffff")); p.px(-5, -9, H("#fff6c4"));
+}
+
+const EVOLVED = {
+  e_orbit(p) {
+    // a sun with eight rays in a crown of small suns
+    for (let k = 0; k < 8; k++) {
+      const a = (k / 8) * Math.PI * 2, r0 = 4, r1 = k % 2 ? 6.5 : 8;
+      p.line(Math.cos(a) * r0, Math.sin(a) * r0, Math.cos(a) * r1, Math.sin(a) * r1, H(k % 2 ? "#f2561d" : "#ffae35"));
+    }
+    outlined(p, (ink) => {
+      p.circle(0, 0, 3.6, (d) => pick(ink, d < 0.4 ? "#ffffff" : d < 0.75 ? "#fff3a6" : "#ffc23d"));
+      for (const [x, y] of [[-7, -4], [7, -4], [0, 7]]) p.circle(x, y, 1.6, (d) => pick(ink, d < 0.5 ? "#fff3a6" : "#ff8a2a"));
+    });
+    p.px(-1, -2, H("#ffffff"));
+  },
+  e_lance(p) {
+    // three lances fanned out of a snowflake
+    outlined(p, (ink) => {
+      for (const a of [-2.2, -1.57, -0.94]) {
+        const c = Math.cos(a), s = Math.sin(a);
+        p.line(c * 1, s * 1 + 4, c * 9, s * 9 + 4, pick(ink, "#c4ecff"));
+        p.tri(c * 9 - s * 1.6, s * 9 + 4 + c * 1.6, c * 12, s * 12 + 4, c * 9 + s * 1.6, s * 9 + 4 - c * 1.6, pick(ink, "#ffffff"));
+      }
+    });
+    for (let k = 0; k < 6; k++) {
+      const a = (k / 6) * Math.PI * 2;
+      p.line(0, 4, Math.round(Math.cos(a) * 3), 4 + Math.round(Math.sin(a) * 3), H("#78ccf4"));
+    }
+    p.px(0, 4, H("#ffffff")); p.px(-5, -2, H("#9bdcff")); p.px(5, -2, H("#9bdcff"));
+  },
+  e_coil(p) {
+    // a storm cloud, two bolts out of it
+    outlined(p, (ink) => {
+      p.poly([[-1, 0], [-4, 6], [-2, 6], [-4, 9], [1, 3], [-1, 3], [1, 0]], pick(ink, "#ffe03c"));
+      p.poly([[4, 0], [2, 4], [4, 4], [3, 7], [6, 2], [4, 2], [5, 0]], pick(ink, "#fff6a0"));
+      p.circle(-4, -3, 3.2, (d) => pick(ink, d < 0.6 ? "#8a8aa8" : "#5a5a78"));
+      p.circle(1, -5, 3.8, (d) => pick(ink, d < 0.6 ? "#a8a8c4" : "#6a6a88"));
+      p.circle(5, -2, 2.8, (d) => pick(ink, d < 0.6 ? "#8a8aa8" : "#5a5a78"));
+      p.rect(-6, -2, 13, 2, pick(ink, "#4a4a66"));
+    });
+    p.px(0, -7, H("#e8e8ff")); p.px(-1, 4, H("#ffffff"));
+  },
+  e_flask(p) {
+    // a cauldron bubbling over, a skull in the steam
+    outlined(p, (ink) => {
+      p.circle(0, 4, 6.5, (d, a) => (Math.sin(a) > -0.35 ? pick(ink, d > 0.85 ? "#3a3448" : "#22202e") : 0));
+      p.rect(-7, -1, 14, 2, pick(ink, "#5a5470"));
+      p.ellipse(0, -1, 6, 1.6, (d) => pick(ink, d < 0.6 ? "#a8f05a" : "#6cd02a"));
+      p.circle(-3, -5, 1.6, (d) => pick(ink, d < 0.5 ? "#d0ff8a" : "#6cd02a"));
+      p.circle(3, -7, 2.2, (d) => pick(ink, d < 0.5 ? "#d0ff8a" : "#6cd02a"));
+    });
+    p.px(2, -8, H("#1c3a10")); p.px(4, -8, H("#1c3a10")); p.px(3, -6, H("#1c3a10"));
+    p.px(-4, 3, H("#5a5470")); p.px(-8, 7, H("#3a3448")); p.px(7, 7, H("#3a3448"));
+  },
+  e_halo(p) {
+    // two halos, one in the other, and wings of light
+    for (const s of [1, -1])
+      for (let k = 0; k < 4; k++) p.line(s * (3 + k), 2 + k, s * (7 + k * 0.5), -1 + k * 2, H(k % 2 ? "#ffd84a" : "#fff09a"));
+    outlined(p, (ink) => {
+      p.ellipse(0, -4, 8, 3.2, (d) => (d > 0.62 ? pick(ink, d > 0.85 ? "#d8a428" : "#ffd84a") : 0));
+      p.ellipse(0, -4, 4.5, 1.6, (d) => (d > 0.4 ? pick(ink, "#fff6c4") : 0));
+      p.rect(-1, 0, 2, 7, pick(ink, "#fff09a"));
+    });
+    p.px(0, 1, H("#ffffff")); p.px(-5, -6, H("#ffffff"));
+  },
+  e_void(p) {
+    // a black star: a disc of nothing in a burning ring, four points of light
+    for (const [x, y, dx, dy] of [[0, -9, 0, 1], [0, 8, 0, -1], [-9, 0, 1, 0], [8, 0, -1, 0]])
+      for (let k = 0; k < 3; k++) p.px(x + dx * k, y + dy * k, H(k === 0 ? "#ffffff" : k === 1 ? "#e0b8ff" : "#a970e0"));
+    outlined(p, (ink) => {
+      p.ellipse(0, 0, 7.5, 2.6, (d, a) => (d > 0.55 ? pick(ink, Math.cos(a) > 0 ? "#e05aff" : "#8a3ad0") : 0));
+      p.circle(0, 0, 3.6, (d) => pick(ink, d > 0.8 ? "#c684ff" : "#05030a"));
+    });
+    p.px(-6, -1, H("#ffffff")); p.px(5, 1, H("#ffd0ff"));
+  },
+};
+
 export function draw(p, t, o) {
+  if (EVOLVED[o.id]) {
+    evoBadge(p, BADGE[KIND[o.id]]);
+    EVOLVED[o.id](p);
+    return;
+  }
   badge(p, BADGE[KIND[o.id]]);
   SYMBOLS[o.id](p);
 }

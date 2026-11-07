@@ -306,6 +306,29 @@ export const FORGE: ForgeItem[] = [
   { id: "start", name: { ru: "НАСЛЕДИЕ", en: "LEGACY" }, desc: { ru: "ВТОРАЯ РЕЛИКВИЯ НА СТАРТЕ", en: "A SECOND RELIC AT THE START" }, costs: [100] },
 ];
 
+// ------------------------------------------------------------------------------------------------ evolutions
+/**
+ * A relic at its last level, with the right upgrade taken, can evolve: a chest always offers it, a level-up often.
+ * The evolved relic keeps its slot and works in a new, stronger way (world.ts, `relic.evo`).
+ */
+export interface EvolutionDef {
+  relic: RelicKind;
+  stat: StatId;
+  /** Its badge in the "icons" atlas animation. */
+  icon: string;
+  name: Text;
+  desc: Text;
+}
+export const EVOLUTIONS: EvolutionDef[] = [
+  { relic: RelicKind.Orbit, stat: "lantern", icon: "e_orbit", name: { ru: "СОЛНЕЧНЫЙ ВЕНЕЦ", en: "SUN CROWN" }, desc: { ru: "ШЕСТЬ МАЛЫХ СОЛНЦ НА ШИРОКОЙ ОРБИТЕ, РАЗ В ДВЕ СЕКУНДЫ ОНИ ВСПЫХИВАЮТ ВЗРЫВОМ", en: "SIX SMALL SUNS ON A WIDE ORBIT; EVERY TWO SECONDS THEY FLARE AND BURST" } },
+  { relic: RelicKind.Lance, stat: "reach", icon: "e_lance", name: { ru: "ЛЕДЯНОЙ ШКВАЛ", en: "BLIZZARD" }, desc: { ru: "КОПЬЯ ЛЕТЯТ ВО ВСЕ СТОРОНЫ И ПРОБИВАЮТ ВСЕХ, ТРИ ИЗ НИХ - В БЛИЖАЙШИХ", en: "LANCES FLY ALL ROUND AND PIERCE EVERYTHING, THREE AT THE NEAREST" } },
+  { relic: RelicKind.Coil, stat: "haste", icon: "e_coil", name: { ru: "НЕБЕСНАЯ БУРЯ", en: "SKY TEMPEST" }, desc: { ru: "МОЛНИИ БЬЮТ С НЕБА В ЧЕТЫРЁХ ВРАГОВ СРАЗУ И ПЕРЕСКАКИВАЮТ ДАЛЬШЕ", en: "LIGHTNING STRIKES FOUR FOES FROM THE SKY AND LEAPS ON" } },
+  { relic: RelicKind.Flask, stat: "crit", icon: "e_flask", name: { ru: "ЧУМНОЙ КОТЁЛ", en: "PLAGUE CAULDRON" }, desc: { ru: "ЧЕТЫРЕ ФЛЯГИ РАЗОМ, ОТРАВЛЕННЫЕ ВРАГИ ЛОПАЮТСЯ НОВЫМИ ЛУЖАМИ", en: "FOUR FLASKS AT ONCE; POISONED FOES BURST INTO NEW POOLS" } },
+  { relic: RelicKind.Halo, stat: "wave", icon: "e_halo", name: { ru: "ОБИТЕЛЬ СВЕТА", en: "SANCTUARY" }, desc: { ru: "СВЯТОЙ КРУГ ВСЕГДА С ТОБОЙ: ЖЖЁТ ВРАГОВ, ГАСИТ ПУЛИ, РАЗ В 40 С ЛЕЧИТ СЕРДЦЕ", en: "A HOLY RING ALWAYS ABOUT YOU: BURNS FOES, SNUFFS BULLETS, HEALS A HEART EVERY 40 S" } },
+  { relic: RelicKind.Void, stat: "edge", icon: "e_void", name: { ru: "ЧЁРНАЯ ЗВЕЗДА", en: "BLACK STAR" }, desc: { ru: "ЗВЕЗДА ПУСТОТЫ ТЯНЕТ ВРАГОВ В СЕБЯ И РАЗ В ЧЕТЫРЕ СЕКУНДЫ СХЛОПЫВАЕТСЯ", en: "A STAR OF VOID DRAWS FOES IN AND COLLAPSES EVERY FOUR SECONDS" } },
+];
+export const evolutionOf = (kind: RelicKind): EvolutionDef => EVOLUTIONS.find((e) => e.relic === kind)!;
+
 // ------------------------------------------------------------------------------------------------ weapons
 export type WeaponId = "sword" | "hammer" | "spear" | "scythe" | "daggers" | "greatsword" | "claws" | "whip" | "bow" | "spell";
 /**

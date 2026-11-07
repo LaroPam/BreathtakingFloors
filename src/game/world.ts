@@ -5,7 +5,7 @@ import { anim, frameAt, hasAnim, type Anim } from "../engine/atlas";
 import type { Audio } from "../engine/audio";
 import { rgba, rgbaf } from "../engine/renderer";
 import {
-  AI, biomeOf, bossOf, El, EL_COLOR, EN, ENEMIES, FLOORS, heroDef, RelicKind, reactionFor, roster, WEAPON_IDS, WEAPONS,
+  AI, biomeOf, bossOf, El, EL_COLOR, EN, ENEMIES, evolutionOf, FLOORS, heroDef, RELIC_MAX, RELICS, RelicKind, reactionFor, roster, WEAPON_IDS, WEAPONS,
   type Biome, type Blow, type HeroDef, type Modifier, type Reaction, type StatId, type WeaponId,
 } from "./defs";
 import { getLang, t as tr, tx } from "./i18n";
@@ -51,7 +51,23 @@ export interface Relic {
   level: number;
   timer: number;
   angle: number;
+  /** Evolved (defs.ts EVOLUTIONS): the same slot, a new way of working. */
+  evo: boolean;
+  /** A second clock for evolved relics (the Sanctuary's healing). */
+  clock: number;
 }
+/** The Black Star: the evolved Sphere of Void, one great star that wanders into the horde. */
+export interface Star {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  /** Seconds since it last collapsed. */
+  t: number;
+}
+export const STAR_EVERY = 4;
+/** The Sanctuary's ring around the hero. */
+export const SANCTUARY_R = 78;
 interface Arc {
   pts: number[];
   life: number;
@@ -256,6 +272,7 @@ export class World {
   arcs: Arc[] = [];
   pools: Pool[] = [];
   spheres: Sphere[] = [];
+  star: Star | null = null;
   flasks: Flask[] = [];
   popups: Popup[] = [];
   ghosts: Ghost[] = [];
@@ -339,6 +356,7 @@ export class World {
     this.arcs = [];
     this.pools = [];
     this.spheres = [];
+    this.star = null;
     this.flasks = [];
     this.popups = [];
     this.ghosts = [];
@@ -1247,6 +1265,11 @@ export class World {
       }
     }
     this.audio.play("kill", d.elite ? 0.6 : 1);
+    // the Plague Cauldron: a poisoned foe bursts into a pool of its own
+    if (E.poison[i] > 0 && this.pools.length < 28 && this.evolved(RelicKind.Flask)) {
+      this.pools.push({ x, y, r: 16, life: 2.6, max: 2.6, power: 1 });
+      this.burst(x, y - 4, 6, rgba("#8ad83a"), 50, 0.35, 120);
+    }
     this.addFx("poof", cx, cy + this.bry, { sx: d.scale * (d.elite ? 1.2 : 0.8), sy: d.scale * (d.elite ? 1.2 : 0.8), glow: 0.5 });
     this.burst(cx, cy, d.elite ? 18 : 6, rgba(d.glow || "#c8c0d8"), 70, 0.45, 120);
     // soul shards: the value broken into the fewest pieces
@@ -1288,13 +1311,35 @@ export class World {
   relicLevel(kind: RelicKind): number {
     return this.relics.find((r) => r.kind === kind)?.level ?? 0;
   }
+  evolved(kind: RelicKind): boolean {
+    return !!this.relics.find((r) => r.kind === kind)?.evo;
+  }
+  /** Relics ready to evolve: at their last level, with their upgrade taken. */
+  evolvable(): RelicKind[] {
+    return this.relics.filter((r) => !r.evo && r.level >= RELIC_MAX && (this.statLevels[evolutionOf(r.kind).stat] ?? 0) > 0).map((r) => r.kind);
+  }
+  /** A relic evolves: a burst of light and its new form from the next step. */
+  evolve(kind: RelicKind): void {
+    const r = this.relics.find((q) => q.kind === kind);
+    if (!r) return;
+    r.evo = true;
+    r.timer = 0.3;
+    r.clock = 0;
+    const h = this.hero;
+    this.addFx("smite", h.x, h.y, { glow: 1, tint: rgba("#fff0c0") });
+    this.addFx("heal_ring", h.x, h.y, { glow: 0.8, tint: rgba(EL_COLOR[RELICS[kind].el]) });
+    this.burst(h.x, h.y - 18, 30, rgba(EL_COLOR[RELICS[kind].el]), 120, 0.7);
+    this.flash = Math.max(this.flash, 0.5);
+    this.shake = Math.max(this.shake, 0.5);
+    this.audio.play("ult");
+  }
   /** Where the k-th of n orbiting embers is. */
   orbitPos(r: Relic, k: number, n: number): [number, number] {
-    const R = r.level >= 3 ? 40 : 32, a = r.angle + (k * Math.PI * 2) / n, h = this.hero;
+    const R = r.evo ? 50 : r.level >= 3 ? 40 : 32, a = r.angle + (k * Math.PI * 2) / n, h = this.hero;
     return [h.x + Math.cos(a) * R, h.y - 12 + Math.sin(a) * R * 0.72];
   }
-  orbitCount(level: number): number {
-    return [1, 2, 2, 3, 4][level - 1];
+  orbitCount(r: Relic): number {
+    return r.evo ? 6 : [1, 2, 2, 3, 4][r.level - 1];
   }
   private updateRelics(dt: number): void {
     const h = this.hero, E = this.enemies, m = this.stats.might;
@@ -1304,8 +1349,19 @@ export class World {
       const L = r.level;
       switch (r.kind) {
         case RelicKind.Orbit: {
-          const n = this.orbitCount(L), dmg = 9 * (L >= 3 ? 1.3 : 1) * m;
-          r.angle += dt * (L >= 5 ? 4.2 : 3.2);
+          const n = this.orbitCount(r), dmg = (r.evo ? 16 : 9 * (L >= 3 ? 1.3 : 1)) * m;
+          r.angle += dt * (r.evo ? 3.4 : L >= 5 ? 4.2 : 3.2);
+          // the Sun Crown: every two seconds the suns flare, each a burst of fire where it is
+          if (r.evo && r.timer <= 0) {
+            r.timer = 2;
+            for (let k = 0; k < n; k++) {
+              const [ox, oy] = this.orbitPos(r, k, n);
+              this.addFx("explosion", ox, oy + 10, { sx: 0.32, sy: 0.32, glow: 0.9, key: 3 });
+              this.blast(ox, oy, 24, 15 * m, El.Fire, 70);
+            }
+            this.audio.play("boom", 1.7);
+            this.shake = Math.max(this.shake, 0.2);
+          }
           for (let k = 0; k < n; k++) {
             const [ox, oy] = this.orbitPos(r, k, n);
             // a trail of fire left in the world behind each ember
@@ -1326,6 +1382,26 @@ export class World {
         }
         case RelicKind.Lance: {
           if (r.timer > 0) break;
+          if (r.evo) {
+            // the Blizzard: a ring of lances all round, and three more at the nearest
+            r.timer = 1.5;
+            const base = this.rng.range(0, Math.PI * 2), skip = new Set<number>();
+            for (let k = 0; k < 10; k++) {
+              const a = base + (k * Math.PI * 2) / 10;
+              this.bullets.add(TEAM_HERO, B_LANCE, h.x + Math.cos(a) * 8, h.y - 18 + Math.sin(a) * 6, Math.cos(a) * 250, Math.sin(a) * 250, 1.1, 18 * m, 4, El.Frost, 3);
+            }
+            for (let k = 0; k < 3; k++) {
+              const j = this.nearestEnemy(h.x, h.y - 18, 280, skip);
+              if (j < 0) break;
+              skip.add(E.uid[j]);
+              this.body(j);
+              const a = Math.atan2(this.by - (h.y - 18), this.bx - h.x);
+              this.bullets.add(TEAM_HERO, B_LANCE, h.x, h.y - 18, Math.cos(a) * 330, Math.sin(a) * 330, 1.1, 24 * m, 4, El.Frost, 3);
+            }
+            this.addFx("frost_nova", h.x, h.y, { sx: 0.35, sy: 0.35, glow: 0.6 });
+            this.audio.play("freeze", 0.6);
+            break;
+          }
           r.timer = 1.7 * (L >= 3 ? 0.8 : 1);
           const n = L >= 4 ? 3 : L >= 2 ? 2 : 1, skip = new Set<number>();
           for (let k = 0; k < n; k++) {
@@ -1343,6 +1419,35 @@ export class World {
         }
         case RelicKind.Coil: {
           if (r.timer > 0) break;
+          if (r.evo) {
+            // the Sky Tempest: bolts out of the dark onto four foes, each leaping on to two more
+            r.timer = 1.1;
+            const skip = new Set<number>();
+            let struck = 0;
+            for (let b = 0; b < 4; b++) {
+              const j = this.nearestEnemy(h.x, h.y - 18, 250, skip);
+              if (j < 0) break;
+              skip.add(E.uid[j]);
+              this.body(j);
+              const tx = this.bx, ty = E.y[j];
+              this.addFx("lightning", tx, ty, { sx: 0.6, sy: 0.6, glow: 0.9, key: 4, delay: b * 0.06 });
+              this.arcs.push({ pts: [tx + this.rng.range(-6, 6), ty - 130, tx + this.rng.range(-8, 8), ty - 64, tx, ty - 8], life: 0.14, color: rgba("#fff08a") });
+              const pts = [tx, ty - 8];
+              let k = this.nearestEnemy(tx, ty, 80, skip);
+              for (let q = 0; q < 2 && k >= 0; q++) {
+                skip.add(E.uid[k]);
+                this.body(k);
+                pts.push(this.bx, this.by);
+                this.damage(k, 12 * m, El.Storm);
+                k = this.nearestEnemy(this.bx, this.by, 80, skip);
+              }
+              if (pts.length > 2) this.arcs.push({ pts, life: 0.16, color: rgba("#fff08a") });
+              this.blast(tx, ty - 8, 26, 22 * m, El.Storm, 60);
+              struck++;
+            }
+            if (struck) (this.audio.play("zap", 0.7), this.shake = Math.max(this.shake, 0.15));
+            break;
+          }
           r.timer = 2.3 * (L >= 3 ? 0.75 : 1);
           const bolts = L >= 4 ? 2 : 1, jumps = 3 + (L >= 2 ? 2 : 0) + (L >= 5 ? 2 : 0), dmg = 13 * (L >= 5 ? 1.5 : 1) * m;
           const skip = new Set<number>();
@@ -1367,8 +1472,8 @@ export class World {
         }
         case RelicKind.Flask: {
           if (r.timer > 0) break;
-          r.timer = 3.2;
-          const n = 1 + (L >= 3 ? 1 : 0) + (L >= 5 ? 1 : 0);
+          r.timer = r.evo ? 2.4 : 3.2;
+          const n = r.evo ? 4 : 1 + (L >= 3 ? 1 : 0) + (L >= 5 ? 1 : 0);
           for (let k = 0; k < n; k++) {
             const j = E.n ? this.rng.int(0, E.n - 1) : -1;
             let tx: number, ty: number;
@@ -1379,6 +1484,31 @@ export class World {
           break;
         }
         case RelicKind.Halo: {
+          if (r.evo) {
+            // the Sanctuary: a holy ring always about the hero, burning what stands in it and snuffing bullets
+            const R = SANCTUARY_R, B = this.bullets;
+            for (let i = B.n - 1; i >= 0; i--)
+              if (B.team[i] === TEAM_FOE && (B.x[i] - h.x) ** 2 + ((B.y[i] - h.y + 12) * 1.3) ** 2 < R * R * 0.7) {
+                this.parts.add(B.x[i], B.y[i], 0, -20, 0.4, rgba("#fff09a"), 1, 0, 1);
+                B.remove(i);
+              }
+            r.clock += dt;
+            if (r.clock >= 40) {
+              r.clock = 0;
+              if (h.hp < h.maxHp) {
+                h.hp++;
+                this.popup(h.x, h.y - 40, "+1", rgba("#fff09a"), true);
+                this.audio.play("heal");
+              }
+            }
+            if (r.timer > 0) break;
+            r.timer = 0.5;
+            for (let i = E.n - 1; i >= 0; i--) {
+              const dx = E.x[i] - h.x, dy = (E.y[i] - h.y) * 1.3, d = Math.hypot(dx, dy);
+              if (d < R) this.damage(i, 7 * m, El.Holy, { quiet: this.rng.chance(0.6) });
+            }
+            break;
+          }
           if (r.timer > 0) break;
           r.timer = 2.6 * (L >= 3 ? 0.75 : 1);
           const R = 58 + (L >= 2 ? 16 : 0), dmg = 10 * (L >= 4 ? 1.5 : 1) * m;
@@ -1398,6 +1528,10 @@ export class World {
           break;
         }
         case RelicKind.Void: {
+          if (r.evo) {
+            if (!this.star) this.star = { x: h.x, y: h.y - 30, vx: 0, vy: 0, t: 0 };
+            break;
+          }
           const n = 1 + (L >= 2 ? 1 : 0) + (L >= 4 ? 1 : 0);
           if (r.timer <= 0 && this.spheres.length < n) {
             r.timer = 0.6;
@@ -1412,8 +1546,8 @@ export class World {
     for (const f of this.flasks) {
       f.t += dt / 0.45;
       if (f.t >= 1) {
-        const L = this.relicLevel(RelicKind.Flask);
-        this.pools.push({ x: f.x1, y: f.y1, r: 22 + (L >= 2 ? 8 : 0), life: L >= 4 ? 6 : 4.2, max: L >= 4 ? 6 : 4.2, power: L >= 5 ? 1.5 : 1 });
+        const L = this.relicLevel(RelicKind.Flask), evo = this.evolved(RelicKind.Flask);
+        this.pools.push({ x: f.x1, y: f.y1, r: evo ? 32 : 22 + (L >= 2 ? 8 : 0), life: evo ? 7 : L >= 4 ? 6 : 4.2, max: evo ? 7 : L >= 4 ? 6 : 4.2, power: evo ? 1.8 : L >= 5 ? 1.5 : 1 });
         this.burst(f.x1, f.y1 - 3, 10, rgba("#8ad83a"), 60, 0.4, 150);
       }
     }
@@ -1454,6 +1588,49 @@ export class World {
       });
     }
     this.spheres = this.spheres.filter((s) => s.life > 0);
+    if (this.star) this.updateStar(dt);
+  }
+
+  /** The Black Star drifts to the horde, drags it in, grinds what touches it, and collapses every few seconds. */
+  private updateStar(dt: number): void {
+    const S = this.star!, E = this.enemies, h = this.hero, m = this.stats.might, R = 15;
+    S.t += dt;
+    const j = this.nearestEnemy(S.x, S.y, 260);
+    let tx = h.x + Math.cos(this.time * 0.8) * 60, ty = h.y - 20 + Math.sin(this.time * 0.8) * 40;
+    if (j >= 0) (this.body(j), tx = this.bx, ty = this.by);
+    const dx = tx - S.x, dy = ty - S.y, d = Math.hypot(dx, dy) || 1;
+    S.vx += (dx / d) * 140 * dt;
+    S.vy += (dy / d) * 140 * dt;
+    const sp = Math.hypot(S.vx, S.vy);
+    if (sp > 60) (S.vx *= 60 / sp, S.vy *= 60 / sp);
+    S.x += S.vx * dt;
+    S.y += S.vy * dt;
+    // the pull and the grinding
+    this.grid.query(S.x, S.y + 10, 100, (i) => {
+      const ex = S.x - E.x[i], ey = S.y - E.y[i] + 10, ed = Math.hypot(ex, ey) || 1;
+      if (ed > 100) return;
+      if (ENEMIES[E.type[i]].ai < AI.Boss) (E.kx[i] += (ex / ed) * 420 * dt, E.ky[i] += (ey / ed) * 420 * dt);
+      if (E.voidCd[i] > 0) return;
+      this.body(i);
+      if (this.touches(S.x, S.y, R + 4)) {
+        E.voidCd[i] = 0.3;
+        this.damage(i, 10 * m * this.stats.edge, El.Void, { quiet: this.rng.chance(0.5) });
+      }
+    });
+    // matter spiralling in
+    if (this.rng.chance(dt * 40)) {
+      const a = this.rng.range(0, Math.PI * 2), r0 = this.rng.range(26, 44);
+      this.parts.add(S.x + Math.cos(a) * r0, S.y + Math.sin(a) * r0 * 0.8, -Math.cos(a) * r0 * 2.2 - Math.sin(a) * 30, -Math.sin(a) * r0 * 1.6 + Math.cos(a) * 24, 0.4, this.rng.chance(0.5) ? rgba("#c684ff") : rgba("#e05aff"), 1, 0, 1);
+    }
+    if (S.t >= STAR_EVERY) {
+      S.t = 0;
+      this.addFx("frost_nova", S.x, S.y + 10, { tint: rgba("#c684ff"), glow: 0.9, sx: 0.8, sy: 0.8 });
+      this.addFx("explosion", S.x, S.y + 12, { tint: rgba("#b070ff"), sx: 0.5, sy: 0.5, glow: 0.8 });
+      this.blast(S.x, S.y, 64, 55 * m * this.stats.edge, El.Void, -90);
+      this.audio.play("boom", 0.8);
+      this.shake = Math.max(this.shake, 0.45);
+      this.flash = Math.max(this.flash, 0.2);
+    }
   }
 
   // ============================================================================================ enemies
@@ -2083,7 +2260,7 @@ export class World {
   addRelic(kind: RelicKind): void {
     const r = this.relics.find((q) => q.kind === kind);
     if (r) r.level = Math.min(5, r.level + 1);
-    else this.relics.push({ kind, level: 1, timer: 0.5, angle: 0 });
+    else this.relics.push({ kind, level: 1, timer: 0.5, angle: 0, evo: false, clock: 0 });
   }
   addStat(id: StatId): void {
     const s = this.stats, h = this.hero;

@@ -7,7 +7,7 @@ import { Batch, rgba, rgbaf, withAlpha, type Lighting, type Renderer } from "../
 import { anim, DUMMY, FONTS, frameAt, icon } from "../engine/atlas";
 import { fitScale, measure, text, wrap } from "../engine/text";
 import type { Platform } from "../platform/platform";
-import { bossOf, EL_COLOR, EL_NAME, ENEMIES, FLOORS, FORGE, HEROES, PALETTE_KEYS, WEAPONS, weaponName, MODIFIERS, NO_MODIFIER, REACTIONS, RELIC_MAX, RELIC_SLOTS, RELICS, STATS, type Modifier, type Reaction, type RelicKind, type StatId } from "./defs";
+import { bossOf, EL_COLOR, EL_NAME, ENEMIES, EVOLUTIONS, evolutionOf, FLOORS, FORGE, HEROES, PALETTE_KEYS, WEAPONS, weaponName, MODIFIERS, NO_MODIFIER, REACTIONS, RELIC_MAX, RELIC_SLOTS, RELICS, STATS, type Modifier, type Reaction, type RelicKind, type StatId } from "./defs";
 import { drawWorld, Scene } from "./draw";
 import { getLang, langFor, setLang, t, tx, type Lang } from "./i18n";
 import { Rng } from "./rng";
@@ -16,7 +16,7 @@ import { button, C, drawHud, drawPointers, drawTouch, fmtTime, Menu, panel, para
 import { CINE_DUR, World } from "./world";
 
 type State = "title" | "heroes" | "forge" | "card" | "play" | "spin" | "pause" | "codex" | "stairs" | "dead" | "won";
-type Choice = { type: "relic"; kind: RelicKind; level: number } | { type: "stat"; id: StatId };
+type Choice = { type: "relic"; kind: RelicKind; level: number } | { type: "stat"; id: StatId } | { type: "evo"; kind: RelicKind };
 
 /**
  * The roulette that picks an upgrade: a reel of badges spins fast, slows down and stops on the winner, which
@@ -33,7 +33,7 @@ interface Spin {
   tick: number;
 }
 const RELIC_ICON = ["orbit", "lance", "coil", "flask", "halo", "void"];
-const iconKey = (c: Choice) => (c.type === "relic" ? RELIC_ICON[c.kind] : c.id);
+const iconKey = (c: Choice) => (c.type === "relic" ? RELIC_ICON[c.kind] : c.type === "evo" ? evolutionOf(c.kind).icon : c.id);
 
 const STEP = 1 / 60;
 /** Height of the title font's capitals. */
@@ -55,6 +55,7 @@ export class Game {
   private wipe: { t: number; dur: number; out: boolean; then?: () => void } | null = null;
   private cardT = 0;
   private heroIdx = 0;
+  private codexPage = 0;
   private startSpins = 0;
   private stairs: Modifier[] = [];
   private revived = false;
@@ -274,8 +275,12 @@ export class Game {
 
   // =========================================================================================== the roulette
   /** What an upgrade can be right now, with weights: new relics, relic levels and, on a level-up, stats. */
-  private pool(relicsOnly: boolean): [Choice, number][] {
+  private pool(relicsOnly: boolean, evolutions = true): [Choice, number][] {
     const w = this.world, out: [Choice, number][] = [];
+    // an evolution ready: a chest always gives it, a level-up favours it strongly
+    const evos = evolutions ? w.evolvable() : [];
+    if (evos.length && relicsOnly && this.startSpins <= 0) return evos.map((kind): [Choice, number] => [{ type: "evo", kind }, 1]);
+    for (const kind of evos) out.push([{ type: "evo", kind }, 40]);
     const slotsFree = w.relics.length < RELIC_SLOTS;
     for (const def of RELICS) {
       const lv = w.relicLevel(def.kind);
@@ -300,9 +305,10 @@ export class Game {
   }
   private startSpin(kind: Spin["kind"]): void {
     const pool = this.pool(kind !== "level"), winner = this.roll(pool);
-    // a long strip of badges from the same pool, the winner placed near its end
+    // a long strip of badges, the winner placed near its end; a chest's sure evolution stops among ordinary relics
+    const filler = pool.every(([c]) => c.type === "evo") ? this.pool(true, false) : pool;
     const n = 30 + this.runRng.int(0, 6), reel: Choice[] = [];
-    for (let k = 0; k < n; k++) reel.push(this.roll(pool));
+    for (let k = 0; k < n; k++) reel.push(this.roll(filler.length ? filler : pool));
     const target = n - 5;
     reel[target] = winner;
     // no twin of the winner right beside it, so the stop reads clearly
@@ -341,6 +347,7 @@ export class Game {
   private take(c: Choice, kind: Spin["kind"]): void {
     const w = this.world;
     if (c.type === "relic") w.addRelic(c.kind);
+    else if (c.type === "evo") w.evolve(c.kind);
     else w.addStat(c.id);
     if (kind === "level") w.pendingLevels = Math.max(0, w.pendingLevels - 1);
     else w.pendingChests = Math.max(0, w.pendingChests - 1);
@@ -779,11 +786,27 @@ export class Game {
         ui.line(cx + Math.cos(a) * r0, cy + Math.sin(a) * r0, cx + Math.cos(a) * r1, cy + Math.sin(a) * r1, 1, rgbaf(1, 0.85, 0.4, Math.min(1, sp.held * 3) * 0.8));
       }
       const c = sp.reel[sp.target], a = Math.min(1, sp.held * 5);
-      const def = c.type === "relic" ? RELICS[c.kind] : null, stat = c.type === "stat" ? STATS.find((q) => q.id === c.id)! : null;
-      const name = def ? tx(def.name) : tx(stat!.name);
-      const desc = def && c.type === "relic" ? (c.level === 1 ? tx(def.desc) : tx(def.levels[c.level - 2])) : tx(stat!.desc);
-      const tag = def && c.type === "relic" ? (c.level === 1 ? `${t("new")}  ${tx(EL_NAME[def.el])}` : `${t("lv")} ${c.level}${c.level >= RELIC_MAX ? " " + t("max") : ""}`) : `${t("lv")} ${(w.statLevels[stat!.id] ?? 0) + 1}/${stat!.max}`;
-      const col = def ? rgba(EL_COLOR[def.el]) : C.gold;
+      let name: string, desc: string, tag: string, col: number;
+      if (c.type === "evo") {
+        const e = evolutionOf(c.kind);
+        name = tx(e.name);
+        desc = tx(e.desc);
+        tag = `${t("evolution")}: ${tx(RELICS[c.kind].name)}`;
+        col = rgbaf(1, 0.85 + 0.15 * Math.sin(this.now * 8), 0.45, 1);
+      } else if (c.type === "relic") {
+        const def = RELICS[c.kind], e = evolutionOf(c.kind);
+        name = tx(def.name);
+        desc = c.level === 1 ? tx(def.desc) : tx(def.levels[c.level - 2]);
+        // at its last level, the relic says what it evolves with
+        tag = c.level === 1 ? `${t("new")}  ${tx(EL_NAME[def.el])}` : `${t("lv")} ${c.level}${c.level >= RELIC_MAX ? ` ${t("max")} · ${t("evoWith")}: ${tx(STATS.find((q) => q.id === e.stat)!.name)}` : ""}`;
+        col = rgba(EL_COLOR[def.el]);
+      } else {
+        const stat = STATS.find((q) => q.id === c.id)!, opens = EVOLUTIONS.some((e) => e.stat === stat.id && w.relicLevel(e.relic) >= RELIC_MAX && !w.evolved(e.relic) && !(w.statLevels[stat.id] ?? 0));
+        name = tx(stat.name);
+        desc = tx(stat.desc);
+        tag = `${t("lv")} ${(w.statLevels[stat.id] ?? 0) + 1}/${stat.max}${opens ? ` · ${t("evoKey")}` : ""}`;
+        col = opens ? rgba("#fff09a") : C.gold;
+      }
       let y = cy + 42;
       text(ui, tag, W / 2, y, { font: "mini", align: "center", color: withAlpha(col, a) });
       y += 9;
@@ -821,10 +844,41 @@ export class Game {
     }
   }
 
+  /** The codex: the reactions found so far, or (second page) every evolution's recipe. */
   private drawCodex(): void {
-    const ui = this.ui, W = this.r.w, H = this.r.h, now = this.now;
+    const ui = this.ui, W = this.r.w, H = this.r.h, now = this.now, pw = Math.min(380, W - 16), px = Math.round(W / 2 - pw / 2);
+    const bw = 100, by = H - 26;
+    if (button(ui, this.menu, now, Math.round(W / 2 - bw - 4), by, bw, 18, this.codexPage ? t("codex") : t("evolutions"))) this.codexPage = 1 - this.codexPage;
+    if (button(ui, this.menu, now, Math.round(W / 2 + 4), by, bw, 18, t("back")) || this.input.pressed("back")) {
+      this.codexPage = 0;
+      this.setState("pause", 1);
+      return;
+    }
+    if (this.codexPage) {
+      this.heading(t("evolutions"), 8, 1);
+      text(ui, t("evoHint"), W / 2, 22, { font: "mini", align: "center", color: C.dim });
+      const rowH = Math.min(34, Math.floor((H - 70) / EVOLUTIONS.length));
+      EVOLUTIONS.forEach((e, k) => {
+        const y = 32 + k * rowH, mine = this.world.evolved(e.relic), relic = RELICS[e.relic], col = rgba(EL_COLOR[relic.el]);
+        panel(ui, px, y, pw, rowH - 2, mine ? C.gold : C.edge);
+        const cy = y + Math.round((rowH - 2) / 2), small = rowH < 26;
+        // relic + upgrade = evolution, as badges
+        const ic = (id: string, x: number) => (small ? ui.image(icon("icons", id), x, cy, 0.5, 0.5) : ui.image(icon("icons", id), x, cy));
+        const step = small ? 14 : 24;
+        ic(RELIC_ICON[e.relic], px + 6 + step / 2);
+        text(ui, "+", px + 6 + step, cy - 3, { font: "mini", color: C.dim });
+        ic(e.stat, px + 10 + step * 1.5);
+        text(ui, "=", px + 10 + step * 2, cy - 3, { font: "mini", color: C.dim });
+        ic(e.icon, px + 14 + step * 2.5);
+        const tx0 = px + 18 + step * 3;
+        text(ui, tx(e.name), tx0, y + 3, { color: col });
+        if (!small) wrap(tx(e.desc), pw - (tx0 - px) - 6, "mini").slice(0, 2).forEach((l, q) => text(ui, l, tx0, y + 14 + q * 8, { font: "mini", color: C.text }));
+        else text(ui, `${tx(relic.name)} + ${tx(STATS.find((q) => q.id === e.stat)!.name)}`, px + pw - 6, y + 4, { font: "mini", align: "right", color: C.dim });
+      });
+      return;
+    }
     this.heading(t("codex"), 8, 1);
-    const pw = Math.min(380, W - 16), px = Math.round(W / 2 - pw / 2), rowH = Math.min(26, Math.floor((H - 60) / REACTIONS.length));
+    const rowH = Math.min(26, Math.floor((H - 60) / REACTIONS.length));
     REACTIONS.forEach((r, k) => {
       const y = 26 + k * rowH, known = this.save.reactions.includes(r.id);
       panel(ui, px, y, pw, rowH - 2);
@@ -833,7 +887,6 @@ export class Game {
       if (rowH >= 22) text(ui, tx(r.desc), px + 12, y + 13, { font: "mini", color: known ? C.text : C.dim });
       else text(ui, tx(r.desc), px + pw - 6, y + 5, { font: "mini", align: "right", color: known ? C.text : C.dim });
     });
-    if (button(ui, this.menu, now, Math.round(W / 2 - 50), H - 26, 100, 18, t("back")) || this.input.pressed("back")) this.setState("pause", 1);
   }
 
   private drawStairs(): void {

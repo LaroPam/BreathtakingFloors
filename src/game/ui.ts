@@ -163,9 +163,15 @@ export function drawHud(b: Batch, w: World, W: number, H: number, time: number, 
     b.rect(21, 71, 5, 3, ec);
   }
   w.relics.forEach((r, k) => {
-    const x = 42 + k * 23, y = 66;
-    b.image(icon("icons", ["orbit", "lance", "coil", "flask", "halo", "void"][r.kind]), x, y);
-    for (let q = 0; q < 5; q++) b.rect(x - 7 + q * 3, y + 12, 2, 2, q < r.level ? C.gold : rgba("#2a2438"));
+    const x = 42 + k * 23, y = 66, id = ["orbit", "lance", "coil", "flask", "halo", "void"][r.kind];
+    b.image(icon("icons", r.evo ? `e_${id}` : id), x, y);
+    // an evolved relic's pips run together into one bar of light; one ready to evolve blinks its last pip
+    if (r.evo) {
+      b.rect(x - 7, y + 12, 14, 2, rgbaf(1, 0.85 + 0.15 * Math.sin(time * 6 + k), 0.45, 1));
+      return;
+    }
+    const ready = w.evolvable().includes(r.kind);
+    for (let q = 0; q < 5; q++) b.rect(x - 7 + q * 3, y + 12, 2, 2, q < r.level ? (ready && q === 4 && Math.sin(time * 8) > 0 ? rgba("#ffffff") : C.gold) : rgba("#2a2438"));
   });
 
   // ---- the floor, and what to do on it: three braziers, then the portal or the boss
