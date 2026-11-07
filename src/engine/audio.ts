@@ -3,7 +3,7 @@
 
 type Sfx =
   | "shoot" | "hit" | "kill" | "pickup" | "levelup" | "dash" | "hurt" | "boom" | "zap" | "freeze" | "ult" | "ignite"
-  | "portal" | "click" | "graze" | "heal" | "chest" | "reaction" | "enemyShot" | "roar" | "deny" | "break" | "coin" | "curse" | "achieve"
+  | "portal" | "click" | "graze" | "heal" | "chest" | "reaction" | "enemyShot" | "roar" | "deny" | "break" | "coin" | "curse" | "achieve" | "secret"
   | "hover" | "burn" | "venom" | "holy" | "void";
 
 const LIMITS: Partial<Record<Sfx, number>> = { break: 0.04, coin: 0.03, hover: 0.04, burn: 0.08, venom: 0.08, holy: 0.08, void: 0.08, hit: 0.035, kill: 0.03, pickup: 0.025, shoot: 0.03, enemyShot: 0.05, zap: 0.05, graze: 0.06, boom: 0.06, freeze: 0.05, reaction: 0.05 };
@@ -226,6 +226,12 @@ export class Audio {
       case "achieve":
         [0, 7, 12, 16, 19, 24].forEach((s, i) => this.tone("triangle", 392 * 2 ** (s / 12), 392 * 2 ** (s / 12), 0.35, 0.07, i * 0.06));
         this.tone("sine", 1568, 1568, 0.6, 0.03, 0.36);
+        break;
+      case "secret":
+        // a hollow knock answered by a soft, rising shimmer: something is behind this wall
+        this.tone("sine", 140, 90, 0.12, 0.08);
+        [0, 3, 7, 10, 15].forEach((s, i) => this.tone("triangle", 330 * 2 ** (s / 12), 330 * 2 ** (s / 12), 0.28, 0.045, 0.1 + i * 0.07));
+        this.tone("sine", 1320, 1320, 0.5, 0.02, 0.45);
         break;
       case "hover":
         this.tone("square", 1800, 1700, 0.015, 0.02);

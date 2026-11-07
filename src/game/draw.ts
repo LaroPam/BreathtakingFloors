@@ -129,11 +129,31 @@ export function drawWorld(s: Scene, w: World, camX: number, camY: number, viewW:
     }
   // ---- the back wall, the side walls and the front edge: an enclosed room
   const [dark, lit] = EDGE[B.id];
+  const sc = w.secret, scT = sc ? sc.x / TILE : -9;
   if (camY < 4)
     for (let tx = Math.max(-1, tx0 - 1); tx <= Math.min(Math.ceil(w.w / TILE), tx1 + 1); tx++) {
+      // a cache broken open takes the place of its two columns
+      if (sc && sc.hp <= 0 && (tx === scT || tx === scT + 1)) continue;
       const v = Math.floor(hash(tx, w.floor * 7) * wall.frames.length);
       s.back.image(wall.frames[v][0]!, tx * TILE, 0);
     }
+  // ---- the hidden cache: cracks the lantern brings out (shuddering when struck), or the hole once it is open
+  if (sc && camY < 60) {
+    const sa = anim(`secret_${B.id}`), cx = sc.x + TILE;
+    if (sc.hp <= 0) {
+      s.back.image(sa.frames[1][0]!, sc.x, 0);
+      // a warm breath from inside, fading after it opens
+      const k = Math.max(0, 1 - sc.hitT / 4);
+      if (k > 0) s.illum.light(cx, -16, 46, 36, rgbaf(1, 0.8, 0.4, 0.7 * k));
+    } else if (sc.seen > 0.02) {
+      const jit = sc.hitT < 0.25 ? Math.round(Math.sin(sc.hitT * 80) * 1.5) : 0;
+      const a = Math.min(1, sc.seen);
+      s.back.image(sa.frames[0][0]!, sc.x + jit, 0, 1, 1, 0, rgbaf(1, 1, 1, a));
+      // gold glinting in the split, and a little warm light breathing out of it
+      if (sa.frames[0][1]) s.glow.image(sa.frames[0][1]!, sc.x + jit, 0, 1, 1, 0, rgbaf(1, 1, 1, a * (0.75 + 0.25 * Math.sin(time * 3))));
+      s.illum.light(cx, -22, 30, 24, rgbaf(1, 0.8, 0.45, 0.45 * a * (0.85 + 0.15 * Math.sin(time * 2.3))));
+    }
+  }
   s.back.rect(-14, -52, 14, w.h + 62, rgba(dark));
   s.back.rect(-2, -48, 2, w.h + 48, rgba(lit));
   s.back.rect(w.w, -52, 14, w.h + 62, rgba(dark));

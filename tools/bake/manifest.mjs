@@ -119,6 +119,10 @@ export const ANIMS = [
   { name: "urns", art: "props/urn", variants: { variant: [0, 1, 2, 3] } },
   { name: "mimic", art: "props/mimic", fps: 12, body: true },
   { name: "curse_altar", art: "props/curse-altar", fps: 8, light: { thr: 8, k: 0.9 } },
+  // the hidden cache in the back wall: the cracks (laid over the wall) and the wall broken open, per biome
+  { name: "secret_crypt", art: "props/secret-wall", opts: { stone: WALL.crypt }, variants: { variant: [0, 1] } },
+  { name: "secret_garden", art: "props/secret-wall", opts: { stone: WALL.garden }, variants: { variant: [0, 1] } },
+  { name: "secret_frost", art: "props/secret-wall", opts: { stone: WALL.frost }, variants: { variant: [0, 1] } },
   { name: "mushrooms", art: "props/mushrooms", fps: 8 },
   { name: "grass", art: "props/grass", fps: 8 },
   { name: "crystal", fx: "ice/ice-crystal", fps: 8, light: { thr: 10, k: 0.8 }, opts: { height: 22 } },

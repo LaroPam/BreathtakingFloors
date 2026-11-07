@@ -160,6 +160,15 @@ export class Game {
           this.showBanner(t("curseTaken"), rgba("#ff5a5a"), t("curseTakenSub"));
         } else this.showBanner(t("curseLifted"), C.gold, t("curseLiftedSub"));
       },
+      secret: (state) => {
+        if (state === "found") {
+          this.audio.play("secret");
+          this.showBanner(t("secretFound"), rgba("#c8c0e8"), t("secretFoundSub"));
+        } else {
+          this.bump("secrets");
+          this.showBanner(t("secretOpened"), C.gold);
+        }
+      },
       weapon: (id, el) => this.world.hero.legend ? this.showBanner(tx(LEGENDS[id]), C.gold, t("legendary")) : this.showBanner(tx(weaponName(id, el)), el || WEAPONS[id].el ? rgba(EL_COLOR[el || WEAPONS[id].el!]) : C.gold),
     }, NO_MODIFIER);
     this.world.numbers = this.save.numbers;
@@ -667,7 +676,8 @@ export class Game {
     this.camX += (tx - this.camX) * k;
     this.camY += (ty - this.camY) * k;
     // keep the floor's edges in view without showing more void than needed
-    const mx = 30, top = 62, bottom = 30;
+    // (up top the back wall comes down below the HUD, so its torches and cracks are not hidden behind the plates)
+    const mx = 30, top = 96, bottom = 30;
     this.camX = W > w.w + mx * 2 ? w.w / 2 - W / 2 : Math.max(-mx, Math.min(w.w + mx - W, this.camX));
     this.camY = H > w.h + top + bottom ? w.h / 2 - H / 2 - (top - bottom) / 2 : Math.max(-top, Math.min(w.h + bottom - H, this.camY));
   }

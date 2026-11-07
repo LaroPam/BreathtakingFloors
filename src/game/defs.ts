@@ -359,7 +359,7 @@ export const questDef = (kind: QuestKind): QuestDef => QUESTS.find((q) => q.kind
 export const SPIRIT_PALETTE = { k: "#1a2a3a", A: "#e8f8ff", B: "#a8d8f0", C: "#78b0d8", D: "#4a7aa8", E: "#9ad4ff", F: "#5aa0d8", G: "#3a6aa0", J: "#203a5a", m: "#ffffff" };
 
 /** Daily tasks: three a day, the same for everyone, progress carried over the day's runs, embers for each. */
-export type TaskId = "kills" | "braziers" | "floor" | "boss" | "reactions" | "evolve" | "spirits" | "chests" | "grazes" | "trial" | "urns" | "mimic" | "curse";
+export type TaskId = "kills" | "braziers" | "floor" | "boss" | "reactions" | "evolve" | "spirits" | "chests" | "grazes" | "trial" | "urns" | "mimic" | "curse" | "secrets";
 export interface TaskDef {
   id: TaskId;
   /** {n} is the goal. */
@@ -377,6 +377,7 @@ export const TASKS: TaskDef[] = [
   { id: "spirits", name: { ru: "ВЫПОЛНИ {n} ЗАДАНИЯ ДУХОВ", en: "COMPLETE {n} SPIRIT QUESTS" }, goals: [2, 3], reward: 45 },
   { id: "chests", name: { ru: "ОТКРОЙ {n} СУНДУКОВ", en: "OPEN {n} CHESTS" }, goals: [5, 8], reward: 35 },
   { id: "grazes", name: { ru: "ЗАДЕНЬ {n} ПУЛЬ", en: "GRAZE {n} BULLETS" }, goals: [100, 150], reward: 35 },
+  { id: "secrets", name: { ru: "ВСКРОЙ ТАЙНИКИ В СТЕНАХ: {n}", en: "BREAK OPEN HIDDEN CACHES: {n}" }, goals: [1, 2], reward: 40 },
   { id: "trial", name: { ru: "ДОЙДИ ДО {n} ЭТАЖА В ИСПЫТАНИИ ДНЯ", en: "REACH FLOOR {n} IN THE DAILY TRIAL" }, goals: [2], reward: 45 },
 ];
 /** Embers for finishing all three of the day's tasks. */
@@ -431,6 +432,8 @@ export const ACHIEVEMENTS: AchDef[] = [
   { id: "swift", icon: ["hud", "time"], reward: 30, name: { ru: "СКОРОХОД", en: "FLEET OF FOOT" }, desc: { ru: "ПРОЙДИ ЭТАЖ БЫСТРЕЕ 90 СЕКУНД", en: "CLEAR A FLOOR IN UNDER 90 SECONDS" } },
   { id: "mimic", icon: ["hud", "ember"], reward: 15, stat: "mimic", goal: 1, name: { ru: "ЗУБАСТЫЙ СУНДУК", en: "A CHEST WITH TEETH" }, desc: { ru: "УБЕЙ МИМИКА", en: "SLAY A MIMIC" } },
   { id: "curse", icon: ["hud", "curse"], reward: 25, stat: "curse", goal: 1, name: { ru: "СМЕЛЬЧАК", en: "DAREDEVIL" }, desc: { ru: "ПРОЙДИ ЭТАЖ, ПРИНЯВ ВЫЗОВ АЛТАРЯ", en: "CLEAR A FLOOR UNDER THE ALTAR'S CHALLENGE" } },
+  { id: "secret", icon: ["hud", "secret"], reward: 20, stat: "secrets", goal: 1, name: { ru: "ЧТО ЗА СТЕНОЙ?", en: "WHAT LIES BEHIND?" }, desc: { ru: "ВСКРОЙ ТАЙНИК В СТЕНЕ", en: "BREAK OPEN A CACHE IN THE WALL" } },
+  { id: "secrets", icon: ["hud", "secret"], reward: 50, stat: "secrets", goal: 12, name: { ru: "КЛАДОИСКАТЕЛЬ", en: "TREASURE HUNTER" }, desc: { ru: "ВСКРОЙ 12 ТАЙНИКОВ", en: "BREAK OPEN 12 HIDDEN CACHES" } },
   { id: "urns", icon: ["hud", "urn"], reward: 20, stat: "urns", goal: 100, name: { ru: "ГОНЧАРНЫЙ ПОГРОМ", en: "POTTERY RAMPAGE" }, desc: { ru: "РАЗБЕЙ 100 УРН", en: "BREAK 100 URNS" } },
   { id: "grazes", icon: ["hud", "stamina"], reward: 20, stat: "grazes", goal: 500, name: { ru: "ТАНЕЦ СРЕДИ ПУЛЬ", en: "DANCER AMONG BULLETS" }, desc: { ru: "ЗАДЕНЬ 500 ПУЛЬ", en: "GRAZE 500 BULLETS" } },
   { id: "heroes", icon: ["hud", "lock"], reward: 50, stat: "heroesKnown", goal: 6, name: { ru: "ПОЛНЫЙ ОТРЯД", en: "THE FULL COMPANY" }, desc: { ru: "ОТКРОЙ ВСЕХ ГЕРОЕВ", en: "UNLOCK EVERY HERO" } },

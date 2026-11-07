@@ -5,7 +5,7 @@ import { hex } from "../../../pixelfx/src/core/index.js";
 
 export const IDS = ["heart", "heart_empty", "stamina", "xp", "overdrive", "skull", "time", "brazier", "brazier_cold", "boss", "lock", "ember", "daily", "crown", "scroll",
   // on buttons
-  "play", "anvil", "globe", "speaker", "mute", "back", "resume", "book", "flag", "gear", "trophy", "urn", "curse"];
+  "play", "anvil", "globe", "speaker", "mute", "back", "resume", "book", "flag", "gear", "trophy", "urn", "curse", "secret"];
 
 export const meta = {
   name: "HUD icons",
@@ -128,6 +128,11 @@ const ICONS = {
   curse: [
     ["k.kkkkk.k", "kkrrrrrkk", ".krkrkrk.", ".krrrrrk.", "..krkrk..", "..kkkkk.."],
     { k: "#0b0a12", r: "#c8303a" },
+  ],
+  // a block of wall split by a crack, gold light leaking through it
+  secret: [
+    ["kkkkkkkkk", "kllkllkyk", "ksskssyyk", "kkkkkykkk", "klllyyllk", "kssyssssk", "kkykkkkkk"],
+    { k: "#0b0a12", l: "#8a82a8", s: "#5a5470", y: "#ffd84a" },
   ],
   boss: [
     ["k.......k", "kk.kkk.kk", ".kkwwwkk.", "kwwwwwwwk", "kwrkwkrwk", "kwrkwkrwk", "kwwwkwwwk", ".kwwwwwk.", "..kwkwk..", "..kkkkk.."],

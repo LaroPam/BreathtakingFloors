@@ -181,6 +181,19 @@ export interface CurseAltar {
   progress: number;
   taken: boolean;
 }
+/** A cache behind the back wall: cracks only the lantern shows, three blows to break it open, loot spilling out. */
+export interface Secret {
+  /** The left edge of its two wall columns (on the tile grid). */
+  x: number;
+  /** Blows still needed; 0 once it is open. */
+  hp: number;
+  /** How much of the cracks the lantern shows right now (0..1). */
+  seen: number;
+  /** Seen at least once (the first sight chimes). */
+  found: boolean;
+  /** Seconds since the last blow (the cracked stretch shudders a moment). */
+  hitT: number;
+}
 /** Each urn's colours, for its shards. */
 const URN_SHARDS = [["#7a4a2a", "#b87848", "#3a2216"], ["#9a4a26", "#d07040", "#7ac048"], ["#3a6a98", "#78b0d8", "#e8f8ff"], ["#5a5068", "#8a809a", "#2a2430"]].map((c) => c.map((h) => rgba(h)));
 
@@ -252,6 +265,8 @@ export interface WorldEvents {
   weapon(id: WeaponId, el: El): void;
   /** The curse of the floor's altar was taken, or lifted (the floor done, the reward given). */
   curse(state: "taken" | "lifted"): void;
+  /** The floor's hidden cache was spotted in the lantern's light, or broken open. */
+  secret(state: "found" | "opened"): void;
   /** A spirit's quest was taken, done or failed. */
   quest(q: Quest): void;
   /** Something the day's tasks count happened. */
@@ -389,6 +404,7 @@ export class World {
   urns: Urn[] = [];
   chests: FloorChest[] = [];
   altar: CurseAltar | null = null;
+  secret: Secret | null = null;
   /** The floor's curse is on: enemies tougher and faster until the floor is done. */
   curse = false;
   /** Hits the hero took on this floor (an achievement wants none). */
@@ -485,6 +501,15 @@ export class World {
     }
     this.torches = [];
     for (let x = 48 + R.int(0, 30); x < W - 30; x += 88 + R.int(0, 40)) this.torches.push(x);
+    // now and then a stretch of the back wall hides a cache: two columns clear of the torches and the corners
+    this.secret = null;
+    if (R.chance(0.5 + 0.03 * this.floor))
+      for (let tries = 0; tries < 30; tries++) {
+        const x = R.int(2, Math.floor(W / TILE) - 4) * TILE;
+        if (this.torches.some((t) => t > x - 26 && t < x + TILE * 2 + 26)) continue;
+        this.secret = { x, hp: 3, seen: 0, found: false, hitT: 9 };
+        break;
+      }
     // things lying about: flat ones under everything, standing ones sorted with the rest
     this.decor = [];
     const kinds: [string, boolean, number][] =
@@ -1500,6 +1525,21 @@ export class World {
         this.audio.play("chest");
       }
     }
+    // the hidden cache: its cracks show only inside the lantern's light, a draught of dust gives it away
+    const sc = this.secret;
+    if (sc) {
+      sc.hitT += dt;
+      if (sc.hp > 0) {
+        const cx = sc.x + TILE, L = this.lanternR, d = Math.hypot(h.x - cx, h.y + 8);
+        const want = Math.max(0, Math.min(1, (L * 0.95 - d) / (L * 0.35)));
+        sc.seen += (want - sc.seen) * Math.min(1, dt * 4);
+        if (!sc.found && sc.seen > 0.6) {
+          sc.found = true;
+          this.ev.secret("found");
+        }
+        if (sc.seen > 0.3 && this.rng.chance(dt * 4)) this.parts.add(cx + this.rng.range(-7, 7), -this.rng.range(12, 26), this.rng.range(-5, 5), this.rng.range(6, 14), 1.4, rgba("#d8d0e8", 0.55 * sc.seen), 1, 8, 0);
+      }
+    }
     // the cursed altar: a moment standing on it takes the curse
     const a = this.altar;
     if (a && !a.taken) {
@@ -1524,6 +1564,7 @@ export class World {
 
   /** Break the urns within r of a point (and, for a swing, within its arc). */
   smashUrns(x: number, y: number, r: number, dir = 0, arc = Math.PI): void {
+    this.hitSecret(x, y, r, dir, arc);
     for (let k = this.urns.length - 1; k >= 0; k--) {
       const u = this.urns[k], dx = u.x - x, dy = u.y - 8 - y, d = Math.hypot(dx, dy);
       if (d > r + 7) continue;
@@ -1535,6 +1576,48 @@ export class World {
       this.urns.splice(k, 1);
       this.breakUrn(u);
     }
+  }
+  /** A blow that reaches the cracked stretch of wall: the third breaks it open. */
+  private hitSecret(x: number, y: number, r: number, dir: number, arc: number): void {
+    const sc = this.secret;
+    if (!sc || sc.hp <= 0 || sc.hitT < 0.2) return;
+    // the nearest point of the cracked stretch's lower part, where a blade reaches
+    const px = Math.max(sc.x + 2, Math.min(sc.x + TILE * 2 - 2, x)), py = Math.max(-30, Math.min(0, y)), dx = px - x, dy = py - y, d = Math.hypot(dx, dy);
+    if (d > r + 4) return;
+    if (arc < Math.PI && d > 2) {
+      let da = Math.atan2(dy, dx) - dir;
+      da = Math.atan2(Math.sin(da), Math.cos(da));
+      if (Math.abs(da) > arc + 0.5) return;
+    }
+    const R = this.rng, cx = sc.x + TILE, stone = ["#3a3348", "#4e4660", "#2a2436"].map((c) => rgba(c));
+    sc.hp--;
+    sc.hitT = 0;
+    sc.seen = 1;
+    if (!sc.found) (sc.found = true), this.ev.secret("found");
+    for (let q = 0; q < (sc.hp ? 6 : 22); q++) {
+      const a = R.range(0.15, Math.PI - 0.15), sp = R.range(30, sc.hp ? 70 : 120);
+      this.parts.add(cx + R.range(-10, 10), -R.range(8, 30), Math.cos(a) * sp, Math.sin(a) * sp * 0.6, R.range(0.35, 0.8), R.pick(stone), R.chance(0.4) ? 2 : 1, 240, 0);
+    }
+    this.dust(cx, 2, sc.hp ? 4 : 12, sc.hp ? 25 : 45);
+    if (sc.hp > 0) {
+      this.audio.play("break", 0.55);
+      this.shake = Math.max(this.shake, 0.25);
+      return;
+    }
+    // broken open: rubble, a puff of old air, and what was hidden spills out onto the floor
+    this.addFx("poof", cx, 4, { glow: 0.4 });
+    this.audio.play("boom", 1.6);
+    this.audio.play("chest");
+    this.shake = Math.max(this.shake, 0.55);
+    const h = this.hero, spill = (kind: number, value: number) => {
+      const a = R.range(0.3, Math.PI - 0.3), s = R.range(40, 90);
+      this.drops.add(kind, cx + R.range(-6, 6), 8, value, Math.cos(a) * s, Math.sin(a) * s);
+    };
+    this.drops.add(D_CHEST, cx, 16, 1, 0, 40);
+    for (let q = R.int(4, 7); q > 0; q--) spill(D_EMBER, 1);
+    for (let q = R.int(2, 4); q > 0; q--) spill(this.floor >= 4 ? D_GREEN : D_BLUE, this.floor >= 4 ? 5 : 1);
+    if (h.hp < h.maxHp) spill(D_HEART, 1);
+    this.ev.secret("opened");
   }
   /** An urn shatters: shards fly and fall, dust puffs, and whatever was inside spills out. */
   private breakUrn(u: Urn): void {
