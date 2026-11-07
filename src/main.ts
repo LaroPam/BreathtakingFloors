@@ -37,11 +37,36 @@ async function boot(): Promise<void> {
   await game.init();
   (window as unknown as { __game: Game }).__game = game;
 
-  window.addEventListener("resize", () => renderer.resize());
-  let last = performance.now(), first = true;
+  // on a desktop the play area keeps within 2:1 (Yandex 1.6.2), bars of the page's colour either side
+  const mobile = platform.isMobile();
+  const fit = () => {
+    const w = window.innerWidth, h = window.innerHeight;
+    let cw = w, ch = h;
+    if (!mobile && w > h * 2) cw = h * 2;
+    if (!mobile && h > w * 2) ch = w * 2;
+    const st = canvas.style, W = `${cw}px`, H = `${ch}px`;
+    if (st.width !== W || st.height !== H) {
+      st.width = W;
+      st.height = H;
+      st.left = `${Math.round((w - cw) / 2)}px`;
+      st.top = `${Math.round((h - ch) / 2)}px`;
+    }
+  };
+  window.addEventListener("resize", () => (fit(), renderer.resize()));
+  // while the platform pauses the game, nothing runs: no loop, no drawing (YouTube 3.1)
+  let paused = false, last = performance.now(), first = true;
+  platform.onPause(() => (paused = true));
+  platform.onResume(() => {
+    if (!paused) return;
+    paused = false;
+    last = performance.now();
+    requestAnimationFrame(loop);
+  });
   const loop = (now: number) => {
+    if (paused) return;
     const dt = Math.min(0.1, Math.max(0, (now - last) / 1000));
     last = now;
+    fit();
     renderer.resize();
     game.frame(dt);
     if (first) {

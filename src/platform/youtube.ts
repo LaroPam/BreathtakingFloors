@@ -15,7 +15,8 @@ export class YouTubePlatform extends BasePlatform {
   private loaded = false;
 
   override async init(): Promise<void> {
-    if (typeof ytgame === "undefined" || !ytgame?.IN_PLAYABLES_ENV) return;
+    // outside YouTube (a test page) behave like the web build; inside, only the SDK pauses the game
+    if (typeof ytgame === "undefined" || !ytgame?.IN_PLAYABLES_ENV) return this.watchFocus();
     this.yt = ytgame;
     this.yt.system.onPause(() => this.pauseCbs.forEach((f) => f()));
     this.yt.system.onResume(() => this.resumeCbs.forEach((f) => f()));

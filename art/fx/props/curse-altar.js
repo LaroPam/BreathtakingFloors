@@ -1,10 +1,10 @@
-// A cursed altar: a dark stone plinth with a horned skull on it, its eyes alight, two candles burning blood-red. Stand
-// on it to take a curse for the floor; the reward comes when the floor is done.
+// The altar of challenge: a dark stone plinth with an old stone skull on it, its eyes alight, two candles burning red.
+// Stand on it to take the challenge for the floor: tougher foes now, the reward when the floor is done.
 import { fit, hex, rand } from "../../../pixelfx/src/core/index.js";
 
 export const meta = {
-  name: "Cursed altar",
-  desc: "A black stone plinth bearing a horned skull with burning red eyes, flanked by two candles of blood-red flame.",
+  name: "Altar of challenge",
+  desc: "A dark stone plinth bearing an old stone skull with glowing eyes, flanked by two candles of red flame.",
   tags: ["prop", "altar", "loop"],
   size: [44, 40],
   origin: [22, 34],
@@ -16,10 +16,10 @@ export const meta = {
 };
 
 const SKULL = [
-  "k.......k",
-  "kh.....hk",
-  ".khkkkhk.",
-  "kbbbbbbbk",
+  ".........",
+  ".........",
+  "..kkkkk..",
+  ".kbbbbbbk",
   "kbeebeebk",
   "kbeebeebk",
   "kbbbkbbbk",

@@ -20,7 +20,8 @@
     "fx": "node pixelfx/tools/render.mjs",
     "fx:check": "node pixelfx/tools/check.mjs",
     "art": "node tools/art.mjs",
-    "check:clip": "node tools/check/clip.mjs --strict"
+    "check:clip": "node tools/check/clip.mjs --strict",
+    "check:release": "node tools/check/release.mjs"
   },
   "devDependencies": {
     "typescript": "6.0.3",

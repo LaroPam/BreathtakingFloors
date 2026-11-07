@@ -34,7 +34,6 @@ export default defineConfig(({ mode }) => {
       target: "es2022",
       assetsInlineLimit: single ? 64 * 1024 * 1024 : 0,
       chunkSizeWarningLimit: single ? 8192 : 600,
-      chunkSizeWarningLimit: 600,
       reportCompressedSize: true,
     },
     server: { host: true, port: 5173 },

@@ -176,6 +176,8 @@ export class Game {
   private platformPause(paused: boolean): void {
     this.platformPaused = paused;
     if (paused) {
+      // the platform may close the game from here: keep what was earned (YouTube 3.3)
+      this.persist();
       this.audio.suspend();
       if (this.state === "play") this.setState("pause");
     } else this.audio.resume();
@@ -566,7 +568,7 @@ export class Game {
     if (this.state === "play" && !this.platformPaused && !this.wipe) {
       if (input.pressed("pause")) this.setState("pause");
       else {
-        if (input.pressed("debug")) w.debug = !w.debug;
+        if (import.meta.env.DEV && input.pressed("debug")) w.debug = !w.debug;
         const h = w.hero;
         if (input.pressed("dash")) h.wantDash = true;
         if (input.pressed("ult")) h.wantUlt = true;
@@ -1146,7 +1148,20 @@ export class Game {
         text(ui, e.name.toUpperCase().slice(0, 22), px + 38, ry, { color: col });
         text(ui, String(e.score), px + pw - 8, ry, { align: "right", color: col });
       });
-      if (!b.myRank) text(ui, t("signIn"), W / 2, y + listH - 9, { font: "mini", align: "center", color: C.dim });
+      if (!b.myRank && !this.platform.canSignIn()) text(ui, t("signIn"), W / 2, y + listH - 9, { font: "mini", align: "center", color: C.dim });
+    }
+    // a guest on Yandex: sign in, from this button only, to have a place on the board (moderation 1.2.1)
+    if (b && b !== "loading" && this.platform.canSignIn()) {
+      const sw = Math.min(pw - 20, 230);
+      if (button(ui, this.menu, now, W / 2 - sw / 2, y + listH - 22, sw, 16, t("signInButton"), { primary: true, font: "mini", icon: icon("hud", "crown") }))
+        void this.platform.signIn().then((ok) => {
+          if (!ok) return;
+          // the signed-in player gets this save, and the boards are asked again
+          this.persist();
+          const best = this.save.bestScore;
+          if (best) this.platform.submitScore(best, "score");
+          this.boards = {};
+        });
     }
     y += listH + 6;
     // the player's own records, whatever the platform

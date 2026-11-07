@@ -22,6 +22,7 @@ export class YandexPlatform extends BasePlatform {
   private adOpen = false;
 
   override async init(): Promise<void> {
+    this.watchFocus();
     try {
       if (typeof YaGames === "undefined") return;
       this.sdk = await YaGames.init();
@@ -95,6 +96,19 @@ export class YandexPlatform extends BasePlatform {
       return { entries, myRank: mine ? mine.rank : 0 };
     } catch {
       return null;
+    }
+  }
+  override canSignIn(): boolean {
+    return !!this.sdk?.auth && (!this.player || this.player.getMode?.() === "lite");
+  }
+  /** Yandex ID sign-in, only from a button the player pressed (moderation 1.2.1). */
+  override async signIn(): Promise<boolean> {
+    try {
+      await this.sdk.auth.openAuthDialog();
+      this.player = await this.sdk.getPlayer({ scopes: false });
+      return this.player?.getMode?.() !== "lite";
+    } catch {
+      return false;
     }
   }
   override canShowRewarded(): boolean {

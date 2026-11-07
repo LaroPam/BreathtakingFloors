@@ -49,6 +49,9 @@ export interface Platform {
   submitScore(score: number, board?: BoardName): void;
   /** A leaderboard to show, or null where the platform has none (the game then shows the player's own records). */
   leaderboard(board: BoardName): Promise<Board | null>;
+  /** Whether the player could sign in to get on the boards (a guest on Yandex), and doing it. */
+  canSignIn(): boolean;
+  signIn(): Promise<boolean>;
 }
 
 /** Shared by all builds: pause on a hidden tab, mobile detection, and browser storage as a fallback. */
@@ -58,13 +61,33 @@ export abstract class BasePlatform implements Platform {
   protected resumeCbs: (() => void)[] = [];
   protected audioCbs: ((on: boolean) => void)[] = [];
 
-  constructor() {
-    document.addEventListener("visibilitychange", () => {
-      if (document.hidden) this.pauseCbs.forEach((f) => f());
-      else this.resumeCbs.forEach((f) => f());
-    });
+  private watching = false;
+  /**
+   * Pause when the page is hidden or the window loses focus, resume when it comes back (Yandex: "sound stops when
+   * the game loses focus"). Not for YouTube Playables, which forbids the Page Visibility API: there only the SDK's
+   * onPause and onResume pause the game.
+   */
+  protected watchFocus(): void {
+    if (this.watching) return;
+    this.watching = true;
+    let paused = false;
+    const pause = () => {
+      if (paused) return;
+      paused = true;
+      this.pauseCbs.forEach((f) => f());
+    };
+    const resume = () => {
+      if (!paused || document.hidden || !document.hasFocus()) return;
+      paused = false;
+      this.resumeCbs.forEach((f) => f());
+    };
+    document.addEventListener("visibilitychange", () => (document.hidden ? pause() : resume()));
+    window.addEventListener("blur", pause);
+    window.addEventListener("focus", resume);
   }
-  async init(): Promise<void> {}
+  async init(): Promise<void> {
+    this.watchFocus();
+  }
   language(): string {
     return (navigator.language || "en").slice(0, 2).toLowerCase();
   }
@@ -112,5 +135,11 @@ export abstract class BasePlatform implements Platform {
   submitScore(_score: number, _board?: BoardName): void {}
   async leaderboard(_board: BoardName): Promise<Board | null> {
     return null;
+  }
+  canSignIn(): boolean {
+    return false;
+  }
+  async signIn(): Promise<boolean> {
+    return false;
   }
 }
