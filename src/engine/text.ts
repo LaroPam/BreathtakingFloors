@@ -1,10 +1,11 @@
-// Pixel text from the atlas fonts: pixelfx's "big" 5 x 7 and "mini" 3 x 5, with Cyrillic capitals added at bake time.
-// Text is set in capitals; lowercase letters use their capital.
+// Pixel text from the atlas fonts (tools/bake/font.mjs): "title" Fantasy Warrior for headings, "big" Pixeloid Sans for
+// the body, "mini" Tiny5 for small labels, each baked at its native pixel size with Latin and Cyrillic. A line is placed
+// by the top of its capitals, so accents and descenders reach above and below the box layouts reserve.
 
 import { FONTS } from "./atlas";
 import type { Batch } from "./renderer";
 
-export type FontName = "big" | "mini";
+export type FontName = "title" | "big" | "mini";
 
 function glyph(font: FontName, ch: string) {
   const F = FONTS[font];
@@ -38,7 +39,7 @@ export function text(b: Batch, str: string, x: number, y: number, o: TextOpts = 
   const font = o.font ?? "big", s = o.scale ?? 1, F = FONTS[font];
   const w = measure(str, font, s);
   let cx = o.align === "center" ? x - w / 2 : o.align === "right" ? x - w : x;
-  const cy = y, color = o.color ?? 0xffffffff, shadow = o.shadow ?? 0xff0b0a12, key = o.key ?? 0;
+  const cy = y - F.top * s, color = o.color ?? 0xffffffff, shadow = o.shadow ?? 0xff0b0a12, key = o.key ?? 0;
   for (const ch of str) {
     const g = glyph(font, ch);
     if (!g) {
@@ -56,6 +57,13 @@ export function text(b: Batch, str: string, x: number, y: number, o: TextOpts = 
     cx += (gw + F.gap) * s;
   }
   return w;
+}
+
+/** The largest whole scale (up to max) at which a line fits in a width; at least 1. */
+export function fitScale(str: string, font: FontName, maxW: number, max: number): number {
+  let s = max;
+  while (s > 1 && measure(str, font, s) > maxW) s--;
+  return s;
 }
 
 /** Break text into lines no wider than maxW. */

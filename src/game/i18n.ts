@@ -62,6 +62,7 @@ const RU = {
   cleared: "ЭТАЖ ПРОЙДЕН",
   reward: "НАГРАДА",
   risk: "РИСК",
+  fontCredits: "ШРИФТЫ: FANTASY WARRIOR - DOUGLAS VAUTOUR (CC BY 4.0), PIXELOID SANS - GGBOTNET, TINY5 (SIL OFL)",
 };
 
 type Strings = typeof RU;
@@ -126,6 +127,7 @@ const EN: Strings = {
   cleared: "FLOOR CLEARED",
   reward: "REWARD",
   risk: "RISK",
+  fontCredits: "FONTS: FANTASY WARRIOR BY DOUGLAS VAUTOUR (CC BY 4.0), PIXELOID SANS BY GGBOTNET, TINY5 (SIL OFL)",
 };
 
 let lang: Lang = "ru";

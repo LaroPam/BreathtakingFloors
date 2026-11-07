@@ -211,16 +211,16 @@ for (const e of ANIMS) {
   stats.push([e.name, frames.length, px]);
 }
 
-// the fonts: one image per glyph, white, so the game tints them
+// the fonts: one image per glyph (each the font's full cell tall, so baselines line up), white, so the game tints them
 const fonts = {};
-for (const name of ["big", "mini"]) {
+for (const name of ["title", "big", "mini"]) {
   const F = fontGlyphs(name), glyphs = {};
   for (const g of F.glyphs) {
-    const data = new Uint32Array(g.w * F.h);
+    const data = new Uint32Array(g.w * F.cell);
     g.rows.forEach((row, y) => [...row].forEach((ch, x) => { if (ch === "#") data[y * g.w + x] = 0xffffffff; }));
-    glyphs[g.ch] = addImage({ w: g.w, h: F.h, ox: 0, oy: 0, data });
+    glyphs[g.ch] = addImage({ w: g.w, h: F.cell, ox: 0, oy: 0, data });
   }
-  fonts[name] = { h: F.h, space: F.space, gap: F.gap, glyphs };
+  fonts[name] = { h: F.h, top: F.top, space: F.space, gap: F.gap, glyphs };
 }
 
 const pages = pack();

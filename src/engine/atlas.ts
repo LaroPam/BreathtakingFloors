@@ -26,7 +26,10 @@ export interface Anim {
 }
 
 export interface Font {
+  /** Height of the capitals. */
   h: number;
+  /** Rows of the glyph images above the capitals (accents: Ё, Й). */
+  top: number;
   space: number;
   gap: number;
   glyphs: Record<string, [number, number, number, number, number]>;
@@ -45,7 +48,7 @@ const file = atlasJson as unknown as AtlasFile;
 
 export const PAGE_SIZE = file.page;
 export const PAGE_COUNT = file.pages;
-export const FONTS = file.fonts as Record<"big" | "mini", Font>;
+export const FONTS = file.fonts as Record<"title" | "big" | "mini", Font>;
 /** The dummy's colour for each palette role: k ink, A-D plates lit to dark, E-G cloth, J seams, m the chest mark. */
 export const DUMMY = file.dummy;
 

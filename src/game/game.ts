@@ -4,8 +4,8 @@
 import type { Audio } from "../engine/audio";
 import type { Input } from "../engine/input";
 import { Batch, rgba, rgbaf, withAlpha, type Lighting, type Renderer } from "../engine/renderer";
-import { anim, DUMMY, frameAt, icon } from "../engine/atlas";
-import { measure, text, wrap } from "../engine/text";
+import { anim, DUMMY, FONTS, frameAt, icon } from "../engine/atlas";
+import { fitScale, measure, text, wrap } from "../engine/text";
 import type { Platform } from "../platform/platform";
 import { bossOf, EL_COLOR, EL_NAME, ENEMIES, FLOORS, FORGE, HEROES, PALETTE_KEYS, WEAPONS, weaponName, MODIFIERS, NO_MODIFIER, REACTIONS, RELIC_MAX, RELIC_SLOTS, RELICS, STATS, type Modifier, type Reaction, type RelicKind, type StatId } from "./defs";
 import { drawWorld, Scene } from "./draw";
@@ -36,6 +36,8 @@ const RELIC_ICON = ["orbit", "lance", "coil", "flask", "halo", "void"];
 const iconKey = (c: Choice) => (c.type === "relic" ? RELIC_ICON[c.kind] : c.id);
 
 const STEP = 1 / 60;
+/** Height of the title font's capitals. */
+const FONT_H = FONTS.title.h;
 
 export class Game {
   state: State = "title";
@@ -143,6 +145,16 @@ export class Game {
 
   private showBanner(textStr: string, color = C.gold): void {
     this.banner = { text: textStr, t: 0, color };
+  }
+
+  /**
+   * A heading in the blackletter title font, centred, at the largest scale (up to max) that fits the screen.
+   * Returns its height, so what follows can sit under it.
+   */
+  private heading(str: string, y: number, max: number, color = C.gold, a = 1, shadow = rgba("#3a1a10")): number {
+    const W = this.r.w, sc = fitScale(str, "title", W - 20, max);
+    text(this.ui, str, W / 2, y, { font: "title", align: "center", scale: sc, color: withAlpha(color, a), shadow: withAlpha(shadow, a), outline: true });
+    return FONT_H * sc;
   }
 
   // =========================================================================================== runs
@@ -493,9 +505,11 @@ export class Game {
     const w = this.world;
     if (!this.save.tutorial || w.floor !== 1 || w.time > 14) return;
     const ui = this.ui, W = this.r.w, H = this.r.h, a = Math.min(1, (14 - w.time) / 2);
-    const line = this.touch ? t("hintTouch") : t("hint");
-    text(ui, line, W / 2, H - 30, { font: "mini", align: "center", color: rgbaf(0.9, 0.88, 0.95, a) });
-    text(ui, t("hintGraze"), W / 2, H - 20, { font: "mini", align: "center", color: rgbaf(0.95, 0.82, 0.48, a) });
+    const lines: [string, number][] = [
+      ...wrap(this.touch ? t("hintTouch") : t("hint"), W - 24, "mini").map((l): [string, number] => [l, rgbaf(0.9, 0.88, 0.95, a)]),
+      ...wrap(t("hintGraze"), W - 24, "mini").map((l): [string, number] => [l, rgbaf(0.95, 0.82, 0.48, a)]),
+    ];
+    lines.forEach(([l, col], k) => text(ui, l, W / 2, H - 14 - (lines.length - k) * 9, { font: "mini", align: "center", color: col }));
     if (w.time > 13.5) {
       this.save.tutorial = false;
       this.persist();
@@ -504,10 +518,9 @@ export class Game {
 
   private drawTitle(): void {
     const ui = this.ui, W = this.r.w, H = this.r.h, now = this.now;
-    const big = W >= 420 ? 3 : 2, ty = Math.round(H * 0.16);
-    const title = t("title");
-    text(ui, title, W / 2, ty, { align: "center", scale: big, color: C.gold, shadow: rgba("#3a1a10"), outline: true });
-    text(ui, t("subtitle"), W / 2, ty + 7 * big + 8, { align: "center", color: C.dim });
+    const ty = Math.round(H * 0.14);
+    const th = this.heading(t("title"), ty, 3);
+    text(ui, t("subtitle"), W / 2, ty + th + 8, { align: "center", color: C.dim });
     const bw = 150, bh = 20, bx = Math.round(W / 2 - bw / 2);
     let y = Math.round(H * 0.5);
     if (button(ui, this.menu, now, bx, y, bw, bh, t("play"), { color: C.gold })) {
@@ -531,7 +544,10 @@ export class Game {
       this.persist();
     }
     const info = `${t("embers")}: ${this.save.embers}    ${t("best")}: ${t("floor")} ${this.save.bestFloor}`;
-    text(ui, info, W / 2, H - 16, { font: "mini", align: "center", color: C.goldDim });
+    // the fonts' authors along the bottom (Fantasy Warrior asks for attribution), what you have above them
+    const credits = wrap(t("fontCredits"), W - 16, "mini");
+    credits.forEach((l, k) => text(ui, l, W / 2, H - 9 - (credits.length - 1 - k) * 8, { font: "mini", align: "center", color: rgba("#5a5470") }));
+    text(ui, info, W / 2, H - 20 - (credits.length - 1) * 8, { font: "mini", align: "center", color: C.goldDim });
   }
 
   /** The hero select: the hero in their palette with their weapon, who they are, how they play. */
@@ -545,7 +561,7 @@ export class Game {
     if (input.pressed("left")) pick(-1);
     if (input.pressed("right")) pick(1);
     const hero = HEROES[this.heroIdx], weapon = WEAPONS[hero.weapon], wide = W >= 460;
-    text(ui, t("chooseHero"), W / 2, 12, { align: "center", scale: 2, color: C.gold, outline: true, shadow: rgba("#3a1a10") });
+    this.heading(t("chooseHero"), 10, H >= 320 ? 2 : 1);
     // the hero, big, on a pool of their light
     const cx = wide ? Math.round(W * 0.3) : Math.round(W / 2), cy = wide ? Math.round(H * 0.62) : Math.round(H * 0.44), [lr, lg, lb] = hero.lightColor;
     ui.disc(cx, cy, 46, 14, rgbaf(lr, lg, lb, 0.12));
@@ -559,13 +575,17 @@ export class Game {
       const tint = hero.id === "mage" ? 0xffffffff : rgbaf(lr, lg, lb, 1);
       ui.image(r, cx - 30, cy - 105 + Math.sin(now * 2.6) * 6, 2, 2, 0, tint);
     }
-    if (button(ui, this.menu, now, cx - 112, cy - 56, 20, 30, "<")) pick(-1);
-    if (button(ui, this.menu, now, cx + 92, cy - 56, 20, 30, ">")) pick(1);
-    // who they are
+    // who they are (the arrows either side of the hero keep clear of it)
     const px = wide ? Math.round(W * 0.52) : Math.round(W / 2 - 150), pw = wide ? Math.min(280, W - px - 16) : 300;
+    if (button(ui, this.menu, now, Math.max(6, cx - 112), cy - 56, 20, 30, "<")) pick(-1);
+    if (button(ui, this.menu, now, wide ? Math.min(cx + 92, px - 26) : cx + 92, cy - 56, 20, 30, ">")) pick(1);
     let y = wide ? Math.round(H * 0.2) : cy + 18;
-    text(ui, tx(hero.name), px, y, { scale: wide ? 2 : 1, color: C.gold, outline: true, shadow: rgba("#3a1a10") });
-    y += wide ? 20 : 11;
+    // a dark pane behind who they are, so the words read over a lit room
+    const ns0 = wide ? fitScale(tx(hero.name), "title", pw, 2) : 1, infoH = FONT_H * ns0 + 4 + 11 + 26 + wrap(tx(hero.perk), pw).length * 10 + 4 + 14 + 8;
+    panel(ui, px - 8, y - 6, pw + 16, infoH + 10, C.edge, rgba("#0e0c16", 0.78));
+    const ns = wide ? fitScale(tx(hero.name), "title", pw, 2) : 1;
+    text(ui, tx(hero.name), px, y, { font: "title", scale: ns, color: C.gold, outline: true, shadow: rgba("#3a1a10") });
+    y += FONT_H * ns + 4;
     text(ui, tx(hero.title), px, y, { font: "mini", color: C.dim });
     y += 11;
     ui.image(icon("icons", `w_${hero.weapon}`), px + 10, y + 10);
@@ -605,13 +625,13 @@ export class Game {
     ui.rect(0, H - bar, W, bar, rgba("#000000"));
     if (c.t < 0.9) return;
     // the name slams in from big to its size, then the title under it
-    const u = Math.min(1, (c.t - 0.9) / 0.18), sc = W >= 420 ? 3 : 2, a = Math.min(1, (c.t - 0.9) * 6) * outK;
-    const col = rgba(d.glow || "#f53cd1"), y = Math.round(H - bar - 16 - 8 * sc);
-    const pop = 1 + (1 - u) * 1.2;
-    text(ui, tx(d.name), W / 2, y - (pop - 1) * 6, { align: "center", scale: Math.max(sc, Math.round(sc * pop)), color: withAlpha(col, a), shadow: withAlpha(rgba("#0b0a12"), a), outline: true });
+    const name = tx(d.name), u = Math.min(1, (c.t - 0.9) / 0.18), sc = fitScale(name, "title", W - 30, W >= 420 && H >= 360 ? 3 : 2), a = Math.min(1, (c.t - 0.9) * 6) * outK;
+    const col = rgba(d.glow || "#f53cd1"), y = Math.round(H - bar - 18 - FONT_H * sc);
+    const pop = u < 1 ? sc + 1 : sc;
+    text(ui, name, W / 2, y - (pop - sc) * FONT_H * 0.5, { font: "title", align: "center", scale: pop, color: withAlpha(col, a), shadow: withAlpha(rgba("#0b0a12"), a), outline: true });
     const lw = Math.round(Math.min(W - 40, 240) * Math.min(1, (c.t - 1.0) * 3));
-    if (lw > 0) ui.rect(Math.round(W / 2 - lw / 2), y + 7 * sc + 4, lw, 1, withAlpha(col, a * 0.8));
-    if (d.title && c.t > 1.25) text(ui, tx(d.title), W / 2, y + 7 * sc + 9, { font: "mini", align: "center", color: withAlpha(C.text, Math.min(1, (c.t - 1.25) * 3) * outK) });
+    if (lw > 0) ui.rect(Math.round(W / 2 - lw / 2), y + FONT_H * sc + 4, lw, 1, withAlpha(col, a * 0.8));
+    if (d.title && c.t > 1.25) text(ui, tx(d.title), W / 2, y + FONT_H * sc + 9, { align: "center", color: withAlpha(C.text, Math.min(1, (c.t - 1.25) * 3) * outK) });
   }
 
   /** The floor's title card: its number, its biome, a line about it, and where it sits in the run. */
@@ -619,8 +639,8 @@ export class Game {
     const ui = this.ui, W = this.r.w, H = this.r.h, w = this.world, B = w.biome, a = Math.min(1, this.cardT * 3);
     this.drawCardBack();
     const cy = Math.round(H * 0.38);
-    text(ui, `${t("floor")} ${w.floor}`, W / 2, cy - 30, { align: "center", scale: 3, color: withAlpha(C.gold, a), outline: true, shadow: rgba("#3a1a10") });
-    text(ui, tx(B.name), W / 2, cy + 2, { align: "center", scale: 2, color: withAlpha(C.text, a) });
+    this.heading(`${t("floor")} ${w.floor}`, cy - 30, 2, C.gold, a);
+    this.heading(tx(B.name), cy + 2, 1, C.text, a, rgba("#0b0a12"));
     para(ui, tx(B.lore), Math.round(W / 2 - 150), cy + 24, 300, withAlpha(C.dim, a), "center");
     const lw = Math.min(200, W - 40);
     ui.rect(Math.round(W / 2 - lw / 2), cy - 6, lw, 1, withAlpha(C.goldDim, a));
@@ -697,7 +717,7 @@ export class Game {
   private drawForge(): void {
     const ui = this.ui, W = this.r.w, H = this.r.h, now = this.now, f = this.save.forge;
     const pw = Math.min(360, W - 20), px = Math.round(W / 2 - pw / 2);
-    text(ui, t("forgeTitle"), W / 2, 16, { align: "center", color: C.gold });
+    this.heading(t("forgeTitle"), 12, 1);
     text(ui, `${t("embers")}: ${this.save.embers}`, W / 2, 28, { font: "mini", align: "center", color: C.goldDim });
     let y = 42;
     const rowH = Math.min(44, Math.floor((H - 90) / FORGE.length));
@@ -724,8 +744,8 @@ export class Game {
     const ui = this.ui, W = this.r.w, H = this.r.h, w = this.world, landed = sp.held >= 0;
     const title = sp.kind === "level" ? t("levelUp") : sp.kind === "chest" ? t("chest") : t("startRelic");
     const ty = Math.round(H * 0.18);
-    text(ui, title, W / 2, ty, { align: "center", scale: 2, color: C.gold, outline: true, shadow: rgba("#3a1a10") });
-    if (sp.kind === "level") text(ui, `${t("level")} ${w.hero.level}`, W / 2, ty + 20, { font: "mini", align: "center", color: rgba("#9ad4ff") });
+    const th = this.heading(title, ty - 4, 2);
+    if (sp.kind === "level") text(ui, `${t("level")} ${w.hero.level}`, W / 2, ty + th + 2, { font: "mini", align: "center", color: rgba("#9ad4ff") });
 
     // the reel: a window of badges at 2x, the middle one framed
     const S = 50, cy = Math.round(H * 0.42), cx = Math.round(W / 2), half = Math.min(4, Math.floor((W - 30) / S / 2));
@@ -775,7 +795,7 @@ export class Game {
 
   private drawPause(): void {
     const ui = this.ui, W = this.r.w, H = this.r.h, now = this.now;
-    text(ui, t("paused"), W / 2, Math.round(H * 0.2), { align: "center", scale: 2, color: C.gold, outline: true, shadow: C.ink });
+    this.heading(t("paused"), Math.round(H * 0.2) - 6, 2, C.gold, 1, C.ink);
     const bw = 160, bh = 20, bx = Math.round(W / 2 - bw / 2);
     let y = Math.round(H * 0.36);
     if (button(ui, this.menu, now, bx, y, bw, bh, t("resume"), { color: C.gold }) || (this.menu.ready(now) && (this.input.pressed("pause") || this.input.pressed("back")))) {
@@ -803,7 +823,7 @@ export class Game {
 
   private drawCodex(): void {
     const ui = this.ui, W = this.r.w, H = this.r.h, now = this.now;
-    text(ui, t("codex"), W / 2, 12, { align: "center", color: C.gold });
+    this.heading(t("codex"), 8, 1);
     const pw = Math.min(380, W - 16), px = Math.round(W / 2 - pw / 2), rowH = Math.min(26, Math.floor((H - 60) / REACTIONS.length));
     REACTIONS.forEach((r, k) => {
       const y = 26 + k * rowH, known = this.save.reactions.includes(r.id);
@@ -818,8 +838,8 @@ export class Game {
 
   private drawStairs(): void {
     const ui = this.ui, W = this.r.w, H = this.r.h, now = this.now;
-    text(ui, t("cleared"), W / 2, 14, { align: "center", scale: 2, color: C.gold, outline: true, shadow: C.ink });
-    text(ui, t("stairs"), W / 2, 34, { font: "mini", align: "center", color: C.dim });
+    const th = this.heading(t("cleared"), 8, H >= 300 ? 2 : 1, C.gold, 1, C.ink);
+    text(ui, t("stairs"), W / 2, 8 + th + 4, { font: "mini", align: "center", color: C.dim });
     const vertical = W < 420, n = this.stairs.length;
     const cw = vertical ? Math.min(300, W - 24) : Math.min(200, Math.floor((W - 32) / 2)), inner = cw - 16;
     const ch = Math.max(...this.stairs.map((m) => 16 + (wrap(tx(m.name), inner).length + wrap(tx(m.risk), inner).length + wrap(tx(m.reward), inner).length) * 10 + 24));
@@ -843,8 +863,8 @@ export class Game {
 
   private drawWon(): void {
     const ui = this.ui, W = this.r.w, H = this.r.h, now = this.now, res = this.lastResult;
-    text(ui, t("victory"), W / 2, Math.round(H * 0.12), { align: "center", scale: 2, color: C.gold, outline: true, shadow: rgba("#3a1a10") });
-    para(ui, t("victorySub"), Math.round(W / 2 - 150), Math.round(H * 0.12) + 22, 300, C.dim, "center");
+    const th = this.heading(t("victory"), Math.round(H * 0.1), 2);
+    para(ui, t("victorySub"), Math.round(W / 2 - 150), Math.round(H * 0.1) + th + 6, 300, C.dim, "center");
     const pw = Math.min(260, W - 20), px = Math.round(W / 2 - pw / 2);
     let y = Math.round(H * 0.32);
     panel(ui, px, y, pw, 52);
@@ -870,7 +890,7 @@ export class Game {
 
   private drawDead(): void {
     const ui = this.ui, W = this.r.w, H = this.r.h, now = this.now, res = this.lastResult;
-    text(ui, t("died"), W / 2, Math.round(H * 0.14), { align: "center", scale: 2, color: C.red, outline: true, shadow: C.ink });
+    this.heading(t("died"), Math.round(H * 0.12), 2, C.red, 1, C.ink);
     const pw = Math.min(260, W - 20), px = Math.round(W / 2 - pw / 2);
     let y = Math.round(H * 0.28);
     panel(ui, px, y, pw, 64);
