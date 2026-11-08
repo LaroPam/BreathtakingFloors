@@ -8,9 +8,9 @@ import { anim, FONTS, frameAt, icon, type Anim, type Rect } from "../engine/atla
 import { heroSprites, initHeroSprites, lookId, type HeroAnim, type HeroSprites } from "./heroSprites";
 import { fitScale, measure, text, wrap } from "../engine/text";
 import { dayNumber, weekNumber, type Board, type BoardName, type Platform, type Product } from "../platform/platform";
-import { ACHIEVEMENTS, heroDef, biomeOf, bossOf, combine, floorInfo, stageOf, EL_COLOR, LEGENDS, legendDesc, type WeaponId, EL_NAME, ENEMIES, EVOLUTIONS, evolutionOf, FLOORS, FORGE, questDef, TASK_BONUS, TASKS, type TaskId, type ForgeId, SHOP, type ShopItem, HEROES, WEAPONS, weaponName, MODIFIERS, MUTATORS, NO_MODIFIER, REACTIONS, RELIC_MAX, RELIC_SLOTS, ARTIFACT_SLOTS, RELICS, STATS, El, fullWeaponName, MYTHIC, PERK_TEXT, RARITIES, UNIQUES, type Modifier, type Reaction, type RelicKind, type StatId } from "./defs";
+import { ACHIEVEMENTS, heroDef, biomeOf, bossOf, combine, floorInfo, stageOf, EL_COLOR, LEGENDS, legendDesc, type WeaponId, EL_NAME, ENEMIES, EVOLUTIONS, evolutionOf, FLOORS, FORGE, questDef, TASK_BONUS, TASKS, type TaskId, type ForgeId, SHOP, type ShopItem, HEROES, WEAPONS, weaponName, MODIFIERS, MUTATORS, NO_MODIFIER, REACTIONS, RELIC_MAX, RELIC_SLOTS, ARTIFACT_SLOTS, RELICS, STATS, El, fullWeaponName, STAIR_EVENTS, type Outcome, type StairEvent, MYTHIC, PERK_TEXT, RARITIES, UNIQUES, type Modifier, type Reaction, type RelicKind, type StatId } from "./defs";
 import { drawWorld, Scene } from "./draw";
-import { stairwell } from "./stairwell";
+import { ascent } from "./ascent";
 import { getLang, langFor, setLang, t, tx, type Lang } from "./i18n";
 import { Rng } from "./rng";
 import { defaultSave, sanitize, type SaveData } from "./save";
@@ -112,6 +112,14 @@ export class Game {
   /** The stairs taken this run, in order: their changes add up (combine()). */
   private path: Modifier[] = [];
   private stairs: Modifier[] = [];
+  /**
+   * What happens on the climb this time (before the stairs are chosen): the scene, then the roll of the choice made
+   * (its marker sweeping over the odds and stopping), then what came of it. Its floor modifiers hold for the next
+   * floor only; the events met are not met again in the run.
+   */
+  private stairEvent: { ev: StairEvent; phase: "ask" | "roll" | "done"; pick: number; t: number; roll: number; win: boolean; applied: boolean } | null = null;
+  private eventMods: Modifier[] = [];
+  private eventsSeen: string[] = [];
   private revived = false;
   private platformPaused = false;
   private runRng = new Rng(Date.now() & 0xffffff);
@@ -228,6 +236,12 @@ export class Game {
     const hs = heroSprites(), a = hs.anim(lookId(id, victor), heroDef(id).weapon, name);
     for (let f = 0; f < a.poses.length; f++) hs.ready(a, f);
     return a;
+  }
+  /** The hero's frame climbing the stair between floors (null while it is being drawn). */
+  private climbFrame(): Rect | null {
+    const h = this.world.hero, sp = heroSprites(), a = sp.anim(lookId(h.def.id, h.victor), h.weapon, "climb");
+    const f = sp.ready(a, Math.floor(this.now * a.fps) % a.poses.length);
+    return a.frames[f][0];
   }
   /** A hero's frame at time t of an animation, for the menus. */
   private heroFrame(id: string, victor: boolean, name = "idle", t = this.now): Rect {
@@ -415,6 +429,8 @@ export class Game {
     }
     // a day's trial starts on its own stairs, the first on the path
     this.path = this.daily && !this.weekly ? [plan.mod] : [];
+    this.eventMods = [];
+    this.eventsSeen = [];
     w.startFloor(1, combine(this.path), "portal", this.path[0]);
     this.reached(1);
     this.revived = false;
@@ -488,6 +504,10 @@ export class Game {
     const pool = [...MODIFIERS];
     this.stairs = [];
     for (let k = 0; k < 2; k++) this.stairs.push(pool.splice(this.runRng.int(0, pool.length - 1), 1)[0]);
+    // most climbs bring something to deal with on the way
+    const fresh = STAIR_EVENTS.filter((e) => !this.eventsSeen.includes(e.id));
+    this.stairEvent = fresh.length && this.runRng.chance(0.75) ? { ev: fresh[this.runRng.int(0, fresh.length - 1)], phase: "ask", pick: -1, t: 0, roll: 0, win: false, applied: false } : null;
+    if (this.stairEvent) this.eventsSeen.push(this.stairEvent.ev.id);
     this.transition(() => this.setState("stairs"));
   }
 
@@ -495,7 +515,9 @@ export class Game {
     this.transition(() => {
       const w = this.world;
       this.path.push(mod);
-      w.startFloor(w.floor + 1, combine(this.path), "stairs", mod);
+      // the climb's own happenings count for the floor above only
+      w.startFloor(w.floor + 1, combine([...this.path, ...this.eventMods]), "stairs", mod);
+      this.eventMods = [];
       this.reached(w.floor);
       this.cardT = 0;
       this.setState("card");
@@ -902,7 +924,9 @@ export class Game {
     const shake = w.shake > 0 && this.state === "play" && this.save.shake ? w.shake * w.shake * 6 : 0;
     const sx = shake ? (Math.random() - 0.5) * shake : 0, sy = shake ? (Math.random() - 0.5) * shake : 0;
     // between floors the floor behind is gone: the stairwell down to the next one takes its place
-    const down = this.state === "stairs" || (this.state === "stats" && this.statsFrom[0] === "stairs") ? stairwell(s, W, H, this.now, biomeOf(w.floor + 1)) : null;
+    // between floors the floor behind is gone: the climb up to the next one takes its place
+    const climbing = this.state === "stairs" || (this.state === "stats" && this.statsFrom[0] === "stairs");
+    const down = climbing ? ascent(s, W, H, this.now, w.biome, biomeOf(w.floor + 1), this.climbFrame()) : null;
     const cx = down ? 0 : demo ? this.demoCam[0] : this.camX + sx, cy = down ? 0 : demo ? this.demoCam[1] : this.camY + sy;
     if (!down) drawWorld(s, w, cx, cy, W, H, this.now);
 
@@ -972,7 +996,7 @@ export class Game {
     if (this.r.canvas.style.cursor !== cursor) this.r.canvas.style.cursor = cursor;
     this.drawToast(this.dt);
     this.drawWipe();
-    this.r.render(s, ui, cx, cy, light, [0.025, 0.02, 0.045], down?.well);
+    this.r.render(s, ui, cx, cy, light, [0.025, 0.02, 0.045]);
   }
 
   /** The world's word to the player (what to do now), on a plate low in the middle: it fades in, holds, fades out. */
@@ -2297,7 +2321,10 @@ export class Game {
 
   /** What the stairs taken so far add up to, as two lists of short phrases: the risks and the rewards. */
   private pathSummary(): [string[], string[]] {
-    const m = combine(this.path), risk: string[] = [], gain: string[] = [];
+    return this.modSummary(combine(this.path));
+  }
+  private modSummary(m: Modifier): [string[], string[]] {
+    const risk: string[] = [], gain: string[] = [];
     const num = (v: number) => {
       const str = String(Math.round(v * 100) / 100);
       return getLang() === "ru" ? str.replace(".", ",") : str;
@@ -2315,8 +2342,112 @@ export class Game {
     return [risk, gain];
   }
 
+  /** What an outcome does, in words, each line good (green) or bad (red). */
+  private outcomeLines(o: Outcome): [string, boolean][] {
+    const out: [string, boolean][] = [];
+    if (o.heal) out.push([t("oHeal").replace("{n}", String(o.heal)), true]);
+    if (o.hurt) out.push([t("oHurt").replace("{n}", String(o.hurt)), false]);
+    if (o.maxhp) out.push([t("oMaxhp"), true]);
+    if (o.embers) out.push([t("oEmbers").replace("{n}", String(o.embers)), true]);
+    if (o.level) out.push([t("oLevel"), true]);
+    if (o.chest) out.push([t("oChest"), true]);
+    if (o.sharpen) out.push([t(o.sharpen > 0 ? "oSharpen" : "oDull"), o.sharpen > 0]);
+    if (o.mod) {
+      const [risk, gain] = this.modSummary({ ...NO_MODIFIER, ...o.mod });
+      for (const l of gain) out.push([`${t("oNext")}: ${l}`, true]);
+      for (const l of risk) out.push([`${t("oNext")}: ${l}`, false]);
+    }
+    return out.length ? out : [[t("oNothing"), true]];
+  }
+  /** An outcome comes to pass. */
+  private applyOutcome(o: Outcome): void {
+    const w = this.world, h = w.hero;
+    if (o.heal) h.hp = Math.min(h.maxHp, h.hp + o.heal);
+    if (o.hurt) h.hp = Math.max(1, h.hp - o.hurt);
+    if (o.maxhp) (h.maxHp += o.maxhp), (h.hp += o.maxhp);
+    if (o.embers) (this.save.embers += o.embers), this.persist();
+    if (o.level) w.pendingLevels++;
+    if (o.chest) w.pendingChests++;
+    if (o.sharpen) w.reforge(o.sharpen);
+    if (o.mod) this.eventMods.push({ ...NO_MODIFIER, ...o.mod });
+  }
+  /**
+   * An event on the climb: its scene in words, and its choices side by side, each with its odds and what follows
+   * if it goes well or badly. A choice taken rolls: a marker sweeps over a bar, green as far as the odds, red past
+   * them, slows and stops; then what came of it, and on to the stairs.
+   */
+  private drawEvent(): void {
+    const ui = this.ui, W = this.r.w, H = this.r.h, now = this.now, se = this.stairEvent!, ev = se.ev;
+    se.t += this.dt;
+    const pw = Math.min(460, W - 12), px = Math.round(W / 2 - pw / 2), n = ev.choices.length, gap = 6;
+    const textLines = wrap(tx(ev.text), pw - 20);
+    const colW = se.phase === "ask" ? Math.floor((pw - 16 - (n - 1) * gap) / n) : pw - 16;
+    const descs = ev.choices.map((c) => ({ win: this.outcomeLines(c.win), lose: c.lose ? this.outcomeLines(c.lose) : [] }));
+    const lineCount = (k: number) => [...descs[k].win, ...descs[k].lose].reduce((a, [l]) => a + wrap(l, colW - 6, "mini").length, 0);
+    const choiceH = se.phase === "ask" ? 22 + Math.max(...ev.choices.map((_, k) => lineCount(k))) * 8 + 6 : 64;
+    const ph = 14 + 12 + textLines.length * 10 + 6 + choiceH + 6, py = H - 6 - ph, a = Math.min(1, se.t / 0.25), rise = Math.round((1 - a) * 12);
+    frame(ui, px, py + rise, pw, ph, { edge: C.gold });
+    text(ui, tx(ev.title), W / 2, py + rise + 7, { align: "center", color: C.gold, shadow: C.ink });
+    textLines.forEach((l, k) => text(ui, l, W / 2, py + rise + 21 + k * 10, { align: "center", color: C.text }));
+    const cy = py + rise + 21 + textLines.length * 10 + 6;
+    divider(ui, W / 2, cy - 3, pw - 30, C.goldDeep);
+    if (se.phase === "ask") {
+      ev.choices.forEach((c, k) => {
+        const x = px + 8 + k * (colW + gap), pct = `${Math.round(c.chance * 100)}%`;
+        if (button(ui, this.menu, now, x, cy + 2, colW, 18, `${tx(c.label)} · ${pct}`, { primary: k === 0, color: c.chance >= 1 ? C.text : c.chance >= 0.7 ? C.green : c.chance >= 0.5 ? C.gold : C.red })) {
+          se.pick = k;
+          se.roll = this.runRng.next();
+          se.win = se.roll < c.chance;
+          se.phase = "roll";
+          se.t = 0;
+          this.audio.play("click");
+          this.menu.open(now, 0);
+        }
+        let y = cy + 24;
+        // what follows if it goes well, then (after "or") if it goes badly
+        const put = (lines: [string, boolean][]) => lines.forEach(([l, good]) => wrap(l, colW - 6, "mini").forEach((q) => (text(ui, q, x + colW / 2, y, { font: "mini", align: "center", color: good ? C.green : C.red }), (y += 8))));
+        put(descs[k].win);
+        put(descs[k].lose);
+      });
+      return;
+    }
+    // the roll: the marker sweeps fast, slows and stops on the number drawn
+    const c = ev.choices[se.pick], sure = c.chance >= 1, rollT = sure ? 0 : 1.1, u = Math.min(1, se.t / Math.max(0.01, rollT));
+    const bw = Math.min(260, pw - 40), bx = Math.round(W / 2 - bw / 2), by = cy + 16;
+    text(ui, tx(c.label), W / 2, cy + 3, { align: "center", color: C.goldLight, shadow: C.ink });
+    if (!sure) {
+      ui.rect(bx - 1, by - 1, bw + 2, 8, C.ink);
+      ui.rect(bx, by, Math.round(bw * c.chance), 6, rgba("#2e7a3a"));
+      ui.rect(bx + Math.round(bw * c.chance), by, bw - Math.round(bw * c.chance), 6, rgba("#7a2a2e"));
+      text(ui, `${Math.round(c.chance * 100)}%`, bx + Math.round(bw * c.chance), by + 8, { font: "mini", align: "center", color: C.dim });
+      // the sweep: several passes, easing out onto the roll
+      const e = 1 - (1 - u) ** 3, sweep = e * (3 + se.roll), pos = sweep % 2 < 1 ? sweep % 1 : 1 - (sweep % 1), mx = bx + Math.round(bw * (u >= 1 ? se.roll : pos));
+      ui.rect(mx - 1, by - 4, 3, 14, C.ink);
+      ui.rect(mx, by - 3, 1, 12, rgba("#fff6d0"));
+      if (u < 1 && Math.floor(sweep * 6) !== Math.floor((sweep - this.dt * 3) * 6)) this.audio.play("click", 1.4 + pos * 0.4);
+    }
+    if (u < 1) return;
+    // what came of it (once, as the marker stops)
+    if (!se.applied) {
+      se.applied = true;
+      this.applyOutcome(se.win ? c.win : c.lose ?? {});
+      this.audio.play(se.win ? "levelup" : "hurt", se.win ? 1.3 : 0.8);
+    }
+    const res = se.win ? c.win : c.lose ?? {}, ry = by + (sure ? -2 : 20);
+    if (!sure) text(ui, se.win ? t("evWin") : t("evLose"), W / 2, ry, { align: "center", color: se.win ? C.green : C.red, shadow: C.ink });
+    this.outcomeLines(res).forEach(([l, good], k) => text(ui, l, W / 2, ry + 11 + k * 9, { font: "mini", align: "center", color: good ? C.green : C.red }));
+    if (button(ui, this.menu, now, Math.round(W / 2 - 60), py + ph - 24 + rise, 120, 18, t("onward"), { primary: true, icon: icon("hud", "play") })) {
+      se.phase = "done";
+      this.menu.open(now, 0);
+    }
+  }
+
   private drawStairs(): void {
     const ui = this.ui, W = this.r.w, H = this.r.h, now = this.now;
+    if (this.stairEvent && this.stairEvent.phase !== "done") {
+      this.drawEvent();
+      return;
+    }
     let th = this.heading(t("cleared"), 8, H >= 300 ? 2 : 1, C.gold, 1, t("stairs"));
     // what the path so far adds up to, under the heading: risks in red, rewards in green
     const [risk, gain] = this.pathSummary();
@@ -2330,7 +2461,8 @@ export class Game {
     const vertical = W < 420, n = this.stairs.length;
     const cw = vertical ? Math.min(300, W - 24) : Math.min(210, Math.floor((W - 40) / 2)), inner = cw - 20;
     const ch = Math.max(...this.stairs.map((m) => 22 + (wrap(tx(m.name), inner).length + wrap(tx(m.risk), inner - 10).length + wrap(tx(m.reward), inner - 10).length) * 10 + 26));
-    const total = vertical ? n * ch + 8 : ch, top = Math.max(8 + th + 8, Math.round(8 + th + 8 + (H - 16 - 24 - th - 8 - total) / 2));
+    // the cards low on the screen, leaving the climb in view above them
+    const total = vertical ? n * ch + 8 : ch, top = Math.max(8 + th + 8, H - 30 - total);
     this.stairs.forEach((m, k) => {
       const x = vertical ? Math.round(W / 2 - cw / 2) : Math.round(W / 2 - (n * cw + 12) / 2 + k * (cw + 12));
       const { focused, hit, idx } = this.menu.item(x, vertical ? top + k * (ch + 8) : top, cw, ch, now);

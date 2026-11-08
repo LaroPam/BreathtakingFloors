@@ -8,6 +8,7 @@ import { PAGE_SIZE, type Anim, type Frame, type Rect } from "../engine/atlas";
 import { DYNAMIC_PAGES, type Renderer } from "../engine/renderer";
 import { handsOf, heroImage, type Look, type Pose } from "../hero/rig.js";
 import { LOOKS } from "../hero/looks.js";
+import { climbPoses } from "../hero/climb.js";
 
 interface PoseSet {
   idle: Pose[];
@@ -25,9 +26,16 @@ export const HERO_FPS = POSES.fps;
  * A hero animation by name: "idle", "run", "dash", "hurt", "death", a blow "a0".."aN", or a blow while running
  * "a0_run" (frame-major over the run's 8 phases: index = frame * 8 + phase).
  */
+const climbs = new Map<string, Pose[]>();
 function posesOf(weapon: string, name: string): Pose[] {
   if (name === "death") return POSES.death;
   const w = POSES.weapons[weapon] ?? POSES.weapons.sword;
+  // the climb between floors: the run turned away from the eye, up steps
+  if (name === "climb") {
+    let c = climbs.get(weapon);
+    if (!c) climbs.set(weapon, (c = climbPoses(w.run)));
+    return c;
+  }
   if (name[0] === "a") {
     const at = w.attacks[parseInt(name.slice(1), 10)] ?? w.attacks[0];
     if (!name.endsWith("_run")) return at.stand;
@@ -42,8 +50,8 @@ function posesOf(weapon: string, name: string): Pose[] {
   }
   return w[name as "idle"];
 }
-const fpsOf = (name: string): number => (name === "death" ? HERO_FPS.death : name[0] === "a" ? HERO_FPS.attack : HERO_FPS[name as FpsKey]);
-const loops = (name: string): boolean => name === "idle" || name === "run" || name === "dash" || name === "hurt";
+const fpsOf = (name: string): number => (name === "death" ? HERO_FPS.death : name[0] === "a" ? HERO_FPS.attack : name === "climb" ? HERO_FPS.run * 0.8 : HERO_FPS[name as FpsKey]);
+const loops = (name: string): boolean => name === "idle" || name === "run" || name === "dash" || name === "hurt" || name === "climb";
 
 /** How many blows a weapon's combo has, and on which frames each lands. */
 export const attackCount = (weapon: string): number => (POSES.weapons[weapon] ?? POSES.weapons.sword).attacks.length;

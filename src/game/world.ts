@@ -1518,6 +1518,13 @@ export class World {
     }
   }
 
+  /** The ghost smith's work: the weapon in hand a quality better or worse (never into a mythic one). */
+  reforge(delta: number): void {
+    const h = this.hero;
+    this.weaponPerk(-1);
+    h.rarity = Math.max(0, Math.min(MYTHIC - 1, h.rarity + delta));
+    this.weaponPerk(1);
+  }
   /** A mythic weapon's gift, put on (+1) as it comes to hand or taken off (-1) as it is left on the altar. */
   private weaponPerk(sign: number): void {
     const h = this.hero, s = this.stats;

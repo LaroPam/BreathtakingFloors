@@ -355,6 +355,108 @@ export function combine(path: readonly Modifier[]): Modifier {
   return out;
 }
 
+// ------------------------------------------------------------------------------------------------ stair events
+/**
+ * What may happen on the climb between floors: a scene and two or three things to do, each with its chance of going
+ * well and what follows either way (on the hero now, or on the floor above: a modifier for that floor alone).
+ */
+export interface Outcome {
+  heal?: number;
+  hurt?: number;
+  maxhp?: number;
+  embers?: number;
+  /** A level-up at the start of the floor above. */
+  level?: boolean;
+  chest?: boolean;
+  /** The weapon in hand a quality better (or, negative, worse). */
+  sharpen?: number;
+  /** For the floor above only. */
+  mod?: Partial<Pick<Modifier, "spawn" | "speed" | "dark" | "elites" | "xp" | "embers" | "size">>;
+}
+export interface EventChoice {
+  label: Text;
+  /** 0..1: the chance it goes well. */
+  chance: number;
+  win: Outcome;
+  lose?: Outcome;
+}
+export interface StairEvent {
+  id: string;
+  title: Text;
+  text: Text;
+  choices: EventChoice[];
+}
+const LEAVE: EventChoice = { label: { ru: "ИДТИ ДАЛЬШЕ", en: "WALK ON" }, chance: 1, win: {} };
+export const STAIR_EVENTS: StairEvent[] = [
+  {
+    id: "gap", title: { ru: "ПРОВАЛ В СТУПЕНЯХ", en: "A GAP IN THE STAIR" },
+    text: { ru: "ПРОЛЁТ ВПЕРЕДИ ОБРУШИЛСЯ. ЧЕРЕЗ ПРОВАЛ МОЖНО ПЕРЕПРЫГНУТЬ - ИЛИ ПОЙТИ В ОБХОД ПО ТЁМНОМУ КАРНИЗУ.", en: "THE FLIGHT AHEAD HAS FALLEN IN. YOU CAN JUMP THE GAP, OR GO ROUND BY A DARK LEDGE." },
+    choices: [
+      { label: { ru: "ПЕРЕПРЫГНУТЬ", en: "JUMP IT" }, chance: 0.7, win: { mod: { xp: 1.25 } }, lose: { hurt: 1 } },
+      { label: { ru: "ПО КАРНИЗУ", en: "TAKE THE LEDGE" }, chance: 1, win: { mod: { dark: 0.15 } } },
+    ],
+  },
+  {
+    id: "altar", title: { ru: "ЗАБЫТЫЙ АЛТАРЬ", en: "A FORGOTTEN ALTAR" },
+    text: { ru: "НА ПЛОЩАДКЕ ТЛЕЕТ АЛТАРЬ, НА НЁМ ОГАРКИ СВЕЧЕЙ И ГОРСТЬ УГЛЕЙ.", en: "AN ALTAR SMOULDERS ON THE LANDING, CANDLE ENDS AND A HANDFUL OF EMBERS ON IT." },
+    choices: [
+      { label: { ru: "ПОМОЛИТЬСЯ", en: "PRAY" }, chance: 0.6, win: { heal: 2 }, lose: { mod: { speed: 1.15 } } },
+      { label: { ru: "ВЗЯТЬ УГЛИ", en: "TAKE THE EMBERS" }, chance: 0.85, win: { embers: 15 }, lose: { mod: { dark: 0.2 } } },
+      LEAVE,
+    ],
+  },
+  {
+    id: "chest", title: { ru: "СУНДУК НА СТУПЕНЯХ", en: "A CHEST ON THE STEPS" },
+    text: { ru: "ОКОВАННЫЙ СУНДУК, А ВОКРУГ НЕГО В КАМНЕ ГЛУБОКИЕ ЦАРАПИНЫ ОТ ЛЕЗВИЙ.", en: "AN IRON-BOUND CHEST, AND ROUND IT DEEP SCORES OF BLADES IN THE STONE." },
+    choices: [
+      { label: { ru: "ВСКРЫТЬ", en: "FORCE IT" }, chance: 0.55, win: { chest: true }, lose: { hurt: 2 } },
+      { label: { ru: "ОБЕЗВРЕДИТЬ ЛОВУШКУ", en: "DISARM THE TRAP" }, chance: 0.8, win: { embers: 20 }, lose: { hurt: 1 } },
+      LEAVE,
+    ],
+  },
+  {
+    id: "wanderer", title: { ru: "РАНЕНЫЙ СТРАННИК", en: "A WOUNDED WANDERER" },
+    text: { ru: "ОН СИДИТ У СТЕНЫ, ПРИЖИМАЯ К ГРУДИ ПОГАСШИЙ ФОНАРЬ, И ПРОСИТ ПОМОЧЬ ЕМУ ПОДНЯТЬСЯ.", en: "HE SITS BY THE WALL, A DEAD LANTERN CLUTCHED TO HIS CHEST, AND ASKS YOU TO HELP HIM UP." },
+    choices: [
+      { label: { ru: "ПОМОЧЬ", en: "HELP HIM" }, chance: 0.75, win: { maxhp: 1 }, lose: { mod: { elites: 1.5 } } },
+      { label: { ru: "ЗАБРАТЬ ЕГО ФЛЯГУ", en: "TAKE HIS FLASK" }, chance: 1, win: { heal: 2, mod: { dark: 0.1 } } },
+    ],
+  },
+  {
+    id: "voices", title: { ru: "ГОЛОСА СВЕРХУ", en: "VOICES FROM ABOVE" },
+    text: { ru: "СВЕРХУ ДОНОСИТСЯ ШЁПОТ. МОЖНО ПОЙТИ НА ЗВУК - ИЛИ ЗАТАИТЬСЯ И ПЕРЕЖДАТЬ.", en: "A WHISPER COMES DOWN FROM ABOVE. YOU CAN FOLLOW THE SOUND, OR HIDE AND WAIT." },
+    choices: [
+      { label: { ru: "ИДТИ НА ЗВУК", en: "FOLLOW IT" }, chance: 0.5, win: { level: true }, lose: { mod: { spawn: 1.3 } } },
+      { label: { ru: "ЗАТАИТЬСЯ", en: "HIDE" }, chance: 1, win: { mod: { spawn: 0.85, xp: 0.9 } } },
+    ],
+  },
+  {
+    id: "rubble", title: { ru: "ОБВАЛ", en: "A ROCKFALL" },
+    text: { ru: "ПРОЛЁТ ЗАВАЛЕН КАМНЯМИ, А ПОД НИМИ ЧТО-ТО ТЕПЛИТСЯ.", en: "THE FLIGHT IS CHOKED WITH STONES, AND SOMETHING GLOWS UNDER THEM." },
+    choices: [
+      { label: { ru: "РАЗОБРАТЬ", en: "DIG IT OUT" }, chance: 0.65, win: { embers: 25 }, lose: { hurt: 1 } },
+      { label: { ru: "ПРОТИСНУТЬСЯ", en: "SQUEEZE PAST" }, chance: 1, win: { mod: { size: 0.85 } } },
+    ],
+  },
+  {
+    id: "smith", title: { ru: "КУЗНЕЦ-ПРИЗРАК", en: "THE GHOST SMITH" },
+    text: { ru: "ТЕНЬ КУЗНЕЦА БЬЁТ МОЛОТОМ ПО ПУСТОЙ НАКОВАЛЬНЕ И ПРОТЯГИВАЕТ РУКУ К ТВОЕМУ ОРУЖИЮ.", en: "A SMITH'S SHADE HAMMERS AN EMPTY ANVIL, AND REACHES FOR YOUR WEAPON." },
+    choices: [
+      { label: { ru: "ДАТЬ ПЕРЕКОВАТЬ", en: "LET HIM REFORGE IT" }, chance: 0.6, win: { sharpen: 1 }, lose: { sharpen: -1 } },
+      { label: { ru: "ПОПРОСИТЬ ЗАТОЧИТЬ", en: "ASK FOR AN EDGE" }, chance: 0.9, win: { mod: { xp: 1.1 }, embers: 5 }, lose: { mod: { speed: 1.1 } } },
+      LEAVE,
+    ],
+  },
+  {
+    id: "mirror", title: { ru: "ЗЕРКАЛО ВО ТЬМЕ", en: "A MIRROR IN THE DARK" },
+    text: { ru: "В НИШЕ СТОИТ ЗЕРКАЛО. ОТРАЖЕНИЕ УЛЫБАЕТСЯ НЕ ТАК, КАК ТЫ.", en: "A MIRROR STANDS IN A NICHE. YOUR REFLECTION SMILES NOT QUITE AS YOU DO." },
+    choices: [
+      { label: { ru: "ВГЛЯДЕТЬСЯ", en: "LOOK DEEP" }, chance: 0.45, win: { level: true, heal: 1 }, lose: { hurt: 1, mod: { dark: 0.2 } } },
+      { label: { ru: "РАЗБИТЬ", en: "BREAK IT" }, chance: 0.8, win: { embers: 10 }, lose: { mod: { elites: 1.3 } } },
+    ],
+  },
+];
+
 // ------------------------------------------------------------------------------------------------ the forge
 export type ForgeId = "heart" | "might" | "haste" | "crit" | "swift" | "temper" | "reach" | "wisdom" | "greed" | "surge" | "dash" | "lantern" | "reroll" | "start" | "revive";
 /**
