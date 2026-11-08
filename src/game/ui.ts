@@ -561,7 +561,10 @@ export function drawHud(b: Batch, w: World, W: number, H: number, time: number, 
     text(b, tx(d.name), W / 2, by - 13, { font: "title", align: "center", color: col, shadow: C.ink });
     inset(b, bx - 16, by - 4, 13, 13, withAlpha(col, 0.9));
     b.image(icon("hud", "boss"), bx - 10, by + 2);
-    bar(b, bx, by, bw, 5, k, rgba("#a01858"), rgba("#ff86e6"), { well: rgba("#1a0a14"), lag: bossLag, ticks: 4 });
+    // in thirds, a phase each; grey and marked while it cannot be touched
+    const shut = !!w.brain?.invuln;
+    bar(b, bx, by, bw, 5, k, shut ? rgba("#5a5a6a") : rgba("#a01858"), shut ? rgba("#b8b8c8") : rgba("#ff86e6"), { well: rgba("#1a0a14"), lag: bossLag, ticks: 3 });
+    if (shut && Math.sin(time * 6) > -0.4) text(b, t("invulnerable"), bx + bw, by - 12, { font: "mini", align: "right", color: rgba("#c8d4ff"), shadow: C.ink });
   } else bossLag = 1;
 
   // a banner on a band of darkness; it holds a little longer when it carries a line of what to do under it

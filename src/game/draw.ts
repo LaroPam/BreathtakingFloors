@@ -9,7 +9,7 @@ import { text } from "../engine/text";
 import { AI, EL_COLOR, ENEMIES, fullWeaponName, LEGENDS, questDef, RARITIES, RelicKind, stageOf, WEAPONS } from "./defs";
 import { t as tr, tx } from "./i18n";
 import { FLOOR, LOOK_BRIDGE, LOOK_ICE, LOOK_VEIN, PIT, WALL } from "./map";
-import { BULLET_ANIMS, LUNGE_DASH, SPAWN_T, poolSpread, HERO_HIT_Y, HERO_R, B_CRESCENT, B_FIREBALL, B_LANCE, CINE_DUR, D_CHEST, D_EMBER, D_GREEN, D_HEART, D_RED, SANCTUARY_R, STAR_EVERY, TILE, type World } from "./world";
+import { BULLET_ANIMS, EYE_H, FLOOR_SQ, LUNGE_DASH, SPAWN_T, type BossBrain, poolSpread, HERO_HIT_Y, HERO_R, B_CRESCENT, B_FIREBALL, B_LANCE, CINE_DUR, D_CHEST, D_EMBER, D_GREEN, D_HEART, D_RED, SANCTUARY_R, STAR_EVERY, TILE, type World } from "./world";
 
 export class Scene {
   back = new Batch();
@@ -448,13 +448,19 @@ export function drawWorld(s: Scene, w: World, camX: number, camY: number, viewW:
     drawAnim(s, a, time + i * 0.17, x, y + bob, { key: y, glow: 1 });
   }
 
+  drawWarnings(s, w, time);
+
   // ---- enemies
   const E = w.enemies, bounty = w.bountyIndex();
   for (let i = 0; i < E.n; i++) {
     const d = ENEMIES[E.type[i]], y = E.y[i];
     let x = E.x[i];
-    if (!inView(x, y, 70)) continue;
+    if (!inView(x, y, 90)) continue;
     w.body(i);
+    if (w.brain && w.brain.uid === E.uid[i]) {
+      drawBoss(s, w, i, w.brain, time);
+      continue;
+    }
     // a newcomer gathers itself out of grey matter, texel by texel (the sprite shader's materialising), then moves
     const born = d.ai < AI.Boss ? Math.min(1, E.age[i] / SPAWN_T) : 1;
     s.back.disc(x, y, Math.max(5, w.brx * 0.9) * born, Math.max(2, w.brx * 0.32) * born, C_SHADOW);
@@ -501,7 +507,7 @@ export function drawWorld(s: Scene, w: World, camX: number, camY: number, viewW:
       }
       s.illum.light(w.bx, w.by, 20 + 30 * k, 16 + 24 * k, withAlpha(col[0], 0.45 * k));
     }
-    if (d.elite && d.ai !== AI.Boss && d.ai !== AI.BossFrog && E.hp[i] < E.maxHp[i]) {
+    if (d.elite && d.ai < AI.Boss && E.hp[i] < E.maxHp[i]) {
       const bw = 20, bx = Math.round(w.bx - bw / 2), by = Math.round(w.by - w.bry - 8);
       s.front.rect(bx - 1, by - 1, bw + 2, 4, rgba("#0b0a12"));
       s.front.rect(bx, by, Math.max(1, Math.round((bw * E.hp[i]) / E.maxHp[i])), 2, rgba("#ff4a5a"));
@@ -963,3 +969,135 @@ export function drawWorld(s: Scene, w: World, camX: number, camY: number, viewW:
     text(s.front, p.text, p.x, p.y - pop, { font: p.big ? "big" : "mini", align: "center", color: withAlpha(p.color, a), shadow: withAlpha(rgba("#0b0a12"), a), outline: p.big });
   }
 }
+
+// ============================================================================================ bosses
+const BOSS_ART = { warden: "warden", treant: "treant", eye: "voideye" } as const;
+/** A boss's pose for what it is doing. */
+function bossPose(b: BossBrain): string {
+  if (b.act === "summon") return b.kind === "warden" ? "kneel" : b.kind === "treant" ? "cocoon" : "closed";
+  if (b.kind === "warden") return b.act === "windup" || b.act === "hold" ? "windup" : b.act === "strike" || b.act === "recover" || b.act === "spikes" ? "strike" : b.act === "dashwarn" || b.act === "dash" ? "dash" : "idle";
+  if (b.kind === "treant") return b.act === "roots" || b.act === "spores" ? "cast" : b.act === "rootline" || b.act === "thorns" ? "slam" : "idle";
+  return b.act === "beam" || b.act === "cross" ? "charge" : "idle";
+}
+/**
+ * A boss: its sprite for its phase and what it is doing, at its own size; before a great blow a red outline pulsing
+ * round it; the Void Eye's iris turned toward the hero; a shadow under it (far below the floating eye).
+ */
+function drawBoss(s: Scene, w: World, i: number, b: BossBrain, time: number): void {
+  const E = w.enemies, d = ENEMIES[E.type[i]], x = E.x[i], y = E.y[i], h = w.hero, pose = bossPose(b);
+  const a = anim(`${BOSS_ART[b.kind]}_${b.phase}_${pose}`), hit = E.flash[i] > 0 ? 1 : 0, face = E.face[i];
+  const shake = b.act === "hold" ? Math.round(Math.sin(time * 80)) : 0;
+  s.back.disc(x, y + 1, b.kind === "treant" ? 46 : b.kind === "eye" ? 26 : 30, b.kind === "treant" ? 10 : 7, C_SHADOW);
+  // the red outline before the warden's blow (and the treant's thorns): the sprite four times, a pixel out each way
+  const tell = (b.kind === "warden" && (b.act === "windup" || b.act === "hold")) || (b.kind === "treant" && b.act === "thorns" && !b.init);
+  if (tell) {
+    const pulse = 0.55 + 0.45 * Math.sin(time * 22), col = rgbaf(1, 0.15, 0.12, pulse);
+    for (const [dx, dy] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) drawAnim(s, a, E.t[i], x + shake + dx * 2, y + dy * 2, { sx: face * d.scale, sy: d.scale, tint: col, flash: 2, key: y - 0.01, glow: 0 });
+    s.illum.light(x, y - 50, 70, 60, rgbaf(1, 0.2, 0.15, 0.3 * pulse));
+  }
+  // untouchable while it summons: a cold shimmer over it
+  const tint = b.invuln ? rgbaf(0.75 + 0.15 * Math.sin(time * 6), 0.8, 1, 1) : 0xffffffff;
+  drawAnim(s, a, E.t[i], x + shake, y, { sx: face * d.scale, sy: d.scale, tint, flash: hit * 0.8, key: y, glow: 0.9 });
+  if (b.kind === "eye" && pose !== "closed") {
+    const ia = anim(`voideye_${b.phase}_iris`), ex = x, ey = y - EYE_H, dx = h.x - ex, dy = h.y - 14 - ey, dd = Math.hypot(dx, dy) || 1;
+    const k = pose === "charge" ? 4 : 8;
+    drawAnim(s, ia, E.t[i], x + Math.round((dx / dd) * k / 2) * 2, y + Math.round(((dy / dd) * k * 0.8) / 2) * 2, { sx: d.scale, sy: d.scale, key: y + 0.01, glow: 0.9 });
+  }
+  if (d.glow) s.illum.light(x, y - 50, 80, 70, withAlpha(rgba(d.glow), 0.25 + 0.1 * b.phase));
+  if (b.invuln) for (let q = 0; q < 3; q++) s.glow.light(x + Math.sin(time * 3 + q * 2) * 30, y - 40 + Math.cos(time * 2 + q) * 20, 16, 16, rgbaf(0.6, 0.75, 1, 0.25));
+}
+
+/** Pixels of a warning on the floor: a sparse hatch over its whole shape, dense where it has filled, a pulsing rim. */
+function hatch(s: Scene, x0: number, y0: number, x1: number, y1: number, zone: (x: number, y: number) => number, col: number, time: number): void {
+  const pulse = 0.65 + 0.35 * Math.sin(time * 16), dim = withAlpha(col, 0.45), full = withAlpha(col, 0.75), rim = withAlpha(col, pulse);
+  for (let y = Math.floor(y0); y <= Math.ceil(y1); y++)
+    for (let x = Math.floor(x0); x <= Math.ceil(x1); x++) {
+      const z = zone(x + 0.5, y + 0.5);
+      if (z === 3) s.back.rect(x, y, 1, 1, rim);
+      else if (z === 2 && (x + y) % 2 === 0) s.back.rect(x, y, 1, 1, full);
+      else if (z === 1 && (x + y + Math.floor(time * 12)) % 4 === 0) s.back.rect(x, y, 1, 1, dim);
+    }
+}
+/** The bosses' warnings on the floor, their beams, and what bursts from the floor where the warnings were. */
+function drawWarnings(s: Scene, w: World, time: number): void {
+  for (const wn of w.warns) {
+    const p = Math.max(0, Math.min(1, 1 - wn.t / wn.dur)), col = wn.col;
+    if (wn.kind === "circle") {
+      const r = wn.r, ry = r * FLOOR_SQ;
+      hatch(s, wn.x - r - 1, wn.y - ry - 1, wn.x + r + 1, wn.y + ry + 1, (x, y) => {
+        const dd = Math.hypot((x - wn.x) / r, (y - wn.y) / ry);
+        return dd > 1 ? 0 : dd > 1 - 1.4 / r ? 3 : dd <= p ? 2 : 1;
+      }, col, time);
+      s.illum.light(wn.x, wn.y, r * 1.4, ry * 1.4, withAlpha(col, 0.25 * p));
+    } else if (wn.kind === "line") {
+      const dx = wn.x2 - wn.x, dy = wn.y2 - wn.y, L = Math.hypot(dx, dy) || 1, ux = dx / L, uy = dy / L, hw = wn.r / 2;
+      hatch(s, Math.min(wn.x, wn.x2) - hw, Math.min(wn.y, wn.y2) - hw, Math.max(wn.x, wn.x2) + hw, Math.max(wn.y, wn.y2) + hw, (x, y) => {
+        const u = (x - wn.x) * ux + (y - wn.y) * uy, v = Math.abs(-(x - wn.x) * uy + (y - wn.y) * ux);
+        if (u < 0 || u > L || v > hw) return 0;
+        return v > hw - 1 || u > L - 1 ? 3 : u <= p * L ? 2 : 1;
+      }, col, time);
+      // arrowheads along it, running in the way the charge will go
+      for (let q = 0; q < 3; q++) {
+        const u = ((time * 1.6 + q / 3) % 1) * L, cx = wn.x + ux * u, cy = wn.y + uy * u;
+        for (const sd of [-1, 1]) s.back.line(cx, cy, cx - ux * 6 + uy * 5 * sd, cy - uy * 6 - ux * 5 * sd, 1, withAlpha(col, 0.9));
+      }
+    } else if (wn.kind === "arc") {
+      const R = wn.r;
+      hatch(s, wn.x - R, wn.y - R * FLOOR_SQ, wn.x + R, wn.y + R * FLOOR_SQ, (x, y) => {
+        const dx = x - wn.x, dy = (y - wn.y) / FLOOR_SQ, dd = Math.hypot(dx, dy);
+        if (dd > R) return 0;
+        let a = Math.atan2(dy, dx) - (wn.a0 + wn.a1) / 2;
+        a = Math.atan2(Math.sin(a), Math.cos(a));
+        const half = (wn.a1 - wn.a0) / 2;
+        if (Math.abs(a) > half) return 0;
+        return dd > R - 1.5 || Math.abs(a) > half - 1.2 / Math.max(dd, 1) ? 3 : dd <= p * R ? 2 : 1;
+      }, col, time);
+    } else {
+      // a beam to come: a thin line flickering, brightening and thickening as it nears
+      const flick = Math.sin(time * 40) > -0.3 ? 1 : 0.4, wdt = p > 0.7 ? 2 : 1;
+      s.front.line(wn.x, wn.y, wn.x2, wn.y2, wdt, withAlpha(col, (0.35 + 0.6 * p) * flick), wn.y + 400);
+      s.glow.line(wn.x, wn.y, wn.x2, wn.y2, wdt + 1, withAlpha(col, 0.4 * p));
+    }
+  }
+  for (const bm of w.beams) {
+    // the beam: a white heart in a band of its colour, flickering, its light along it
+    const x2 = bm.x + Math.cos(bm.ang) * bm.len, y2 = bm.y + Math.sin(bm.ang) * bm.len, fade = Math.min(1, (bm.dur - bm.t) / 0.08, bm.t / 0.15), wob = 1 + 0.12 * Math.sin(time * 50);
+    s.front.line(bm.x, bm.y, x2, y2, bm.w * fade * wob, withAlpha(bm.col, 0.9), bm.y + 400);
+    s.front.line(bm.x, bm.y, x2, y2, Math.max(1, bm.w * 0.4 * fade), rgbaf(1, 1, 1, 0.95), bm.y + 400.1);
+    s.glow.line(bm.x, bm.y, x2, y2, bm.w * 2.2 * fade, withAlpha(bm.col, 0.55));
+    for (let q = 0; q <= 6; q++) s.illum.light(bm.x + (x2 - bm.x) * (q / 6), bm.y + (y2 - bm.y) * (q / 6), 34, 28, withAlpha(bm.col, 0.35 * fade));
+  }
+  for (const er of w.erupts) {
+    if (er.t < 0) continue;
+    // up fast, a moment held, sinking away
+    const k = er.t < 0.12 ? er.t / 0.12 : er.t < 0.45 ? 1 : Math.max(0, 1 - (er.t - 0.45) / 0.3);
+    if (er.kind === "spike") {
+      for (const [ox, hgt, wd] of [[-6, 13, 6], [0, 20, 8], [6, 11, 6], [-2, 8, 5]] as const) {
+        const H2 = Math.round(hgt * k), bx = er.x + ox;
+        for (let r = 0; r < H2; r++) {
+          const ww = Math.max(1, Math.round(wd * (1 - r / H2)));
+          s.color.rect(Math.round(bx - ww / 2), Math.round(er.y - r), Math.ceil(ww / 2), 1, rgba("#8a8698"), er.y + 0.2);
+          s.color.rect(Math.round(bx - ww / 2) + Math.ceil(ww / 2), Math.round(er.y - r), Math.floor(ww / 2), 1, rgba("#4a4658"), er.y + 0.2);
+        }
+        if (H2 > 2) s.color.rect(Math.round(bx - 1), Math.round(er.y - H2), 1, 1, rgba("#cac6d6"), er.y + 0.21);
+      }
+    } else if (er.kind === "root") {
+      for (const [ox, hgt, bend] of [[-5, 14, -4], [1, 22, 3], [6, 12, 5]] as const) {
+        const H2 = hgt * k;
+        let px = er.x + ox, py = er.y;
+        for (let q = 1; q <= 5; q++) {
+          const u = q / 5, nx = er.x + ox + Math.sin(u * 2.4) * bend, ny = er.y - H2 * u;
+          s.color.line(px, py, nx, ny, Math.max(1, 4 * (1 - u) + 1), q < 3 ? rgba("#5e3e24") : rgba("#82583a"), er.y + 0.2);
+          (px = nx), (py = ny);
+        }
+        if (H2 > 4) s.color.rect(Math.round(px), Math.round(py), 1, 1, rgba("#c8e050"), er.y + 0.21);
+      }
+    } else {
+      const H2 = 30 * k, col = rgba("#a884ff");
+      s.color.rect(Math.round(er.x - 2), Math.round(er.y - H2), 4, Math.round(H2), withAlpha(col, 0.85), er.y + 0.2);
+      s.color.rect(Math.round(er.x - 0.5), Math.round(er.y - H2), 1, Math.round(H2), rgbaf(1, 1, 1, 0.9), er.y + 0.21);
+      s.glow.light(er.x, er.y - H2 / 2, 14, 22, withAlpha(col, 0.8 * k));
+    }
+  }
+}
+

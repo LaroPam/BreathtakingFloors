@@ -113,7 +113,8 @@ void main() {
     t.rgb = mix(grey, t.rgb, k * k);
     if (u * 1.05 - n < 0.05) t.rgb = mix(t.rgb, vec3(0.9, 0.9, 0.95), 0.6);
   }
-  vec3 rgb = mix(t.rgb * v_color.rgb, vec3(1.0), max(v_flash, 0.0));
+  // a flash of 2 or more is a solid silhouette in the tint's colour (a boss's red outline before its blow)
+  vec3 rgb = v_flash >= 1.5 ? v_color.rgb : mix(t.rgb * v_color.rgb, vec3(1.0), max(v_flash, 0.0));
   if (u_additive == 1) {
     o = vec4(rgb * t.a * v_color.a, 1.0);
     return;

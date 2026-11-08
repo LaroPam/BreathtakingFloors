@@ -902,7 +902,14 @@ export class Game {
     const lead = this.state === "play" ? 18 : 0;
     // during a boss's entrance the camera goes to it and holds, then comes back
     const look = c && c.t < CINE_DUR - 0.45;
-    const tx = look ? c.x - W / 2 : h.x + h.aimX * lead - W / 2, ty = look ? c.y - 30 - H / 2 : h.y - 20 + h.aimY * lead - H / 2;
+    let tx = look ? c.x - W / 2 : h.x + h.aimX * lead - W / 2, ty = look ? c.y - 30 - H / 2 : h.y - 20 + h.aimY * lead - H / 2;
+    // with a boss up the view leans toward it, so the fight (and a floating eye) stays on screen; the hero stays well in
+    const bi = c ? -1 : w.bossIndex();
+    if (bi >= 0 && this.state === "play") {
+      const bx = w.enemies.x[bi] - W / 2, by = w.enemies.y[bi] - 60 - H / 2;
+      tx += Math.max(-W * 0.3, Math.min(W * 0.3, (bx - tx) * 0.4));
+      ty += Math.max(-H * 0.28, Math.min(H * 0.28, (by - ty) * 0.4));
+    }
     const k = 1 - Math.exp(-dt * (c ? 4.5 : 8));
     this.camX += (tx - this.camX) * k;
     this.camY += (ty - this.camY) * k;
