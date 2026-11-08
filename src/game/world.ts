@@ -1383,10 +1383,14 @@ export class World {
       const kind = B.kind === "arrow" ? B_ARROW : B.kind === "fire" ? B_FIREBALL : B_LANCE;
       const el = B.kind === "fire" ? El.Fire : B.kind === "frost" ? El.Frost : wel;
       const pierce = B.kind === "arrow" ? 1 + (h.def.id === "ranger" ? 1 : 0) : B.kind === "frost" ? 2 : 0;
+      // aimed from where it leaves, not from the chest: the hand is higher and ahead, and a shot parallel to the
+      // chest's line would pass over a low target (a slime)
+      const goal = this.autoAim ? (this.target.r > 0 ? this.target : null) : this.aimTarget;
+      const base = goal && Math.hypot(goal.x - hx, goal.y - hy) > 10 ? Math.atan2(goal.y - hy, goal.x - hx) : dir;
       for (let q = 0; q < n; q++) {
         // it leaves from just past the hand, small, and grows to its size in flight (draw.ts), rather than appearing
         // whole inside the hero
-        const a = dir + (q - (n - 1) / 2) * spread;
+        const a = base + (q - (n - 1) / 2) * spread;
         this.bullets.add(TEAM_HERO, kind, hx + Math.cos(a) * 7, hy + Math.sin(a) * 7, Math.cos(a) * speed, Math.sin(a) * speed, 0.95, dmg, B.kind === "fire" ? 5 : 3.5, el, pierce);
       }
       this.audio.play(B.kind === "arrow" ? "shoot" : B.kind === "fire" ? "ignite" : "freeze", B.kind === "arrow" ? 0.6 : 1.3);
