@@ -23,6 +23,11 @@ const THEMES: { bpm: number; prog: number[][]; arp: OscillatorType; bass: Oscill
   { bpm: 118, prog: [[48, 51, 55], [44, 48, 51], [46, 50, 53], [43, 47, 50]], arp: "square", bass: "sawtooth", bright: 1.1 },
 ];
 
+// the boss fight's own track (a seamless loop; see art/music/README.md); the synthesized boss theme plays if it cannot
+import bossTrackUrl from "../../art/music/boss.ogg?url";
+/** The boss track's level in the music bus, set by ear against the synthesized themes. */
+const BOSS_TRACK_GAIN = 1;
+
 export class Audio {
   /** Which mood the music plays in (THEMES): 0 crypt, 1 garden, 2 frozen halls, 3 a boss. */
   theme = 0;
@@ -44,6 +49,11 @@ export class Audio {
   sfxVolume = 0.8;
   musicVolume = 0.5;
   private suspendedByGame = false;
+  /** The boss track: decoded once, the playing source and its fader. */
+  private bossBuf: AudioBuffer | null = null;
+  private bossLoad: Promise<void> | null = null;
+  private bossSrc: AudioBufferSourceNode | null = null;
+  private bossFade: GainNode | null = null;
 
   /** When the browser was last asked to let the sound play (s, performance.now() / 1000). */
   private askedAt = 0;
@@ -97,6 +107,7 @@ export class Audio {
       d[i] = (s / 2147483647) * 2 - 1;
     }
     if (this.musicOn) this.startMusic();
+    this.loadBossTrack();
     if (ctx.state !== "running") void ctx.resume().then(() => this.prime());
     else this.prime();
   }
@@ -306,6 +317,7 @@ export class Audio {
   }
   stopMusic(): void {
     this.musicOn = false;
+    this.bossTrack(false);
     if (this.musicTimer) clearInterval(this.musicTimer);
     this.musicTimer = 0;
   }
@@ -318,7 +330,14 @@ export class Audio {
   private schedule(): void {
     const c = this.ctx;
     if (!c || c.state !== "running") return;
+    // a boss here and its track ready: the track plays, the synthesized music rests (its beat keeps time)
+    const track = this.theme === 3 && !!this.bossBuf;
+    this.bossTrack(track);
     const T = THEMES[this.theme] ?? THEMES[0], spb = 60 / T.bpm / 2; // eighth notes
+    if (track) {
+      while (this.nextBeat < c.currentTime + 0.35) (this.nextBeat += spb), this.beat++;
+      return;
+    }
     // the bass walks the theme's four-bar progression, the arpeggio picks from its chord
     const prog = T.prog;
     while (this.nextBeat < c.currentTime + 0.35) {
@@ -335,6 +354,46 @@ export class Audio {
       if (k > 0.65 && b % 8 === 4) this.hat(t, 0.08, 0.12);
       this.nextBeat += spb;
       this.beat++;
+    }
+  }
+  /** Fetch and decode the boss track once (Vorbis: a browser that cannot decode it keeps the synthesized theme). */
+  private loadBossTrack(): void {
+    const c = this.ctx;
+    if (!c || this.bossLoad) return;
+    // the one-file build carries the track inline: read it straight from the data URL, no request (a page's
+    // security rules may forbid fetching even that)
+    const bytes = bossTrackUrl.startsWith("data:")
+      ? Promise.resolve(Uint8Array.from(atob(bossTrackUrl.slice(bossTrackUrl.indexOf(",") + 1)), (ch) => ch.charCodeAt(0)).buffer)
+      : fetch(bossTrackUrl).then((r) => r.arrayBuffer());
+    this.bossLoad = bytes
+      .then((data) => c.decodeAudioData(data))
+      .then((buf) => void (this.bossBuf = buf))
+      .catch((e) => {
+        // no Vorbis here, or the file did not come: the synthesized boss theme it is
+        console.warn("boss track unavailable, the synthesized theme plays", e);
+      });
+  }
+  /** Start the boss track from its top (fading in) or fade it out. */
+  private bossTrack(on: boolean): void {
+    const c = this.ctx;
+    if (!c) return;
+    if (on && !this.bossSrc && this.bossBuf) {
+      const src = c.createBufferSource(), g = c.createGain(), t = c.currentTime;
+      src.buffer = this.bossBuf;
+      src.loop = true;
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(BOSS_TRACK_GAIN, t + 0.8);
+      src.connect(g).connect(this.musicBus);
+      src.start(t);
+      this.bossSrc = src;
+      this.bossFade = g;
+    } else if (!on && this.bossSrc) {
+      const t = c.currentTime, src = this.bossSrc;
+      this.bossFade!.gain.cancelScheduledValues(t);
+      this.bossFade!.gain.setTargetAtTime(0.0001, t, 0.35);
+      src.stop(t + 1.6);
+      this.bossSrc = null;
+      this.bossFade = null;
     }
   }
   private voice(type: OscillatorType, f: number, t: number, dur: number, vol: number, cutoff: number, attack: number): void {

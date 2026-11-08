@@ -9,7 +9,7 @@
 import { Art, RAMP, S, T, H, halfPainter, glint, frameOf } from "../lib/parts.js";
 import { hex } from "../../../pixelfx/src/core/index.js";
 
-export const POSES = ["idle", "windup", "strike", "dash", "kneel"];
+export const POSES = ["idle", "walk", "windup", "strike", "dash", "kneel"];
 
 export const meta = {
   name: "Crypt Warden",
@@ -44,11 +44,25 @@ const POSE = {
   kneel: { lean: 3, feet: [[-34, 0], [18, 0]], knees: [[-22, -2], [20, -24]], hand: [24, -60], tip: [26, 6], back: [18, -62], bow: 4, kneel: true },
 };
 const lerpPt = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+/**
+ * The heavy walk: two steps over the loop. The feet swap places, the one coming forward lifted off the floor, its
+ * knee bent up; the body sinks as a foot lands and the sword sways with the stride.
+ */
+function walkPose(u) {
+  const s = Math.sin(u), c = Math.cos(u), lift = (v) => Math.max(0, v) * 7;
+  return {
+    lean: 2, bow: 0, kneel: false,
+    feet: [[-15 + 11 * s, -lift(c)], [15 - 11 * s, -lift(-c)]],
+    knees: [[-12 + 9 * s, -25 - lift(c) * 0.7], [13 - 9 * s, -26 - lift(-c) * 0.7]],
+    hand: [26 + 2 * s, -54], tip: [58 + 4 * s, -2 - Math.abs(s) * 2], back: [-20 - 5 * s, -54],
+    bob: Math.round(Math.abs(Math.sin(u)) * -2 + 1),
+  };
+}
 
 export function draw(p0, t, o) {
   const q = p0, p = halfPainter(p0);
-  const ph = o.phase | 0, P = POSE[o.pose] ?? POSE.idle, u = (t / meta.duration) * Math.PI * 2;
-  const breath = Math.round(Math.sin(u) * (o.pose === "idle" ? 1 : 0.4)), glowK = 0.85 + 0.15 * Math.sin(u * 2);
+  const ph = o.phase | 0, u = (t / meta.duration) * Math.PI * 2, P = o.pose === "walk" ? walkPose(u) : POSE[o.pose] ?? POSE.idle;
+  const breath = o.pose === "walk" ? P.bob : Math.round(Math.sin(u) * (o.pose === "idle" ? 1 : 0.4)), glowK = 0.85 + 0.15 * Math.sin(u * 2);
   const a = new Art(150, 70, 134);
   const L = P.lean, sink = P.kneel ? 20 : 0, by = breath + sink;
   const cx = L * 0.7, hipY = -50 + sink, chestY = -76 + by, neckY = -92 + by;

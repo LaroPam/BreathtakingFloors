@@ -975,7 +975,7 @@ const BOSS_ART = { warden: "warden", treant: "treant", eye: "voideye" } as const
 /** A boss's pose for what it is doing. */
 function bossPose(b: BossBrain): string {
   if (b.act === "summon") return b.kind === "warden" ? "kneel" : b.kind === "treant" ? "cocoon" : "closed";
-  if (b.kind === "warden") return b.act === "windup" || b.act === "hold" ? "windup" : b.act === "strike" || b.act === "recover" || b.act === "spikes" ? "strike" : b.act === "dashwarn" || b.act === "dash" ? "dash" : "idle";
+  if (b.kind === "warden") return b.act === "windup" || b.act === "hold" ? "windup" : b.act === "strike" || b.act === "recover" || b.act === "spikes" ? "strike" : b.act === "dashwarn" || b.act === "dash" ? "dash" : b.moving ? "walk" : "idle";
   if (b.kind === "treant") return b.act === "roots" || b.act === "spores" ? "cast" : b.act === "rootline" || b.act === "thorns" ? "slam" : "idle";
   return b.act === "beam" || b.act === "cross" ? "charge" : "idle";
 }
@@ -986,22 +986,31 @@ function bossPose(b: BossBrain): string {
 function drawBoss(s: Scene, w: World, i: number, b: BossBrain, time: number): void {
   const E = w.enemies, d = ENEMIES[E.type[i]], x = E.x[i], y = E.y[i], h = w.hero, pose = bossPose(b);
   const a = anim(`${BOSS_ART[b.kind]}_${b.phase}_${pose}`), hit = E.flash[i] > 0 ? 1 : 0, face = E.face[i];
-  const shake = b.act === "hold" ? Math.round(Math.sin(time * 80)) : 0;
+  let shake = b.act === "hold" ? Math.round(Math.sin(time * 80)) : 0;
+  // what has no walk of its own still moves as it goes: the treant lurches from root to root, the eye bobs as it drifts
+  let lift = 0, sq = 1;
+  if (b.kind === "treant" && b.moving) {
+    const st = time * 3.2;
+    lift = -Math.round(Math.abs(Math.sin(st)) * 3);
+    shake += Math.round(Math.sin(st) * 2);
+    sq = 1 - 0.04 * Math.abs(Math.cos(st));
+  } else if (b.kind === "eye") lift = Math.round(Math.sin(time * 2.2) * 3 + (b.moving ? Math.sin(time * 5) : 0));
   s.back.disc(x, y + 1, b.kind === "treant" ? 46 : b.kind === "eye" ? 26 : 30, b.kind === "treant" ? 10 : 7, C_SHADOW);
   // the red outline before the warden's blow (and the treant's thorns): the sprite four times, a pixel out each way
   const tell = (b.kind === "warden" && (b.act === "windup" || b.act === "hold")) || (b.kind === "treant" && b.act === "thorns" && !b.init);
   if (tell) {
     const pulse = 0.55 + 0.45 * Math.sin(time * 22), col = rgbaf(1, 0.15, 0.12, pulse);
-    for (const [dx, dy] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) drawAnim(s, a, E.t[i], x + shake + dx * 2, y + dy * 2, { sx: face * d.scale, sy: d.scale, tint: col, flash: 2, key: y - 0.01, glow: 0 });
+    for (const [dx, dy] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) drawAnim(s, a, E.t[i], x + shake + dx * 2, y + lift + dy * 2, { sx: face * d.scale, sy: d.scale * sq, tint: col, flash: 2, key: y - 0.01, glow: 0 });
     s.illum.light(x, y - 50, 70, 60, rgbaf(1, 0.2, 0.15, 0.3 * pulse));
   }
   // untouchable while it summons: a cold shimmer over it
   const tint = b.invuln ? rgbaf(0.75 + 0.15 * Math.sin(time * 6), 0.8, 1, 1) : 0xffffffff;
-  drawAnim(s, a, E.t[i], x + shake, y, { sx: face * d.scale, sy: d.scale, tint, flash: hit * 0.8, key: y, glow: 0.9 });
+  // a light flash when hit: a boss is hit all the time, a full one would keep it white
+  drawAnim(s, a, E.t[i], x + shake, y + lift, { sx: face * d.scale, sy: d.scale * sq, tint, flash: hit * 0.22, key: y, glow: 0.9 });
   if (b.kind === "eye" && pose !== "closed") {
     const ia = anim(`voideye_${b.phase}_iris`), ex = x, ey = y - EYE_H, dx = h.x - ex, dy = h.y - 14 - ey, dd = Math.hypot(dx, dy) || 1;
     const k = pose === "charge" ? 4 : 8;
-    drawAnim(s, ia, E.t[i], x + Math.round((dx / dd) * k / 2) * 2, y + Math.round(((dy / dd) * k * 0.8) / 2) * 2, { sx: d.scale, sy: d.scale, key: y + 0.01, glow: 0.9 });
+    drawAnim(s, ia, E.t[i], x + Math.round((dx / dd) * k / 2) * 2, y + lift + Math.round(((dy / dd) * k * 0.8) / 2) * 2, { sx: d.scale, sy: d.scale, key: y + 0.01, glow: 0.9 });
   }
   if (d.glow) s.illum.light(x, y - 50, 80, 70, withAlpha(rgba(d.glow), 0.25 + 0.1 * b.phase));
   if (b.invuln) for (let q = 0; q < 3; q++) s.glow.light(x + Math.sin(time * 3 + q * 2) * 30, y - 40 + Math.cos(time * 2 + q) * 20, 16, 16, rgbaf(0.6, 0.75, 1, 0.25));
