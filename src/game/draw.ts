@@ -1005,7 +1005,8 @@ function drawBoss(s: Scene, w: World, i: number, b: BossBrain, time: number): vo
   }
   // untouchable while it summons: a cold shimmer over it
   const tint = b.invuln ? rgbaf(0.75 + 0.15 * Math.sin(time * 6), 0.8, 1, 1) : 0xffffffff;
-  drawAnim(s, a, E.t[i], x + shake, y + lift, { sx: face * d.scale, sy: d.scale * sq, tint, flash: hit * 0.8, key: y, glow: 0.9 });
+  // a light flash when hit: a boss is hit all the time, a full one would keep it white
+  drawAnim(s, a, E.t[i], x + shake, y + lift, { sx: face * d.scale, sy: d.scale * sq, tint, flash: hit * 0.22, key: y, glow: 0.9 });
   if (b.kind === "eye" && pose !== "closed") {
     const ia = anim(`voideye_${b.phase}_iris`), ex = x, ey = y - EYE_H, dx = h.x - ex, dy = h.y - 14 - ey, dd = Math.hypot(dx, dy) || 1;
     const k = pose === "charge" ? 4 : 8;
