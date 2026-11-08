@@ -8,13 +8,13 @@ import { anim, FONTS, frameAt, icon, type Anim, type Rect } from "../engine/atla
 import { heroSprites, initHeroSprites, lookId, type HeroAnim, type HeroSprites } from "./heroSprites";
 import { fitScale, measure, text, wrap } from "../engine/text";
 import { dayNumber, weekNumber, type Board, type BoardName, type Platform } from "../platform/platform";
-import { ACHIEVEMENTS, heroDef, biomeOf, bossOf, combine, floorInfo, stageOf, EL_COLOR, LEGENDS, legendDesc, type WeaponId, EL_NAME, ENEMIES, EVOLUTIONS, evolutionOf, FLOORS, FORGE, questDef, TASK_BONUS, TASKS, type TaskId, HEROES, WEAPONS, weaponName, MODIFIERS, MUTATORS, NO_MODIFIER, REACTIONS, RELIC_MAX, RELIC_SLOTS, RELICS, STATS, type Modifier, type Reaction, type RelicKind, type StatId } from "./defs";
+import { ACHIEVEMENTS, heroDef, biomeOf, bossOf, combine, floorInfo, stageOf, EL_COLOR, LEGENDS, legendDesc, type WeaponId, EL_NAME, ENEMIES, EVOLUTIONS, evolutionOf, FLOORS, FORGE, questDef, TASK_BONUS, TASKS, type TaskId, type ForgeId, HEROES, WEAPONS, weaponName, MODIFIERS, MUTATORS, NO_MODIFIER, REACTIONS, RELIC_MAX, RELIC_SLOTS, RELICS, STATS, type Modifier, type Reaction, type RelicKind, type StatId } from "./defs";
 import { drawWorld, Scene } from "./draw";
 import { stairwell } from "./stairwell";
 import { getLang, langFor, setLang, t, tx, type Lang } from "./i18n";
 import { Rng } from "./rng";
 import { defaultSave, sanitize, type SaveData } from "./save";
-import { button, slider, C, divider, glow as glowUi, drawHud, drawPointers, drawTouch, fmtTime, frame, header, inset, Menu, panel, para, plate , slot } from "./ui";
+import { button, slider, C, divider, glow as glowUi, drawHud, drawPointers, drawTouch, fmtTime, frame, header , Menu, panel, para, plate , slot } from "./ui";
 import { CINE_DUR, World } from "./world";
 
 type State = "title" | "heroes" | "forge" | "daily" | "records" | "tasks" | "settings" | "card" | "play" | "spin" | "pick" | "pause" | "codex" | "stairs" | "dead" | "won";
@@ -97,6 +97,9 @@ export class Game {
   /** Achievements earned and waiting to be shown. */
   private toasts: { id: string; t: number }[] = [];
   private startSpins = 0;
+  /** The forge's rerolls left this run, and its second wind (unused). */
+  private rerolls = 0;
+  private secondWind = false;
   /** The stairs taken this run, in order: their changes add up (combine()). */
   private path: Modifier[] = [];
   private stairs: Modifier[] = [];
@@ -308,10 +311,22 @@ export class Game {
     w.hero.victor = this.wearsVictor(hero.id);
     // their frames for this weapon, drawn ahead behind the floor's title card
     heroSprites().prefetch(lookId(hero.id, w.hero.victor), hero.weapon);
-    w.hero.maxHp += f.heart ?? 0;
+    // the forge, level by level (each item's step a level: see FORGE)
+    const lv = (id: ForgeId) => f[id] ?? 0, step = (id: ForgeId) => (FORGE.find((q) => q.id === id)!.step * lv(id)) / 100;
+    w.hero.maxHp += lv("heart");
     w.hero.hp = w.hero.maxHp;
-    w.stats.might = hero.might * (1 + 0.1 * (f.might ?? 0));
-    w.stats.magnet *= 1 + 0.25 * (f.reach ?? 0);
+    w.stats.might = hero.might * (1 + step("might"));
+    w.stats.haste *= 1 + step("haste");
+    w.stats.crit += step("crit");
+    w.stats.speed *= 1 + step("swift");
+    w.dodge = step("temper");
+    w.stats.magnet *= 1 + step("reach");
+    w.xpMul = 1 + step("wisdom");
+    w.stats.odGain *= 1 + step("surge");
+    w.stats.dashCd *= 1 - step("dash");
+    w.stats.lantern *= 1 + step("lantern");
+    this.rerolls = lv("reroll");
+    this.secondWind = lv("revive") > 0;
     w.autoAim = true;
     // the week's rule
     let spins = f.start ? 2 : 1;
@@ -344,7 +359,10 @@ export class Game {
   /** A run is over: embers, records, the leaderboards, the result screen. */
   private finishRun(won: boolean): void {
     const w = this.world;
-    const embers = Math.round(((w.floor - 1) * 8 + w.kills / 10 + w.embersBonus + (won ? 60 : 0)) * (w.mod.embers ?? 1));
+    // embers are earned slowly: floors cleared and bosses beaten count most, the embers picked up a little, kills
+    // barely; the stairs' reward and the forge's greed multiply it
+    const cleared = w.floor - 1 + (won ? 1 : 0), bosses = Math.floor(cleared / 3), greed = 1 + ((FORGE.find((q) => q.id === "greed")!.step * (this.daily ? 0 : this.save.forge.greed ?? 0)) / 100);
+    const embers = Math.round((cleared * 6 + bosses * 20 + (won ? 50 : 0) + w.embersBonus * 0.35 + w.kills / 80) * (w.mod.embers ?? 1) * greed);
     const score = w.floor * 1000 + w.kills * 5 + w.hero.level * 50 + (won ? 5000 : 0);
     let best: boolean;
     if (this.daily) {
@@ -417,7 +435,23 @@ export class Game {
     }
   }
 
-  private onDeath(): void {
+  private onDeath(quit = false): void {
+    // the forge's second wind: once a run the hero rises with two hearts (not when the player gives up)
+    if (this.secondWind && !quit) {
+      this.secondWind = false;
+      setTimeout(() => {
+        const w = this.world, h = w.hero;
+        if (!h.dead) return;
+        h.dead = false;
+        h.hp = Math.min(h.maxHp, 2);
+        h.invuln = 3;
+        w.bullets.n = 0;
+        w.addFx("heal_ring", h.x, h.y, { tint: rgba("#ffd27a"), glow: 1 });
+        this.audio.play("levelup");
+        this.showBanner(t("secondWind"), C.gold);
+      }, 1200);
+      return;
+    }
     // let the death play out for a moment before the screen
     setTimeout(() => {
       if (this.state !== "play" && this.state !== "pause") return;
@@ -1454,40 +1488,93 @@ export class Game {
       }
   }
 
+  /** The forge item the player is looking at, and how far the list is scrolled. */
+  private forgeSel = 0;
+  private forgeScroll = 0;
+  /**
+   * The forge: a list of every lasting upgrade on the left (its badge, its name, a pip per level), and on the right
+   * the one picked, in full: its badge large, what it does, the level now and what the next gives, the price and the
+   * button. A phone held upright shows the list above and the card below.
+   */
   private drawForge(): void {
     const ui = this.ui, W = this.r.w, H = this.r.h, now = this.now, f = this.save.forge;
-    const pw = Math.min(360, W - 20), px = Math.round(W / 2 - pw / 2);
-    const th = this.heading(t("forgeTitle"), 8, 1);
+    const th = this.heading(t("forgeTitle"), 6, H >= 300 ? 2 : 1);
     this.purse(W - 8, 8);
-    let y = 8 + th + 6;
-    const rowH = Math.min(42, Math.floor((H - y - 34) / FORGE.length));
-    const ICON: Record<string, [string, string]> = { heart: ["hud", "heart"], might: ["icons", "edge"], reach: ["icons", "magnet"], start: ["icons", "orbit"] };
-    for (const item of FORGE) {
-      const lv = f[item.id] ?? 0, maxed = lv >= item.costs.length, cost = item.costs[lv], [atlas, ic] = ICON[item.id] ?? ["hud", "ember"];
-      frame(ui, px, y, pw, rowH - 4, { edge: maxed ? C.goldDim : undefined });
-      // its badge in a well, its name and what it does, a pip per level bought
-      const bs = Math.min(24, rowH - 12);
-      slot(ui, px + 6, y + Math.round((rowH - 4 - bs) / 2), bs);
-      ui.image(icon(atlas, ic), px + 6 + bs / 2, y + Math.round((rowH - 4) / 2), atlas === "icons" ? Math.min(1, (bs - 4) / 20) : 1, atlas === "icons" ? Math.min(1, (bs - 4) / 20) : 1);
-      const tx0 = px + bs + 12;
-      text(ui, tx(item.name), tx0, y + 6, { color: maxed ? C.gold : C.text });
-      text(ui, tx(item.desc), tx0, y + 16, { font: "mini", color: C.dim });
-      for (let q = 0; q < item.costs.length; q++) {
-        inset(ui, tx0 + q * 7, y + rowH - 13, 6, 5);
-        if (q < lv) ui.rect(tx0 + q * 7 + 1, y + rowH - 12, 4, 3, C.gold);
+    const narrow = W < 430, top = 6 + th + 6, bottomBar = H - 28;
+    const listW = narrow ? W - 20 : Math.min(230, Math.floor(W * 0.46)), listX = narrow ? 10 : Math.max(10, Math.round(W / 2 - (listW + 8 + Math.min(260, W - listW - 30)) / 2));
+    const cardX = narrow ? 10 : listX + listW + 8, cardW = narrow ? W - 20 : Math.min(260, W - cardX - 10);
+    const listH = narrow ? Math.floor((bottomBar - top) * 0.48) : bottomBar - top - 4, rowH = 19, rows = Math.max(3, Math.floor((listH - 6) / rowH));
+    const cardY = narrow ? top + listH + 6 : top, cardH = narrow ? bottomBar - cardY - 4 : listH;
+    // keep the picked one in view
+    this.forgeSel = Math.max(0, Math.min(FORGE.length - 1, this.forgeSel));
+    if (this.forgeSel < this.forgeScroll) this.forgeScroll = this.forgeSel;
+    if (this.forgeSel >= this.forgeScroll + rows) this.forgeScroll = this.forgeSel - rows + 1;
+    frame(ui, listX, top, listW, rows * rowH + 6);
+    const buyItem = (k: number) => {
+      const item = FORGE[k], lv = f[item.id] ?? 0, cost = item.costs[lv];
+      if (lv >= item.costs.length || this.save.embers < cost) return void this.audio.play("deny");
+      this.save.embers -= cost;
+      f[item.id] = lv + 1;
+      this.audio.play("chest");
+      this.audio.play("levelup", 1.2);
+      this.forgeFlash = now;
+      this.persist();
+      this.checkAch();
+    };
+    for (let r = 0; r < rows && this.forgeScroll + r < FORGE.length; r++) {
+      const k = this.forgeScroll + r, item = FORGE[k], lv = f[item.id] ?? 0, maxed = lv >= item.costs.length, y = top + 3 + r * rowH;
+      const { focused, hit } = this.menu.item(listX + 3, y, listW - 6, rowH - 1, now);
+      if (focused && this.input.mode !== "touch") this.forgeSel = k;
+      if (hit) k === this.forgeSel ? buyItem(k) : (this.forgeSel = k);
+      const sel = k === this.forgeSel;
+      if (sel) ui.rect(listX + 3, y, listW - 6, rowH - 1, rgba("#3a2e1a", 0.9));
+      if (sel) ui.rect(listX + 3, y, 2, rowH - 1, C.gold);
+      const [atlas, ic] = item.icon;
+      ui.image(icon(atlas, ic), listX + 16, y + rowH / 2, atlas === "icons" ? 0.75 : 1, atlas === "icons" ? 0.75 : 1);
+      text(ui, tx(item.name), listX + 30, y + 2, { color: maxed ? C.gold : sel ? C.goldLight : C.text, shadow: C.ink });
+      // a pip per level
+      const pips = item.costs.length, pw = Math.min(6, Math.floor((listW - 40) / Math.max(1, pips)) - 1);
+      for (let q = 0; q < pips; q++) {
+        const px = listX + 30 + q * (pw + 1);
+        ui.rect(px, y + 13, pw, 3, rgba("#14121c"));
+        if (q < lv) ui.rect(px, y + 13, pw, 3, maxed ? C.gold : rgba("#e8a848"));
       }
-      const label = maxed ? t("owned") : `${cost}`;
-      if (button(ui, this.menu, now, px + pw - 72, y + 7, 64, Math.max(14, rowH - 18), label, { disabled: maxed || this.save.embers < cost, primary: !maxed, icon: maxed ? undefined : icon("hud", "ember") })) {
-        this.save.embers -= cost;
-        f[item.id] = lv + 1;
-        this.audio.play("chest");
-        this.persist();
-        this.checkAch();
+      if (!maxed) {
+        const cost = String(item.costs[lv]), afford = this.save.embers >= item.costs[lv];
+        text(ui, cost, listX + listW - 8, y + 4, { align: "right", font: "mini", color: afford ? C.gold : C.dim });
       }
-      y += rowH;
     }
-    if (button(ui, this.menu, now, Math.round(W / 2 - 50), H - 26, 100, 18, t("back"), { icon: icon("hud", "back") }) || this.input.pressed("back")) this.setState("title", 3);
+    // a little bar that shows where in the list the view is
+    if (FORGE.length > rows) {
+      const bh = Math.max(10, Math.round(((rows * rowH) * rows) / FORGE.length)), by = top + 3 + Math.round(((rows * rowH - bh) * this.forgeScroll) / (FORGE.length - rows));
+      ui.rect(listX + listW - 3, by, 2, bh, C.goldDim);
+    }
+
+    // ---- the card of the one picked
+    const item = FORGE[this.forgeSel], lv = f[item.id] ?? 0, maxed = lv >= item.costs.length, cost = item.costs[lv] ?? 0;
+    const flash = Math.max(0, 1 - (now - this.forgeFlash) / 0.5);
+    frame(ui, cardX, cardY, cardW, cardH, { edge: maxed ? C.gold : undefined });
+    if (flash > 0) glowUi(ui, cardX + cardW / 2, cardY + 30, cardW * 0.4, 30, C.gold, 0.5 * flash);
+    const [atlas, ic] = item.icon, big = narrow ? 1 : 2, bx = cardX + (narrow ? 22 : cardW / 2), by = cardY + (narrow ? 22 : 30);
+    ui.disc(bx, by, 17 * big * 0.75, 17 * big * 0.75, rgba("#07060c", 0.8));
+    ui.image(icon(atlas, ic), bx, by, (atlas === "icons" ? 1 : 1.6) * big * (atlas === "icons" ? 0.9 : 0.8), (atlas === "icons" ? 1 : 1.6) * big * (atlas === "icons" ? 0.9 : 0.8));
+    let y = narrow ? cardY + 8 : cardY + 58;
+    const tx0 = narrow ? cardX + 46 : cardX + 12, tw = narrow ? cardW - 56 : cardW - 24, align = narrow ? "left" : "center", mid = narrow ? tx0 : cardX + cardW / 2;
+    text(ui, tx(item.name), mid, y, { align, color: C.gold, shadow: C.ink, scale: narrow ? 1 : 1 });
+    y += 12;
+    y += para(ui, tx(item.desc), tx0, y, tw, C.text, align) + 4;
+    text(ui, `${t("forgeLevel")} ${lv}/${item.costs.length}`, mid, y, { align, font: "mini", color: C.goldDim });
+    y += 10;
+    // what it gives now, and what the next level would
+    const show = (n: number) => (item.unit === "%" ? `+${item.step * n}%` : item.id === "heart" ? `+${n}` : item.id === "reroll" ? `${n}` : n ? t("owned") : "—");
+    if (item.costs.length > 1 || maxed) text(ui, `${t("forgeNow")}: ${show(lv)}${maxed ? "" : `   ${t("forgeNext")}: ${show(lv + 1)}`}`, mid, y, { align, font: "mini", color: C.green });
+    // the price and the button, at the foot of the card
+    const bw = Math.min(150, cardW - 24), bxx = Math.round(cardX + cardW / 2 - bw / 2), byy = cardY + cardH - 24;
+    if (maxed) text(ui, t("forgeMax"), cardX + cardW / 2, byy + 4, { align: "center", color: C.gold, shadow: C.ink });
+    else if (button(ui, this.menu, now, bxx, byy, bw, 18, `${t("forgeBuy")} · ${cost}`, { primary: true, disabled: this.save.embers < cost, icon: icon("hud", "ember") })) buyItem(this.forgeSel);
+    if (button(ui, this.menu, now, Math.round(W / 2 - 50), H - 24, 100, 18, t("back"), { icon: icon("hud", "back") }) || this.input.pressed("back")) this.setState("title", 3);
   }
+  private forgeFlash = -9;
 
   /** The embers the player has, in a small plate at the top right of a screen. */
   private purse(right: number, y: number): void {
@@ -1591,6 +1678,16 @@ export class Game {
       // the flash of the taken card
       if (taken && out < 0.6) ui.rect(x + 2, y + 2, cw2 - 4, ch2 - 4, rgba("#fff6d0", 0.5 * (1 - out / 0.6)));
     });
+    // the forge's reroll: three new cards instead of these (a button under them)
+    if (this.rerolls > 0 && pk.chosen < 0) {
+      const rw = 120, ry = Math.min(H - 24, top + total + 10);
+      if (button(ui, this.menu, now, Math.round(W / 2 - rw / 2), ry, rw, 16, `${t("reroll")} · ${this.rerolls}`, { icon: icon("hud", "scroll") })) {
+        this.rerolls--;
+        pk.options = this.options(pk.kind);
+        this.menu.open(now, 1);
+        this.audio.play("chest");
+      }
+    }
   }
 
   private drawSpin(): void {
@@ -1697,7 +1794,7 @@ export class Game {
       this.world.hero.hp = 0;
       this.world.hero.dead = true;
       this.setState("play");
-      this.onDeath();
+      this.onDeath(true);
     }
     // the run so far, under the panel
     const w = this.world;

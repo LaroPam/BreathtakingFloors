@@ -466,6 +466,9 @@ export class World {
   fountain: Fountain | null = null;
   /** The guardian of a secret room: its chest drops when it dies. */
   private guardianUid = 0;
+  /** The chance a blow is turned aside (the forge's tempering), and how much more experience gems give (wisdom). */
+  dodge = 0;
+  xpMul = 1;
   /** The Knight's ward of light and the Berserker's war cry: seconds left. */
   ward = 0;
   rage = 0;
@@ -869,9 +872,9 @@ export class World {
     const d = ENEMIES[type], f = this.floor;
     const curse = (this.curse ? 1.5 : 1) * (this.mutator === "legacy" ? 1.3 : 1);
     // tougher than they look: blows must land several times (bosses carry their own numbers)
-    const tough = d.ai === AI.Boss || d.ai === AI.BossFrog ? 1.15 : 1.7;
-    const hp = d.hp * tough * (1 + 0.25 * (f - 1)) * (1 + Math.min(0.8, this.time / 240)) * curse;
-    const i = this.enemies.add(type, x, y, hp, this.rng.next(), this.mod.speed * (1 + (f - 1) * 0.025) * this.rng.range(0.9, 1.1) * (this.curse ? 1.2 : 1) * (this.mutator === "haste" ? 1.25 : 1));
+    const tough = d.ai === AI.Boss || d.ai === AI.BossFrog ? 1.7 : 2.5;
+    const hp = d.hp * tough * (1 + 0.4 * (f - 1)) * (1 + Math.min(1.2, this.time / 180)) * curse;
+    const i = this.enemies.add(type, x, y, hp, this.rng.next(), this.mod.speed * (1.08 + (f - 1) * 0.04) * this.rng.range(0.9, 1.1) * (this.curse ? 1.2 : 1) * (this.mutator === "haste" ? 1.25 : 1));
     if (i >= 0) {
       this.enemies.face[i] = this.hero.x < x ? -1 : 1;
       // slimes of a pack do not all hop as one: each starts at its own point of the loop
@@ -1151,7 +1154,7 @@ export class World {
         if (d.ai === AI.Healer) return;
         this.body(i);
         if (this.touches(h.x, h.y - 12, 5)) {
-          this.hurtHero();
+          this.hurtHero(d.elite || this.floor >= 7 ? 2 : 1);
           return true;
         }
       });
@@ -1460,13 +1463,20 @@ export class World {
     if (was < 100 && h.od >= 100) this.audio.play("levelup", 1.5);
   }
 
-  hurtHero(): void {
+  /** The hero is hit: `dmg` hearts (the forge's tempering may turn a blow aside). */
+  hurtHero(dmg = 1): void {
     const h = this.hero;
     if (h.invuln > 0 || h.dead) return;
-    h.hp -= 1;
+    if (this.dodge > 0 && this.rng.chance(this.dodge)) {
+      h.invuln = 0.5;
+      this.popup(h.x, h.y - 40, tr("dodged"), rgba("#c8e0ff"));
+      this.audio.play("graze", 1.4);
+      return;
+    }
+    h.hp -= dmg;
     this.floorHits++;
     if (this.quest?.state === "active" && (this.quest.kind === "untouched" || this.quest.kind === "graze")) this.endQuest(false);
-    h.invuln = 1.1;
+    h.invuln = 0.85;
     h.hurtT = 0.3;
     h.atk = -1;
     this.hitstop = 0.09;
@@ -1476,7 +1486,7 @@ export class World {
     this.burst(h.x, h.y - 18, 14, rgba("#ff4a5a"), 90, 0.5, 200);
     // mercy: bullets right next to the hero vanish
     const B = this.bullets;
-    for (let i = B.n - 1; i >= 0; i--) if (B.team[i] === TEAM_FOE && (B.x[i] - h.x) ** 2 + (B.y[i] - h.y + 10) ** 2 < 60 * 60) B.remove(i);
+    for (let i = B.n - 1; i >= 0; i--) if (B.team[i] === TEAM_FOE && (B.x[i] - h.x) ** 2 + (B.y[i] - h.y + 10) ** 2 < 36 * 36) B.remove(i);
     if (h.hp <= 0) {
       h.dead = true;
       h.deathT = 0;
@@ -1891,7 +1901,7 @@ export class World {
     this.addFx("poof", cx, cy + this.bry, { sx: d.scale * (d.elite ? 1.2 : 0.8), sy: d.scale * (d.elite ? 1.2 : 0.8), glow: 0.5 });
     this.burst(cx, cy, d.elite ? 18 : 6, rgba(d.glow || "#c8c0d8"), 70, 0.45, 120);
     // soul shards: the value broken into the fewest pieces
-    let v = d.xp * this.mod.xp * (this.mutator === "swarm" ? 1.33 : 1);
+    let v = d.xp * this.mod.xp * this.xpMul * (this.mutator === "swarm" ? 1.33 : 1);
     while (v > 0) {
       const tier = v >= 20 ? D_RED : v >= 5 ? D_GREEN : D_BLUE, val = tier === D_RED ? 20 : tier === D_GREEN ? 5 : 1;
       const a = this.rng.range(0, Math.PI * 2), s = this.rng.range(10, 50);
@@ -2912,7 +2922,7 @@ export class World {
     this.addFx("explosion", x, y, { sx: 0.55, sy: 0.55, glow: 0.8 });
     this.audio.play("boom", 1.3);
     this.shake = Math.max(this.shake, 0.4);
-    if ((h.x - x) ** 2 + (h.y - y) ** 2 < R * R) this.hurtHero();
+    if ((h.x - x) ** 2 + (h.y - y) ** 2 < R * R) this.hurtHero(this.floor >= 4 ? 2 : 1);
     const uid = E.uid[i];
     E.hp[i] = 0;
     this.kill(i);
@@ -2975,7 +2985,7 @@ export class World {
       this.audio.play("boom", 0.7);
       const n = enraged ? 14 : 10;
       for (let k = 0; k < n; k++) this.shoot(E.x[i], E.y[i] - 8, (k / n) * Math.PI * 2, 72, B_ORB_GREEN, 5);
-      if ((h.x - E.x[i]) ** 2 + (h.y - E.y[i]) ** 2 < 44 * 44) this.hurtHero();
+      if ((h.x - E.x[i]) ** 2 + (h.y - E.y[i]) ** 2 < 44 * 44) this.hurtHero(2);
     }
     E.cd[i] -= dt;
     if (E.cd[i] <= 0 && E.st[i] === 0) {
@@ -3484,13 +3494,13 @@ export class World {
     const E = this.enemies, f = this.floor, boss = this.bossIndex() >= 0;
     const more = this.mod.spawn * (this.curse ? 1.25 : 1) * (this.mutator === "swarm" ? 1.5 : 1);
     let target = 0, every = 99, far = true;
-    if (boss) (target = Math.round((3 + f * 0.6) * more)), (every = 3.5), (far = false);
+    if (boss) (target = Math.round((5 + f * 0.9) * more)), (every = 2.6), (far = false);
     else if (this.wave) {
       const k = 1 - this.wave.left / this.wave.total;
-      target = Math.min(64, Math.round((5 + f * 1.6) * (1 + 0.35 * (this.wave.n - 1)) * (0.8 + 0.5 * k) * more));
-      every = Math.max(1.1, 2.4 - f * 0.1 - k * 0.6);
+      target = Math.min(120, Math.round((9 + f * 2.6) * (1 + 0.4 * (this.wave.n - 1)) * (0.8 + 0.6 * k) * more));
+      every = Math.max(0.7, 1.9 - f * 0.12 - k * 0.7);
       far = false;
-    } else if (!this.portal) (target = Math.min(6, 2 + Math.floor(f / 2))), (every = 7);
+    } else if (!this.portal && !this.stairs?.open) (target = Math.min(12, 3 + f)), (every = 4.5);
     this.spawnAcc += dt;
     if (E.n < target && this.spawnAcc >= every) {
       this.spawnAcc = 0;
@@ -3565,7 +3575,7 @@ export class World {
       }
       default: {
         // a clump, bigger deeper down
-        const [x, y] = this.edgePoint(dist), n = R.int(4, 6) + Math.floor(f / 3);
+        const [x, y] = this.edgePoint(dist), n = R.int(5, 8) + Math.floor(f / 2);
         for (let k = 0; k < n; k++) {
           const a = R.range(0, TAU), r = R.range(0, 24);
           at(x + Math.cos(a) * r, y + Math.sin(a) * r * 0.8);

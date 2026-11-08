@@ -352,18 +352,39 @@ export function combine(path: readonly Modifier[]): Modifier {
 }
 
 // ------------------------------------------------------------------------------------------------ the forge
+export type ForgeId = "heart" | "might" | "haste" | "crit" | "swift" | "temper" | "reach" | "wisdom" | "greed" | "surge" | "dash" | "lantern" | "reroll" | "start" | "revive";
+/**
+ * A lasting upgrade, bought with embers between runs, level by level, each dearer than the last. `step` is what a
+ * level adds (in `unit`), so the forge can say what the next one gives.
+ */
 export interface ForgeItem {
-  id: "heart" | "might" | "reach" | "start";
+  id: ForgeId;
   name: Text;
   desc: Text;
+  step: number;
+  unit: "%" | "";
   costs: number[];
+  icon: [string, string];
 }
 export const FORGE: ForgeItem[] = [
-  { id: "heart", name: { ru: "ЖИВУЧЕСТЬ", en: "VITALITY" }, desc: { ru: "+1 СЕРДЦЕ НА СТАРТЕ", en: "+1 STARTING HEART" }, costs: [40, 120] },
-  { id: "might", name: { ru: "МОЩЬ", en: "MIGHT" }, desc: { ru: "+10% ВСЕГО УРОНА", en: "+10% ALL DAMAGE" }, costs: [30, 80, 160] },
-  { id: "reach", name: { ru: "ПРИТЯЖЕНИЕ", en: "PULL" }, desc: { ru: "+25% РАДИУС СБОРА", en: "+25% PICKUP RANGE" }, costs: [25, 70] },
-  { id: "start", name: { ru: "НАСЛЕДИЕ", en: "LEGACY" }, desc: { ru: "ВТОРАЯ РЕЛИКВИЯ НА СТАРТЕ", en: "A SECOND RELIC AT THE START" }, costs: [100] },
+  { id: "heart", name: { ru: "ЖИВУЧЕСТЬ", en: "VITALITY" }, desc: { ru: "СЕРДЦА СВЕРХ ТЕХ, С КОТОРЫМИ ГЕРОЙ НАЧИНАЕТ ЗАБЕГ", en: "HEARTS ON TOP OF THOSE THE HERO STARTS A RUN WITH" }, step: 1, unit: "", costs: [150, 450, 1200], icon: ["hud", "heart"] },
+  { id: "might", name: { ru: "МОЩЬ", en: "MIGHT" }, desc: { ru: "УРОН ОТ ВСЕГО: ОРУЖИЯ, РЕЛИКВИЙ, СТИХИЙ, СПОСОБНОСТИ", en: "DAMAGE FROM EVERYTHING: WEAPON, RELICS, ELEMENTS, ABILITY" }, step: 6, unit: "%", costs: [80, 140, 220, 330, 480, 680, 950, 1300], icon: ["icons", "edge"] },
+  { id: "haste", name: { ru: "ЛЁГКАЯ РУКА", en: "QUICK HAND" }, desc: { ru: "УДАРЫ И ВЫСТРЕЛЫ ЧАЩЕ", en: "BLOWS AND SHOTS COME FASTER" }, step: 5, unit: "%", costs: [120, 260, 480, 800, 1300], icon: ["icons", "haste"] },
+  { id: "crit", name: { ru: "УДАЧА", en: "FORTUNE" }, desc: { ru: "ШАНС КРИТИЧЕСКОГО УДАРА", en: "CRITICAL HIT CHANCE" }, step: 4, unit: "%", costs: [180, 420, 800, 1400], icon: ["icons", "crit"] },
+  { id: "swift", name: { ru: "ПРОВОРСТВО", en: "AGILITY" }, desc: { ru: "ГЕРОЙ БЕГАЕТ БЫСТРЕЕ", en: "THE HERO RUNS FASTER" }, step: 4, unit: "%", costs: [120, 280, 560, 1000], icon: ["icons", "speed"] },
+  { id: "temper", name: { ru: "ЗАКАЛКА", en: "TEMPERING" }, desc: { ru: "ШАНС, ЧТО УДАР ПО ГЕРОЮ ОТРАЗИТСЯ", en: "CHANCE A BLOW AT THE HERO IS TURNED ASIDE" }, step: 6, unit: "%", costs: [200, 450, 900, 1600], icon: ["icons", "parry"] },
+  { id: "reach", name: { ru: "ПРИТЯЖЕНИЕ", en: "PULL" }, desc: { ru: "РАДИУС, С КОТОРОГО ЛЕТЯТ КРИСТАЛЛЫ И СЕРДЦА", en: "THE REACH THAT DRAWS GEMS AND HEARTS IN" }, step: 15, unit: "%", costs: [60, 150, 320, 600], icon: ["icons", "magnet"] },
+  { id: "wisdom", name: { ru: "МУДРОСТЬ", en: "WISDOM" }, desc: { ru: "БОЛЬШЕ ОПЫТА С КАЖДОГО КРИСТАЛЛА", en: "MORE EXPERIENCE FROM EVERY GEM" }, step: 6, unit: "%", costs: [100, 220, 400, 700, 1100], icon: ["hud", "xp"] },
+  { id: "greed", name: { ru: "АЛЧНОСТЬ", en: "GREED" }, desc: { ru: "БОЛЬШЕ УГЛЕЙ ЗА КАЖДЫЙ ЗАБЕГ", en: "MORE EMBERS FROM EVERY RUN" }, step: 8, unit: "%", costs: [150, 350, 700, 1200, 2000], icon: ["hud", "ember"] },
+  { id: "surge", name: { ru: "ВЫБРОС", en: "SURGE" }, desc: { ru: "СПОСОБНОСТЬ ГЕРОЯ КОПИТСЯ БЫСТРЕЕ", en: "THE HERO'S ABILITY CHARGES FASTER" }, step: 10, unit: "%", costs: [150, 350, 700, 1200], icon: ["icons", "overdrive"] },
+  { id: "dash", name: { ru: "ВЕТЕР", en: "WIND" }, desc: { ru: "РЫВОК ПЕРЕЗАРЯЖАЕТСЯ БЫСТРЕЕ", en: "THE DASH RECHARGES FASTER" }, step: 8, unit: "%", costs: [150, 400, 900], icon: ["icons", "dashcd"] },
+  { id: "lantern", name: { ru: "ФОНАРЬ", en: "LANTERN" }, desc: { ru: "СВЕТ ГЕРОЯ ШИРЕ", en: "THE HERO'S LIGHT REACHES FURTHER" }, step: 10, unit: "%", costs: [80, 200, 450], icon: ["icons", "lantern"] },
+  { id: "reroll", name: { ru: "ПЕРЕБРОС", en: "REROLL" }, desc: { ru: "РАЗ ЗА ЗАБЕГ ЗАМЕНИТЬ ТРИ КАРТОЧКИ УЛУЧШЕНИЙ НОВЫМИ", en: "SWAP THE THREE UPGRADE CARDS FOR NEW ONES, ONCE A RUN" }, step: 1, unit: "", costs: [300, 800, 1600], icon: ["hud", "scroll"] },
+  { id: "start", name: { ru: "НАСЛЕДИЕ", en: "LEGACY" }, desc: { ru: "ВТОРАЯ РЕЛИКВИЯ НА ВЫБОР В НАЧАЛЕ ЗАБЕГА", en: "A SECOND RELIC OF YOUR CHOICE AT THE START" }, step: 1, unit: "", costs: [1500], icon: ["icons", "orbit"] },
+  { id: "revive", name: { ru: "ВТОРОЕ ДЫХАНИЕ", en: "SECOND WIND" }, desc: { ru: "РАЗ ЗА ЗАБЕГ ГЕРОЙ ВСТАЁТ С ДВУМЯ СЕРДЦАМИ", en: "ONCE A RUN THE HERO RISES AGAIN WITH TWO HEARTS" }, step: 1, unit: "", costs: [2500], icon: ["hud", "crown"] },
 ];
+/** Every level the forge sells, all told. */
+export const FORGE_LEVELS = FORGE.reduce((n, f) => n + f.costs.length, 0);
 
 // ------------------------------------------------------------------------------------------------ evolutions
 /**
@@ -492,7 +513,7 @@ export const ACHIEVEMENTS: AchDef[] = [
   { id: "urns", icon: ["hud", "urn"], reward: 20, stat: "urns", goal: 100, name: { ru: "ГОНЧАРНЫЙ ПОГРОМ", en: "POTTERY RAMPAGE" }, desc: { ru: "РАЗБЕЙ 100 УРН", en: "BREAK 100 URNS" } },
   { id: "grazes", icon: ["hud", "stamina"], reward: 20, stat: "grazes", goal: 500, name: { ru: "ТАНЕЦ СРЕДИ СНАРЯДОВ", en: "DANCER AMONG BOLTS" }, desc: { ru: "ЗАДЕНЬ 500 СНАРЯДОВ", en: "GRAZE 500 BOLTS" } },
   { id: "heroes", icon: ["hud", "lock"], reward: 50, stat: "heroesKnown", goal: 6, name: { ru: "ПОЛНЫЙ ОТРЯД", en: "THE FULL COMPANY" }, desc: { ru: "ОТКРОЙ ВСЕХ ГЕРОЕВ", en: "UNLOCK EVERY HERO" } },
-  { id: "forge", icon: ["hud", "anvil"], reward: 40, stat: "forgeLevels", goal: 8, name: { ru: "КУЗНЕЦ", en: "SMITH" }, desc: { ru: "КУПИ ВСЁ В КУЗНИЦЕ", en: "BUY EVERYTHING IN THE FORGE" } },
+  { id: "forge", icon: ["hud", "anvil"], reward: 200, stat: "forgeLevels", goal: FORGE_LEVELS, name: { ru: "КУЗНЕЦ", en: "SMITH" }, desc: { ru: "КУПИ ВСЁ В КУЗНИЦЕ", en: "BUY EVERYTHING IN THE FORGE" } },
   { id: "tasks", icon: ["hud", "daily"], reward: 25, name: { ru: "ПРИЛЕЖНЫЙ", en: "DILIGENT" }, desc: { ru: "ВЫПОЛНИ ВСЕ ТРИ ЗАДАНИЯ ДНЯ", en: "COMPLETE ALL THREE DAILY TASKS" } },
   { id: "trial", icon: ["hud", "daily"], reward: 25, name: { ru: "ИСПЫТАННЫЙ", en: "TRIED AND TRUE" }, desc: { ru: "ДОЙДИ ДО 3 ЭТАЖА В ИСПЫТАНИИ ДНЯ", en: "REACH FLOOR 3 IN THE DAILY TRIAL" } },
 ];
@@ -688,7 +709,7 @@ export const HEROES: HeroDef[] = [
 
   },
   {
-    id: "ranger", cost: 60, name: { ru: "СЛЕДОПЫТ", en: "RANGER" }, title: { ru: "ЛУК, КОЖА И ЛЁГКИЙ ШАГ", en: "BOW, LEATHER, A LIGHT STEP" },
+    id: "ranger", cost: 300, name: { ru: "СЛЕДОПЫТ", en: "RANGER" }, title: { ru: "ЛУК, КОЖА И ЛЁГКИЙ ШАГ", en: "BOW, LEATHER, A LIGHT STEP" },
     perk: { ru: "ДВА РЫВКА ПОДРЯД, БЕГАЕТ БЫСТРЕЕ, СТРЕЛЫ ПРОБИВАЮТ +1", en: "TWO DASHES, FASTER FEET, ARROWS PIERCE +1" },
     weapon: "bow", hearts: 4, speed: 1.12, dashCd: 3.2, dashes: 2, lantern: 1, light: "lantern", lightColor: [1, 0.85, 0.6],
     might: 0.9, haste: 1.15, crit: 0.1,
@@ -696,7 +717,7 @@ export const HEROES: HeroDef[] = [
 
   },
   {
-    id: "mage", cost: 90, name: { ru: "ЧАРОДЕЙКА", en: "SORCERESS" }, title: { ru: "ОГОНЬ, ЛЁД И ГРОЗА", en: "FIRE, ICE AND STORM" },
+    id: "mage", cost: 500, name: { ru: "ЧАРОДЕЙКА", en: "SORCERESS" }, title: { ru: "ОГОНЬ, ЛЁД И ГРОЗА", en: "FIRE, ICE AND STORM" },
     perk: { ru: "ЗАКЛИНАНИЯ ЧЕРЕДУЮТ СТИХИИ И САМИ ВЫЗЫВАЮТ РЕАКЦИИ", en: "HER SPELLS TAKE TURNS AND SET OFF REACTIONS" },
     weapon: "spell", hearts: 4, speed: 0.98, dashCd: 3.5, dashes: 1, lantern: 1, light: "wisp", lightColor: [0.55, 0.85, 1],
     might: 1.15, haste: 0.95, crit: 0.05,
@@ -704,7 +725,7 @@ export const HEROES: HeroDef[] = [
 
   },
   {
-    id: "reaper", cost: 140, name: { ru: "ЖНЕЦ", en: "REAPER" }, title: { ru: "КОСА И ЗЕЛЁНЫЙ ОГОНЬ ДУШ", en: "A SCYTHE AND GREEN SOUL-FIRE" },
+    id: "reaper", cost: 800, name: { ru: "ЖНЕЦ", en: "REAPER" }, title: { ru: "КОСА И ЗЕЛЁНЫЙ ОГОНЬ ДУШ", en: "A SCYTHE AND GREEN SOUL-FIRE" },
     perk: { ru: "ЖАТВА: КАЖДЫЕ 25 УБИЙСТВ ВОЗВРАЩАЮТ СЕРДЦЕ", en: "HARVEST: EVERY 25 KILLS GIVE A HEART BACK" },
     weapon: "scythe", hearts: 5, speed: 0.95, dashCd: 3.8, dashes: 1, lantern: 1, light: "wisp", lightColor: [0.55, 1, 0.6],
     might: 1.1, haste: 0.9, crit: 0.08,
@@ -712,7 +733,7 @@ export const HEROES: HeroDef[] = [
 
   },
   {
-    id: "berserker", cost: 180, name: { ru: "БЕРСЕРК", en: "BERSERKER" }, title: { ru: "БРОНЗА, МЕХ И ЯРОСТЬ", en: "BRONZE, FUR AND FURY" },
+    id: "berserker", cost: 1100, name: { ru: "БЕРСЕРК", en: "BERSERKER" }, title: { ru: "БРОНЗА, МЕХ И ЯРОСТЬ", en: "BRONZE, FUR AND FURY" },
     perk: { ru: "ЯРОСТЬ: ЧЕМ МЕНЬШЕ СЕРДЕЦ, ТЕМ СИЛЬНЕЕ УДАРЫ (ДО +70%)", en: "FURY: THE FEWER HEARTS, THE HARDER THE BLOWS (UP TO +70%)" },
     weapon: "greatsword", hearts: 7, speed: 0.95, dashCd: 4, dashes: 1, lantern: 0.95, light: "lantern", lightColor: [1, 0.7, 0.45],
     might: 1.25, haste: 0.85, crit: 0.05,
@@ -720,7 +741,7 @@ export const HEROES: HeroDef[] = [
 
   },
   {
-    id: "shadow", cost: 240, name: { ru: "ТЕНЬ", en: "SHADE" }, title: { ru: "КОГТИ ИЗ СУМРАКА", en: "CLAWS OUT OF THE DUSK" },
+    id: "shadow", cost: 1500, name: { ru: "ТЕНЬ", en: "SHADE" }, title: { ru: "КОГТИ ИЗ СУМРАКА", en: "CLAWS OUT OF THE DUSK" },
     perk: { ru: "+20% КРИТА, РЫВОК РЕЖЕТ ВСЕХ НА ПУТИ", en: "+20% CRIT, THE DASH CUTS ALL IN ITS WAY" },
     weapon: "claws", hearts: 4, speed: 1.15, dashCd: 2.8, dashes: 2, lantern: 0.9, light: "wisp", lightColor: [0.8, 0.5, 1],
     might: 0.85, haste: 1.3, crit: 0.25,
