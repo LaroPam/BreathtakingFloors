@@ -489,14 +489,21 @@ export function drawHud(b: Batch, w: World, W: number, H: number, time: number, 
   }
 
   // ---- where you are: the floor on a plate at the top centre, with what to do on it under the name
-  const floorLine = `${t("floor")} ${w.floor}  ·  ${tx(floorInfo(w.floor).name)}`, fw = measure(floorLine) + (seal ? 30 : 20), bi = w.bossIndex();
-  plate(b, W / 2 - fw / 2, 9, fw, 25);
-  text(b, floorLine, W / 2 + (seal ? 5 : 0), 13, { align: "center", gradient: [rgba("#fff0b8"), rgba("#e0a84a")], shadow: C.ink });
+  // the floor's name on its plate for the first seconds; then the plate draws in to just the braziers (or the
+  // boss, or the portal), leaving the top of the screen to the floor
+  const floorLine = `${t("floor")} ${w.floor}  ·  ${tx(floorInfo(w.floor).name)}`, bi = w.bossIndex();
+  const intro = Math.max(0, Math.min(1, (6.5 - w.time) / 0.5)), e = intro * intro * (3 - 2 * intro);
+  const bossName = bi >= 0 ? tx(ENEMIES[w.enemies.type[bi]].name) : "";
+  const small = Math.max(w.portal ? measure(t("portalOpen"), "mini") + 12 : bi >= 0 ? measure(bossName, "mini") + 22 : w.braziers.length * 14 + 10, 48);
+  const wide = measure(floorLine) + (seal ? 30 : 20), fw = Math.round(small + (Math.max(wide, small) - small) * e), ph = Math.round(16 + 9 * e), ty = Math.round(6 + 3 * e);
+  plate(b, W / 2 - fw / 2, ty, fw, ph);
+  if (e > 0.6) text(b, floorLine, W / 2 + (seal ? 5 : 0), 13, { align: "center", gradient: [rgba("#fff0b8"), rgba("#e0a84a")], shadow: C.ink });
   // a trial wears its seal by the floor's name (the day's or the week's); a cursed floor its skull on the other side
-  if (seal) b.image(icon("hud", seal), W / 2 - fw / 2 + 9, 16);
-  if (w.curse) b.image(icon("hud", "curse"), W / 2 + fw / 2 + 8, 16, 1, 1, 0, rgbaf(1, 0.7 + 0.3 * Math.sin(time * 6), 0.7, 1));
+  if (seal && e > 0.6) b.image(icon("hud", seal), W / 2 - fw / 2 + 9, 16);
+  if (w.curse) b.image(icon("hud", "curse"), W / 2 + fw / 2 + 8, ty + ph / 2 + 1, 1, 1, 0, rgbaf(1, 0.7 + 0.3 * Math.sin(time * 6), 0.7, 1));
+  const row = Math.round(ty + ph - 7);
   // a wave burning: how long to hold out, a bar running down under the plate
-  let under = 38;
+  let under = ty + ph + 4;
   if (w.wave) {
     const wv = w.wave, left = Math.max(0, Math.ceil(wv.left)), k = wv.left / wv.total, urgent = wv.left < 5;
     const label = `${t("wave")} ${wv.n}  ·  ${t("hold")} ${fmtTime(left)}`, bw = Math.max(90, measure(label) + 16);
@@ -508,16 +515,15 @@ export function drawHud(b: Batch, w: World, W: number, H: number, time: number, 
   // the week's rule, under the plate, for the whole run
   const mut = w.mutator && MUTATORS.find((m) => m.id === w.mutator);
   if (mut) text(b, tx(mut.name), W / 2, under, { font: "mini", align: "center", color: rgba("#ff9a8a"), shadow: C.ink });
-  if (w.portal) text(b, t("portalOpen"), W / 2, 24, { font: "mini", align: "center", color: rgba("#c684ff") });
+  if (w.portal) text(b, t("portalOpen"), W / 2, row - 3, { font: "mini", align: "center", color: rgba("#c684ff") });
   else if (bi >= 0) {
-    const name = tx(ENEMIES[w.enemies.type[bi]].name);
-    b.image(icon("hud", "boss"), W / 2 - measure(name, "mini") / 2 - 8, 27);
-    text(b, name, W / 2 + 2, 24, { font: "mini", align: "center", color: rgba(ENEMIES[w.enemies.type[bi]].glow || "#f53cd1") });
+    b.image(icon("hud", "boss"), W / 2 - measure(bossName, "mini") / 2 - 8, row);
+    text(b, bossName, W / 2 + 2, row - 3, { font: "mini", align: "center", color: rgba(ENEMIES[w.enemies.type[bi]].glow || "#f53cd1") });
   } else
     w.braziers.forEach((br, k) => {
       const x = W / 2 + (k - (w.braziers.length - 1) / 2) * 14;
-      b.image(icon("hud", br.lit ? "brazier" : "brazier_cold"), x, 27);
-      if (!br.lit && br.progress > 0) b.rect(x - 4, 32, Math.round(8 * br.progress), 1, rgba("#ffc040"));
+      b.image(icon("hud", br.lit ? "brazier" : "brazier_cold"), x, row);
+      if (!br.lit && br.progress > 0) b.rect(x - 4, row + 5, Math.round(8 * br.progress), 1, rgba("#ffc040"));
     });
 
   // ---- how long, how many: a plate at the top right

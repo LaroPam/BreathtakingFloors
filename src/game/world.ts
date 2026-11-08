@@ -9,7 +9,7 @@ import {
   AI, biomeOf, bossOf, El, EL_COLOR, EN, ENEMIES, evolutionOf, FLOORS, heroDef, QUESTS, RELIC_MAX, RELICS, RelicKind, reactionFor, roster, stageOf, WEAPON_IDS, WEAPONS,
   type Biome, type Blow, type HeroDef, type Modifier, type QuestKind, type Reaction, type StatId, type TaskId, type WeaponId,
 } from "./defs";
-import { getLang, t as tr, tx } from "./i18n";
+import { getLang, t as tr } from "./i18n";
 import { Bullets, Drops, Enemies, Grid, Particles, TEAM_FOE, TEAM_HERO } from "./pools";
 import { Rng } from "./rng";
 import { buildMap, Flow, FLOOR, LOOK_ICE, MAP_PLANS, TileMap, WALL } from "./map";
@@ -86,11 +86,17 @@ interface Arc {
 interface Pool {
   x: number;
   y: number;
+  /** Its full radius; it spreads to it over its first moments (spread()) and shrinks away at its end. */
   r: number;
   life: number;
   max: number;
   power: number;
 }
+/** How far a pool has spread (0..1): out over its first third of a second, back in over its last half second. */
+export const poolSpread = (p: Pool): number => {
+  const age = p.max - p.life, u = Math.min(1, age / 0.35), out = 1 - (1 - u) ** 3;
+  return out * Math.min(1, p.life / 0.5);
+};
 interface Sphere {
   x: number;
   y: number;
@@ -709,7 +715,7 @@ export class World {
     }
     // from the second floor, now and then, a chest on the floor: a mimic (real chests come only from the spirits)
     this.chests = [];
-    if (this.floor >= 2 && R.chance(0.3))
+    if (this.floor >= 2 && R.chance(0.14))
       for (let tries = 0; tries < 60; tries++) {
         const [x, y] = anyGround();
         if (!spot(x, y, 10) || (x - sx) ** 2 + (y - sy) ** 2 < 160 * 160) continue;
@@ -730,10 +736,11 @@ export class World {
   }
 
   get lanternR(): number {
-    return 112 * this.stats.lantern * (1 - this.mod.dark * 0.5) * (this.mutator === "dark" ? 0.67 : 1);
+    return 138 * this.stats.lantern * (1 - this.mod.dark * 0.5) * (this.mutator === "dark" ? 0.67 : 1);
   }
   get ambient(): number {
-    return 0.26 - this.mod.dark * 0.1 - Math.min(0.05, this.floor * 0.006);
+    // dusk, not pitch dark: the floor reads everywhere, the lights still make the mood
+    return 0.46 - this.mod.dark * 0.14 - Math.min(0.04, this.floor * 0.004);
   }
   /** Lit braziers: 0..3. The floor's roster grows with them. */
   get phase(): number {
@@ -836,7 +843,7 @@ export class World {
       if (d.hops) this.enemies.t[i] = this.rng.range(0, this.enemyAnims[type].dur);
       if (!this.seen.has(type)) {
         this.seen.add(type);
-        if (!d.elite || d.scale === 1) this.ev.banner(tx(d.name), rgba(d.glow || "#e8e4f0"));
+        // (no banner: names on the screen only clutter it; the books keep them)
       }
     }
     return i;
@@ -1323,6 +1330,7 @@ export class World {
     if (cut) {
       this.gainOd(2.5 * cut);
       this.audio.play("graze", 0.8);
+      this.deflected(cut);
     }
     // a legendary blade ends its combo in a wave of its element
     if (h.legend && hit === of - 1 && k === W.blows.length - 1) {
@@ -1503,6 +1511,7 @@ export class World {
       if (B.team[i] === TEAM_FOE && (B.x[i] - h.x) ** 2 + (B.y[i] - h.y) ** 2 < R * R * 1.6) {
         if (this.rng.chance(0.5)) this.drops.add(D_BLUE, B.x[i], B.y[i], 1, 0, 0);
         B.remove(i);
+        this.deflected(1);
       }
     this.ward = 3;
     h.invuln = Math.max(h.invuln, 3);
@@ -1616,6 +1625,7 @@ export class World {
         if (B.team[i] === TEAM_FOE && (B.x[i] - h.x) ** 2 + (B.y[i] - h.y + 12) ** 2 < 32 * 32) {
           this.burst(B.x[i], B.y[i], 3, rgba("#fff0c0"), 40, 0.25);
           B.remove(i);
+          this.deflected(1);
         }
     }
     for (let k = this.strikes.length - 1; k >= 0; k--) {
@@ -1853,7 +1863,8 @@ export class World {
       this.drops.add(tier, x, y - 2, val * (v < val ? v / val : 1), Math.cos(a) * s, Math.sin(a) * s);
       v -= val;
     }
-    if (this.rng.chance(d.elite ? 0.4 : 0.015)) this.drops.add(D_HEART, x, y, 1, 0, -20);
+    // hearts are rare: a kill now and then, an elite sometimes
+    if (this.rng.chance(d.elite ? 0.15 : 0.003)) this.drops.add(D_HEART, x, y, 1, 0, -20);
     const boss = d.ai === AI.Boss || d.ai === AI.BossFrog;
     // an elite pays in embers (chests come only from the spirits' tasks)
     if (d.elite && !boss)
@@ -1861,13 +1872,10 @@ export class World {
         const a = this.rng.range(0, Math.PI * 2), s = this.rng.range(20, 60);
         this.drops.add(D_EMBER, x, y - 2, 1, Math.cos(a) * s, Math.sin(a) * s);
       }
-    // a mimic was full of what it pretended to be: soul shards and embers
+    // a mimic was full of what it pretended to be: a real chest drops out of it, and embers
     if (type === EN.mimic) {
-      for (let q = 0; q < 2; q++) {
-        const a = this.rng.range(0, Math.PI * 2), s = this.rng.range(20, 60);
-        this.drops.add(D_RED, x, y - 2, 20, Math.cos(a) * s, Math.sin(a) * s);
-      }
-      this.embersBonus += 8;
+      this.drops.add(D_CHEST, x, y, 1, 0, -30);
+      this.embersBonus += 3;
       this.ev.count("mimic");
       for (let q = 0; q < 6; q++) this.drops.add(D_EMBER, x, y - 4, 1, this.rng.range(-60, 60), this.rng.range(-70, -10));
     }
@@ -2029,7 +2037,7 @@ export class World {
     };
     if (r < 0.34) for (let q = R.int(1, 3); q > 0; q--) spill(D_EMBER, 1);
     else if (r < 0.74) for (let q = R.int(2, 4); q > 0; q--) spill(this.floor >= 4 && R.chance(0.3) ? D_GREEN : D_BLUE, this.floor >= 4 ? 5 : 1);
-    else if (r < 0.82 && h.hp < h.maxHp) spill(D_HEART, 1);
+    else if (r < 0.76 && h.hp < h.maxHp) spill(D_HEART, 1);
   }
 
   // ============================================================================================ quests
@@ -2084,6 +2092,14 @@ export class World {
     this.ev.quest(q);
   }
   /** Progress on the quest; it is done when the count is reached. */
+  /**
+   * Enemy shots stopped by the hero's own doing (cut by the blade, snuffed by the ward, the halo, the flare): they
+   * count with the grazes, for the bolt dance and the tallies.
+   */
+  private deflected(n: number): void {
+    for (let k = 0; k < n; k++) this.ev.count("grazes");
+    this.questStep("graze", n);
+  }
   private questStep(kind: QuestKind, n = 1): void {
     const q = this.quest;
     if (!q || q.state !== "active" || q.kind !== kind) return;
@@ -2326,6 +2342,9 @@ export class World {
             let tx: number, ty: number;
             if (j >= 0 && (E.x[j] - h.x) ** 2 + (E.y[j] - h.y) ** 2 < 200 * 200) (tx = E.x[j], ty = E.y[j]);
             else (tx = h.x + this.rng.range(-90, 90), ty = h.y + this.rng.range(-60, 60));
+            // it lands on floor: never in a wall, over a drop or off the map (else at the hero's feet)
+            for (let q = 0; q < 6 && !this.map.clear(tx, ty, 6); q++) (tx = h.x + this.rng.range(-70, 70), ty = h.y + this.rng.range(-45, 45));
+            if (!this.map.clear(tx, ty, 6)) (tx = h.x), (ty = h.y);
             this.flasks.push({ x0: h.x, y0: h.y - 20, x1: tx, y1: ty, t: 0 });
           }
           break;
@@ -2338,6 +2357,7 @@ export class World {
               if (B.team[i] === TEAM_FOE && (B.x[i] - h.x) ** 2 + ((B.y[i] - h.y + 12) * 1.3) ** 2 < R * R * 0.7) {
                 this.parts.add(B.x[i], B.y[i], 0, -20, 0.4, rgba("#fff09a"), 1, 0, 1);
                 B.remove(i);
+                this.deflected(1);
               }
             r.clock += dt;
             if (r.clock >= 40) {
@@ -2369,7 +2389,7 @@ export class World {
           }
           if (L >= 5) {
             const B = this.bullets;
-            for (let i = B.n - 1; i >= 0; i--) if (B.team[i] === TEAM_FOE && (B.x[i] - h.x) ** 2 + (B.y[i] - h.y) ** 2 < R * R) B.remove(i);
+            for (let i = B.n - 1; i >= 0; i--) if (B.team[i] === TEAM_FOE && (B.x[i] - h.x) ** 2 + (B.y[i] - h.y) ** 2 < R * R) (B.remove(i), this.deflected(1));
           }
           this.audio.play("heal");
           break;
@@ -2395,15 +2415,19 @@ export class World {
       if (f.t >= 1) {
         const L = this.relicLevel(RelicKind.Flask), evo = this.evolved(RelicKind.Flask);
         this.pools.push({ x: f.x1, y: f.y1, r: evo ? 32 : 22 + (L >= 2 ? 8 : 0), life: evo ? 7 : L >= 4 ? 6 : 4.2, max: evo ? 7 : L >= 4 ? 6 : 4.2, power: evo ? 1.8 : L >= 5 ? 1.5 : 1 });
+        // the flask breaks: glass and poison splash up, then the pool spreads
         this.burst(f.x1, f.y1 - 3, 10, rgba("#8ad83a"), 60, 0.4, 150);
+        this.burst(f.x1, f.y1 - 4, 5, rgba("#d8ffb0"), 40, 0.25, 200);
+        this.audio.play("break", 1.4);
       }
     }
     this.flasks = this.flasks.filter((f) => f.t < 1);
     for (const p of this.pools) {
       p.life -= dt;
-      this.grid.query(p.x, p.y, p.r + 10, (i) => {
+      const pr = p.r * poolSpread(p);
+      this.grid.query(p.x, p.y, pr + 10, (i) => {
         if (E.poolCd[i] > 0) return;
-        if ((E.x[i] - p.x) ** 2 + ((E.y[i] - p.y) * 1.6) ** 2 < p.r * p.r) {
+        if ((E.x[i] - p.x) ** 2 + ((E.y[i] - p.y) * 1.6) ** 2 < pr * pr) {
           E.poolCd[i] = 0.5;
           this.damage(i, 3 * p.power * m, El.Venom, { quiet: true });
         }
@@ -2992,11 +3016,18 @@ export class World {
         }
         continue;
       }
-      if (!D.pulled[i] && d < mag * (kind === D_HEART ? 0.6 : 1) && D.t[i] > 0.25 && !h.dead && !(kind === D_HEART && h.hp >= h.maxHp)) D.pulled[i] = 1;
+      // caught by the pull: a little hop away first, then it flies in faster and faster (its clock restarts, so a
+      // gem that lay long on the floor does not arrive in a blink)
+      if (!D.pulled[i] && d < mag * (kind === D_HEART ? 0.6 : 1) && D.t[i] > 0.25 && !h.dead && !(kind === D_HEART && h.hp >= h.maxHp)) {
+        D.pulled[i] = 1;
+        D.t[i] = 0;
+        D.vx[i] = (-dx / d) * 55;
+        D.vy[i] = (-dy / d) * 55 - 25;
+      }
       if (D.pulled[i]) {
-        const sp = 140 + D.t[i] * 120;
-        D.vx[i] = D.vx[i] * 0.85 + (dx / d) * sp * 0.9;
-        D.vy[i] = D.vy[i] * 0.85 + (dy / d) * sp * 0.9;
+        const sp = Math.min(520, 40 + D.t[i] * D.t[i] * 900), k = Math.min(1, D.t[i] * 3);
+        D.vx[i] = D.vx[i] * (1 - 0.15 * k) + (dx / d) * sp * 0.15 * (1 + k);
+        D.vy[i] = D.vy[i] * (1 - 0.15 * k) + (dy / d) * sp * 0.15 * (1 + k);
       } else {
         D.vx[i] *= 1 - 5 * dt;
         D.vy[i] *= 1 - 5 * dt;
@@ -3140,7 +3171,7 @@ export class World {
     this.spawnAcc = 0;
     this.gainOd(20);
     this.embersBonus += 2 + this.floor;
-    if (h.hp < h.maxHp && this.rng.chance(0.6)) this.drops.add(D_HEART, h.x + this.rng.range(-30, 30), h.y + this.rng.range(-20, 20), 1, 0, -20);
+    if (h.hp < h.maxHp && this.rng.chance(0.2)) this.drops.add(D_HEART, h.x + this.rng.range(-30, 30), h.y + this.rng.range(-20, 20), 1, 0, -20);
     this.addFx("heal_ring", h.x, h.y, { tint: rgba("#ffd27a"), glow: 0.7, sx: 0.8, sy: 0.8 });
     this.audio.play("levelup", 0.8);
     if (this.phase >= 3) {

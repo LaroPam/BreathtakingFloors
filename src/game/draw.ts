@@ -9,7 +9,7 @@ import { text } from "../engine/text";
 import { AI, EL_COLOR, ENEMIES, LEGENDS, questDef, RelicKind, stageOf, WEAPONS, weaponName } from "./defs";
 import { t as tr, tx } from "./i18n";
 import { FLOOR, LOOK_BRIDGE, LOOK_ICE, LOOK_VEIN, PIT, WALL } from "./map";
-import { BULLET_ANIMS, HERO_HIT_Y, HERO_R, B_CRESCENT, B_FIREBALL, B_LANCE, CINE_DUR, D_CHEST, D_EMBER, D_GREEN, D_HEART, D_RED, SANCTUARY_R, STAR_EVERY, TILE, type World } from "./world";
+import { BULLET_ANIMS, poolSpread, HERO_HIT_Y, HERO_R, B_CRESCENT, B_FIREBALL, B_LANCE, CINE_DUR, D_CHEST, D_EMBER, D_GREEN, D_HEART, D_RED, SANCTUARY_R, STAR_EVERY, TILE, type World } from "./world";
 
 export class Scene {
   back = new Batch();
@@ -340,7 +340,8 @@ export function drawWorld(s: Scene, w: World, camX: number, camY: number, viewW:
   // ---- poison pools on the floor
   const puddle = anim("puddle");
   for (const p of w.pools) {
-    const k = p.r / 26;
+    // it spreads from where the flask broke and shrinks away at its end (no sudden pool)
+    const k = (p.r / 26) * Math.max(0.08, poolSpread(p));
     drawAnim(s, puddle, p.max - p.life, p.x, p.y + 6, { layer: "back", sx: k, sy: k, alpha: Math.min(1, p.life / 0.6), glow: 0.5 });
   }
 
@@ -416,6 +417,14 @@ export function drawWorld(s: Scene, w: World, camX: number, camY: number, viewW:
       const big = k === D_RED ? 1.4 : k === D_GREEN ? 1.2 : 1;
       s.back.disc(x, y + 1, 4 * big - bob * 0.3, 1.5 * big, C_SHADOW);
       s.illum.light(x, y - 8 + bob, 16 * big, 13 * big, k === D_RED ? rgbaf(1, 0.35, 0.35, 0.3) : k === D_GREEN ? rgbaf(0.35, 1, 0.45, 0.3) : rgbaf(0.4, 0.7, 1, 0.3));
+    }
+    // flying in to the hero: a short streak of its light behind it
+    if (D.pulled[i] && k !== D_HEART) {
+      const vx = D.vx[i], vy = D.vy[i], sp = Math.hypot(vx, vy) || 1, col = k === D_RED ? rgbaf(1, 0.45, 0.45, 1) : k === D_GREEN ? rgbaf(0.45, 1, 0.55, 1) : rgbaf(0.5, 0.8, 1, 1);
+      for (let q = 1; q <= 4; q++) {
+        const f = q * Math.min(3, sp / 90);
+        s.glow.rect(Math.round(x - (vx / sp) * f), Math.round(y - 6 + bob - (vy / sp) * f), 1, 1, withAlpha(col, 0.55 * (1 - q / 5)));
+      }
     }
     drawAnim(s, a, time + i * 0.17, x, y + bob, { key: y, glow: 1 });
   }

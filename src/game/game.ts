@@ -788,7 +788,7 @@ export class Game {
     const light: Lighting = {
       ambient: down ? down.ambient : [w.ambient * w.biome.ambient[0], w.ambient * w.biome.ambient[1], w.ambient * w.biome.ambient[2]],
       steps: 7,
-      vignette: down ? 0.8 : 0.55,
+      vignette: down ? 0.8 : 0.35,
       tint: w.flash > 0 && this.save.flashes && !down ? [1, 0.95, 0.85] : [0.03, 0.025, 0.06],
       tintK: w.flash > 0 && this.save.flashes && !down ? w.flash * 0.25 : dim ? dimK : 0,
     };
@@ -1038,6 +1038,14 @@ export class Game {
     const ty = stripY + 22;
     HEROES.forEach((hd, k) => {
       const x = Math.round(W / 2 + (k - (n - 1) / 2) * 34), f = this.heroFrame(hd.id, this.wearsVictor(hd.id), "idle", 0);
+      // a click or a tap on a portrait picks that hero
+      const c = this.input.click;
+      if (c && k !== this.heroIdx && c.x >= x - 16 && c.x < x + 16 && c.y >= ty - 24 && c.y < ty + 8) {
+        this.heroIdx = k;
+        this.world.setHero(HEROES[k]);
+        this.world.hero.victor = this.wearsVictor(HEROES[k].id);
+        this.audio.play("click");
+      }
       slot(ui, x - 14, ty - 22, 28, k === this.heroIdx ? C.gold : undefined);
       if (k === this.heroIdx) ui.rect(x - 13, ty + 5, 26, 1, C.goldDim);
       const own = this.save.unlocked.includes(hd.id);
@@ -1261,7 +1269,6 @@ export class Game {
       }
       y += rh;
     }
-    text(ui, t("settingsHint"), W / 2, y + 6, { font: "mini", align: "center", color: C.dim });
     if (button(ui, this.menu, now, Math.round(W / 2 - 50), H - 26, 100, 18, t("back"), { icon: icon("hud", "back") }) || this.input.pressed("back")) this.setState(this.settingsFrom, this.settingsFrom === "title" ? 5 : 2);
   }
 
