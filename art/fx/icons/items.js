@@ -21,6 +21,8 @@ export const IDS = [
   "wisdom", "greed", "reroll", "start", "revive",
   // the shop's
   "embers_s", "embers_m", "embers_l", "heat", "heroes", "noads",
+  // the books' sign for what is not found yet
+  "unknown",
 ];
 
 export const meta = {
@@ -398,6 +400,7 @@ const KIND = {
   magnet: "steel", dashcd: "steel", overdrive: "holy", crit: "gold", lantern: "holy",
   wisdom: "wisdom", greed: "ember", reroll: "arms", start: "gold", revive: "fire",
   embers_s: "ember", embers_m: "ember", embers_l: "ember", heat: "ember", heroes: "gold", noads: "steel",
+  unknown: "arms",
 };
 
 // the badge's outline: a rounded square, 20 from its middle to a side, its corners 6 round
@@ -1199,6 +1202,14 @@ SYM.noads = (p) => {
   a.add(S.poly([F.P(0, 1.6), F.P(1, 1.6), F.P(1, -1.6), F.P(0, -1.6)].map(([x, y]) => [x, y])), "red", 0.7);
   a.draw(p);
   glint(p, -8, -10, 1, "#ffc6ce");
+};
+
+// ---- not found yet: a question mark cut in stone
+SYM.unknown = (p) => {
+  const a = new Art();
+  a.add(S.or(S.arc(0, -5, 8.5, 4, Math.PI * 0.95, Math.PI * 2.35), S.seg(5.2, -0.6, 0.6, 3.4, 4), S.seg(0.6, 3.4, 0.6, 6.4, 4)), "stone", T.lin(-8, -14, 8, 7, 1, 0.45));
+  a.add(S.disc(0.6, 12, 2.6), "stone", T.sph(0.6, 12, 2.6, 0.4, 1.05));
+  a.draw(p);
 };
 
 export function draw(p, t, o) {

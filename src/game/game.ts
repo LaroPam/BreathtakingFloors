@@ -17,7 +17,7 @@ import { defaultSave, sanitize, type SaveData } from "./save";
 import { button, slider, C, divider, glow as glowUi, drawHud, drawPointers, drawTouch, fmtTime, frame, header , Menu, panel, para, plate , slot } from "./ui";
 import { CINE_DUR, SRC_ABILITY, SRC_DASH, SRC_ELS, SRC_N, SRC_PARRY, SRC_REACT, SRC_RELIC, SRC_STATUS, SRC_WAVE, SRC_WEAPON, World } from "./world";
 
-type State = "title" | "heroes" | "forge" | "shop" | "daily" | "records" | "tasks" | "settings" | "card" | "play" | "spin" | "pick" | "pause" | "codex" | "stairs" | "dead" | "won" | "stats";
+type State = "title" | "heroes" | "forge" | "shop" | "daily" | "records" | "tasks" | "settings" | "card" | "play" | "spin" | "pick" | "pause" | "book" | "stairs" | "dead" | "won" | "stats";
 type Choice = { type: "relic"; kind: RelicKind; level: number } | { type: "stat"; id: StatId } | { type: "evo"; kind: RelicKind } | { type: "legend"; weapon: WeaponId } | { type: "rest" };
 
 /**
@@ -91,7 +91,14 @@ export class Game {
   private wipe: { t: number; dur: number; out: boolean; then?: () => void } | null = null;
   private cardT = 0;
   private heroIdx = 0;
-  private codexPage = 0;
+  /** The pause's books: which is open, the card opened from it (growing out of its tile) and its live demo. */
+  private bookKind: "evo" | "el" = "el";
+  private card: { idx: number; t: number; dir: 1 | -1; from: [number, number, number, number] } | null = null;
+  private demo: World | null = null;
+  private demoCam: [number, number] = [0, 0];
+  private bookNote = "";
+  private bookNoteT = -9;
+  private bookShake = -1;
   private unlockedAt = -9;
   private claimedAt = -9;
   /** A hero who just earned the victor's colours (the victory screen says so). */
@@ -724,7 +731,7 @@ export class Game {
   }
   private take(c: Choice, kind: Spin["kind"] | Pick["kind"]): void {
     const w = this.world;
-    if (c.type === "relic") w.addRelic(c.kind);
+    if (c.type === "relic") (w.addRelic(c.kind), this.markSeen(`r${c.kind}`));
     else if (c.type === "evo") (w.evolve(c.kind), (this.save.stats[`evo_${c.kind}`] = 1), this.bump("evolve"));
     else if (c.type === "legend") {
       w.makeLegend();
@@ -732,7 +739,7 @@ export class Game {
       this.showBanner(tx(LEGENDS[c.weapon]), C.gold, t("legendary"));
     }
     else if (c.type === "rest") w.hero.hp = Math.min(w.hero.maxHp, w.hero.hp + 2);
-    else w.addStat(c.id);
+    else (w.addStat(c.id), this.markSeen(`a:${c.id}`));
     if (kind === "chest") this.bump("chests");
     if (kind === "level") w.pendingLevels = Math.max(0, w.pendingLevels - 1);
     else if (kind === "chest") w.pendingChests = Math.max(0, w.pendingChests - 1);
@@ -829,6 +836,12 @@ export class Game {
     this.audio.theme = w.cine || w.bossIndex() >= 0 ? 3 : w.biome.id === "garden" ? 1 : w.biome.id === "frost" ? 2 : 0;
     if (this.state === "spin") this.updateSpin(dt);
     if (this.state === "pick") this.updatePick(dt);
+    if (this.state === "book" && this.card) {
+      const c = this.card;
+      c.t += dt * c.dir;
+      if (c.dir < 0 && c.t <= 0) (this.card = null), (this.demo = null), this.menu.open(this.now, c.idx);
+      else if (this.demo) this.updateDemo(dt);
+    }
     if (this.state === "play" && !this.platformPaused && !this.wipe) {
       if (input.pressed("pause")) this.setState("pause");
       else {
@@ -873,7 +886,9 @@ export class Game {
 
   // =========================================================================================== drawing
   private draw(): void {
-    const w = this.world, W = this.r.w, H = this.r.h, s = this.scene, ui = this.ui;
+    // an open card in the books shows its own small world in place of the paused one
+    const demo = this.state === "book" && this.card && this.card.t > 0.3 ? this.demo : null;
+    const w = demo ?? this.world, W = this.r.w, H = this.r.h, s = this.scene, ui = this.ui;
     s.clear();
     ui.clear();
     this.menu.begin();
@@ -881,10 +896,10 @@ export class Game {
     const sx = shake ? (Math.random() - 0.5) * shake : 0, sy = shake ? (Math.random() - 0.5) * shake : 0;
     // between floors the floor behind is gone: the stairwell down to the next one takes its place
     const down = this.state === "stairs" || (this.state === "stats" && this.statsFrom[0] === "stairs") ? stairwell(s, W, H, this.now, biomeOf(w.floor + 1)) : null;
-    const cx = down ? 0 : this.camX + sx, cy = down ? 0 : this.camY + sy;
+    const cx = down ? 0 : demo ? this.demoCam[0] : this.camX + sx, cy = down ? 0 : demo ? this.demoCam[1] : this.camY + sy;
     if (!down) drawWorld(s, w, cx, cy, W, H, this.now);
 
-    const dim = this.state !== "play" && this.state !== "title" && !down;
+    const dim = this.state !== "play" && this.state !== "title" && !down && !demo;
     // a choice or a chest dims the floor smoothly, and a choice made lets it light up again as the game goes on
     const over = this.state === "pick" || this.state === "spin";
     const closing = this.pick && this.pick.chosen >= 0 ? Math.min(1, this.pick.t / 0.2) : 0;
@@ -934,7 +949,7 @@ export class Game {
       case "spin": this.drawSpin(); break;
       case "pick": this.drawPick(); break;
       case "pause": this.drawPause(); break;
-      case "codex": this.drawCodex(); break;
+      case "book": this.drawBook(); break;
       case "stairs": this.drawStairs(); break;
       case "dead": this.drawDead(); break;
       case "won": this.drawWon(); break;
@@ -1380,7 +1395,7 @@ export class Game {
       }
       y += rh;
     }
-    if (button(ui, this.menu, now, Math.round(W / 2 - 50), H - 26, 100, 18, t("back"), { icon: icon("hud", "back") }) || this.input.pressed("back")) this.setState(this.settingsFrom, this.settingsFrom === "title" ? 5 + this.shopSlot : 2);
+    if (button(ui, this.menu, now, Math.round(W / 2 - 50), H - 26, 100, 18, t("back"), { icon: icon("hud", "back") }) || this.input.pressed("back")) this.setState(this.settingsFrom, this.settingsFrom === "title" ? 5 + this.shopSlot : 4);
   }
 
   /** Achievements: a card each, earned ones gilded, the rest dim with how far along; paged to fit the screen. */
@@ -1981,7 +1996,7 @@ export class Game {
 
   private drawPause(): void {
     const ui = this.ui, W = this.r.w, H = this.r.h, now = this.now;
-    const bw = 170, bh = 20, gap = 6, ph = 5 * (bh + gap) + 18, py = Math.round(Math.max(H * 0.2 + 30, H / 2 - ph / 2 + 10));
+    const bw = 170, bh = 20, gap = 6, ph = 6 * (bh + gap) + 18, py = Math.round(Math.max(H * 0.2 + 30, H / 2 - ph / 2 + 10));
     this.heading(t("paused"), py - 40, 2);
     frame(ui, W / 2 - bw / 2 - 14, py - 10, bw + 28, ph);
     const bx = Math.round(W / 2 - bw / 2);
@@ -1993,9 +2008,11 @@ export class Game {
       return;
     }
     y += bh + gap;
-    if (button(ui, this.menu, now, bx, y, bw, bh, t("codex"), { icon: icon("hud", "book") })) this.setState("codex");
+    if (button(ui, this.menu, now, bx, y, bw, bh, t("bookEvo"), { icon: icon("hud", "book") })) this.openBook("evo");
     y += bh + gap;
-    if (button(ui, this.menu, now, bx, y, bw, bh, t("stats"), { icon: icon("hud", "trophy") })) this.openStats("pause", 2);
+    if (button(ui, this.menu, now, bx, y, bw, bh, t("bookEl"), { icon: icon("hud", "curse") })) this.openBook("el");
+    y += bh + gap;
+    if (button(ui, this.menu, now, bx, y, bw, bh, t("stats"), { icon: icon("hud", "trophy") })) this.openStats("pause", 3);
     y += bh + gap;
     if (button(ui, this.menu, now, bx, y, bw, bh, t("settings"), { icon: icon("hud", "gear") })) {
       this.settingsFrom = "pause";
@@ -2014,51 +2031,262 @@ export class Game {
   }
 
 
-  /** The codex: the reactions found so far, or (second page) every evolution's recipe. */
-  private drawCodex(): void {
-    const ui = this.ui, W = this.r.w, H = this.r.h, now = this.now, pw = Math.min(380, W - 16), px = Math.round(W / 2 - pw / 2);
-    const bw = 100, by = H - 26;
-    if (button(ui, this.menu, now, Math.round(W / 2 - bw - 4), by, bw, 18, this.codexPage ? t("codex") : t("evolutions"), { icon: icon("hud", "book") })) this.codexPage = 1 - this.codexPage;
-    if (button(ui, this.menu, now, Math.round(W / 2 + 4), by, bw, 18, t("back"), { icon: icon("hud", "back") }) || this.input.pressed("back")) {
-      this.codexPage = 0;
-      this.setState("pause", 1);
-      return;
-    }
-    if (this.codexPage) {
-      this.heading(t("evolutions"), 8, 1);
-      text(ui, t("evoHint"), W / 2, 22, { font: "mini", align: "center", color: C.dim });
-      text(ui, t("legendHint"), W / 2, H - 36, { font: "mini", align: "center", color: C.goldDim });
-      const rowH = Math.min(34, Math.floor((H - 70) / EVOLUTIONS.length));
-      EVOLUTIONS.forEach((e, k) => {
-        const y = 32 + k * rowH, mine = this.world.evolved(e.relic), relic = RELICS[e.relic], col = rgba(EL_COLOR[relic.el]);
-        panel(ui, px, y, pw, rowH - 2, mine ? C.gold : C.edge);
-        const cy = y + Math.round((rowH - 2) / 2), small = rowH < 26;
-        // relic + upgrade = evolution, as badges
-        const ic = (id: string, x: number) => (small ? ui.image(icon("icons", id), x, cy, 0.5, 0.5) : ui.image(icon("icons", id), x, cy));
-        const step = small ? 14 : 24;
-        ic(RELIC_ICON[e.relic], px + 6 + step / 2);
-        text(ui, "+", px + 6 + step, cy - 3, { font: "mini", color: C.dim });
-        ic(e.stat, px + 10 + step * 1.5);
-        text(ui, "=", px + 10 + step * 2, cy - 3, { font: "mini", color: C.dim });
-        ic(e.icon, px + 14 + step * 2.5);
-        const tx0 = px + 18 + step * 3;
-        text(ui, tx(e.name), tx0, y + 3, { color: col });
-        if (!small) wrap(tx(e.desc), pw - (tx0 - px) - 6, "mini").slice(0, 2).forEach((l, q) => text(ui, l, tx0, y + 14 + q * 8, { font: "mini", color: C.text }));
-        else text(ui, `${tx(relic.name)} + ${tx(STATS.find((q) => q.id === e.stat)!.name)}`, px + pw - 6, y + 4, { font: "mini", align: "right", color: C.dim });
-      });
-      return;
-    }
-    this.heading(t("codex"), 8, 1);
-    const rowH = Math.min(26, Math.floor((H - 60) / REACTIONS.length));
-    REACTIONS.forEach((r, k) => {
-      const y = 26 + k * rowH, known = this.save.reactions.includes(r.id);
-      panel(ui, px, y, pw, rowH - 2);
-      ui.rect(px + 4, y + 4, 3, rowH - 10, known ? rgba(r.color) : C.edge);
-      text(ui, known ? tx(r.name) : t("notDiscovered"), px + 12, y + 4, { color: known ? rgba(r.color) : C.dim });
-      if (rowH >= 22) text(ui, tx(r.desc), px + 12, y + 13, { font: "mini", color: known ? C.text : C.dim });
-      else text(ui, tx(r.desc), px + pw - 6, y + 5, { font: "mini", align: "right", color: known ? C.text : C.dim });
-    });
+  // =========================================================================================== the books
+  private markSeen(key: string): void {
+    if (this.save.seen.includes(key)) return;
+    this.save.seen.push(key);
+    this.persist();
   }
+  private relicKnown(kind: RelicKind): boolean {
+    return this.save.seen.includes(`r${kind}`) || !!this.save.stats[`evo_${kind}`];
+  }
+  private artifactKnown(id: StatId): boolean {
+    return this.save.seen.includes(`a:${id}`) || EVOLUTIONS.some((e) => e.stat === id && this.evoKnown(e.relic));
+  }
+  private evoKnown(kind: RelicKind): boolean {
+    return !!this.save.stats[`evo_${kind}`];
+  }
+  private openBook(kind: "evo" | "el"): void {
+    // what this run holds counts as found, whatever came before the books kept count
+    for (const r of this.world.relics) this.markSeen(`r${r.kind}`);
+    for (const id of this.world.artifacts) this.markSeen(`a:${id}`);
+    this.bookKind = kind;
+    this.card = null;
+    this.demo = null;
+    this.bookNote = "";
+    this.setState("book");
+  }
+  /** Where the open card puts its live demo (win) and its words (pan): side by side, or one over the other. */
+  private cardLayout(): { win: [number, number, number, number]; pan: [number, number, number, number]; wide: boolean } {
+    const W = this.r.w, H = this.r.h, m = 10, wide = W >= H * 1.15;
+    if (wide) {
+      const pw = Math.min(250, Math.round(W * 0.4));
+      return { wide, win: [m, m, W - pw - m * 2 - 6, H - m * 2], pan: [W - m - pw, m, pw, H - m * 2] };
+    }
+    const wh = Math.round(H * 0.44);
+    return { wide, win: [m, m, W - m * 2, wh], pan: [m, m + wh + 6, W - m * 2, H - wh - m * 2 - 6] };
+  }
+  /** A small world of its own for a card: the hero, what the card shows, and foes that keep coming. */
+  private makeDemo(setup: (w: World) => void): World {
+    const quiet = { play() {}, intensity: 0 } as unknown as Audio;
+    const none = new Proxy({}, { get: () => () => {} }) as ConstructorParameters<typeof World>[2];
+    const d = new World(7 + this.bookKind.length, quiet, none, NO_MODIFIER), def = this.world.hero.def;
+    d.setHero(def);
+    d.hero.victor = this.world.hero.victor;
+    d.startFloor(1, NO_MODIFIER);
+    d.hero.arriveT = 9;
+    d.fx = [];
+    d.enemies.n = 0;
+    d.numbers = this.save.numbers;
+    // no waves: the card brings its own foes
+    (d as unknown as { director: () => void }).director = () => {};
+    // the hero in the middle of the roomiest floor nearest the map's middle, room all round for the fight
+    let best = -Infinity, bx = d.hero.x, by = d.hero.y;
+    for (let y = 48; y < d.h - 48; y += 16)
+      for (let x = 48; x < d.w - 48; x += 16) {
+        let open = true;
+        for (let k = 0; k < 16 && open; k++)
+          for (const r of [24, 56, 90]) if (d.map.wall(x + Math.cos((k / 16) * Math.PI * 2) * r, y + Math.sin((k / 16) * Math.PI * 2) * r * 0.8)) (open = false);
+        if (!open) continue;
+        const score = -Math.hypot(x - d.w / 2, y - d.h / 2);
+        if (score > best) (best = score), (bx = x), (by = y);
+      }
+    d.hero.x = bx;
+    d.hero.y = by;
+    setup(d);
+    return d;
+  }
+  private updateDemo(dt: number): void {
+    const d = this.demo!, h = d.hero, E = d.enemies, [wx, wy, ww, wh] = this.cardLayout().win;
+    h.invuln = 5;
+    h.hp = h.maxHp;
+    d.moveX = d.moveY = 0;
+    d.autoAim = true;
+    d.aimTarget = null;
+    h.attacking = false;
+    // foes walk in from round about, a few at a time
+    if (E.n < 9 && this.runRng.chance(dt * 6))
+      for (let tries = 0; tries < 8; tries++) {
+        const a = this.runRng.range(0, Math.PI * 2), r = this.runRng.range(95, 140), x = h.x + Math.cos(a) * r, y = h.y + Math.sin(a) * r * 0.75;
+        if (d.map.wall(x, y) || d.map.wall(x, y + 8)) continue;
+        const j = d.spawnAt(this.runRng.int(0, 2), x, y);
+        if (j >= 0) E.hp[j] = 70 + this.runRng.int(0, 50);
+        break;
+      }
+    const n = Math.max(1, Math.ceil(dt / STEP - 1e-6));
+    for (let k = 0; k < n; k++) d.step(dt / n);
+    this.demoCam = [Math.round(h.x - (wx + ww / 2)), Math.round(h.y - 14 - (wy + wh / 2))];
+  }
+  private openCard(idx: number, from: [number, number, number, number]): void {
+    const kindOf = (el: El) => RELICS.findIndex((r) => r.el === el) as RelicKind;
+    if (this.bookKind === "el") {
+      const r = REACTIONS[idx];
+      this.demo = this.makeDemo((d) => {
+        d.hero.weaponEl = r.a;
+        for (let k = 0; k < 4; k++) d.addRelic(kindOf(r.b));
+        for (let k = 0; k < 3; k++) d.addRelic(kindOf(r.a));
+      });
+    } else {
+      const e = EVOLUTIONS[idx];
+      this.demo = this.makeDemo((d) => {
+        for (let k = 0; k < RELIC_MAX; k++) d.addRelic(e.relic);
+        d.addStat(e.stat);
+        d.evolve(e.relic);
+      });
+    }
+    // a moment of fighting already under way when the window opens
+    for (let k = 0; k < 30; k++) this.updateDemo(1 / 30);
+    this.card = { idx, t: 0, dir: 1, from };
+    this.audio.play("chest");
+  }
+
+  /**
+   * The book of evolutions and the book of elements: a tile for each evolution (its relic + artifact = what it
+   * becomes) or each reaction (its two elements), a question mark for what is not found yet. A found one opens into a
+   * card over the whole screen: a live fight showing it, and beside it how it works.
+   */
+  private drawBook(): void {
+    const ui = this.ui, W = this.r.w, H = this.r.h, now = this.now, evo = this.bookKind === "evo", card = this.card;
+    // a card open in full covers the book: only the card and its window onto the fight
+    if (card && card.t >= 0.32) {
+      this.drawCard2();
+      return;
+    }
+    ui.rect(0, 0, W, H, rgba("#07060c", 0.5));
+    const th = this.heading(evo ? t("bookEvo") : t("bookEl"), 6, H >= 300 ? 2 : 1, C.gold, 1, evo ? t("evoHint") : t("elHint"));
+    const n = evo ? EVOLUTIONS.length : REACTIONS.length, gap = 6, tH = evo ? 84 : 78, minW = evo ? 150 : 86, avail = H - 30 - (6 + th + 8);
+    // as few columns as let the rows fit the height, the tiles never narrower than their badges
+    let cols = evo ? 2 : 3;
+    while (cols < n && Math.ceil(n / cols) * (tH + gap) > avail && Math.floor((W - 16 - cols * gap) / (cols + 1)) >= minW) cols++;
+    const tw = Math.min(evo ? 200 : 118, Math.floor((W - 16 - (cols - 1) * gap) / cols));
+    const rows = Math.ceil(n / cols), x0 = Math.round(W / 2 - (cols * tw + (cols - 1) * gap) / 2);
+    const top = Math.max(6 + th + 8, Math.round(6 + th + 8 + (avail - rows * (tH + gap)) / 2));
+    const elIcon = (el: El) => icon("items", RELIC_ICON[RELICS.findIndex((r) => r.el === el)]);
+    for (let k = 0; k < n; k++) {
+      const x = x0 + (k % cols) * (tw + gap), y = top + Math.floor(k / cols) * (tH + gap);
+      const it = card ? { focused: false, hit: false, idx: -1 } : this.menu.item(x, y, tw, tH, now);
+      const known = evo ? this.evoKnown(EVOLUTIONS[k].relic) : this.save.reactions.includes(REACTIONS[k].id);
+      const shake = this.bookShake === k && now - this.bookNoteT < 0.3 ? Math.round(Math.sin((now - this.bookNoteT) * 60) * 2) : 0;
+      const lift = it.focused ? 2 : 0, rise = card ? 0 : Math.round((1 - this.menu.appear(now, it.idx)) * 10), tx0 = x + shake, ty = y - lift + rise;
+      if (it.focused && known) glowUi(ui, tx0 + tw / 2, ty + tH / 2, tw * 0.6, tH * 0.6, C.gold, 0.2);
+      frame(ui, tx0, ty, tw, tH, { edge: it.focused ? C.gold : known ? C.goldDim : undefined });
+      const mid = tx0 + tw / 2;
+      if (evo) {
+        const e = EVOLUTIONS[k], rk = this.relicKnown(e.relic), ak = this.artifactKnown(e.stat), dim = known ? 0xffffffff : rgbaf(0.75, 0.75, 0.8, 1);
+        ui.image(icon("items", rk ? RELIC_ICON[e.relic] : "unknown"), mid - 52, ty + 25, 1, 1, 0, rk ? 0xffffffff : dim);
+        text(ui, "+", mid - 26, ty + 21, { color: C.dim });
+        ui.image(icon("items", ak ? e.stat : "unknown"), mid, ty + 25, 1, 1, 0, ak ? 0xffffffff : dim);
+        text(ui, "=", mid + 26, ty + 21, { color: C.dim });
+        if (known) glowUi(ui, mid + 52, ty + 25, 22, 22, C.gold, 0.25 + 0.1 * Math.sin(now * 3 + k));
+        ui.image(icon("items", known ? e.icon : "unknown"), mid + 52, ty + 25);
+        text(ui, known ? tx(e.name) : "?", mid, ty + 49, { align: "center", color: known ? rgba(EL_COLOR[RELICS[e.relic].el]) : C.dim, shadow: C.ink });
+        const recipe = `${rk ? tx(RELICS[e.relic].name) : "?"} + ${ak ? tx(STATS.find((q) => q.id === e.stat)!.name) : "?"}`;
+        wrap(recipe, tw - 10, "mini").slice(0, 2).forEach((l, q) => text(ui, l, mid, ty + 61 + q * 8, { font: "mini", align: "center", color: C.dim }));
+      } else {
+        const r = REACTIONS[k], dim = known ? 0xffffffff : rgbaf(0.55, 0.55, 0.6, 1);
+        ui.image(elIcon(r.a), mid - 11, ty + 24, 1, 1, 0, dim);
+        ui.image(elIcon(r.b), mid + 11, ty + 30, 1, 1, 0, dim);
+        if (!known) ui.image(icon("hud", "lock"), mid + 26, ty + 12);
+        text(ui, known ? tx(r.name) : "?", mid, ty + 54, { align: "center", color: known ? rgba(r.color) : C.dim, shadow: C.ink });
+        this.elPair(r.a, r.b, mid, ty + 66);
+      }
+      if (it.hit) {
+        if (known) this.openCard(k, [tx0, ty, tw, tH]);
+        else {
+          this.bookShake = k;
+          this.bookNoteT = now;
+          this.bookNote = evo ? t("evoLocked") : t("elLocked").replace("{a}", tx(EL_NAME[REACTIONS[k].a])).replace("{b}", tx(EL_NAME[REACTIONS[k].b]));
+          this.audio.play("click", 0.6);
+        }
+      }
+    }
+    if (this.bookNote && now - this.bookNoteT < 3) text(ui, this.bookNote, W / 2, H - 36, { font: "mini", align: "center", color: withAlpha(C.red, Math.min(1, 3 - (now - this.bookNoteT))), shadow: C.ink });
+    if (card) {
+      this.drawCard2();
+      return;
+    }
+    const bw = 124, by = H - 24;
+    if (button(ui, this.menu, now, Math.round(W / 2 - bw - 4), by, bw, 18, evo ? t("bookEl") : t("bookEvo"), { icon: icon("hud", "book") })) this.openBook(evo ? "el" : "evo");
+    if (button(ui, this.menu, now, Math.round(W / 2 + 4), by, bw, 18, t("back"), { icon: icon("hud", "back") }) || this.input.pressed("back")) this.setState("pause", evo ? 1 : 2);
+  }
+  /** "FIRE + FROST", each in its colour, centred on x. */
+  private elPair(a: El, b: El, x: number, y: number): void {
+    const A = tx(EL_NAME[a]), B = tx(EL_NAME[b]), wa = measure(A, "mini"), wp = measure(" + ", "mini"), wb = measure(B, "mini"), x0 = Math.round(x - (wa + wp + wb) / 2);
+    text(this.ui, A, x0, y, { font: "mini", color: rgba(EL_COLOR[a]), shadow: C.ink });
+    text(this.ui, " + ", x0 + wa, y, { font: "mini", color: C.dim });
+    text(this.ui, B, x0 + wa + wp, y, { font: "mini", color: rgba(EL_COLOR[b]), shadow: C.ink });
+  }
+  /** The open card: it grows out of its tile to the whole screen, the fight shows through its window, the words fade in. */
+  private drawCard2(): void {
+    const ui = this.ui, W = this.r.w, H = this.r.h, now = this.now, c = this.card!, evo = this.bookKind === "evo";
+    const u = Math.min(1, c.t / 0.32), e = 1 - (1 - u) ** 3, [fx, fy, fw, fh] = c.from;
+    const rx = Math.round(fx + (0 - fx) * e), ry = Math.round(fy + (0 - fy) * e), rw = Math.round(fw + (W - fw) * e), rh = Math.round(fh + (H - fh) * e);
+    const L = this.cardLayout(), [wx, wy, ww, wh] = L.win, [px, py, pw, ph] = L.pan, bg = rgba("#0d0b14");
+    if (u < 1) {
+      ui.rect(rx, ry, rw, rh, bg);
+      frame(ui, rx, ry, rw, rh, { edge: C.gold });
+      return;
+    }
+    // the card round the window: the fight shows through it
+    ui.rect(0, 0, W, wy, bg);
+    ui.rect(0, wy + wh, W, H - wy - wh, bg);
+    ui.rect(0, wy, wx, wh, bg);
+    ui.rect(wx + ww, wy, W - wx - ww, wh, bg);
+    const reveal = Math.min(1, (c.t - 0.32) / 0.3);
+    if (reveal < 1) ui.rect(wx, wy, ww, wh, withAlpha(bg, 1 - reveal));
+    frame(ui, 0, 0, W, H, { edge: C.gold, fill: 0, shadow: false });
+    ui.rect(wx - 1, wy - 1, ww + 2, 1, C.goldDim), ui.rect(wx - 1, wy + wh, ww + 2, 1, C.goldDim);
+    ui.rect(wx - 1, wy, 1, wh, C.goldDim), ui.rect(wx + ww, wy, 1, wh, C.goldDim);
+    // a small sign that the window is live
+    const live = 0.6 + 0.4 * Math.sin(now * 5);
+    ui.rect(wx + 6, wy + 6, 4, 4, rgbaf(1, 0.3, 0.3, live));
+    text(ui, t("demoLive"), wx + 13, wy + 5, { font: "mini", color: C.text, shadow: C.ink });
+    // the words, fading in beside it
+    const a = Math.min(1, (c.t - 0.32) / 0.25), mid = px + pw / 2;
+    let y = py + 8 + Math.round((1 - a) * 6);
+    const col = (k: number) => withAlpha(k, a);
+    if (evo) {
+      const ev = EVOLUTIONS[c.idx], st = STATS.find((q) => q.id === ev.stat)!;
+      ui.image(icon("items", RELIC_ICON[ev.relic]), mid - 52, y + 20, 1, 1, 0, col(0xffffffff));
+      text(ui, "+", mid - 26, y + 16, { color: col(C.dim) });
+      ui.image(icon("items", ev.stat), mid, y + 20, 1, 1, 0, col(0xffffffff));
+      text(ui, "=", mid + 26, y + 16, { color: col(C.dim) });
+      glowUi(ui, mid + 52, y + 20, 24, 24, C.gold, 0.3 * a);
+      ui.image(icon("items", ev.icon), mid + 52, y + 20, 1, 1, 0, col(0xffffffff));
+      y += 46;
+      y += para(ui, tx(ev.name), px + 8, y, pw - 16, col(rgba(EL_COLOR[RELICS[ev.relic].el])), "center") + 2;
+      y += para(ui, `${tx(RELICS[ev.relic].name)} ${t("lv")} ${RELIC_MAX} + ${tx(st.name)}`, px + 8, y, pw - 16, col(C.goldDim), "center", 8, "mini") + 4;
+      divider(ui, mid, y, pw - 30, C.goldDeep);
+      y += 6;
+      text(ui, t("howWorks"), mid, y, { font: "mini", align: "center", color: col(C.gold) });
+      y += 10;
+      y += para(ui, tx(ev.desc), px + 8, y, pw - 16, col(C.text), "center") + 6;
+      text(ui, t("howGet"), mid, y, { font: "mini", align: "center", color: col(C.gold) });
+      y += 10;
+      para(ui, t("evoHow"), px + 8, y, pw - 16, col(C.dim), "center", 8, "mini");
+    } else {
+      const r = REACTIONS[c.idx], el = (x: El) => icon("items", RELIC_ICON[RELICS.findIndex((q) => q.el === x)]);
+      ui.image(el(r.a), mid - 12, y + 20, 1, 1, 0, col(0xffffffff));
+      ui.image(el(r.b), mid + 12, y + 26, 1, 1, 0, col(0xffffffff));
+      y += 52;
+      y += para(ui, tx(r.name), px + 8, y, pw - 16, col(rgba(r.color)), "center") + 2;
+      this.elPair(r.a, r.b, mid, y);
+      y += 12;
+      divider(ui, mid, y, pw - 30, C.goldDeep);
+      y += 6;
+      text(ui, t("howWorks"), mid, y, { font: "mini", align: "center", color: col(C.gold) });
+      y += 10;
+      y += para(ui, tx(r.how ?? r.desc), px + 8, y, pw - 16, col(C.text), "center") + 6;
+      text(ui, `${t("power")} ×${r.mult}   ·   ${r.radius ? t("areaWide") : t("areaOne")}`, mid, y, { font: "mini", align: "center", color: col(C.goldDim) });
+    }
+    const bw = Math.min(140, pw - 16);
+    if (button(ui, this.menu, now, Math.round(mid - bw / 2), py + ph - 26, bw, 18, t("back"), { icon: icon("hud", "back") }) || this.input.pressed("back")) {
+      c.dir = -1;
+      c.t = Math.min(c.t, 0.32);
+      this.audio.play("click", 0.8);
+    }
+  }
+
 
   /** What the stairs taken so far add up to, as two lists of short phrases: the risks and the rewards. */
   private pathSummary(): [string[], string[]] {
