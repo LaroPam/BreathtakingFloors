@@ -346,7 +346,7 @@ export function combine(path: readonly Modifier[]): Modifier {
     out.embers += m.embers - 1;
     out.size *= m.size;
   }
-  out.spawn = Math.max(0.6, Math.min(2.25, out.spawn));
+  out.spawn = Math.max(0.6, Math.min(3.4, out.spawn));
   out.xp = Math.max(0.6, out.xp);
   out.speed = Math.min(1.44, out.speed);
   out.dark = Math.min(0.6, out.dark);

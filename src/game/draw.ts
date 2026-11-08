@@ -9,7 +9,7 @@ import { text } from "../engine/text";
 import { AI, EL_COLOR, ENEMIES, LEGENDS, questDef, RelicKind, stageOf, WEAPONS, weaponName } from "./defs";
 import { t as tr, tx } from "./i18n";
 import { FLOOR, LOOK_BRIDGE, LOOK_ICE, LOOK_VEIN, PIT, WALL } from "./map";
-import { BULLET_ANIMS, poolSpread, HERO_HIT_Y, HERO_R, B_CRESCENT, B_FIREBALL, B_LANCE, CINE_DUR, D_CHEST, D_EMBER, D_GREEN, D_HEART, D_RED, SANCTUARY_R, STAR_EVERY, TILE, type World } from "./world";
+import { BULLET_ANIMS, LUNGE_DASH, poolSpread, HERO_HIT_Y, HERO_R, B_CRESCENT, B_FIREBALL, B_LANCE, CINE_DUR, D_CHEST, D_EMBER, D_GREEN, D_HEART, D_RED, SANCTUARY_R, STAR_EVERY, TILE, type World } from "./world";
 
 export class Scene {
   back = new Batch();
@@ -451,7 +451,8 @@ export function drawWorld(s: Scene, w: World, camX: number, camY: number, viewW:
   // ---- enemies
   const E = w.enemies, bounty = w.bountyIndex();
   for (let i = 0; i < E.n; i++) {
-    const d = ENEMIES[E.type[i]], x = E.x[i], y = E.y[i];
+    const d = ENEMIES[E.type[i]], y = E.y[i];
+    let x = E.x[i];
     if (!inView(x, y, 70)) continue;
     w.body(i);
     s.back.disc(x, y, Math.max(5, w.brx * 0.9), Math.max(2, w.brx * 0.32), C_SHADOW);
@@ -469,8 +470,23 @@ export function drawWorld(s: Scene, w: World, camX: number, camY: number, viewW:
     // the tell before a shot: the last moment before it fires, the body flickers white
     const telling = (d.ai === AI.Shooter || d.ai === AI.Turret) && E.cd[i] < 0.45 && E.cd[i] > 0 && (h.x - x) ** 2 + (h.y - y) ** 2 < 270 * 270 && !h.dead;
     const tk = telling ? 1 - E.cd[i] / 0.45 : 0, tellFlash = tk > 0.55 && Math.sin(time * 45) > 0 ? 0.55 : 0;
+    // an elite winding up its lunge shivers and flickers red; rushing, it leaves a smear
+    const winding = E.lunge[i] > LUNGE_DASH, rushing = E.lunge[i] > 0 && !winding;
+    if (winding) {
+      x += Math.sin(time * 70) * 1;
+      tint = Math.sin(time * 30) > 0 ? rgbaf(1, 0.45, 0.4, 1) : tint;
+    }
     drawAnim(s, anim(d.anim), E.t[i], x, y, { sx: E.face[i] * d.scale * (1 + 0.14 * hit + 0.06 * tk) * grow, sy: d.scale * (1 - 0.12 * hit + 0.06 * tk) * grow, tint, alpha, flash: Math.max(hit, tellFlash), key: y, glow: 0.55 * alpha });
     if (d.glow) s.illum.light(w.bx, w.by, 20 * d.scale, 16 * d.scale, withAlpha(rgba(d.glow), 0.22));
+    if (winding) {
+      // a red mark over its head, swelling as the rush comes
+      const ex = Math.round(w.bx), ey = Math.round(w.by - w.bry - 14);
+      s.front.rect(ex - 1, ey - 1, 4, 9, rgba("#0b0a12"));
+      s.front.rect(ex, ey, 2, 5, rgba("#ff4a3a"));
+      s.front.rect(ex, ey + 6, 2, 2, rgba("#ff4a3a"));
+      s.illum.light(w.bx, w.by, 30, 24, rgbaf(1, 0.25, 0.2, 0.45));
+    }
+    if (rushing) for (let q = 1; q <= 3; q++) s.back.disc(x - E.vx[i] * 0.02 * q, y - E.vy[i] * 0.02 * q - w.bry * 0.6, w.brx * (1 - q * 0.2), w.bry * 0.7 * (1 - q * 0.2), rgbaf(1, 0.3, 0.25, 0.22 - q * 0.05));
     // ...and light gathers into it: bright sparks spiral in from outside the body
     if (telling) {
       const k = tk, col = TELL[d.ai === AI.Turret ? 2 : d.shot] ?? TELL[2];

@@ -87,6 +87,8 @@ export interface FrostOrb {
 export const SRC_WEAPON = 0, SRC_DASH = 1, SRC_RELIC = 2, SRC_REACT = 8, SRC_STATUS = 9, SRC_ABILITY = 10, SRC_WAVE = 11, SRC_PARRY = 12, SRC_OTHER = 13, SRC_N = 14;
 /** Elements per source in World.dmgStat. */
 export const SRC_ELS = 7;
+/** An elite's lunge: it stops and shivers (wind-up), then rushes along the line to the hero. */
+export const LUNGE_WIND = 0.42, LUNGE_DASH = 0.34;
 /** How long the frost orb gathers before it looses its lances. */
 export const ORB_CHARGE = 0.5;
 /** The Black Star: the evolved Sphere of Void, one great star that wanders into the horde. */
@@ -1133,7 +1135,7 @@ export class World {
       if (h.dashT <= 0) this.dust(h.x + h.dashDx * 6, h.y, 7, 45);
     } else {
       // a little slower in the middle of a blow, so it has weight
-      const speed = 92 * s.speed * (h.atk >= 0 ? 0.78 : 1) * (this.rage > 0 ? 1.15 : 1);
+      const speed = 92 * s.speed * (h.atk >= 0 ? 0.78 : 1) * (this.rage > 0 ? 1.15 : 1) * this.swarmed();
       // on ice the feet hold poorly: slow to start, slow to stop
       const ice = this.map.look[Math.floor(h.y / TILE) * this.map.cols + Math.floor(h.x / TILE)] === LOOK_ICE;
       const k = 1 - Math.exp(-dt * (ice ? 2.6 : 14));
@@ -1501,7 +1503,8 @@ export class World {
   }
   gainOd(v: number): void {
     const h = this.hero, was = h.od;
-    h.od = Math.min(100, h.od + v * this.stats.odGain);
+    // with a boss up the ability fills at half the pace: a boss is fought, not skipped
+    h.od = Math.min(100, h.od + v * this.stats.odGain * (this.bossIndex() >= 0 ? 0.5 : 1));
     if (was < 100 && h.od >= 100) this.audio.play("levelup", 1.5);
   }
 
@@ -1781,6 +1784,8 @@ export class World {
       return false;
     }
     let dmg = amount;
+    // the heroes' abilities are for the horde: a boss takes only a third of them
+    if (this.src === SRC_ABILITY && d.ai >= AI.Boss) dmg *= 0.35;
     if (E.hex[i] > 0) dmg *= 1.3;
     if (E.frozen[i] > 0) dmg *= 1.15;
     const dealt = Math.max(0, Math.min(dmg, E.hp[i])), row = this.src * SRC_ELS, re = this.src === SRC_REACT && o.as === undefined ? this.reactEls : null;
@@ -2228,13 +2233,7 @@ export class World {
       case "graze": q.need = 16 + f * 2; break;
       case "alchemy": q.need = 3 + Math.floor(f / 3); break;
       case "bounty": {
-        const [x, y] = this.edgePoint(230), type = this.rng.chance(0.5) ? EN.skullElite : EN.slimeElite, i = this.spawnAt(type, x, y);
-        if (i >= 0) {
-          this.enemies.hp[i] *= 1.5;
-          this.enemies.maxHp[i] = this.enemies.hp[i];
-          q.uid = this.enemies.uid[i];
-          this.addFx("spawn", x, y, { glow: 0.8, tint: rgba("#ff6a5a") });
-        }
+        this.spawnBounty(q);
         q.left = q.total = 50;
         break;
       }
@@ -2246,6 +2245,30 @@ export class World {
     this.audio.play("portal", 1.4);
     this.addFx("heal_ring", sp.x, sp.y, { tint: rgba("#9ad4ff"), glow: 0.7, sx: 0.5, sy: 0.5 });
     this.ev.quest(q);
+  }
+  /**
+   * The bounty's marked elite: it steps out of the dark in plain sight of the hero, a few strides off, so the hunt
+   * starts at once (the red arrow at the screen's edge points to it if it gets away).
+   */
+  private spawnBounty(q: Quest): void {
+    const h = this.hero, type = this.rng.chance(0.5) ? EN.skullElite : EN.slimeElite;
+    let x = 0, y = 0, ok = false;
+    for (let k = 0; k < 60 && !ok; k++) {
+      const a = this.rng.range(0, Math.PI * 2), d = this.rng.range(110, 160);
+      x = h.x + Math.cos(a) * d;
+      y = h.y + Math.sin(a) * d * 0.75;
+      ok = x > 20 && y > 24 && x < this.w - 20 && y < this.h - 12 && this.free(x, y, 12) && this.map.sight(h.x, h.y - 4, x, y - 4, false);
+    }
+    if (!ok) [x, y] = this.edgePoint(140);
+    const i = this.spawnAt(type, x, y);
+    if (i < 0) return;
+    this.enemies.hp[i] *= 1.5;
+    this.enemies.maxHp[i] = this.enemies.hp[i];
+    this.enemies.lungeCd[i] = 2;
+    q.uid = this.enemies.uid[i];
+    this.addFx("spawn", x, y, { glow: 0.8, tint: rgba("#ff6a5a") });
+    this.burst(x, y - 10, 16, rgba("#ff6a5a"), 90, 0.5);
+    this.audio.play("roar", 1.6);
   }
   /** Progress on the quest; it is done when the count is reached. */
   /**
@@ -2293,6 +2316,8 @@ export class World {
       if (q.endT > 3) this.quest = null;
       return;
     }
+    // the mark not out yet (the floor was full), or lost to something other than the hero: it comes again
+    if (q.kind === "bounty" && (!q.uid || this.indexOf(q.uid) < 0)) this.spawnBounty(q);
     if (q.left >= 0) {
       q.left -= dt;
       if (q.left <= 0) this.endQuest(false);
@@ -2686,13 +2711,16 @@ export class World {
   // ============================================================================================ enemies
   /** An enemy's shot: big enough to see coming and to read (draw.ts shows it larger than it hits). */
   private shoot(x: number, y: number, a: number, speed: number, kind: number, life = 5): void {
-    this.bullets.add(TEAM_FOE, kind, x, y, Math.cos(a) * speed, Math.sin(a) * speed, life, 1, FOE_SHOT_R, 0, 0);
+    this.bullets.add(TEAM_FOE, kind, x, y, Math.cos(a) * speed, Math.sin(a) * speed, life, this.shotDmg, FOE_SHOT_R, 0, 0);
   }
+  /** What the shots fired now take from the hero: two hearts from an elite or a boss, one from the rest. */
+  private shotDmg = 1;
 
   private updateEnemies(dt: number): void {
     const E = this.enemies, h = this.hero;
     for (let i = E.n - 1; i >= 0; i--) {
       const d = ENEMIES[E.type[i]];
+      this.shotDmg = d.elite || d.ai >= AI.Boss ? 2 : 1;
       E.age[i] += dt;
       const held = E.frozen[i] > 0 || E.stun[i] > 0 || h.dead;
       if (!held || d.ai >= AI.Boss) E.t[i] += dt;
@@ -2917,6 +2945,21 @@ export class World {
             this.frogKing(i, dt, dist);
             break;
         }
+      // an elite is quicker than the rest, and now and then it gathers itself and throws itself at the hero: a
+      // shivering wind-up with a red tell, then a rush at four times its pace along the line he was on
+      if (d.elite && d.ai < AI.Boss && !held && !h.dead) {
+        E.lungeCd[i] -= dt;
+        if (E.lunge[i] > 0) {
+          const was = E.lunge[i];
+          E.lunge[i] -= dt;
+          if (was > LUNGE_DASH && E.lunge[i] <= LUNGE_DASH) (E.lx[i] = dx / dist), (E.ly[i] = dy / dist), this.audio.play("dash", 0.7);
+          if (E.lunge[i] > LUNGE_DASH) (mx = 0), (my = 0);
+          else (mx = E.lx[i] * Math.max(70, sp * 4.2)), (my = E.ly[i] * Math.max(70, sp * 4.2));
+        } else if (E.lungeCd[i] <= 0 && dist < 135 && dist > 26 && this.map.sight(E.x[i], E.y[i] - 4, h.x, h.y - 4, false)) {
+          E.lunge[i] = LUNGE_WIND + LUNGE_DASH;
+          E.lungeCd[i] = 2.2 + this.rng.range(0, 1.4);
+        } else (mx *= 1.3), (my *= 1.3);
+      }
       // face where it goes (with some hysteresis), or the hero when standing
       const fvx = Math.abs(mx) > 4 ? mx : dx;
       if (Math.abs(fvx) > 2) E.face[i] = fvx < 0 ? -1 : 1;
@@ -3177,7 +3220,7 @@ export class World {
             }
             continue;
           }
-          this.hurtHero();
+          this.hurtHero(B.dmg[i] >= 2 ? 2 : 1);
           B.remove(i);
           continue;
         }
@@ -3576,22 +3619,41 @@ export class World {
    * a few wanderers come, slowly, from far off; with the portal open, none; with a boss up, a few of its court.
    * Each kind arrives its own way (spawnPack).
    */
+  /**
+   * The horde about him holds him back: each foe pressed against the hero slows him a little, down to half his pace
+   * in a thick crowd. More enemies are more danger even to a blade that cuts them all at once.
+   */
+  private swarmed(): number {
+    const h = this.hero, E = this.enemies;
+    let n = 0;
+    this.grid.query(h.x, h.y, 40, (i) => {
+      const d = ENEMIES[E.type[i]];
+      if (d.ai === AI.Phantom || d.ai >= AI.Boss || E.frozen[i] > 0) return;
+      if ((E.x[i] - h.x) ** 2 + (E.y[i] - h.y) ** 2 < (this.sepR[E.type[i]] + 13) ** 2) n++;
+    });
+    return Math.max(0.5, 1 - 0.07 * n);
+  }
+
   private director(dt: number): void {
     if (this.hero.dead || this.cleared || this.won || this.hero.exitT >= 0) return;
     const E = this.enemies, f = this.floor, boss = this.bossIndex() >= 0;
+    // the stairs' and the curse's "more enemies" count everywhere: in the waves, by the boss and between waves
     const more = this.mod.spawn * (this.curse ? 1.25 : 1) * (this.mutator === "swarm" ? 1.5 : 1);
     let target = 0, every = 99, far = true;
     if (boss) (target = Math.round((5 + f * 0.9) * more)), (every = 2.6), (far = false);
     else if (this.wave) {
       const k = 1 - this.wave.left / this.wave.total;
-      target = Math.min(120, Math.round((9 + f * 2.6) * (1 + 0.4 * (this.wave.n - 1)) * (0.8 + 0.6 * k) * more));
+      target = Math.min(160, Math.round((9 + f * 2.6) * (1 + 0.4 * (this.wave.n - 1)) * (0.8 + 0.6 * k) * more));
       every = Math.max(0.7, 1.9 - f * 0.12 - k * 0.7);
       far = false;
-    } else if (!this.portal && !this.stairs?.open) (target = Math.min(12, 3 + f)), (every = 4.5);
+    } else if (!this.portal && !this.stairs?.open) (target = Math.min(30, Math.round((3 + f) * more))), (every = 4.5);
+    // ...and come faster to match, more packs at a time when the floor is far short of its number
+    every /= Math.max(1, more);
     this.spawnAcc += dt;
     if (E.n < target && this.spawnAcc >= every) {
       this.spawnAcc = 0;
-      this.spawnPack(this.pickEnemy(), far);
+      const packs = far ? 1 : 1 + Math.min(3, Math.floor((target - E.n) / 14));
+      for (let k = 0; k < packs; k++) this.spawnPack(this.pickEnemy(), far);
     }
     this.audio.intensity = Math.min(1, E.n / 50 + (boss ? 0.5 : 0) + (this.wave ? 0.2 : 0));
   }

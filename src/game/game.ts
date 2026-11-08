@@ -1732,7 +1732,7 @@ export class Game {
       name = tx(def.name);
       desc = c.level === 1 ? tx(def.desc) : tx(def.levels[c.level - 2]);
       // at its last level, the relic says what it evolves with
-      tag = c.level === 1 ? `${t("new")}  ${tx(EL_NAME[def.el])}` : `${t("lv")} ${c.level}${c.level >= RELIC_MAX ? ` ${t("max")} · ${t("evoWith")}: ${tx(STATS.find((q) => q.id === e.stat)!.name)}` : ""}`;
+      tag = c.level === 1 ? `${t("newRelic")} · ${tx(EL_NAME[def.el])}` : `${t("relic")} · ${t("lv")} ${c.level}${c.level >= RELIC_MAX ? ` ${t("max")} · ${t("evoWith")}: ${tx(STATS.find((q) => q.id === e.stat)!.name)}` : ""}`;
       col = rgba(EL_COLOR[def.el]);
     } else if (c.type === "rest") {
       name = t("rest");
