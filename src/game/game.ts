@@ -8,7 +8,7 @@ import { anim, FONTS, frameAt, icon, type Anim, type Rect } from "../engine/atla
 import { heroSprites, initHeroSprites, lookId, type HeroAnim, type HeroSprites } from "./heroSprites";
 import { fitScale, measure, text, wrap } from "../engine/text";
 import { dayNumber, weekNumber, type Board, type BoardName, type Platform } from "../platform/platform";
-import { ACHIEVEMENTS, heroDef, biomeOf, bossOf, floorInfo, stageOf, EL_COLOR, LEGENDS, legendDesc, type WeaponId, EL_NAME, ENEMIES, EVOLUTIONS, evolutionOf, FLOORS, FORGE, questDef, TASK_BONUS, TASKS, type TaskId, HEROES, WEAPONS, weaponName, MODIFIERS, MUTATORS, NO_MODIFIER, REACTIONS, RELIC_MAX, RELIC_SLOTS, RELICS, STATS, type Modifier, type Reaction, type RelicKind, type StatId } from "./defs";
+import { ACHIEVEMENTS, heroDef, biomeOf, bossOf, combine, floorInfo, stageOf, EL_COLOR, LEGENDS, legendDesc, type WeaponId, EL_NAME, ENEMIES, EVOLUTIONS, evolutionOf, FLOORS, FORGE, questDef, TASK_BONUS, TASKS, type TaskId, HEROES, WEAPONS, weaponName, MODIFIERS, MUTATORS, NO_MODIFIER, REACTIONS, RELIC_MAX, RELIC_SLOTS, RELICS, STATS, type Modifier, type Reaction, type RelicKind, type StatId } from "./defs";
 import { drawWorld, Scene } from "./draw";
 import { stairwell } from "./stairwell";
 import { getLang, langFor, setLang, t, tx, type Lang } from "./i18n";
@@ -97,6 +97,8 @@ export class Game {
   /** Achievements earned and waiting to be shown. */
   private toasts: { id: string; t: number }[] = [];
   private startSpins = 0;
+  /** The stairs taken this run, in order: their changes add up (combine()). */
+  private path: Modifier[] = [];
   private stairs: Modifier[] = [];
   private revived = false;
   private platformPaused = false;
@@ -320,7 +322,9 @@ export class Game {
       if (m === "haste") w.stats.speed *= 1.25;
       if (m === "legacy") spins = 3;
     }
-    w.startFloor(1, this.daily && !this.weekly ? plan.mod : NO_MODIFIER);
+    // a day's trial starts on its own stairs, the first on the path
+    this.path = this.daily && !this.weekly ? [plan.mod] : [];
+    w.startFloor(1, combine(this.path), "portal", this.path[0]);
     this.reached(1);
     this.revived = false;
     this.save.runs++;
@@ -379,7 +383,7 @@ export class Game {
     // after a location's boss, its portal leads straight on to the next location
     if (bossOf(w.floor) >= 0) {
       this.transition(() => {
-        w.startFloor(w.floor + 1, NO_MODIFIER, "portal");
+        w.startFloor(w.floor + 1, combine(this.path), "portal");
         this.reached(w.floor);
         this.cardT = 0;
         this.setState("card");
@@ -396,7 +400,8 @@ export class Game {
   private descend(mod: Modifier): void {
     this.transition(() => {
       const w = this.world;
-      w.startFloor(w.floor + 1, mod, "stairs");
+      this.path.push(mod);
+      w.startFloor(w.floor + 1, combine(this.path), "stairs", mod);
       this.reached(w.floor);
       this.cardT = 0;
       this.setState("card");
@@ -1739,9 +1744,38 @@ export class Game {
     });
   }
 
+  /** What the stairs taken so far add up to, as two lists of short phrases: the risks and the rewards. */
+  private pathSummary(): [string[], string[]] {
+    const m = combine(this.path), risk: string[] = [], gain: string[] = [];
+    const num = (v: number) => {
+      const str = String(Math.round(v * 100) / 100);
+      return getLang() === "ru" ? str.replace(".", ",") : str;
+    };
+    const pc = (v: number) => String(Math.round(Math.abs(v) * 100));
+    if (m.spawn > 1.001) risk.push(t("pEnemies").replace("{v}", num(m.spawn)));
+    if (m.speed > 1.001) risk.push(t("pFaster").replace("{v}", pc(m.speed - 1)));
+    if (m.dark > 0.001) risk.push(t("pDark").replace("{v}", pc(m.dark * 0.5)));
+    if (m.elites > 1.001) risk.push(t("pElites").replace("{v}", num(m.elites)));
+    if (m.size < 0.999) risk.push(t("pSmaller").replace("{v}", pc(1 - m.size)));
+    if (m.xp < 0.999) risk.push(t("pXpLess").replace("{v}", pc(1 - m.xp)));
+    if (m.spawn < 0.999) gain.push(t("pFewer").replace("{v}", pc(1 - m.spawn)));
+    if (m.xp > 1.001) gain.push(t("pXp").replace("{v}", pc(m.xp - 1)));
+    if (m.embers > 1.001) gain.push(t("pEmbers").replace("{v}", pc(m.embers - 1)));
+    return [risk, gain];
+  }
+
   private drawStairs(): void {
     const ui = this.ui, W = this.r.w, H = this.r.h, now = this.now;
-    const th = this.heading(t("cleared"), 8, H >= 300 ? 2 : 1, C.gold, 1, t("stairs"));
+    let th = this.heading(t("cleared"), 8, H >= 300 ? 2 : 1, C.gold, 1, t("stairs"));
+    // what the path so far adds up to, under the heading: risks in red, rewards in green
+    const [risk, gain] = this.pathSummary();
+    if (risk.length || gain.length) {
+      const y0 = 8 + th + 4, lines = [...(risk.length ? [[risk.join("  ·  "), C.red]] : []), ...(gain.length ? [[gain.join("  ·  "), C.green]] : [])] as [string, number][];
+      const wrapped = lines.flatMap(([str, c]) => wrap(str, W - 40, "mini").map((l): [string, number] => [l, c]));
+      text(ui, t("pathTitle"), W / 2, y0, { font: "mini", align: "center", color: C.goldDim });
+      wrapped.forEach(([l, c], k) => text(ui, l, W / 2, y0 + 9 + k * 8, { font: "mini", align: "center", color: c, shadow: C.ink }));
+      th += 9 + wrapped.length * 8 + 4;
+    }
     const vertical = W < 420, n = this.stairs.length;
     const cw = vertical ? Math.min(300, W - 24) : Math.min(210, Math.floor((W - 40) / 2)), inner = cw - 20;
     const ch = Math.max(...this.stairs.map((m) => 22 + (wrap(tx(m.name), inner).length + wrap(tx(m.risk), inner - 10).length + wrap(tx(m.reward), inner - 10).length) * 10 + 26));
@@ -1754,6 +1788,9 @@ export class Game {
       if (focused) glowUi(ui, x + cw / 2, y + ch / 2, cw * 0.7, ch * 0.75, C.gold, 0.25);
       frame(ui, x, y, cw, ch, { edge: focused ? C.gold : undefined });
       let line = y + 9;
+      // taken before: it will add up again
+      const taken = this.path.filter((q) => q.id === m.id).length;
+      if (taken) text(ui, t("pTaken").replace("{n}", String(taken)), x + cw - 9, y + 4, { font: "mini", align: "right", color: C.goldDim });
       line += para(ui, tx(m.name), x + 10, line, inner, focused ? C.goldLight : C.gold);
       divider(ui, x + cw / 2, line + 2, cw - 30, C.goldDeep);
       line += 7;

@@ -140,6 +140,8 @@ export const ANIMS = [
   { name: "urns", art: "props/urn", variants: { variant: [0, 1, 2, 3] } },
   { name: "mimic", art: "props/mimic", fps: 12, body: true },
   { name: "curse_altar", art: "props/curse-altar", fps: 8, light: { thr: 8, k: 0.9 } },
+  // the floor's spirit, the ghost of a lightbearer with a task: its own sprite, lantern and all
+  { name: "spirit", art: "props/spirit", fps: 12, light: { thr: 8, k: 0.9 } },
   // the hidden cache in the back wall: the cracks (laid over the wall) and the wall broken open, per biome
   { name: "secret_crypt", art: "tiles/secret-wall", opts: { stone: WALL.crypt }, variants: { variant: [0, 1] } },
   { name: "secret_garden", art: "tiles/secret-wall", opts: { stone: WALL.garden }, variants: { variant: [0, 1] } },

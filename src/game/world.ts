@@ -483,7 +483,11 @@ export class World {
   // ============================================================================================ floor setup
   /** How the hero came onto this floor: down the stairs (within a location) or through a portal (a new one). */
   arrivedBy: "stairs" | "portal" = "portal";
-  startFloor(floor: number, mod: Modifier, via: "stairs" | "portal" = "portal"): void {
+  /**
+   * Set up a floor. `mod` is the run's path added up (combine()); `fresh` the stairs just taken, whose one-off gifts
+   * (a full heal, a level-up) are had here.
+   */
+  startFloor(floor: number, mod: Modifier, via: "stairs" | "portal" = "portal", fresh?: Modifier): void {
     this.floor = floor;
     this.arrivedBy = via;
     this.mod = mod;
@@ -542,8 +546,9 @@ export class World {
     this.corpses = [];
     if (via === "portal") this.addFx("beam", h.x, h.y, { glow: 1, key: 2 });
     else this.dust(h.x, h.y, 8, 40);
-    if (mod.heal) h.hp = h.maxHp;
-    if (mod.level) this.pendingLevels++;
+    const gift = fresh ?? mod;
+    if (gift.heal) h.hp = h.maxHp;
+    if (gift.level) this.pendingLevels++;
     this.layout();
     this.toHero.compute(this.map.start[0], this.map.start[1]);
     this.toHeroFly.compute(this.map.start[0], this.map.start[1]);

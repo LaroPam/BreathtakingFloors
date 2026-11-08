@@ -725,18 +725,18 @@ export function drawWorld(s: Scene, w: World, camX: number, camY: number, viewW:
     }
   }
 
-  // ---- the floor's spirit: a lightbearer's ghost in cold light, floating; "!" while it waits with a task
+  // ---- the floor's spirit: the ghost of a lightbearer, hooded, with its cold lantern; "!" while it waits with a
+  // task. While the task runs it dims and watches; done, it rises away; failed, it greys and fades.
   const sp = w.spirit;
   if (sp && inView(sp.x, sp.y, 60)) {
-    const idle = hs.anim("spirit", "sword", "idle"), ending = sp.state === "done" || sp.state === "failed";
-    const fade = ending ? Math.max(0, 1 - sp.t / 1.6) : 1, alpha = (sp.state === "offer" ? 0.78 + 0.12 * Math.sin(time * 5) : sp.state === "active" ? 0.32 : 0.6) * fade;
-    const rise = sp.state === "done" ? sp.t * sp.t * 18 : 0, bob = Math.sin(time * 2) * 2 - 3 - rise, flip = h.x < sp.x ? -1 : 1, fi = hs.ready(idle, frameAt(idle, time * 0.7));
-    s.back.disc(sp.x, sp.y, 9, 3, rgba("#000000", 0.2 * fade));
-    drawAnim(s, idle, 0, sp.x, sp.y + bob, { frame: fi, sx: flip, key: sp.y, alpha, glow: 0, tint: sp.state === "failed" ? rgbaf(0.55, 0.58, 0.68, 1) : rgbaf(0.85, 0.95, 1, 1) });
-    s.glow.image(idle.frames[fi][0]!, sp.x, sp.y + bob, flip, 1, 0, rgbaf(0.25, 0.5, 0.8, 0.35 * alpha));
-    s.illum.light(sp.x, sp.y - 16 + bob, 54, 46, rgbaf(0.55, 0.8, 1, 0.45 * alpha));
+    const ghost = anim("spirit"), ending = sp.state === "done" || sp.state === "failed";
+    const fade = ending ? Math.max(0, 1 - sp.t / 1.6) : 1, rise = sp.state === "done" ? sp.t * sp.t * 18 : 0, flip = h.x < sp.x ? -1 : 1;
+    const tint = sp.state === "failed" ? rgbaf(0.5, 0.52, 0.6, 1) : sp.state === "active" ? rgbaf(0.62, 0.72, 0.85, 1) : 0xffffffff;
+    const glow = sp.state === "offer" ? 0.9 + 0.1 * Math.sin(time * 5) : sp.state === "active" ? 0.45 : 0.7;
+    drawAnim(s, ghost, time, sp.x, sp.y - rise, { sx: flip, key: sp.y, alpha: fade, tint, glow: glow * fade });
+    s.illum.light(sp.x + 10 * flip, sp.y - 20 - rise, 60, 50, rgbaf(0.55, 0.82, 1, 0.5 * glow * fade));
     if (sp.state === "offer") {
-      const my = sp.y - 50 + Math.sin(time * 4) * 2;
+      const my = sp.y - 56 + Math.sin(time * 4) * 2;
       text(s.front, "!", sp.x, my, { font: "title", align: "center", color: rgba("#9ad4ff"), outline: true });
       text(s.glow, "!", sp.x, my, { font: "title", align: "center", color: rgbaf(0.5, 0.8, 1, 0.7) });
       // what it asks, when the hero comes close
@@ -745,8 +745,8 @@ export function drawWorld(s: Scene, w: World, camX: number, camY: number, viewW:
         const a = Math.min(1, (90 - near) / 25), def = questDef(sp.kind);
         for (const b of [s.front, s.glow]) {
           const glow = b === s.glow;
-          text(b, tx(def.name), sp.x, sp.y - 74, { font: "big", align: "center", color: withAlpha(glow ? rgbaf(0.5, 0.8, 1, 1) : rgba("#c8ecff"), a * (glow ? 0.5 : 1)), shadow: glow ? 0 : withAlpha(rgba("#0b0a12"), a) });
-          text(b, tr("questReward"), sp.x, sp.y - 63, { font: "mini", align: "center", color: withAlpha(glow ? rgbaf(1, 0.8, 0.4, 1) : rgba("#f4d27a"), a * (glow ? 0.4 : 1)), shadow: glow ? 0 : withAlpha(rgba("#0b0a12"), a) });
+          text(b, tx(def.name), sp.x, sp.y - 80, { font: "big", align: "center", color: withAlpha(glow ? rgbaf(0.5, 0.8, 1, 1) : rgba("#c8ecff"), a * (glow ? 0.5 : 1)), shadow: glow ? 0 : withAlpha(rgba("#0b0a12"), a) });
+          text(b, tr("questReward"), sp.x, sp.y - 69, { font: "mini", align: "center", color: withAlpha(glow ? rgbaf(1, 0.8, 0.4, 1) : rgba("#f4d27a"), a * (glow ? 0.4 : 1)), shadow: glow ? 0 : withAlpha(rgba("#0b0a12"), a) });
         }
       }
     }

@@ -323,9 +323,33 @@ export const MODIFIERS: Modifier[] = [
   M({ id: "elite", name: { ru: "ЛЕСТНИЦА ЧЕМПИОНОВ", en: "STAIR OF CHAMPIONS" }, risk: { ru: "ВДВОЕ БОЛЬШЕ ЭЛИТЫ", en: "TWICE THE ELITES" }, reward: { ru: "+60% УГЛЕЙ", en: "+60% EMBERS" }, elites: 2, embers: 1.6 }),
   M({ id: "blood", name: { ru: "ЛЕСТНИЦА КРОВИ", en: "STAIR OF BLOOD" }, risk: { ru: "ВРАГИ БЫСТРЕЕ НА 20%", en: "ENEMIES 20% FASTER" }, reward: { ru: "ПОЛНОЕ ЛЕЧЕНИЕ", en: "A FULL HEAL" }, speed: 1.2, heal: true }),
   M({ id: "narrow", name: { ru: "УЗКАЯ ЛЕСТНИЦА", en: "NARROW STAIR" }, risk: { ru: "ЭТАЖ МЕНЬШЕ И ТЕСНЕЕ", en: "A SMALLER, TIGHTER FLOOR" }, reward: { ru: "+25% ОПЫТА И УГЛЕЙ", en: "+25% EXPERIENCE AND EMBERS" }, size: 0.75, xp: 1.25, embers: 1.25 }),
-  M({ id: "quiet", name: { ru: "ТИХАЯ ЛЕСТНИЦА", en: "QUIET STAIR" }, risk: { ru: "НЕТ", en: "NONE" }, reward: { ru: "ВРАГОВ МЕНЬШЕ НА 25%", en: "25% FEWER ENEMIES" }, spawn: 0.75 }),
+  M({ id: "quiet", name: { ru: "ТИХАЯ ЛЕСТНИЦА", en: "QUIET STAIR" }, risk: { ru: "ОПЫТА МЕНЬШЕ НА 15%", en: "15% LESS EXPERIENCE" }, reward: { ru: "ВРАГОВ МЕНЬШЕ НА 25%", en: "25% FEWER ENEMIES" }, spawn: 0.75, xp: 0.85 }),
 ];
 export const NO_MODIFIER: Modifier = M({ id: "none", name: { ru: "", en: "" }, risk: { ru: "", en: "" }, reward: { ru: "", en: "" } });
+/**
+ * The stairs taken so far, added up: what each one changes for good stays for the rest of the run (more enemies,
+ * faster, darker, more elites; more experience and embers; smaller floors), within limits that keep a run
+ * playable. A full heal and a level-up are had once, on the floor the stairs lead to.
+ */
+export function combine(path: readonly Modifier[]): Modifier {
+  const out = M({ id: "path", name: { ru: "", en: "" }, risk: { ru: "", en: "" }, reward: { ru: "", en: "" } });
+  for (const m of path) {
+    out.spawn *= m.spawn;
+    out.speed *= m.speed;
+    out.dark += m.dark;
+    out.elites *= m.elites;
+    out.xp += m.xp - 1;
+    out.embers += m.embers - 1;
+    out.size *= m.size;
+  }
+  out.spawn = Math.max(0.6, Math.min(2.25, out.spawn));
+  out.xp = Math.max(0.6, out.xp);
+  out.speed = Math.min(1.44, out.speed);
+  out.dark = Math.min(0.6, out.dark);
+  out.elites = Math.min(4, out.elites);
+  out.size = Math.max(0.65, out.size);
+  return out;
+}
 
 // ------------------------------------------------------------------------------------------------ the forge
 export interface ForgeItem {
