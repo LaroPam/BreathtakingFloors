@@ -360,12 +360,17 @@ export class Audio {
   private loadBossTrack(): void {
     const c = this.ctx;
     if (!c || this.bossLoad) return;
-    this.bossLoad = fetch(bossTrackUrl)
-      .then((r) => r.arrayBuffer())
+    // the one-file build carries the track inline: read it straight from the data URL, no request (a page's
+    // security rules may forbid fetching even that)
+    const bytes = bossTrackUrl.startsWith("data:")
+      ? Promise.resolve(Uint8Array.from(atob(bossTrackUrl.slice(bossTrackUrl.indexOf(",") + 1)), (ch) => ch.charCodeAt(0)).buffer)
+      : fetch(bossTrackUrl).then((r) => r.arrayBuffer());
+    this.bossLoad = bytes
       .then((data) => c.decodeAudioData(data))
       .then((buf) => void (this.bossBuf = buf))
-      .catch(() => {
-        /* no Vorbis here: the synthesized boss theme it is */
+      .catch((e) => {
+        // no Vorbis here, or the file did not come: the synthesized boss theme it is
+        console.warn("boss track unavailable, the synthesized theme plays", e);
       });
   }
   /** Start the boss track from its top (fading in) or fade it out. */
