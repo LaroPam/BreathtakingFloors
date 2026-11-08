@@ -8,7 +8,7 @@ import { anim, FONTS, frameAt, icon, type Anim, type Rect } from "../engine/atla
 import { heroSprites, initHeroSprites, lookId, type HeroAnim, type HeroSprites } from "./heroSprites";
 import { fitScale, measure, text, wrap } from "../engine/text";
 import { dayNumber, weekNumber, type Board, type BoardName, type Platform, type Product } from "../platform/platform";
-import { ACHIEVEMENTS, heroDef, biomeOf, bossOf, combine, floorInfo, stageOf, EL_COLOR, LEGENDS, legendDesc, type WeaponId, EL_NAME, ENEMIES, EVOLUTIONS, evolutionOf, FLOORS, FORGE, questDef, TASK_BONUS, TASKS, type TaskId, type ForgeId, SHOP, type ShopItem, HEROES, WEAPONS, weaponName, MODIFIERS, MUTATORS, NO_MODIFIER, REACTIONS, RELIC_MAX, RELIC_SLOTS, RELICS, STATS, type Modifier, type Reaction, type RelicKind, type StatId } from "./defs";
+import { ACHIEVEMENTS, heroDef, biomeOf, bossOf, combine, floorInfo, stageOf, EL_COLOR, LEGENDS, legendDesc, type WeaponId, EL_NAME, ENEMIES, EVOLUTIONS, evolutionOf, FLOORS, FORGE, questDef, TASK_BONUS, TASKS, type TaskId, type ForgeId, SHOP, type ShopItem, HEROES, WEAPONS, weaponName, MODIFIERS, MUTATORS, NO_MODIFIER, REACTIONS, RELIC_MAX, RELIC_SLOTS, ARTIFACT_SLOTS, RELICS, STATS, type Modifier, type Reaction, type RelicKind, type StatId } from "./defs";
 import { drawWorld, Scene } from "./draw";
 import { stairwell } from "./stairwell";
 import { getLang, langFor, setLang, t, tx, type Lang } from "./i18n";
@@ -18,7 +18,7 @@ import { button, slider, C, divider, glow as glowUi, drawHud, drawPointers, draw
 import { CINE_DUR, World } from "./world";
 
 type State = "title" | "heroes" | "forge" | "shop" | "daily" | "records" | "tasks" | "settings" | "card" | "play" | "spin" | "pick" | "pause" | "codex" | "stairs" | "dead" | "won";
-type Choice = { type: "relic"; kind: RelicKind; level: number } | { type: "stat"; id: StatId } | { type: "evo"; kind: RelicKind } | { type: "legend"; weapon: WeaponId };
+type Choice = { type: "relic"; kind: RelicKind; level: number } | { type: "stat"; id: StatId } | { type: "evo"; kind: RelicKind } | { type: "legend"; weapon: WeaponId } | { type: "rest" };
 
 /**
  * The roulette that picks an upgrade: a reel of badges spins fast, slows down and stops on the winner, which
@@ -48,7 +48,7 @@ interface Pick {
 /** The chest's screen (s): it comes in and shakes, its lid flies up, then the reel rises out of it and spins. */
 const SPIN_LID = 0.42, SPIN_OPEN = 0.62;
 const RELIC_ICON = ["orbit", "lance", "coil", "flask", "halo", "void"];
-const iconKey = (c: Choice) => (c.type === "relic" ? RELIC_ICON[c.kind] : c.type === "evo" ? evolutionOf(c.kind).icon : c.type === "legend" ? `w_${c.weapon}` : c.id);
+const iconKey = (c: Choice) => (c.type === "relic" ? RELIC_ICON[c.kind] : c.type === "evo" ? evolutionOf(c.kind).icon : c.type === "legend" ? `w_${c.weapon}` : c.type === "rest" ? "maxhp" : c.id);
 
 /**
  * Part of a sprite inside a box, nothing outside it: the window (wx, wy) w x h of the sprite's own space (from its
@@ -632,7 +632,10 @@ export class Game {
   }
 
   // =========================================================================================== the roulette
-  /** What an upgrade can be right now, with weights: new relics, relic levels and, on a level-up, stats. */
+  /**
+   * What an upgrade can be right now, with weights: new relics, relic levels and, on a level-up, artifacts. A new
+   * relic or artifact only while a slot of its kind is free; the ones held come up more often, to be raised.
+   */
   private pool(relicsOnly: boolean, evolutions = true): [Choice, number][] {
     const w = this.world, out: [Choice, number][] = [];
     // an evolution ready: a chest always gives it, a level-up favours it strongly
@@ -647,13 +650,17 @@ export class Game {
       if (lv === 0 && slotsFree) out.push([{ type: "relic", kind: def.kind, level: 1 }, relicsOnly ? 10 : 6]);
       else if (lv > 0 && lv < RELIC_MAX) out.push([{ type: "relic", kind: def.kind, level: lv + 1 }, relicsOnly ? 12 : 8]);
     }
-    if (!relicsOnly)
+    if (!relicsOnly) {
+      const artFree = w.artifacts.length < ARTIFACT_SLOTS;
       for (const s of STATS) {
         // deflecting bullets is a blade's trick: no use to a bow or a spellbook
         if (s.id === "parry" && WEAPONS[w.hero.weapon].ranged) continue;
-        if ((w.statLevels[s.id] ?? 0) < s.max) out.push([{ type: "stat", id: s.id }, s.weight]);
+        const lv = w.statLevels[s.id] ?? 0;
+        if (lv === 0 ? artFree : lv < s.max) out.push([{ type: "stat", id: s.id }, lv ? s.weight * 1.3 : s.weight]);
       }
-    if (!out.length) for (const id of ["edge", "haste", "speed"] as StatId[]) out.push([{ type: "stat", id }, 1]);
+    }
+    // every slot full and every level taken: a breather instead
+    if (!out.length) out.push([{ type: "rest" }, 1]);
     return out;
   }
   private roll(pool: [Choice, number][]): Choice {
@@ -716,6 +723,7 @@ export class Game {
       this.unlock("legend");
       this.showBanner(tx(LEGENDS[c.weapon]), C.gold, t("legendary"));
     }
+    else if (c.type === "rest") w.hero.hp = Math.min(w.hero.maxHp, w.hero.hp + 2);
     else w.addStat(c.id);
     if (kind === "chest") this.bump("chests");
     if (kind === "level") w.pendingLevels = Math.max(0, w.pendingLevels - 1);
@@ -1572,11 +1580,9 @@ export class Game {
       items.forEach(([it, p], k) => {
         const x = x0 + (k % cols) * (cw + gap), y = top + Math.floor(k / cols) * (ch + gap), owned = !!it.lasting && this.owns(it.id);
         frame(ui, x, y, cw, ch, { edge: it.lasting ? C.gold : undefined });
-        const [atlas, ic] = it.icon;
-        ui.disc(x + 18, y + 18, 11, 11, rgba("#07060c", 0.8));
-        ui.image(icon(atlas, ic), x + 18, y + 18, atlas === "icons" ? 1 : 1.5, atlas === "icons" ? 1 : 1.5);
-        text(ui, tx(it.name), x + 34, y + 7, { color: C.gold, shadow: C.ink });
-        para(ui, tx(it.desc), x + 34, y + 18, cw - 40, C.text, "left", 8, "mini");
+        ui.image(icon("items", it.item), x + 25, y + 25);
+        text(ui, tx(it.name), x + 50, y + 7, { color: C.gold, shadow: C.ink });
+        para(ui, tx(it.desc), x + 50, y + 18, cw - 56, C.text, "left", 8, "mini");
         const label = owned ? t("owned") : p!.price;
         if (button(ui, this.menu, now, x + 8, y + ch - 22, cw - 16, 16, label, { primary: !owned, disabled: owned || this.shopBusy })) void this.purchase(it);
       });
@@ -1652,9 +1658,9 @@ export class Game {
     const flash = Math.max(0, 1 - (now - this.forgeFlash) / 0.5);
     frame(ui, cardX, cardY, cardW, cardH, { edge: maxed ? C.gold : undefined });
     if (flash > 0) glowUi(ui, cardX + cardW / 2, cardY + 30, cardW * 0.4, 30, C.gold, 0.5 * flash);
-    const [atlas, ic] = item.icon, big = narrow ? 1 : 2, bx = cardX + (narrow ? 22 : cardW / 2), by = cardY + (narrow ? 22 : 30);
-    ui.disc(bx, by, 17 * big * 0.75, 17 * big * 0.75, rgba("#07060c", 0.8));
-    ui.image(icon(atlas, ic), bx, by, (atlas === "icons" ? 1 : 1.6) * big * (atlas === "icons" ? 0.9 : 0.8), (atlas === "icons" ? 1 : 1.6) * big * (atlas === "icons" ? 0.9 : 0.8));
+    const bx = cardX + (narrow ? 23 : cardW / 2), by = cardY + (narrow ? 23 : 31);
+    if (!narrow) glowUi(ui, bx, by, 30, 26, C.gold, 0.18);
+    ui.image(icon("items", item.item), bx, by);
     let y = narrow ? cardY + 8 : cardY + 58;
     const tx0 = narrow ? cardX + 46 : cardX + 12, tw = narrow ? cardW - 56 : cardW - 24, align = narrow ? "left" : "center", mid = narrow ? tx0 : cardX + cardW / 2;
     text(ui, tx(item.name), mid, y, { align, color: C.gold, shadow: C.ink, scale: narrow ? 1 : 1 });
@@ -1704,11 +1710,18 @@ export class Game {
       // at its last level, the relic says what it evolves with
       tag = c.level === 1 ? `${t("new")}  ${tx(EL_NAME[def.el])}` : `${t("lv")} ${c.level}${c.level >= RELIC_MAX ? ` ${t("max")} · ${t("evoWith")}: ${tx(STATS.find((q) => q.id === e.stat)!.name)}` : ""}`;
       col = rgba(EL_COLOR[def.el]);
+    } else if (c.type === "rest") {
+      name = t("rest");
+      desc = t("restDesc");
+      tag = t("restTag");
+      col = C.red;
     } else {
       const stat = STATS.find((q) => q.id === c.id)!, opens = EVOLUTIONS.some((e) => e.stat === stat.id && w.relicLevel(e.relic) >= RELIC_MAX && !w.evolved(e.relic) && !(w.statLevels[stat.id] ?? 0));
+      const lv = w.statLevels[stat.id] ?? 0;
       name = tx(stat.name);
       desc = tx(stat.desc);
-      tag = `${t("lv")} ${(w.statLevels[stat.id] ?? 0) + 1}/${stat.max}${opens ? ` · ${t("evoKey")}` : ""}`;
+      // a new artifact takes a slot; one held goes up a level
+      tag = (lv ? `${t("artifact")} · ${t("lv")} ${lv + 1}/${stat.max}` : `${t("newArtifact")} · ${w.artifacts.length + 1}/${ARTIFACT_SLOTS}`) + (opens ? ` · ${t("evoKey")}` : "");
       col = opens ? rgba("#fff09a") : C.gold;
     }
     return { name, desc, tag, col };
@@ -1733,7 +1746,7 @@ export class Game {
     const cw = row ? Math.min(156, Math.floor((W - 24 - (n - 1) * gap) / n)) : Math.min(300, W - 24);
     const texts = pk.options.map((c) => this.describe(c));
     const inner = row ? cw - 16 : cw - 58;
-    const heights = texts.map((d) => (row ? 44 : 6) + 9 + wrap(d.name, inner).length * 10 + 5 + wrap(d.desc, inner).length * 10 + 8);
+    const heights = texts.map((d) => (row ? 48 : 6) + 9 + wrap(d.name, inner).length * 10 + 5 + wrap(d.desc, inner).length * 10 + 8);
     const ch = row ? Math.max(...heights) : Math.max(52, ...heights);
     const total = row ? ch : n * ch + (n - 1) * 6, top = Math.max(ty + th + 10, Math.round(ty + th + 10 + (H - 8 - (ty + th + 10) - total) / 2.4));
     pk.options.forEach((c, k) => {
@@ -1756,13 +1769,12 @@ export class Game {
       const d = texts[k], special = c.type === "evo" || c.type === "legend";
       if (focused || taken || special) glowUi(ui, x + cw2 / 2, y + ch2 / 2, cw2 * 0.65, ch2 * 0.7, special ? C.gold : d.col, taken ? 0.5 : 0.22);
       frame(ui, x, y, cw2, ch2, { edge: focused || taken || special ? C.gold : undefined });
-      // the badge: the upgrade's icon at twice its size in a dark socket
-      const r = icon("icons", iconKey(c)), bx = row ? x + cw2 / 2 : x + 26, by = row ? y + 24 : y + ch2 / 2;
-      ui.disc(bx, by, 17, 17, rgba("#07060c", 0.85));
-      ui.disc(bx, by, 16, 16, withAlpha(d.col, 0.18));
+      // the badge: the upgrade's big icon, a glow of its colour behind it
+      const bx = row ? x + cw2 / 2 : x + 26, by = row ? y + 25 : y + ch2 / 2;
+      glowUi(ui, bx, by, 26, 22, d.col, focused ? 0.3 : 0.16);
       const bob = focused && pk.chosen < 0 ? Math.round(Math.sin(now * 5) * 1) : 0;
-      ui.image(r, bx - (r[5] + r[3] / 2) * 2, by + bob - (r[6] + r[4] / 2) * 2, 2, 2);
-      let line = row ? y + 46 : y + 7;
+      ui.image(icon("items", iconKey(c)), bx, by + bob);
+      let line = row ? y + 50 : y + 7;
       const tx0 = row ? x + 8 : x + 50, align = row ? "center" : "left", mid = row ? x + cw2 / 2 : tx0;
       text(ui, d.tag, mid, line, { font: "mini", align, color: d.col });
       line += 9;
@@ -1833,9 +1845,8 @@ export class Game {
       if (x < cx - ww / 2 + 22 || x > cx + ww / 2 - 22) continue;
       const win = landed && j === sp.target;
       const pop = win ? 1 + 0.25 * Math.max(0, 1 - sp.held * 4) * Math.sin(Math.min(1, sp.held * 4) * Math.PI) : 1;
-      const k = 2 * pop, dim = win ? 1 : Math.max(0.35, 1 - d * 0.28);
-      const r = icon("icons", iconKey(sp.reel[j]));
-      ui.image(r, x - (r[5] + r[3] / 2) * k, cy - (r[6] + r[4] / 2) * k, k, k, 0, rgbaf(dim, dim, dim, 1));
+      const k = pop, dim = win ? 1 : Math.max(0.35, 1 - d * 0.28);
+      ui.image(icon("items", iconKey(sp.reel[j])), x, cy, k, k, 0, rgbaf(dim, dim, dim, 1));
     }
     // the frame around the winning slot and the pointers above and below it
     const fx = cx - S / 2 + 1, fw = S - 2, glow = landed ? 0.6 + 0.4 * Math.sin(this.now * 10) : 0;

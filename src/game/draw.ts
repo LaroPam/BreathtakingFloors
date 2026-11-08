@@ -798,6 +798,24 @@ export function drawWorld(s: Scene, w: World, camX: number, camY: number, viewW:
       s.illum.light(ox, oy, 28 * swell, 24 * swell, rgbaf(1, 0.55, 0.2, orbit.evo ? 0.65 : 0.5));
     }
   }
+  // the frost orb over the hero's shoulder: a cold core in a ring of turning shards that close in and spin faster as
+  // it gathers for a volley, its shadow on the floor far below
+  const lance = w.relics.find((q) => q.kind === RelicKind.Lance), fo = w.frostOrb;
+  if (lance && fo && !h.dead) {
+    const c = fo.charge, evo = lance.evo, core = anim("ember_blue"), k = (evo ? 1.25 : 1) + c * 0.45 + fo.flash * 0.3;
+    s.color.disc(fo.x, fo.y + 30, 5, 2, rgba("#000000", 0.25), fo.y + 30);
+    drawAnim(s, core, time * (1 + c * 2), fo.x, fo.y + 4, { sx: k, sy: k, key: fo.y + 34, glow: 0.9 });
+    const n = evo ? 8 : 6, R = (evo ? 9 : 7.5) * (1 - c * 0.45), spin = time * (1.6 + c * 7);
+    for (let q = 0; q < n; q++) {
+      const a = spin + (q / n) * Math.PI * 2, x = fo.x + Math.cos(a) * R, y = fo.y + Math.sin(a) * R * 0.55, back = Math.sin(a) < 0;
+      const col = back ? rgba("#4a8ad0") : rgba(q % 2 ? "#d8f4ff" : "#9bdcff");
+      s.color.rect(Math.round(x), Math.round(y) - 1, 1, 3, col, fo.y + 34 + (back ? -1 : 1));
+      if (!back) s.glow.rect(Math.round(x), Math.round(y) - 1, 1, 2, rgbaf(0.6, 0.85, 1, 0.5));
+    }
+    if (c > 0) s.glow.light(fo.x, fo.y, 10 + 8 * c, 10 + 8 * c, rgbaf(0.6, 0.9, 1, 0.5 * c));
+    if (fo.flash > 0) s.glow.light(fo.x, fo.y, 18, 18, rgbaf(0.8, 0.95, 1, 0.7 * fo.flash));
+    s.illum.light(fo.x, fo.y + 10, 40 + 16 * c, 32 + 12 * c, rgbaf(0.45, 0.75, 1, 0.4 + 0.3 * c + 0.3 * fo.flash));
+  }
   // the Sanctuary: a ring of light about the hero, turning, pulsing as it burns
   const halo = w.relics.find((q) => q.kind === RelicKind.Halo);
   if (halo?.evo && !h.dead) {

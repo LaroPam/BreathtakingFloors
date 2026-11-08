@@ -66,6 +66,22 @@ export interface Relic {
   /** A second clock for evolved relics (the Sanctuary's healing). */
   clock: number;
 }
+/**
+ * The ice lance's orb: it hovers over the hero's shoulder, behind him, and follows; before each volley it stops
+ * where it is and the cold gathers into it (charge 0 to 1), the lances leave from it, and it rests a moment before
+ * it follows again.
+ */
+export interface FrostOrb {
+  x: number;
+  y: number;
+  charge: number;
+  /** After a volley: how long it stays put still. */
+  hold: number;
+  /** The last volley's flash, fading. */
+  flash: number;
+}
+/** How long the frost orb gathers before it looses its lances. */
+export const ORB_CHARGE = 0.5;
 /** The Black Star: the evolved Sphere of Void, one great star that wanders into the horde. */
 export interface Star {
   x: number;
@@ -417,6 +433,7 @@ export class World {
   relics: Relic[] = [];
   stats: Stats = { edge: 1, haste: 1, reach: 1, wave: 0, parry: 0, speed: 1, magnet: 44, dashCd: 3.5, odGain: 1, crit: 0.05, lantern: 1, might: 1 };
   statLevels: Partial<Record<StatId, number>> = {};
+  frostOrb: FrostOrb | null = null;
   floor = 1;
   biome: Biome = biomeOf(1);
   mod: Modifier;
@@ -2344,38 +2361,58 @@ export class World {
           break;
         }
         case RelicKind.Lance: {
+          // the orb: over the shoulder behind the hero, catching up; still while it gathers the cold and just after
+          const o = (this.frostOrb ??= { x: h.x - h.face * 16, y: h.y - 34, charge: 0, hold: 0, flash: 0 });
+          const tx = h.x - h.face * 16, ty = h.y - 34 + Math.sin(this.time * 2.4) * 2;
+          if (Math.hypot(tx - o.x, ty - o.y) > 160) (o.x = tx), (o.y = ty);
+          o.charge = r.timer < ORB_CHARGE ? 1 - Math.max(0, r.timer) / ORB_CHARGE : 0;
+          o.hold = Math.max(0, o.hold - dt);
+          o.flash = Math.max(0, o.flash - dt * 4);
+          if (o.charge <= 0 && o.hold <= 0) {
+            const k = 1 - Math.exp(-dt * 5);
+            o.x += (tx - o.x) * k;
+            o.y += (ty - o.y) * k;
+          }
+          if (o.charge > 0 && this.rng.chance(dt * (r.evo ? 90 : 55))) {
+            // frost drawn in from round about
+            const a = this.rng.range(0, Math.PI * 2), d = this.rng.range(12, 20) * (r.evo ? 1.3 : 1);
+            this.parts.add(o.x + Math.cos(a) * d, o.y + Math.sin(a) * d, -Math.cos(a) * d * 3, -Math.sin(a) * d * 3, 0.3, this.rng.chance(0.5) ? rgba("#d8f4ff") : rgba("#78ccf4"), 1, 0, 1);
+          }
           if (r.timer > 0) break;
+          const ox = o.x, oy = o.y;
+          o.hold = 0.3;
+          o.flash = 1;
           if (r.evo) {
             // the Blizzard: a ring of lances all round, and three more at the nearest
             r.timer = 1.5;
             const base = this.rng.range(0, Math.PI * 2), skip = new Set<number>();
             for (let k = 0; k < 10; k++) {
               const a = base + (k * Math.PI * 2) / 10;
-              this.bullets.add(TEAM_HERO, B_LANCE, h.x + Math.cos(a) * 8, h.y - 18 + Math.sin(a) * 6, Math.cos(a) * 250, Math.sin(a) * 250, 1.1, 18 * m, 4, El.Frost, 3);
+              this.bullets.add(TEAM_HERO, B_LANCE, ox + Math.cos(a) * 6, oy + Math.sin(a) * 5, Math.cos(a) * 250, Math.sin(a) * 250, 1.1, 18 * m, 4, El.Frost, 3);
             }
             for (let k = 0; k < 3; k++) {
-              const j = this.nearestEnemy(h.x, h.y - 18, 280, skip);
+              const j = this.nearestEnemy(ox, oy, 290, skip);
               if (j < 0) break;
               skip.add(E.uid[j]);
               this.body(j);
-              const a = Math.atan2(this.by - (h.y - 18), this.bx - h.x);
-              this.bullets.add(TEAM_HERO, B_LANCE, h.x, h.y - 18, Math.cos(a) * 330, Math.sin(a) * 330, 1.1, 24 * m, 4, El.Frost, 3);
+              const a = Math.atan2(this.by - oy, this.bx - ox);
+              this.bullets.add(TEAM_HERO, B_LANCE, ox, oy, Math.cos(a) * 330, Math.sin(a) * 330, 1.1, 24 * m, 4, El.Frost, 3);
             }
-            this.addFx("frost_nova", h.x, h.y, { sx: 0.35, sy: 0.35, glow: 0.6 });
+            this.addFx("frost_nova", ox, oy + 10, { sx: 0.3, sy: 0.3, glow: 0.6 });
             this.audio.play("freeze", 0.6);
             break;
           }
           r.timer = 1.7 * (L >= 3 ? 0.8 : 1);
           const n = L >= 4 ? 3 : L >= 2 ? 2 : 1, skip = new Set<number>();
           for (let k = 0; k < n; k++) {
-            const j = this.nearestEnemy(h.x, h.y - 18, 260, skip);
+            const j = this.nearestEnemy(ox, oy, 270, skip);
             let a: number;
             if (j >= 0) {
               skip.add(E.uid[j]);
               this.body(j);
-              a = Math.atan2(this.by - (h.y - 18), this.bx - h.x);
+              a = Math.atan2(this.by - oy, this.bx - ox);
             } else a = Math.atan2(h.aimY, h.aimX) + (k - (n - 1) / 2) * 0.3;
-            this.bullets.add(TEAM_HERO, B_LANCE, h.x, h.y - 18, Math.cos(a) * 280, Math.sin(a) * 280, 1.0, 16 * (L >= 5 ? 1.4 : 1) * m, 4, El.Frost, L >= 4 ? 3 : 2);
+            this.bullets.add(TEAM_HERO, B_LANCE, ox + Math.cos(a) * 4, oy + Math.sin(a) * 4, Math.cos(a) * 280, Math.sin(a) * 280, 1.0, 16 * (L >= 5 ? 1.4 : 1) * m, 4, El.Frost, L >= 4 ? 3 : 2);
           }
           this.audio.play("freeze", 0.7);
           break;
@@ -3589,6 +3626,10 @@ export class World {
     const r = this.relics.find((q) => q.kind === kind);
     if (r) r.level = Math.min(5, r.level + 1);
     else this.relics.push({ kind, level: 1, timer: 0.5, angle: 0, evo: false, clock: 0 });
+  }
+  /** The artifacts held, in the order they were taken: each fills a slot. */
+  get artifacts(): StatId[] {
+    return Object.keys(this.statLevels) as StatId[];
   }
   addStat(id: StatId): void {
     const s = this.stats, h = this.hero;

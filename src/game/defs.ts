@@ -274,6 +274,8 @@ export const RELICS: RelicDef[] = [
 ];
 export const RELIC_MAX = 5;
 export const RELIC_SLOTS = 5;
+/** Slots for artifacts (the passive upgrades): a new one only while one is free, then only their levels. */
+export const ARTIFACT_SLOTS = 5;
 
 // ------------------------------------------------------------------------------------------------ upgrades
 export type StatId = "edge" | "haste" | "reach" | "wave" | "parry" | "speed" | "maxhp" | "magnet" | "dashcd" | "overdrive" | "crit" | "lantern";
@@ -365,23 +367,25 @@ export interface ForgeItem {
   unit: "%" | "";
   costs: number[];
   icon: [string, string];
+  /** Its big badge in the "items" atlas animation. */
+  item: string;
 }
 export const FORGE: ForgeItem[] = [
-  { id: "heart", name: { ru: "ЖИВУЧЕСТЬ", en: "VITALITY" }, desc: { ru: "СЕРДЦА СВЕРХ ТЕХ, С КОТОРЫМИ ГЕРОЙ НАЧИНАЕТ ЗАБЕГ", en: "HEARTS ON TOP OF THOSE THE HERO STARTS A RUN WITH" }, step: 1, unit: "", costs: [150, 450, 1200], icon: ["hud", "heart"] },
-  { id: "might", name: { ru: "МОЩЬ", en: "MIGHT" }, desc: { ru: "УРОН ОТ ВСЕГО: ОРУЖИЯ, РЕЛИКВИЙ, СТИХИЙ, СПОСОБНОСТИ", en: "DAMAGE FROM EVERYTHING: WEAPON, RELICS, ELEMENTS, ABILITY" }, step: 6, unit: "%", costs: [80, 140, 220, 330, 480, 680, 950, 1300], icon: ["icons", "edge"] },
-  { id: "haste", name: { ru: "ЛЁГКАЯ РУКА", en: "QUICK HAND" }, desc: { ru: "УДАРЫ И ВЫСТРЕЛЫ ЧАЩЕ", en: "BLOWS AND SHOTS COME FASTER" }, step: 5, unit: "%", costs: [120, 260, 480, 800, 1300], icon: ["icons", "haste"] },
-  { id: "crit", name: { ru: "УДАЧА", en: "FORTUNE" }, desc: { ru: "ШАНС КРИТИЧЕСКОГО УДАРА", en: "CRITICAL HIT CHANCE" }, step: 4, unit: "%", costs: [180, 420, 800, 1400], icon: ["icons", "crit"] },
-  { id: "swift", name: { ru: "ПРОВОРСТВО", en: "AGILITY" }, desc: { ru: "ГЕРОЙ БЕГАЕТ БЫСТРЕЕ", en: "THE HERO RUNS FASTER" }, step: 4, unit: "%", costs: [120, 280, 560, 1000], icon: ["icons", "speed"] },
-  { id: "temper", name: { ru: "ЗАКАЛКА", en: "TEMPERING" }, desc: { ru: "ШАНС, ЧТО УДАР ПО ГЕРОЮ ОТРАЗИТСЯ", en: "CHANCE A BLOW AT THE HERO IS TURNED ASIDE" }, step: 6, unit: "%", costs: [200, 450, 900, 1600], icon: ["icons", "parry"] },
-  { id: "reach", name: { ru: "ПРИТЯЖЕНИЕ", en: "PULL" }, desc: { ru: "РАДИУС, С КОТОРОГО ЛЕТЯТ КРИСТАЛЛЫ И СЕРДЦА", en: "THE REACH THAT DRAWS GEMS AND HEARTS IN" }, step: 15, unit: "%", costs: [60, 150, 320, 600], icon: ["icons", "magnet"] },
-  { id: "wisdom", name: { ru: "МУДРОСТЬ", en: "WISDOM" }, desc: { ru: "БОЛЬШЕ ОПЫТА С КАЖДОГО КРИСТАЛЛА", en: "MORE EXPERIENCE FROM EVERY GEM" }, step: 6, unit: "%", costs: [100, 220, 400, 700, 1100], icon: ["hud", "xp"] },
-  { id: "greed", name: { ru: "АЛЧНОСТЬ", en: "GREED" }, desc: { ru: "БОЛЬШЕ УГЛЕЙ ЗА КАЖДЫЙ ЗАБЕГ", en: "MORE EMBERS FROM EVERY RUN" }, step: 8, unit: "%", costs: [150, 350, 700, 1200, 2000], icon: ["hud", "ember"] },
-  { id: "surge", name: { ru: "ВЫБРОС", en: "SURGE" }, desc: { ru: "СПОСОБНОСТЬ ГЕРОЯ КОПИТСЯ БЫСТРЕЕ", en: "THE HERO'S ABILITY CHARGES FASTER" }, step: 10, unit: "%", costs: [150, 350, 700, 1200], icon: ["icons", "overdrive"] },
-  { id: "dash", name: { ru: "ВЕТЕР", en: "WIND" }, desc: { ru: "РЫВОК ПЕРЕЗАРЯЖАЕТСЯ БЫСТРЕЕ", en: "THE DASH RECHARGES FASTER" }, step: 8, unit: "%", costs: [150, 400, 900], icon: ["icons", "dashcd"] },
-  { id: "lantern", name: { ru: "ФОНАРЬ", en: "LANTERN" }, desc: { ru: "СВЕТ ГЕРОЯ ШИРЕ", en: "THE HERO'S LIGHT REACHES FURTHER" }, step: 10, unit: "%", costs: [80, 200, 450], icon: ["icons", "lantern"] },
-  { id: "reroll", name: { ru: "ПЕРЕБРОС", en: "REROLL" }, desc: { ru: "РАЗ ЗА ЗАБЕГ ЗАМЕНИТЬ ТРИ КАРТОЧКИ УЛУЧШЕНИЙ НОВЫМИ", en: "SWAP THE THREE UPGRADE CARDS FOR NEW ONES, ONCE A RUN" }, step: 1, unit: "", costs: [300, 800, 1600], icon: ["hud", "scroll"] },
-  { id: "start", name: { ru: "НАСЛЕДИЕ", en: "LEGACY" }, desc: { ru: "ВТОРАЯ РЕЛИКВИЯ НА ВЫБОР В НАЧАЛЕ ЗАБЕГА", en: "A SECOND RELIC OF YOUR CHOICE AT THE START" }, step: 1, unit: "", costs: [1500], icon: ["icons", "orbit"] },
-  { id: "revive", name: { ru: "ВТОРОЕ ДЫХАНИЕ", en: "SECOND WIND" }, desc: { ru: "РАЗ ЗА ЗАБЕГ ГЕРОЙ ВСТАЁТ С ДВУМЯ СЕРДЦАМИ", en: "ONCE A RUN THE HERO RISES AGAIN WITH TWO HEARTS" }, step: 1, unit: "", costs: [2500], icon: ["hud", "crown"] },
+  { id: "heart", name: { ru: "ЖИВУЧЕСТЬ", en: "VITALITY" }, desc: { ru: "СЕРДЦА СВЕРХ ТЕХ, С КОТОРЫМИ ГЕРОЙ НАЧИНАЕТ ЗАБЕГ", en: "HEARTS ON TOP OF THOSE THE HERO STARTS A RUN WITH" }, step: 1, unit: "", costs: [150, 450, 1200], icon: ["hud", "heart"], item: "maxhp" },
+  { id: "might", name: { ru: "МОЩЬ", en: "MIGHT" }, desc: { ru: "УРОН ОТ ВСЕГО: ОРУЖИЯ, РЕЛИКВИЙ, СТИХИЙ, СПОСОБНОСТИ", en: "DAMAGE FROM EVERYTHING: WEAPON, RELICS, ELEMENTS, ABILITY" }, step: 6, unit: "%", costs: [80, 140, 220, 330, 480, 680, 950, 1300], icon: ["icons", "edge"], item: "edge" },
+  { id: "haste", name: { ru: "ЛЁГКАЯ РУКА", en: "QUICK HAND" }, desc: { ru: "УДАРЫ И ВЫСТРЕЛЫ ЧАЩЕ", en: "BLOWS AND SHOTS COME FASTER" }, step: 5, unit: "%", costs: [120, 260, 480, 800, 1300], icon: ["icons", "haste"], item: "haste" },
+  { id: "crit", name: { ru: "УДАЧА", en: "FORTUNE" }, desc: { ru: "ШАНС КРИТИЧЕСКОГО УДАРА", en: "CRITICAL HIT CHANCE" }, step: 4, unit: "%", costs: [180, 420, 800, 1400], icon: ["icons", "crit"], item: "crit" },
+  { id: "swift", name: { ru: "ПРОВОРСТВО", en: "AGILITY" }, desc: { ru: "ГЕРОЙ БЕГАЕТ БЫСТРЕЕ", en: "THE HERO RUNS FASTER" }, step: 4, unit: "%", costs: [120, 280, 560, 1000], icon: ["icons", "speed"], item: "speed" },
+  { id: "temper", name: { ru: "ЗАКАЛКА", en: "TEMPERING" }, desc: { ru: "ШАНС, ЧТО УДАР ПО ГЕРОЮ ОТРАЗИТСЯ", en: "CHANCE A BLOW AT THE HERO IS TURNED ASIDE" }, step: 6, unit: "%", costs: [200, 450, 900, 1600], icon: ["icons", "parry"], item: "parry" },
+  { id: "reach", name: { ru: "ПРИТЯЖЕНИЕ", en: "PULL" }, desc: { ru: "РАДИУС, С КОТОРОГО ЛЕТЯТ КРИСТАЛЛЫ И СЕРДЦА", en: "THE REACH THAT DRAWS GEMS AND HEARTS IN" }, step: 15, unit: "%", costs: [60, 150, 320, 600], icon: ["icons", "magnet"], item: "magnet" },
+  { id: "wisdom", name: { ru: "МУДРОСТЬ", en: "WISDOM" }, desc: { ru: "БОЛЬШЕ ОПЫТА С КАЖДОГО КРИСТАЛЛА", en: "MORE EXPERIENCE FROM EVERY GEM" }, step: 6, unit: "%", costs: [100, 220, 400, 700, 1100], icon: ["hud", "xp"], item: "wisdom" },
+  { id: "greed", name: { ru: "АЛЧНОСТЬ", en: "GREED" }, desc: { ru: "БОЛЬШЕ УГЛЕЙ ЗА КАЖДЫЙ ЗАБЕГ", en: "MORE EMBERS FROM EVERY RUN" }, step: 8, unit: "%", costs: [150, 350, 700, 1200, 2000], icon: ["hud", "ember"], item: "greed" },
+  { id: "surge", name: { ru: "ВЫБРОС", en: "SURGE" }, desc: { ru: "СПОСОБНОСТЬ ГЕРОЯ КОПИТСЯ БЫСТРЕЕ", en: "THE HERO'S ABILITY CHARGES FASTER" }, step: 10, unit: "%", costs: [150, 350, 700, 1200], icon: ["icons", "overdrive"], item: "overdrive" },
+  { id: "dash", name: { ru: "ВЕТЕР", en: "WIND" }, desc: { ru: "РЫВОК ПЕРЕЗАРЯЖАЕТСЯ БЫСТРЕЕ", en: "THE DASH RECHARGES FASTER" }, step: 8, unit: "%", costs: [150, 400, 900], icon: ["icons", "dashcd"], item: "dashcd" },
+  { id: "lantern", name: { ru: "ФОНАРЬ", en: "LANTERN" }, desc: { ru: "СВЕТ ГЕРОЯ ШИРЕ", en: "THE HERO'S LIGHT REACHES FURTHER" }, step: 10, unit: "%", costs: [80, 200, 450], icon: ["icons", "lantern"], item: "lantern" },
+  { id: "reroll", name: { ru: "ПЕРЕБРОС", en: "REROLL" }, desc: { ru: "РАЗ ЗА ЗАБЕГ ЗАМЕНИТЬ ТРИ КАРТОЧКИ УЛУЧШЕНИЙ НОВЫМИ", en: "SWAP THE THREE UPGRADE CARDS FOR NEW ONES, ONCE A RUN" }, step: 1, unit: "", costs: [300, 800, 1600], icon: ["hud", "scroll"], item: "reroll" },
+  { id: "start", name: { ru: "НАСЛЕДИЕ", en: "LEGACY" }, desc: { ru: "ВТОРАЯ РЕЛИКВИЯ НА ВЫБОР В НАЧАЛЕ ЗАБЕГА", en: "A SECOND RELIC OF YOUR CHOICE AT THE START" }, step: 1, unit: "", costs: [1500], icon: ["icons", "orbit"], item: "start" },
+  { id: "revive", name: { ru: "ВТОРОЕ ДЫХАНИЕ", en: "SECOND WIND" }, desc: { ru: "РАЗ ЗА ЗАБЕГ ГЕРОЙ ВСТАЁТ С ДВУМЯ СЕРДЦАМИ", en: "ONCE A RUN THE HERO RISES AGAIN WITH TWO HEARTS" }, step: 1, unit: "", costs: [2500], icon: ["hud", "crown"], item: "revive" },
 ];
 /** Every level the forge sells, all told. */
 export const FORGE_LEVELS = FORGE.reduce((n, f) => n + f.costs.length, 0);
@@ -398,14 +402,16 @@ export interface ShopItem {
   embers?: number;
   lasting?: boolean;
   icon: [string, string];
+  /** Its big badge in the "items" atlas animation. */
+  item: string;
 }
 export const SHOP: ShopItem[] = [
-  { id: "embers_500", name: { ru: "ГОРСТЬ УГЛЕЙ", en: "A HANDFUL OF EMBERS" }, desc: { ru: "500 УГЛЕЙ ДЛЯ КУЗНИЦЫ И ГЕРОЕВ", en: "500 EMBERS FOR THE FORGE AND HEROES" }, embers: 500, icon: ["hud", "ember"] },
-  { id: "embers_1500", name: { ru: "МЕШОК УГЛЕЙ", en: "A SACK OF EMBERS" }, desc: { ru: "1500 УГЛЕЙ", en: "1500 EMBERS" }, embers: 1500, icon: ["hud", "ember"] },
-  { id: "embers_4000", name: { ru: "СУНДУК УГЛЕЙ", en: "A CHEST OF EMBERS" }, desc: { ru: "4000 УГЛЕЙ: ВЫГОДНЕЕ ВСЕГО", en: "4000 EMBERS: THE BEST VALUE" }, embers: 4000, icon: ["hud", "ember"] },
-  { id: "embers_double", name: { ru: "ВЕЧНЫЙ ЖАР", en: "EVERLASTING HEAT" }, desc: { ru: "ВСЕ УГЛИ ЗА ЗАБЕГИ ×2 НАВСЕГДА", en: "EMBERS FROM EVERY RUN ×2, FOR GOOD" }, lasting: true, icon: ["hud", "anvil"] },
-  { id: "heroes_all", name: { ru: "ВСЕ ГЕРОИ", en: "EVERY HERO" }, desc: { ru: "СРАЗУ ОТКРЫВАЕТ ВСЕХ ГЕРОЕВ", en: "UNLOCKS EVERY HERO AT ONCE" }, lasting: true, icon: ["hud", "crown"] },
-  { id: "no_ads", name: { ru: "БЕЗ РЕКЛАМЫ", en: "NO ADS" }, desc: { ru: "НИКАКОЙ РЕКЛАМЫ МЕЖДУ ЗАБЕГАМИ", en: "NO ADS BETWEEN RUNS" }, lasting: true, icon: ["hud", "mute"] },
+  { id: "embers_500", name: { ru: "ГОРСТЬ УГЛЕЙ", en: "A HANDFUL OF EMBERS" }, desc: { ru: "500 УГЛЕЙ ДЛЯ КУЗНИЦЫ И ГЕРОЕВ", en: "500 EMBERS FOR THE FORGE AND HEROES" }, embers: 500, icon: ["hud", "ember"], item: "embers_s" },
+  { id: "embers_1500", name: { ru: "МЕШОК УГЛЕЙ", en: "A SACK OF EMBERS" }, desc: { ru: "1500 УГЛЕЙ", en: "1500 EMBERS" }, embers: 1500, icon: ["hud", "ember"], item: "embers_m" },
+  { id: "embers_4000", name: { ru: "СУНДУК УГЛЕЙ", en: "A CHEST OF EMBERS" }, desc: { ru: "4000 УГЛЕЙ: ВЫГОДНЕЕ ВСЕГО", en: "4000 EMBERS: THE BEST VALUE" }, embers: 4000, icon: ["hud", "ember"], item: "embers_l" },
+  { id: "embers_double", name: { ru: "ВЕЧНЫЙ ЖАР", en: "EVERLASTING HEAT" }, desc: { ru: "ВСЕ УГЛИ ЗА ЗАБЕГИ ×2 НАВСЕГДА", en: "EMBERS FROM EVERY RUN ×2, FOR GOOD" }, lasting: true, icon: ["hud", "anvil"], item: "heat" },
+  { id: "heroes_all", name: { ru: "ВСЕ ГЕРОИ", en: "EVERY HERO" }, desc: { ru: "СРАЗУ ОТКРЫВАЕТ ВСЕХ ГЕРОЕВ", en: "UNLOCKS EVERY HERO AT ONCE" }, lasting: true, icon: ["hud", "crown"], item: "heroes" },
+  { id: "no_ads", name: { ru: "БЕЗ РЕКЛАМЫ", en: "NO ADS" }, desc: { ru: "НИКАКОЙ РЕКЛАМЫ МЕЖДУ ЗАБЕГАМИ", en: "NO ADS BETWEEN RUNS" }, lasting: true, icon: ["hud", "mute"], item: "noads" },
 ];
 
 // ------------------------------------------------------------------------------------------------ evolutions

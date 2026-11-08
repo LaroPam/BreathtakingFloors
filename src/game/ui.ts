@@ -11,7 +11,7 @@ import type { Audio } from "../engine/audio";
 import type { Input } from "../engine/input";
 import { Batch, rgba, rgbaf, withAlpha } from "../engine/renderer";
 import { fitScale, measure, text, wrap, type FontName } from "../engine/text";
-import { EL_COLOR, ENEMIES, floorInfo, MUTATORS, questDef, RELIC_SLOTS } from "./defs";
+import { ARTIFACT_SLOTS, EL_COLOR, ENEMIES, evolutionOf, floorInfo, MUTATORS, questDef, RELIC_SLOTS, STATS } from "./defs";
 import { t, tx } from "./i18n";
 import type { World } from "./world";
 
@@ -463,10 +463,27 @@ export function drawHud(b: Batch, w: World, W: number, H: number, time: number, 
     for (let q = 0; q < 5; q++) b.rect(x + 3 + q * 3, hy + 23, 2, 1, q < r.level ? (readyEvo && q === 4 && Math.sin(time * 8) > 0 ? rgba("#ffffff") : C.gold) : rgba("#2a2438"));
   }
 
+  // ---- the artifacts under the relics, a slot each, their levels in pips; one that is a relic's key to its
+  // evolution has a gold rim while that relic waits for it
+  const ay = hy + 26, held = w.artifacts;
+  for (let k = 0; k < ARTIFACT_SLOTS; k++) {
+    const id = held[k], x = 30 + k * 22;
+    const key = !!id && w.relics.some((r) => !r.evo && evolutionOf(r.kind).stat === id);
+    slot(b, x, ay, 21, key ? C.goldDim : undefined);
+    if (!id) {
+      b.rect(x + 10, ay + 9, 1, 3, S.wellHi), b.rect(x + 9, ay + 10, 3, 1, S.wellHi);
+      continue;
+    }
+    b.image(icon("icons", id), x + 10.5, ay + 10.5, 0.85, 0.85);
+    const lv = w.statLevels[id] ?? 0, max = STATS.find((st) => st.id === id)!.max, pw2 = max <= 5 ? 2 : 1, step = pw2 + 1;
+    const x0 = x + Math.round((21 - max * step + 1) / 2);
+    for (let q = 0; q < max; q++) b.rect(x0 + q * step, ay + 22, pw2, 1, q < lv ? rgba("#9ad4ff") : rgba("#2a2438"));
+  }
+
   // ---- the spirit's quest: a plate under the hotbar with its name, the count, the clock
   const q = w.quest;
   if (q) {
-    const a = q.state === "active" ? 1 : Math.max(0, Math.min(1, (3 - q.endT) / 0.6)), qy = hy + 29, qw = 132;
+    const a = q.state === "active" ? 1 : Math.max(0, Math.min(1, (3 - q.endT) / 0.6)), qy = hy + 54, qw = 132;
     const accent = q.state === "failed" ? C.red : q.state === "done" ? C.green : C.sky;
     plate(b, 2, qy, qw, 24, withAlpha(accent, a));
     b.image(icon("hud", "scroll"), 11, qy + 8, 1, 1, 0, rgbaf(1, 1, 1, a));
