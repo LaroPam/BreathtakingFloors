@@ -7,8 +7,8 @@ import { Batch, rgba, rgbaf, withAlpha, type Lighting, type Renderer } from "../
 import { anim, FONTS, frameAt, icon, type Anim, type Rect } from "../engine/atlas";
 import { heroSprites, initHeroSprites, lookId, type HeroAnim, type HeroSprites } from "./heroSprites";
 import { fitScale, measure, text, wrap } from "../engine/text";
-import { dayNumber, weekNumber, type Board, type BoardName, type Platform } from "../platform/platform";
-import { ACHIEVEMENTS, heroDef, biomeOf, bossOf, combine, floorInfo, stageOf, EL_COLOR, LEGENDS, legendDesc, type WeaponId, EL_NAME, ENEMIES, EVOLUTIONS, evolutionOf, FLOORS, FORGE, questDef, TASK_BONUS, TASKS, type TaskId, type ForgeId, HEROES, WEAPONS, weaponName, MODIFIERS, MUTATORS, NO_MODIFIER, REACTIONS, RELIC_MAX, RELIC_SLOTS, RELICS, STATS, type Modifier, type Reaction, type RelicKind, type StatId } from "./defs";
+import { dayNumber, weekNumber, type Board, type BoardName, type Platform, type Product } from "../platform/platform";
+import { ACHIEVEMENTS, heroDef, biomeOf, bossOf, combine, floorInfo, stageOf, EL_COLOR, LEGENDS, legendDesc, type WeaponId, EL_NAME, ENEMIES, EVOLUTIONS, evolutionOf, FLOORS, FORGE, questDef, TASK_BONUS, TASKS, type TaskId, type ForgeId, SHOP, type ShopItem, HEROES, WEAPONS, weaponName, MODIFIERS, MUTATORS, NO_MODIFIER, REACTIONS, RELIC_MAX, RELIC_SLOTS, RELICS, STATS, type Modifier, type Reaction, type RelicKind, type StatId } from "./defs";
 import { drawWorld, Scene } from "./draw";
 import { stairwell } from "./stairwell";
 import { getLang, langFor, setLang, t, tx, type Lang } from "./i18n";
@@ -17,7 +17,7 @@ import { defaultSave, sanitize, type SaveData } from "./save";
 import { button, slider, C, divider, glow as glowUi, drawHud, drawPointers, drawTouch, fmtTime, frame, header , Menu, panel, para, plate , slot } from "./ui";
 import { CINE_DUR, World } from "./world";
 
-type State = "title" | "heroes" | "forge" | "daily" | "records" | "tasks" | "settings" | "card" | "play" | "spin" | "pick" | "pause" | "codex" | "stairs" | "dead" | "won";
+type State = "title" | "heroes" | "forge" | "shop" | "daily" | "records" | "tasks" | "settings" | "card" | "play" | "spin" | "pick" | "pause" | "codex" | "stairs" | "dead" | "won";
 type Choice = { type: "relic"; kind: RelicKind; level: number } | { type: "stat"; id: StatId } | { type: "evo"; kind: RelicKind } | { type: "legend"; weapon: WeaponId };
 
 /**
@@ -141,6 +141,60 @@ export class Game {
     this.heroIdx = Math.max(0, HEROES.findIndex((h) => h.id === this.save.hero));
     this.newWorld();
     this.attract();
+    // purchases bought but not yet delivered (the game closed mid-way), and lasting ones on a new device
+    void this.deliverPending();
+  }
+
+  // =========================================================================================== the shop
+  /** The platform's catalog, once loaded (null while loading), and what the shop just said. */
+  private catalog: Product[] | null = null;
+  private shopNote = "";
+  private shopBusy = false;
+  /** Give the player what a purchase bought: embers, every hero, or a lasting boon recorded in the save. */
+  private deliver(id: string): void {
+    const item = SHOP.find((q) => q.id === id);
+    if (!item) return;
+    if (item.embers) this.save.embers += item.embers;
+    if (item.lasting && !this.save.purchases.includes(id)) this.save.purchases.push(id);
+    if (id === "heroes_all") for (const hd of HEROES) if (!this.save.unlocked.includes(hd.id)) this.save.unlocked.push(hd.id);
+    this.persist();
+    this.checkAch();
+  }
+  /** Consumables bought but not delivered are delivered and consumed; lasting ones are restored. */
+  private async deliverPending(): Promise<void> {
+    if (!this.platform.shopAvailable()) return;
+    for (const p of await this.platform.purchases()) {
+      const item = SHOP.find((q) => q.id === p.id);
+      if (!item) continue;
+      if (item.lasting) {
+        if (!this.save.purchases.includes(item.id)) this.deliver(item.id);
+      } else {
+        this.deliver(item.id);
+        await this.platform.consume(p.token);
+      }
+    }
+  }
+  private async purchase(item: ShopItem): Promise<void> {
+    if (this.shopBusy) return;
+    this.shopBusy = true;
+    const p = await this.platform.buy(item.id);
+    this.shopBusy = false;
+    if (!p) {
+      this.shopNote = t("shopFail");
+      return;
+    }
+    this.deliver(item.id);
+    if (!item.lasting) await this.platform.consume(p.token);
+    this.shopNote = t("shopThanks");
+    this.audio.play("chest");
+    this.audio.play("levelup", 1.2);
+  }
+  /** 1 when the title menu has the shop's button (the buttons after it move down one). */
+  private get shopSlot(): number {
+    return this.platform.shopAvailable() ? 1 : 0;
+  }
+  private owns(id: string): boolean {
+    return this.save.purchases.includes(id);
   }
 
   /** Volumes from the save into the mixer; the comfort switches are read where they act. */
@@ -362,7 +416,7 @@ export class Game {
     // embers are earned slowly: floors cleared and bosses beaten count most, the embers picked up a little, kills
     // barely; the stairs' reward and the forge's greed multiply it
     const cleared = w.floor - 1 + (won ? 1 : 0), bosses = Math.floor(cleared / 3), greed = 1 + ((FORGE.find((q) => q.id === "greed")!.step * (this.daily ? 0 : this.save.forge.greed ?? 0)) / 100);
-    const embers = Math.round((cleared * 6 + bosses * 20 + (won ? 50 : 0) + w.embersBonus * 0.35 + w.kills / 80) * (w.mod.embers ?? 1) * greed);
+    const embers = Math.round((cleared * 6 + bosses * 20 + (won ? 50 : 0) + w.embersBonus * 0.35 + w.kills / 80) * (w.mod.embers ?? 1) * greed * (this.owns("embers_double") ? 2 : 1));
     const score = w.floor * 1000 + w.kills * 5 + w.hero.level * 50 + (won ? 5000 : 0);
     let best: boolean;
     if (this.daily) {
@@ -842,6 +896,7 @@ export class Game {
       case "heroes": this.drawHeroes(); break;
       case "card": this.drawCard(); break;
       case "forge": this.drawForge(); break;
+      case "shop": this.drawShop(); break;
       case "daily": this.drawDaily(); break;
       case "records": this.drawRecords(); break;
       case "tasks": this.drawTasks(); break;
@@ -919,7 +974,8 @@ export class Game {
     const th = this.heading(t("title"), ty, 3);
     text(ui, t("subtitle"), W / 2, ty + th + 2, { align: "center", color: rgba("#c8b8a0"), shadow: C.ink });
     const bw = 160, bh = H >= 300 ? 20 : 17, gap = H >= 300 ? 6 : 4, bx = Math.round(W / 2 - bw / 2);
-    let y = Math.round(Math.min(H * 0.46, H - 34 - 6 * (bh + gap)));
+    const count = this.platform.shopAvailable() ? 7 : 6;
+    let y = Math.round(Math.min(H * 0.46, H - 34 - count * (bh + gap)));
     if (button(ui, this.menu, now, bx, y, bw, bh, t("play"), { primary: true, icon: icon("hud", "play") })) {
       this.audio.unlock();
       this.daily = this.weekly = false;
@@ -943,6 +999,10 @@ export class Game {
     y += bh + gap;
     if (button(ui, this.menu, now, bx, y, bw, bh, t("forge"), { icon: icon("hud", "anvil") })) this.setState("forge");
     y += bh + gap;
+    if (this.platform.shopAvailable()) {
+      if (button(ui, this.menu, now, bx, y, bw, bh, t("shop"), { color: C.gold, icon: icon("hud", "ember") })) this.openShop();
+      y += bh + gap;
+    }
     if (button(ui, this.menu, now, bx, y, bw, bh, t("records"), { icon: icon("hud", "crown") })) {
       this.recordsTab = "score";
       // the keys start on the tab last open
@@ -1303,7 +1363,7 @@ export class Game {
       }
       y += rh;
     }
-    if (button(ui, this.menu, now, Math.round(W / 2 - 50), H - 26, 100, 18, t("back"), { icon: icon("hud", "back") }) || this.input.pressed("back")) this.setState(this.settingsFrom, this.settingsFrom === "title" ? 5 : 2);
+    if (button(ui, this.menu, now, Math.round(W / 2 - 50), H - 26, 100, 18, t("back"), { icon: icon("hud", "back") }) || this.input.pressed("back")) this.setState(this.settingsFrom, this.settingsFrom === "title" ? 5 + this.shopSlot : 2);
   }
 
   /** Achievements: a card each, earned ones gilded, the rest dim with how far along; paged to fit the screen. */
@@ -1411,7 +1471,7 @@ export class Game {
       this.drawAchievements(px, y, pw);
       if (button(ui, this.menu, now, Math.round(W / 2 - 50), H - 24, 100, 18, t("back"), { icon: icon("hud", "back") }) || this.input.pressed("back")) {
         this.boards = {};
-        this.setState("title", 4);
+        this.setState("title", 4 + this.shopSlot);
       }
       return;
     }
@@ -1469,7 +1529,7 @@ export class Game {
     });
     if (button(ui, this.menu, now, Math.round(W / 2 - 50), H - 24, 100, 18, t("back"), { icon: icon("hud", "back") }) || this.input.pressed("back")) {
       this.boards = {};
-      this.setState("title", 4);
+      this.setState("title", 4 + this.shopSlot);
     }
   }
 
@@ -1486,6 +1546,43 @@ export class Game {
         const sz = k * cell * 1.45;
         ui.push(x + cell / 2, y + cell / 2, -sz / 2, -sz / 2, sz, sz, 0, 0, 1, 1, Math.PI / 4, -3, col, 0, 0);
       }
+  }
+
+  private openShop(): void {
+    this.shopNote = "";
+    this.catalog = null;
+    this.setState("shop");
+    void this.platform.catalog().then((c) => (this.catalog = c));
+  }
+  /**
+   * The shop: a card for each product the platform's catalog has, its badge, what it gives and the platform's own
+   * price on the button; lasting ones already bought say so. A note under them thanks, or says it did not go through.
+   */
+  private drawShop(): void {
+    const ui = this.ui, W = this.r.w, H = this.r.h, now = this.now;
+    const th = this.heading(t("shop"), 6, H >= 300 ? 2 : 1);
+    this.purse(W - 8, 8);
+    const top = 6 + th + 8, cat = this.catalog;
+    if (!cat) text(ui, t("shopLoading"), W / 2, H / 2, { align: "center", color: C.dim });
+    else {
+      const items = SHOP.map((it) => [it, cat.find((p) => p.id === it.id)] as const).filter(([, p]) => !!p);
+      if (!items.length) text(ui, t("shopNone"), W / 2, H / 2, { align: "center", color: C.dim });
+      const cols = W >= 560 ? 3 : W >= 380 ? 2 : 1, gap = 8, cw = Math.min(170, Math.floor((W - 20 - (cols - 1) * gap) / cols)), ch = H >= 300 ? 76 : 60;
+      const x0 = Math.round(W / 2 - (cols * cw + (cols - 1) * gap) / 2);
+      items.forEach(([it, p], k) => {
+        const x = x0 + (k % cols) * (cw + gap), y = top + Math.floor(k / cols) * (ch + gap), owned = !!it.lasting && this.owns(it.id);
+        frame(ui, x, y, cw, ch, { edge: it.lasting ? C.gold : undefined });
+        const [atlas, ic] = it.icon;
+        ui.disc(x + 18, y + 18, 11, 11, rgba("#07060c", 0.8));
+        ui.image(icon(atlas, ic), x + 18, y + 18, atlas === "icons" ? 1 : 1.5, atlas === "icons" ? 1 : 1.5);
+        text(ui, tx(it.name), x + 34, y + 7, { color: C.gold, shadow: C.ink });
+        para(ui, tx(it.desc), x + 34, y + 18, cw - 40, C.text, "left", 8, "mini");
+        const label = owned ? t("owned") : p!.price;
+        if (button(ui, this.menu, now, x + 8, y + ch - 22, cw - 16, 16, label, { primary: !owned, disabled: owned || this.shopBusy })) void this.purchase(it);
+      });
+      if (this.shopNote) text(ui, this.shopNote, W / 2, H - 40, { align: "center", color: this.shopNote === t("shopThanks") ? C.green : C.red, shadow: C.ink });
+    }
+    if (button(ui, this.menu, now, Math.round(W / 2 - 50), H - 24, 100, 18, t("back"), { icon: icon("hud", "back") }) || this.input.pressed("back")) this.setState("title", 4);
   }
 
   /** The forge item the player is looking at, and how far the list is scrolled. */
@@ -1919,7 +2016,7 @@ export class Game {
     const bw = 190, bh = 20, bx = Math.round(W / 2 - bw / 2);
     if (button(ui, this.menu, now, bx, y, bw, bh, t("again"), { primary: true, icon: icon("hud", "play") })) {
       this.newSkin = "";
-      void this.platform.showInterstitial().then(() => this.startRun());
+      void (this.owns("no_ads") ? Promise.resolve() : this.platform.showInterstitial()).then(() => this.startRun());
       this.setState("title");
       return;
     }
@@ -1972,7 +2069,7 @@ export class Game {
       y += bh + 6;
     }
     if (button(ui, this.menu, now, bx, y, bw, bh, t("again"), { primary: true, icon: icon("hud", "play") })) {
-      void this.platform.showInterstitial().then(() => this.startRun());
+      void (this.owns("no_ads") ? Promise.resolve() : this.platform.showInterstitial()).then(() => this.startRun());
       this.setState("title");
       return;
     }

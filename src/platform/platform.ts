@@ -21,6 +21,21 @@ export const dayNumber = (now = Date.now()): number => Math.floor(now / 86400000
 /** The week the weekly trial belongs to (weeks from Monday, UTC). */
 export const weekNumber = (now = Date.now()): number => Math.floor((dayNumber(now) + 3) / 7);
 
+/** A product of the platform's shop, as its catalog gives it: the price is the platform's own, in its currency. */
+export interface Product {
+  id: string;
+  title: string;
+  /** The price as the platform writes it (e.g. "29 YAN"), its number, and the currency's icon (a URL), if any. */
+  price: string;
+  priceValue: number;
+  currencyImage: string;
+}
+/** A purchase made: what was bought, and the token that marks a consumable as delivered. */
+export interface Purchase {
+  id: string;
+  token: string;
+}
+
 export interface Platform {
   readonly name: "local" | "yandex" | "youtube";
   /** Connect to the platform's SDK. Never throws: a missing SDK degrades to local behaviour. */
@@ -54,6 +69,14 @@ export interface Platform {
   /** Whether the player could sign in to get on the boards (a guest on Yandex), and doing it. */
   canSignIn(): boolean;
   signIn(): Promise<boolean>;
+  /** In-game purchases: whether there is a shop here, its catalog, buying, and consuming a delivered consumable. */
+  shopAvailable(): boolean;
+  catalog(): Promise<Product[]>;
+  /** Buy a product; resolves with the purchase, or null if it was cancelled or failed. */
+  buy(id: string): Promise<Purchase | null>;
+  /** Purchases not yet delivered (a consumable whose delivery was cut short) and every lasting one. */
+  purchases(): Promise<Purchase[]>;
+  consume(token: string): Promise<void>;
 }
 
 /** Shared by all builds: pause on a hidden tab, mobile detection, and browser storage as a fallback. */
@@ -127,6 +150,19 @@ export abstract class BasePlatform implements Platform {
   onAudioChange(cb: (on: boolean) => void): void {
     this.audioCbs.push(cb);
   }
+  shopAvailable(): boolean {
+    return false;
+  }
+  async catalog(): Promise<Product[]> {
+    return [];
+  }
+  async buy(_id: string): Promise<Purchase | null> {
+    return null;
+  }
+  async purchases(): Promise<Purchase[]> {
+    return [];
+  }
+  async consume(_token: string): Promise<void> {}
   canShowRewarded(): boolean {
     return false;
   }

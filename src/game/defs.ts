@@ -386,6 +386,28 @@ export const FORGE: ForgeItem[] = [
 /** Every level the forge sells, all told. */
 export const FORGE_LEVELS = FORGE.reduce((n, f) => n + f.costs.length, 0);
 
+// ------------------------------------------------------------------------------------------------ the shop
+/**
+ * What the shop sells (on Yandex Games: in-app purchases with these ids, set up in the console; their prices come
+ * from the platform's catalog). Ember packs are consumables, delivered and consumed; the rest last.
+ */
+export interface ShopItem {
+  id: string;
+  name: Text;
+  desc: Text;
+  embers?: number;
+  lasting?: boolean;
+  icon: [string, string];
+}
+export const SHOP: ShopItem[] = [
+  { id: "embers_500", name: { ru: "ГОРСТЬ УГЛЕЙ", en: "A HANDFUL OF EMBERS" }, desc: { ru: "500 УГЛЕЙ ДЛЯ КУЗНИЦЫ И ГЕРОЕВ", en: "500 EMBERS FOR THE FORGE AND HEROES" }, embers: 500, icon: ["hud", "ember"] },
+  { id: "embers_1500", name: { ru: "МЕШОК УГЛЕЙ", en: "A SACK OF EMBERS" }, desc: { ru: "1500 УГЛЕЙ", en: "1500 EMBERS" }, embers: 1500, icon: ["hud", "ember"] },
+  { id: "embers_4000", name: { ru: "СУНДУК УГЛЕЙ", en: "A CHEST OF EMBERS" }, desc: { ru: "4000 УГЛЕЙ: ВЫГОДНЕЕ ВСЕГО", en: "4000 EMBERS: THE BEST VALUE" }, embers: 4000, icon: ["hud", "ember"] },
+  { id: "embers_double", name: { ru: "ВЕЧНЫЙ ЖАР", en: "EVERLASTING HEAT" }, desc: { ru: "ВСЕ УГЛИ ЗА ЗАБЕГИ ×2 НАВСЕГДА", en: "EMBERS FROM EVERY RUN ×2, FOR GOOD" }, lasting: true, icon: ["hud", "anvil"] },
+  { id: "heroes_all", name: { ru: "ВСЕ ГЕРОИ", en: "EVERY HERO" }, desc: { ru: "СРАЗУ ОТКРЫВАЕТ ВСЕХ ГЕРОЕВ", en: "UNLOCKS EVERY HERO AT ONCE" }, lasting: true, icon: ["hud", "crown"] },
+  { id: "no_ads", name: { ru: "БЕЗ РЕКЛАМЫ", en: "NO ADS" }, desc: { ru: "НИКАКОЙ РЕКЛАМЫ МЕЖДУ ЗАБЕГАМИ", en: "NO ADS BETWEEN RUNS" }, lasting: true, icon: ["hud", "mute"] },
+];
+
 // ------------------------------------------------------------------------------------------------ evolutions
 /**
  * A relic at its last level, with the right upgrade taken, can evolve: a chest always offers it, a level-up often.

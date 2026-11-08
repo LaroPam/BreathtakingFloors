@@ -28,6 +28,13 @@ export interface SaveData {
   /** Lifetime counters (achievements read them) and the achievements earned. */
   stats: Record<string, number>;
   ach: string[];
+  /** Lasting purchases from the platform's shop (ember packs are spent as they come, so they are not here). */
+  purchases: string[];
+  /**
+   * What the player has met, for the books in the pause menu: relics, weapons, upgrades, reactions, evolutions
+   * ("relic:0", "weapon:bow", "stat:edge", "reaction:...", "evo:0", "legend:bow").
+   */
+  seen: string[];
   /** Today's three tasks: their goals, how far along, whether claimed, and the bonus for all three. */
   tasks?: { day: string; items: { id: string; goal: number; have: number; claimed: boolean }[]; bonus: boolean };
   /** The daily run: its date, the best score that day, how many tries. */
@@ -58,6 +65,8 @@ export const defaultSave = (): SaveData => ({
   flashes: true,
   stats: {},
   ach: [],
+  purchases: [],
+  seen: [],
 });
 
 const clamp01 = (v: unknown, d: number): number => (typeof v === "number" && isFinite(v) ? Math.max(0, Math.min(1, v)) : d);
@@ -79,6 +88,8 @@ export function sanitize(raw: unknown): SaveData {
     skins: Array.isArray(r.skins) ? r.skins.filter((x) => typeof x === "string") : [],
     skinOn: Array.isArray(r.skinOn) ? r.skinOn.filter((x) => typeof x === "string") : [],
     ach: Array.isArray(r.ach) ? r.ach.filter((x) => typeof x === "string") : [],
+    purchases: Array.isArray(r.purchases) ? r.purchases.filter((x) => typeof x === "string") : [],
+    seen: Array.isArray(r.seen) ? r.seen.filter((x) => typeof x === "string") : [],
     // saves from before heroes were bought keep the hero last played
     unlocked: [...new Set(["knight", ...(Array.isArray(r.unlocked) ? r.unlocked.filter((x) => typeof x === "string") : typeof r.hero === "string" ? [r.hero] : [])])],
   };
