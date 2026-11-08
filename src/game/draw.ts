@@ -290,10 +290,11 @@ export function drawWorld(s: Scene, w: World, camX: number, camY: number, viewW:
   if (sc && inView(sc.x + TILE, sc.y - 20, 60)) {
     const sa = anim(`secret_${B.id}`), cx = sc.x + TILE;
     if (sc.hp <= 0) {
-      s.back.image(sa.frames[1][0]!, sc.x, sc.y);
-      // a warm breath from inside, fading after it opens
+      // the passage is open (its tiles are floor now): rubble at its mouth, a warm breath from inside fading
+      if (!sc.room) s.back.image(sa.frames[1][0]!, sc.x, sc.y);
       const k = Math.max(0, 1 - sc.hitT / 4);
       if (k > 0) s.illum.light(cx, sc.y - 16, 46, 36, rgbaf(1, 0.8, 0.4, 0.7 * k));
+      for (let q = 0; q < 6; q++) s.back.rect(sc.x + 2 + ((q * 7) % 28), sc.y + 2 + ((q * 5) % 6), 2 + (q % 2), 2, rgba(q % 2 ? "#3a3348" : "#2a2436"));
     } else if (sc.seen > 0.02) {
       const jit = sc.hitT < 0.25 ? Math.round(Math.sin(sc.hitT * 80) * 1.5) : 0;
       const a = Math.min(1, sc.seen);
@@ -301,6 +302,24 @@ export function drawWorld(s: Scene, w: World, camX: number, camY: number, viewW:
       // gold glinting in the split, and a little warm light breathing out of it
       if (sa.frames[0][1]) s.glow.image(sa.frames[0][1]!, sc.x + jit, sc.y, 1, 1, 0, rgbaf(1, 1, 1, a * (0.75 + 0.25 * Math.sin(time * 3))));
       s.illum.light(cx, sc.y - 22, 30, 24, rgbaf(1, 0.8, 0.45, 0.45 * a * (0.85 + 0.15 * Math.sin(time * 2.3))));
+    }
+  }
+
+  // ---- a secret room's fountain: a stone basin of clear water, glinting; drunk from, it goes still and dark
+  const fn = w.fountain;
+  if (fn && inView(fn.x, fn.y, 40)) {
+    s.back.disc(fn.x, fn.y + 2, 15, 7, rgba("#000000", 0.35));
+    s.back.disc(fn.x, fn.y, 14, 7, rgba("#3a3448"));
+    s.back.disc(fn.x, fn.y - 1, 12, 5.5, rgba("#6a6284"));
+    s.back.disc(fn.x, fn.y - 1, 10, 4.5, fn.used ? rgba("#14202e") : rgba("#2a6ab0"));
+    if (!fn.used) {
+      for (let q = 0; q < 4; q++) {
+        const u = (time * 0.6 + q / 4) % 1;
+        s.glow.rect(Math.round(fn.x - 7 + q * 4 + Math.sin(time + q) * 1.5), Math.round(fn.y - 2 + Math.sin(u * 6.28) * 1.5), 2, 1, rgbaf(0.7, 0.95, 1, 0.7 * Math.sin(u * Math.PI)));
+      }
+      s.illum.light(fn.x, fn.y - 6, 60, 46, rgbaf(0.45, 0.8, 1, 0.55 + 0.1 * Math.sin(time * 2)));
+      const u = (time * 0.5) % 1;
+      s.glow.rect(Math.round(fn.x + Math.sin(time * 3) * 3), Math.round(fn.y - 6 - u * 16), 1, 1, rgbaf(0.8, 1, 1, Math.sin(u * Math.PI)));
     }
   }
 

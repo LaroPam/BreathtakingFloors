@@ -221,7 +221,21 @@ export interface Secret {
   found: boolean;
   /** Seconds since the last blow (the cracked stretch shudders a moment). */
   hitT: number;
+  /**
+   * The sealed room behind it (tiles), and what waits there: a treasure, a guardian over a chest, a fountain, an
+   * armoury. Breaking the wall cuts the passage and opens the room.
+   */
+  room: { x: number; y: number; w: number; h: number; kind: "treasure" | "guardian" | "fountain" | "armory" } | null;
 }
+/** A healing fountain in a secret room: one long drink restores the hero. */
+export interface Fountain {
+  x: number;
+  y: number;
+  used: boolean;
+  t: number;
+}
+/** The middle of a cracked stretch (px). */
+const cx2 = (sc: Secret): number => sc.x + TILE;
 /** Each urn's colours, for its shards. */
 const URN_SHARDS = [["#7a4a2a", "#b87848", "#3a2216"], ["#9a4a26", "#d07040", "#7ac048"], ["#3a6a98", "#78b0d8", "#e8f8ff"], ["#5a5068", "#8a809a", "#2a2430"]].map((c) => c.map((h) => rgba(h)));
 
@@ -449,6 +463,9 @@ export class World {
   chests: FloorChest[] = [];
   altar: CurseAltar | null = null;
   secret: Secret | null = null;
+  fountain: Fountain | null = null;
+  /** The guardian of a secret room: its chest drops when it dies. */
+  private guardianUid = 0;
   /** The Knight's ward of light and the Berserker's war cry: seconds left. */
   ward = 0;
   rage = 0;
@@ -634,15 +651,25 @@ export class World {
         } else run = 0;
       }
     }
-    // now and then a stretch of wall hides a cache: two faces side by side, clear of the torches
+    // now and then a stretch of wall is cracked, and behind it, deep in the stone, a sealed room: two faces side by
+    // side, clear of the torches, with solid wall behind them deep enough for the room
     this.secret = null;
-    if (R.chance(0.5 + 0.03 * this.floor))
-      for (let tries = 0; tries < 40 && faces.length; tries++) {
-        const [c, r] = faces[Math.floor(R.next() * faces.length)], x = c * TILE, y = (r + 1) * TILE;
+    this.fountain = null;
+    this.guardianUid = 0;
+    // (every face is tried, in a shuffled order, until one has room behind it)
+    const order = faces.map((_, k): [number, number] => [R.next(), k]).sort((a, b) => a[0] - b[0]).map(([, k]) => faces[k]);
+    if (R.chance(0.6 + 0.03 * this.floor))
+      for (const [c, r] of order) {
+        const x = c * TILE, y = (r + 1) * TILE;
         if (m.at(c + 1, r) !== WALL || m.at(c + 1, r + 1) !== FLOOR || m.at(c + 1, r - 2) !== WALL) continue;
         if (this.torches.some(([tx, ty]) => ty === y && tx > x - 26 && tx < x + TILE * 2 + 26)) continue;
         if ((x - sx) ** 2 + (y - sy) ** 2 < 120 * 120) continue;
-        this.secret = { x, y, hp: 3, seen: 0, found: false, hitT: 9 };
+        // the room: 8 x 5 tiles, three rows up behind the face, all of it and a tile round it solid now
+        let solid = r >= 10;
+        for (let rr = r - 9; rr <= r && solid; rr++) for (let cc = c - 4; cc <= c + 5 && solid; cc++) if (m.at(cc, rr) !== WALL) solid = false;
+        if (!solid) continue;
+        const kinds = ["treasure", "treasure", "guardian", "guardian", "fountain", "armory"] as const;
+        this.secret = { x, y, hp: 3, seen: 0, found: false, hitT: 9, room: { x: c - 3, y: r - 8, w: 8, h: 5, kind: R.pick(kinds) } };
         break;
       }
     // a random place on open ground (and any floor tile, for small things)
@@ -1892,6 +1919,12 @@ export class World {
         const j = this.spawnAt(EN.slime, x + this.rng.range(-10, 10), y + this.rng.range(-8, 8));
         if (j >= 0) (E.kx[j] = this.rng.range(-120, 120), E.ky[j] = this.rng.range(-120, 120));
       }
+    // the guardian of a secret room leaves the chest it kept
+    if (this.guardianUid && E.uid[i] === this.guardianUid) {
+      this.guardianUid = 0;
+      this.drops.add(D_CHEST, x, y, 1, 0, -30);
+      this.ev.banner(tr("guardianDown"), rgba("#ffd27a"));
+    }
     if (boss) {
       this.ev.count("boss");
       this.hitstop = 0.25;
@@ -1946,6 +1979,18 @@ export class World {
           this.ev.secret("found");
         }
         if (sc.seen > 0.3 && this.rng.chance(dt * 4)) this.parts.add(cx + this.rng.range(-7, 7), sc.y - this.rng.range(12, 26), this.rng.range(-5, 5), this.rng.range(6, 14), 1.4, rgba("#d8d0e8", 0.55 * sc.seen), 1, 8, 0);
+      }
+    }
+    // a secret room's fountain: stand at it a moment and it restores every heart (once)
+    const fn = this.fountain;
+    if (fn) {
+      fn.t += dt;
+      if (!fn.used && (h.x - fn.x) ** 2 + (h.y - fn.y - 8) ** 2 < 20 * 20) {
+        fn.used = true;
+        h.hp = h.maxHp;
+        this.addFx("heal_ring", h.x, h.y, { tint: rgba("#7ad8ff"), glow: 0.9 });
+        this.audio.play("heal");
+        this.popup(h.x, h.y - 40, tr("fountainDrink"), rgba("#9ad8ff"), true);
       }
     }
     // the cursed altar: a moment standing on it takes the curse
@@ -2012,20 +2057,57 @@ export class World {
       this.shake = Math.max(this.shake, 0.25);
       return;
     }
-    // broken open: rubble, a puff of old air, and what was hidden spills out onto the floor
+    // broken open: rubble, a puff of old air, and a passage into the room behind
     this.addFx("poof", cx, sc.y + 4, { glow: 0.4 });
     this.audio.play("boom", 1.6);
     this.audio.play("chest");
     this.shake = Math.max(this.shake, 0.55);
-    const h = this.hero, spill = (kind: number, value: number) => {
-      const a = R.range(0.3, Math.PI - 0.3), s = R.range(40, 90);
-      this.drops.add(kind, cx + R.range(-6, 6), sc.y + 8, value, Math.cos(a) * s, Math.sin(a) * s);
-    };
-    for (let q = 0; q < 2; q++) spill(D_RED, 20);
-    for (let q = R.int(5, 8); q > 0; q--) spill(D_EMBER, 1);
-    for (let q = R.int(2, 4); q > 0; q--) spill(this.floor >= 4 ? D_GREEN : D_BLUE, this.floor >= 4 ? 5 : 1);
-    if (h.hp < h.maxHp) spill(D_HEART, 1);
+    this.openRoom(sc);
     this.ev.secret("opened");
+  }
+  /**
+   * The wall is down: the passage is cut through to the room and the room stands open, lit, with what waits in
+   * it. The ways over the map are made again at once.
+   */
+  private openRoom(sc: Secret): void {
+    const m = this.map, R = this.rng, room = sc.room, c = sc.x / TILE, r = sc.y / TILE - 1;
+    if (!room) return;
+    for (let rr = room.y + room.h; rr <= r; rr++) for (let cc = c; cc <= c + 1; cc++) m.set(cc, rr, FLOOR);
+    for (let rr = room.y; rr < room.y + room.h; rr++) for (let cc = room.x; cc < room.x + room.w; cc++) m.set(cc, rr, FLOOR);
+    m.measure();
+    this.flowT = 0;
+    this.goalKey = -1;
+    const mx = (room.x + room.w / 2) * TILE, my = (room.y + room.h / 2) * TILE + 4;
+    // its torches on the far wall, and the old air puffing out
+    for (const tc of [room.x + 1, room.x + room.w - 2]) this.torches.push([tc * TILE + 8, room.y * TILE]);
+    this.dust(cx2(sc), sc.y - 30, 14, 40);
+    if (room.kind === "treasure") {
+      // a hoard: a chest in the middle, embers and gems about it
+      this.drops.add(D_CHEST, mx, my, 1, 0, 0);
+      for (let q = 0; q < 10; q++) this.drops.add(D_EMBER, mx + R.range(-40, 40), my + R.range(-18, 18), 1, 0, 0);
+      for (let q = 0; q < 3; q++) this.drops.add(D_RED, mx + R.range(-40, 40), my + R.range(-18, 18), 20, 0, 0);
+    } else if (room.kind === "guardian") {
+      // a guardian sleeps over the chest: much stronger than the elites outside; its death leaves the chest
+      const type = this.floor >= 4 && R.chance(0.5) ? EN.skullElite : EN.slimeElite, i = this.spawnAt(type, mx, my);
+      if (i >= 0) {
+        const E = this.enemies;
+        E.maxHp[i] *= 2.6;
+        E.hp[i] = E.maxHp[i];
+        E.age[i] = 0.6;
+        this.guardianUid = E.uid[i];
+        this.addFx("spawn", mx, my, { sx: 1.2, sy: 1.2, glow: 0.8 });
+        this.audio.play("roar", 0.9);
+      }
+      for (let q = 0; q < 6; q++) this.drops.add(D_EMBER, mx + R.range(-36, 36), my + R.range(-16, 16), 1, 0, 0);
+    } else if (room.kind === "fountain") {
+      this.fountain = { x: mx, y: my, used: false, t: 0 };
+      for (let q = 0; q < 4; q++) this.drops.add(D_EMBER, mx + R.range(-36, 36), my + R.range(-16, 16), 1, 0, 0);
+    } else {
+      // an armoury: a weapon on its altar, steeped in an element
+      const pool = WEAPON_IDS.filter((id) => id !== this.hero.weapon && id !== "spell" && !WEAPONS[id].el), weapon = R.pick(pool.length ? pool : WEAPON_IDS);
+      this.racks.push({ x: Math.round(mx), y: Math.round(my), weapon, el: R.pick(ELEMENTS), legend: false, progress: 0, armed: true });
+      for (let q = 0; q < 4; q++) this.drops.add(D_EMBER, mx + R.range(-36, 36), my + R.range(-16, 16), 1, 0, 0);
+    }
   }
   /** An urn shatters: shards fly and fall, dust puffs, and whatever was inside spills out. */
   private breakUrn(u: Urn): void {
