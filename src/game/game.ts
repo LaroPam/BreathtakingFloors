@@ -118,7 +118,7 @@ export class Game {
    * (its marker sweeping over the odds and stopping), then what came of it. Its floor modifiers hold for the next
    * floor only; the events met are not met again in the run.
    */
-  private stairEvent: { ev: StairEvent; phase: "ask" | "roll" | "done"; pick: number; t: number; roll: number; win: boolean; applied: boolean } | null = null;
+  private stairEvent: { ev: StairEvent; phase: "ask" | "roll" | "done"; pick: number; t: number; roll: number; win: boolean; applied: boolean; adBusy?: boolean } | null = null;
   private eventMods: Modifier[] = [];
   private eventsSeen: string[] = [];
   private revived = false;
@@ -2487,22 +2487,41 @@ export class Game {
       ui.rect(bx + Math.round(bw * c.chance), by, bw - Math.round(bw * c.chance), 6, rgba("#7a2a2e"));
       text(ui, `${Math.round(c.chance * 100)}%`, bx + Math.round(bw * c.chance), by + 8, { font: "mini", align: "center", color: C.dim });
       // the sweep: several passes, easing out onto the roll
-      const e = 1 - (1 - u) ** 3, sweep = e * (3 + se.roll), pos = sweep % 2 < 1 ? sweep % 1 : 1 - (sweep % 1), mx = bx + Math.round(bw * (u >= 1 ? se.roll : pos));
+      const e = 1 - (1 - u) ** 3, sweep = e * (4 + se.roll), pos = sweep % 2 < 1 ? sweep % 1 : 1 - (sweep % 1), mx = bx + Math.round(bw * (u >= 1 ? se.roll : pos));
       ui.rect(mx - 1, by - 4, 3, 14, C.ink);
       ui.rect(mx, by - 3, 1, 12, rgba("#fff6d0"));
       if (u < 1 && Math.floor(sweep * 6) !== Math.floor((sweep - this.dt * 3) * 6)) this.audio.play("click", 1.4 + pos * 0.4);
     }
     if (u < 1) return;
-    // what came of it (once, as the marker stops)
-    if (!se.applied) {
+    // what came of it (once, as the marker stops); a failure waits, the player may turn it with a rewarded ad
+    const second = !se.win && !sure && this.platform.canShowRewarded();
+    const apply = () => {
       se.applied = true;
       this.applyOutcome(se.win ? c.win : c.lose ?? {});
       this.audio.play(se.win ? "levelup" : "hurt", se.win ? 1.3 : 0.8);
-    }
+    };
+    if (!se.applied && !second) apply();
     const res = se.win ? c.win : c.lose ?? {}, ry = by + (sure ? -2 : 20);
     if (!sure) text(ui, se.win ? t("evWin") : t("evLose"), W / 2, ry, { align: "center", color: se.win ? C.green : C.red, shadow: C.ink });
     this.outcomeLines(res).forEach(([l, good], k) => text(ui, l, W / 2, ry + 11 + k * 9, { font: "mini", align: "center", color: good ? C.green : C.red }));
-    if (button(ui, this.menu, now, Math.round(W / 2 - 60), py + ph - 24 + rise, 120, 18, t("onward"), { primary: true, icon: icon("hud", "play") })) {
+    const bY = py + ph - 24 + rise;
+    if (second && !se.applied) {
+      if (button(ui, this.menu, now, Math.round(W / 2 - 152), bY, 170, 18, t("evAdWin"), { color: C.green, icon: icon("hud", "play") }) && !se.adBusy) {
+        se.adBusy = true;
+        void this.platform.showRewarded().then((ok) => {
+          se.adBusy = false;
+          if (ok) se.win = true;
+          apply();
+        });
+      }
+      if (button(ui, this.menu, now, Math.round(W / 2 + 26), bY, 110, 18, t("onward"), { primary: true }) && !se.adBusy) {
+        apply();
+        se.phase = "done";
+        this.menu.open(now, 0);
+      }
+      return;
+    }
+    if (button(ui, this.menu, now, Math.round(W / 2 - 60), bY, 120, 18, t("onward"), { primary: true, icon: icon("hud", "play") })) {
       se.phase = "done";
       this.menu.open(now, 0);
     }
