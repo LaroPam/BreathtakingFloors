@@ -1,6 +1,6 @@
 // Promo material for the Yandex Games draft, rendered by the game itself, frame by frame (a fixed 30 fps clock, so
 // the result does not depend on how fast headless Chromium draws).
-//   npm run dev, then: node tools/promo/capture.cjs shots|video|mobile [out dir] [scene]
+//   npm run dev, then: node tools/promo/capture.cjs shots|video|beat|mobile [out dir] [scene]
 // video writes JPEG frames to <out>/frames: ffmpeg -framerate 30 -i f%04d.jpg -vf scale=1920:1080:flags=neighbor,format=yuv420p -c:v libx264 -crf 18 out.mp4
 const { chromium } = require('playwright');
 const fs = require('fs');
@@ -95,6 +95,9 @@ async function frame(p, k, opts = {}) {
     }
     w.pendingLevels = 0;
     w.pendingChests = 0;
+    // the boss keeps walking for the first holdCd frames (its next attack held back), or attacks soon from the start
+    if (w.brain && opts.holdCd && k < opts.holdCd) w.brain.cd = Math.max(w.brain.cd, 0.3);
+    if (w.brain && opts.cd0 !== undefined && k === 0) w.brain.cd = opts.cd0;
     if (g.state !== 'play') return { keys: [], state: g.state };
     if (opts.keepCrowd && E.n < opts.keepCrowd) {
       const a = Math.random() * Math.PI * 2, d = 120 + Math.random() * 60;
@@ -162,14 +165,42 @@ const SCENES = [
   { name: 'eye', floor: 9, opts: { boss: true, relics: [1, 4], bossFloor: true, phase: 2, heroAt: [-40, 70], range: 90, dashEvery: 60 }, n: 255 },
 ];
 
+/**
+ * The cut to the music ("Rough n' tough" from 14.22 s: 126.5 BPM, its first downbeat at 0.04 s): a new scene every two
+ * bars, so each cut lands on a downbeat. The bosses walk in their own shots (their attacks held back a while).
+ */
+const BAR = (60 / 126.5) * 4, FIRST = 0.04, TOTAL = 26;
+const BEAT_SCENES = [
+  { name: 'crypt', floor: 2, opts: SCENES[0].opts },
+  { name: 'warden-walk', floor: 3, opts: { boss: true, relics: [1], bossFloor: true, heroAt: [-150, 30], range: 150, holdCd: 999 } },
+  { name: 'garden', floor: 5, opts: { ...SCENES[0].opts, types: GARDEN, relics: [3, 3, 0, 2, 4] } },
+  { name: 'treant-walk', floor: 6, opts: { boss: true, relics: [0, 2], bossFloor: true, phase: 2, heroAt: [-140, 40], range: 140, holdCd: 70 } },
+  { name: 'frost', floor: 8, opts: { ...SCENES[0].opts, types: FROST, relics: [1, 1, 5, 2] } },
+  { name: 'warden-strike', floor: 3, opts: { boss: true, relics: [1], bossFloor: true, phase: 2, heroAt: [-60, 40], range: 60, cd0: 0.2 } },
+  { name: 'eye', floor: 9, opts: SCENES[2].opts },
+];
+const beatCuts = () => {
+  const cuts = [0];
+  for (let n = 1; n < BEAT_SCENES.length; n++) cuts.push(Math.round((FIRST + 2 * n * BAR) * 30));
+  cuts.push(TOTAL * 30);
+  return cuts;
+};
+
 (async () => {
   const b = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
-  if (MODE === 'video') {
+  if (MODE === 'video' || MODE === 'beat') {
+    const beat = MODE === 'beat', cuts = beatCuts();
+    const scenes = beat ? BEAT_SCENES.map((sc, i) => ({ ...sc, n: cuts[i + 1] - cuts[i] })) : SCENES;
+    const only = process.argv[4];
     const dir = path.join(OUT, 'frames');
-    fs.rmSync(dir, { recursive: true, force: true });
+    if (!only) fs.rmSync(dir, { recursive: true, force: true });
     fs.mkdirSync(dir, { recursive: true });
     let f = 0;
-    for (const sc of SCENES) {
+    for (const sc of scenes) {
+      if (only && sc.name !== only) {
+        f += sc.n;
+        continue;
+      }
       const { p, errs, ctx } = await openGame(b, 960, 540);
       await setup(p, sc.floor, sc.opts);
       // a little time for the fight to start before recording
