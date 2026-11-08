@@ -187,7 +187,9 @@ export class Game {
       if (item.lasting) {
         if (!this.save.purchases.includes(item.id)) this.deliver(item.id);
       } else {
+        // the save first, in the cloud, then the purchase is marked delivered (it cannot be restored after that)
         this.deliver(item.id);
+        await this.platform.save(this.save, true);
         await this.platform.consume(p.token);
       }
     }
@@ -202,6 +204,7 @@ export class Game {
       return;
     }
     this.deliver(item.id);
+    await this.platform.save(this.save, true);
     if (!item.lasting) await this.platform.consume(p.token);
     this.shopNote = t("shopThanks");
     this.audio.play("chest");

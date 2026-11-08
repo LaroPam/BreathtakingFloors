@@ -19,31 +19,54 @@ let failed = 0;
 const ok = (cond, msg) => (console.log(`  ${cond ? "ok  " : "FAIL"}  ${msg}`), cond || failed++);
 
 // ------------------------------------------------------------------------------------------ the stand-in SDKs
+// Only what the SDK's documentation describes (yandex.ru/dev/games/doc/ru/sdk/): a game calling anything else fails here.
 const YANDEX = `(function () {
   const calls = (window.__sdk = []), log = (n) => calls.push(n), on = {};
-  let mode = "lite";
+  let authorized = false, cloud = {};
   const day = Math.floor(Date.now() / 86400000), week = Math.floor((day + 3) / 7);
   window.__fire = (e) => on[e] && on[e]();
-  window.YaGames = { init: async () => ({
-    environment: { i18n: { lang: "ru" } },
-    deviceInfo: { isMobile: () => false, isTablet: () => false },
-    features: { LoadingAPI: { ready: () => log("LoadingAPI.ready") }, GameplayAPI: { start: () => log("GameplayAPI.start"), stop: () => log("GameplayAPI.stop") } },
-    on: (e, f) => (on[e] = f),
-    getPlayer: async () => ({ getMode: () => mode, getUniqueID: () => "me", getData: async () => ({}), setData: async () => log("setData") }),
-    auth: { openAuthDialog: async () => (log("openAuthDialog"), (mode = "")) },
-    leaderboards: {
-      getEntries: async (b) => {
-        log("getEntries:" + b);
-        const p = b === "daily" ? day : b === "weekly" ? week : 0, s = (n) => (p ? p * 1e6 + n : n);
-        return { entries: [{ rank: 1, score: s(9120), player: { publicName: "A", uniqueID: "a" } }, { rank: 2, score: (p - 1) * 1e6 + 9999, player: { publicName: "OLD", uniqueID: "b" } }] };
+  // one ember pack bought last time whose delivery was cut short
+  let pending = [{ productID: "embers_500", purchaseToken: "t-pending" }];
+  window.YaGames = { init: async () => {
+    // the platform's own fullscreen ad at the start: paused at once, resumed a while later
+    setTimeout(() => (log("startad"), window.__fire("game_api_pause")), 0);
+    setTimeout(() => (log("startad-end:" + (window.__game ? window.__game.now : 0)), window.__fire("game_api_resume")), 2500);
+    return {
+      environment: { i18n: { lang: "ru" } },
+      deviceInfo: { isMobile: () => false, isTablet: () => false, isDesktop: () => true, isTV: () => false },
+      features: { LoadingAPI: { ready: () => log("LoadingAPI.ready") }, GameplayAPI: { start: () => log("GameplayAPI.start"), stop: () => log("GameplayAPI.stop") } },
+      EVENTS: { EXIT: "EXIT", HISTORY_BACK: "HISTORY_BACK", ACCOUNT_SELECTION_DIALOG_OPENED: "ACCOUNT_SELECTION_DIALOG_OPENED", ACCOUNT_SELECTION_DIALOG_CLOSED: "ACCOUNT_SELECTION_DIALOG_CLOSED" },
+      on: (e, f) => ((on[e] = f), () => delete on[e]),
+      off: (e) => delete on[e],
+      isAvailableMethod: async (m) => (m.startsWith("leaderboards.") ? authorized : true),
+      getPlayer: async () => ({
+        isAuthorized: () => authorized,
+        getUniqueID: () => (authorized ? "me" : "guest"),
+        getName: () => (authorized ? "Me" : ""),
+        getData: async (keys) => (log("getData"), keys ? Object.fromEntries(keys.filter((k) => k in cloud).map((k) => [k, cloud[k]])) : { ...cloud }),
+        setData: async (d, flush) => (log("setData:" + (flush ? "flush" : "queue") + ":" + (d.save ? d.save.embers : "")), (cloud = { ...cloud, ...d })),
+      }),
+      auth: { openAuthDialog: async () => (log("openAuthDialog"), (authorized = true)) },
+      leaderboards: {
+        getEntries: async (b) => {
+          log("getEntries:" + b);
+          const p = b === "daily" ? day : b === "weekly" ? week : 0, s = (n) => (p ? p * 1e6 + n : n);
+          return { leaderboard: {}, ranges: [], userRank: 0, entries: [{ rank: 1, score: s(9120), player: { publicName: "A", uniqueID: "a" } }, { rank: 2, score: (p - 1) * 1e6 + 9999, player: { publicName: "OLD", uniqueID: "b" } }] };
+        },
+        setScore: async (b, v) => log("setScore:" + b + ":" + v),
       },
-      setScore: async (b, v) => log("setScore:" + b + ":" + v),
-    },
-    adv: {
-      showFullscreenAdv: ({ callbacks }) => (log("interstitial"), callbacks.onOpen(), setTimeout(() => callbacks.onClose(), 400)),
-      showRewardedVideo: ({ callbacks }) => (log("rewarded"), callbacks.onOpen(), setTimeout(() => (callbacks.onRewarded(), callbacks.onClose()), 400)),
-    },
-  }) };
+      getPayments: async () => ({
+        getCatalog: async () => [{ id: "embers_500", title: "500", description: "", imageURI: "", price: "29 YAN", priceValue: "29", priceCurrencyCode: "YAN", getPriceCurrencyImage: () => "" }],
+        purchase: async ({ id }) => (log("purchase:" + id), { productID: id, purchaseToken: "t-" + id }),
+        getPurchases: async () => (log("getPurchases"), pending.slice()),
+        consumePurchase: async (t) => (log("consume:" + t), (pending = pending.filter((p) => p.purchaseToken !== t))),
+      }),
+      adv: {
+        showFullscreenAdv: ({ callbacks }) => (log("interstitial"), callbacks.onOpen(), setTimeout(() => callbacks.onClose(true), 400)),
+        showRewardedVideo: ({ callbacks }) => (log("rewarded"), callbacks.onOpen(), setTimeout(() => (callbacks.onRewarded(), callbacks.onClose(true)), 400)),
+      },
+    };
+  } };
 })();`;
 
 const YOUTUBE = `(function () {
@@ -129,6 +152,13 @@ if (!existsSync(yDir)) ok(false, "not built: run npm run build:yandex");
 else {
   const g = await open(browser, yDir, YANDEX, null, { width: 1600, height: 500 });
   ok((await g.calls()).includes("LoadingAPI.ready"), "LoadingAPI.ready once loaded (1.19.2)");
+  const startEnd = (await g.calls()).find((x) => x.startsWith("startad-end:"));
+  ok(!!startEnd && +startEnd.split(":")[1] < 0.2, `the platform's ad at the start: the game waits for game_api_resume (${startEnd})`);
+  {
+    const c = await g.calls(), got = c.findIndex((x) => x === "getPurchases"), saved = c.findIndex((x, k) => k > got && x.startsWith("setData:flush")), used = c.indexOf("consume:t-pending");
+    ok(got >= 0 && used > saved && saved > got, "a purchase left undelivered is delivered, saved to the cloud, then consumed (1.13.1)");
+    ok(await g.ev(() => window.__game.save.embers >= 500), "and its embers are the player's");
+  }
   const st = await g.ev(() => { const s = document.getElementById("game").style; return [s.width, s.left]; });
   ok(st[0] === "1000px" && st[1] === "300px", `a wide desktop window: play area 2:1, bars either side (1.6.2): ${st.join(" ")}`);
   await g.page.setViewportSize({ width: 960, height: 540 });
@@ -150,6 +180,22 @@ else {
   await g.ev(() => window.__fire("game_api_resume"));
   await g.wait(200);
   ok(!(await g.still(200)), "game_api_resume starts it again");
+  {
+    const before = (await g.calls()).length;
+    await g.ev(() => window.__game.purchase({ id: "embers_500", embers: 500 }));
+    const c = (await g.calls()).slice(before), bought = c.indexOf("purchase:embers_500"), saved = c.findIndex((x, k) => k > bought && x.startsWith("setData:flush")), used = c.indexOf("consume:t-embers_500");
+    ok(bought >= 0 && saved > bought && used > saved, "a purchase: delivered, saved to the cloud at once, then consumed");
+  }
+  {
+    const before = (await g.calls()).filter((x) => x.startsWith("setData")).length;
+    await g.ev(() => { for (let k = 0; k < 30; k++) window.__game.platform.save(window.__game.save); });
+    await g.wait(300);
+    const n = (await g.calls()).filter((x) => x.startsWith("setData")).length - before;
+    ok(n <= 1, `thirty saves in a row: ${n} cloud write(s) at once, within setData's 100 in 5 minutes`);
+    await g.wait(4500);
+    const m = (await g.calls()).filter((x) => x.startsWith("setData")).length - before;
+    ok(m >= 1 && m <= 2, `and the latest of them reaches the cloud a few seconds later (${m})`);
+  }
   await g.die();
   ok(!(await g.calls()).some((x) => x.startsWith("setScore")), "a guest's score stays in the save (only signed-in players are on the boards)");
   await g.ev(() => { const gm = window.__game; gm.recordsTab = "daily"; gm.boards = {}; gm.setState("records"); });
