@@ -8,16 +8,16 @@ import { anim, FONTS, frameAt, icon, type Anim, type Rect } from "../engine/atla
 import { heroSprites, initHeroSprites, lookId, type HeroAnim, type HeroSprites } from "./heroSprites";
 import { fitScale, measure, text, wrap } from "../engine/text";
 import { dayNumber, weekNumber, type Board, type BoardName, type Platform, type Product } from "../platform/platform";
-import { ACHIEVEMENTS, heroDef, biomeOf, bossOf, combine, floorInfo, stageOf, EL_COLOR, LEGENDS, legendDesc, type WeaponId, EL_NAME, ENEMIES, EVOLUTIONS, evolutionOf, FLOORS, FORGE, questDef, TASK_BONUS, TASKS, type TaskId, type ForgeId, SHOP, type ShopItem, HEROES, WEAPONS, weaponName, MODIFIERS, MUTATORS, NO_MODIFIER, REACTIONS, RELIC_MAX, RELIC_SLOTS, ARTIFACT_SLOTS, RELICS, STATS, type Modifier, type Reaction, type RelicKind, type StatId } from "./defs";
+import { ACHIEVEMENTS, heroDef, biomeOf, bossOf, combine, floorInfo, stageOf, EL_COLOR, LEGENDS, legendDesc, type WeaponId, EL_NAME, ENEMIES, EVOLUTIONS, evolutionOf, FLOORS, FORGE, questDef, TASK_BONUS, TASKS, type TaskId, type ForgeId, SHOP, type ShopItem, HEROES, WEAPONS, weaponName, MODIFIERS, MUTATORS, NO_MODIFIER, REACTIONS, RELIC_MAX, RELIC_SLOTS, ARTIFACT_SLOTS, RELICS, STATS, El, type Modifier, type Reaction, type RelicKind, type StatId } from "./defs";
 import { drawWorld, Scene } from "./draw";
 import { stairwell } from "./stairwell";
 import { getLang, langFor, setLang, t, tx, type Lang } from "./i18n";
 import { Rng } from "./rng";
 import { defaultSave, sanitize, type SaveData } from "./save";
 import { button, slider, C, divider, glow as glowUi, drawHud, drawPointers, drawTouch, fmtTime, frame, header , Menu, panel, para, plate , slot } from "./ui";
-import { CINE_DUR, World } from "./world";
+import { CINE_DUR, SRC_ABILITY, SRC_DASH, SRC_ELS, SRC_N, SRC_PARRY, SRC_REACT, SRC_RELIC, SRC_STATUS, SRC_WAVE, SRC_WEAPON, World } from "./world";
 
-type State = "title" | "heroes" | "forge" | "shop" | "daily" | "records" | "tasks" | "settings" | "card" | "play" | "spin" | "pick" | "pause" | "codex" | "stairs" | "dead" | "won";
+type State = "title" | "heroes" | "forge" | "shop" | "daily" | "records" | "tasks" | "settings" | "card" | "play" | "spin" | "pick" | "pause" | "codex" | "stairs" | "dead" | "won" | "stats";
 type Choice = { type: "relic"; kind: RelicKind; level: number } | { type: "stat"; id: StatId } | { type: "evo"; kind: RelicKind } | { type: "legend"; weapon: WeaponId } | { type: "rest" };
 
 /**
@@ -48,6 +48,8 @@ interface Pick {
 /** The chest's screen (s): it comes in and shakes, its lid flies up, then the reel rises out of it and spins. */
 const SPIN_LID = 0.42, SPIN_OPEN = 0.62;
 const RELIC_ICON = ["orbit", "lance", "coil", "flask", "halo", "void"];
+/** A big number short: 950, 12.3K, 4.1M (К and М in Russian). */
+const fmtNum = (n: number): string => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}${t("mega")}` : n >= 1e4 ? `${(n / 1e3).toFixed(n >= 1e5 ? 0 : 1)}${t("kilo")}` : String(Math.round(n)));
 const iconKey = (c: Choice) => (c.type === "relic" ? RELIC_ICON[c.kind] : c.type === "evo" ? evolutionOf(c.kind).icon : c.type === "legend" ? `w_${c.weapon}` : c.type === "rest" ? "maxhp" : c.id);
 
 /**
@@ -204,6 +206,12 @@ export class Game {
   }
   /** Where the settings screen goes back to. */
   private settingsFrom: State = "title";
+  /** The screen the statistics go back to, and the focus to give it. */
+  private statsFrom: [State, number] = ["stairs", 0];
+  private openStats(from: State, focus: number): void {
+    this.statsFrom = [from, focus];
+    this.setState("stats");
+  }
 
   private wearsVictor(id: string): boolean {
     return this.save.skins.includes(id) && this.save.skinOn.includes(id);
@@ -872,7 +880,7 @@ export class Game {
     const shake = w.shake > 0 && this.state === "play" && this.save.shake ? w.shake * w.shake * 6 : 0;
     const sx = shake ? (Math.random() - 0.5) * shake : 0, sy = shake ? (Math.random() - 0.5) * shake : 0;
     // between floors the floor behind is gone: the stairwell down to the next one takes its place
-    const down = this.state === "stairs" ? stairwell(s, W, H, this.now, biomeOf(w.floor + 1)) : null;
+    const down = this.state === "stairs" || (this.state === "stats" && this.statsFrom[0] === "stairs") ? stairwell(s, W, H, this.now, biomeOf(w.floor + 1)) : null;
     const cx = down ? 0 : this.camX + sx, cy = down ? 0 : this.camY + sy;
     if (!down) drawWorld(s, w, cx, cy, W, H, this.now);
 
@@ -880,7 +888,7 @@ export class Game {
     // a choice or a chest dims the floor smoothly, and a choice made lets it light up again as the game goes on
     const over = this.state === "pick" || this.state === "spin";
     const closing = this.pick && this.pick.chosen >= 0 ? Math.min(1, this.pick.t / 0.2) : 0;
-    const dimK = over ? 0.5 * Math.min(1, (this.now - this.menu.openedAt) / 0.16) * (1 - closing) : 0.55;
+    const dimK = over ? 0.5 * Math.min(1, (this.now - this.menu.openedAt) / 0.16) * (1 - closing) : this.state === "stats" ? 0.78 : 0.55;
     const light: Lighting = {
       ambient: down ? down.ambient : [w.ambient * w.biome.ambient[0], w.ambient * w.biome.ambient[1], w.ambient * w.biome.ambient[2]],
       steps: 7,
@@ -930,6 +938,7 @@ export class Game {
       case "stairs": this.drawStairs(); break;
       case "dead": this.drawDead(); break;
       case "won": this.drawWon(); break;
+      case "stats": this.drawStats(); break;
     }
     if (this.state !== "heroes") this.menu.end(this.state === "stairs" || (this.state === "pick" && this.pickRow), this.state !== "settings");
     // a screen comes up out of the dark
@@ -1877,9 +1886,102 @@ export class Game {
     }
   }
 
+  /** A source of damage by name and badge (for the statistics). */
+  private sourceOf(src: number): { name: string; ic: Rect } {
+    const w = this.world, h = w.hero;
+    if (src === SRC_WEAPON) return { name: tx(weaponName(h.weapon, w.weaponEl)), ic: icon("icons", `w_${h.weapon}`) };
+    if (src >= SRC_RELIC && src < SRC_RELIC + 6) {
+      const kind = (src - SRC_RELIC) as RelicKind, evo = w.evolved(kind);
+      return { name: tx(evo ? evolutionOf(kind).name : RELICS[kind].name), ic: icon("icons", evo ? evolutionOf(kind).icon : RELIC_ICON[kind]) };
+    }
+    const stat = (id: StatId) => tx(STATS.find((q) => q.id === id)!.name);
+    switch (src) {
+      case SRC_DASH: return { name: t("srcDash"), ic: icon("icons", "dashcd") };
+      case SRC_REACT: return { name: t("srcReact"), ic: icon("hud", "curse") };
+      case SRC_STATUS: return { name: t("srcStatus"), ic: icon("hud", "skull") };
+      case SRC_ABILITY: return { name: tx(h.def.ability.name), ic: icon("hud", "overdrive") };
+      case SRC_WAVE: return { name: stat("wave"), ic: icon("icons", "wave") };
+      case SRC_PARRY: return { name: stat("parry"), ic: icon("icons", "parry") };
+      default: return { name: t("srcOther"), ic: icon("hud", "urn") };
+    }
+  }
+
+  /**
+   * The statistics: every source of the run's damage with its share, biggest first, each a bar split into the
+   * colours of the elements it dealt (the weapon's own element shows as its part of the weapon's bar), and the
+   * elements added up under it all.
+   */
+  private drawStats(): void {
+    const ui = this.ui, W = this.r.w, H = this.r.h, now = this.now, w = this.world, D = w.dmgStat;
+    const total = D.reduce((a, b) => a + b, 0);
+    if (this.statsFrom[0] !== "stairs") ui.rect(0, 0, W, H, rgba("#07060c", 0.55));
+    const th = this.heading(t("stats"), 6, H >= 300 ? 2 : 1, C.gold, 1, `${t("statsTotal")}: ${fmtNum(total)}`);
+    const rows: { src: number; sum: number }[] = [];
+    for (let src = 0; src < SRC_N; src++) {
+      let sum = 0;
+      for (let e = 0; e < SRC_ELS; e++) sum += D[src * SRC_ELS + e];
+      if (sum >= 1) rows.push({ src, sum });
+    }
+    rows.sort((a, b) => b.sum - a.sum);
+    const pw = Math.min(420, W - 16), px = Math.round(W / 2 - pw / 2), top = 6 + th + 8, rowH = 23;
+    const room = Math.max(1, Math.floor((H - top - 64) / rowH)), shown = rows.slice(0, room);
+    if (!rows.length) text(ui, t("statsNone"), W / 2, H / 2 - 10, { align: "center", color: C.dim });
+    const max = rows[0]?.sum ?? 1, elCol = (e: number) => rgba(e ? EL_COLOR[e as El] : "#d8d0e8");
+    shown.forEach((r, k) => {
+      const y = top + k * rowH, { name, ic } = this.sourceOf(r.src), appear = Math.min(1, Math.max(0, (now - this.menu.openedAt - k * 0.04) / 0.25));
+      panel(ui, px, y, pw, rowH - 3, k === 0 ? C.goldDim : C.edge);
+      slot(ui, px + 3, y + 1, 18);
+      ui.image(ic, px + 12, y + 10, 0.8, 0.8);
+      text(ui, name, px + 26, y + 3, { color: k === 0 ? C.goldLight : C.gold, shadow: C.ink });
+      const pct = Math.round((r.sum / Math.max(1, total)) * 100);
+      text(ui, `${fmtNum(r.sum)}  ${pct}%`, px + pw - 6, y + 3, { align: "right", font: "mini", color: C.text });
+      // the bar, split by element, growing in as the screen opens
+      const bx = px + 26, bw = pw - 34, full = Math.max(2, Math.round((bw * r.sum) / max * appear)), by = y + 13;
+      ui.rect(bx, by, bw, 4, rgba("#14111c"));
+      let x = bx;
+      for (let e = 0; e < SRC_ELS; e++) {
+        const part = D[r.src * SRC_ELS + e];
+        if (part <= 0) continue;
+        const pwid = Math.max(1, Math.round((full * part) / r.sum));
+        ui.rect(x, by, Math.min(pwid, bx + full - x), 4, elCol(e));
+        ui.rect(x, by, Math.min(pwid, bx + full - x), 1, withAlpha(rgba("#ffffff"), 0.35));
+        x += pwid;
+      }
+    });
+    // the elements, all told
+    const els: [number, number][] = [];
+    for (let e = 0; e < SRC_ELS; e++) {
+      let sum = 0;
+      for (let src = 0; src < SRC_N; src++) sum += D[src * SRC_ELS + e];
+      if (sum >= 1) els.push([e, sum]);
+    }
+    els.sort((a, b) => b[1] - a[1]);
+    if (els.length) {
+      const ly = top + shown.length * rowH + 4, items = els.map(([e, sum]) => `${tx(e ? EL_NAME[e as El] : { ru: t("elPhys"), en: t("elPhys") })} ${Math.round((sum / total) * 100)}%`);
+      let lx = 0;
+      const widths = items.map((str) => measure(str, "mini") + 16), lw = widths.reduce((a, b) => a + b, 0);
+      lx = Math.round(W / 2 - lw / 2);
+      if (lw <= pw) {
+        els.forEach(([e], k) => {
+          ui.rect(lx, ly + 2, 6, 6, C.ink);
+          ui.rect(lx + 1, ly + 3, 4, 4, elCol(e));
+          text(ui, items[k], lx + 9, ly + 1, { font: "mini", color: C.dim });
+          lx += widths[k];
+        });
+      } else
+        els.forEach(([e], k) => {
+          const cx = px + (k % 3) * Math.floor(pw / 3), cy = ly + Math.floor(k / 3) * 10;
+          ui.rect(cx, cy + 2, 6, 6, C.ink);
+          ui.rect(cx + 1, cy + 3, 4, 4, elCol(e));
+          text(ui, items[k], cx + 9, cy + 1, { font: "mini", color: C.dim });
+        });
+    }
+    if (button(ui, this.menu, now, Math.round(W / 2 - 50), H - 24, 100, 18, t("back"), { icon: icon("hud", "back") }) || this.input.pressed("back")) this.setState(...this.statsFrom);
+  }
+
   private drawPause(): void {
     const ui = this.ui, W = this.r.w, H = this.r.h, now = this.now;
-    const bw = 170, bh = 20, gap = 6, ph = 4 * (bh + gap) + 18, py = Math.round(Math.max(H * 0.2 + 30, H / 2 - ph / 2 + 10));
+    const bw = 170, bh = 20, gap = 6, ph = 5 * (bh + gap) + 18, py = Math.round(Math.max(H * 0.2 + 30, H / 2 - ph / 2 + 10));
     this.heading(t("paused"), py - 40, 2);
     frame(ui, W / 2 - bw / 2 - 14, py - 10, bw + 28, ph);
     const bx = Math.round(W / 2 - bw / 2);
@@ -1892,6 +1994,8 @@ export class Game {
     }
     y += bh + gap;
     if (button(ui, this.menu, now, bx, y, bw, bh, t("codex"), { icon: icon("hud", "book") })) this.setState("codex");
+    y += bh + gap;
+    if (button(ui, this.menu, now, bx, y, bw, bh, t("stats"), { icon: icon("hud", "trophy") })) this.openStats("pause", 2);
     y += bh + gap;
     if (button(ui, this.menu, now, bx, y, bw, bh, t("settings"), { icon: icon("hud", "gear") })) {
       this.settingsFrom = "pause";
@@ -1991,7 +2095,7 @@ export class Game {
     const vertical = W < 420, n = this.stairs.length;
     const cw = vertical ? Math.min(300, W - 24) : Math.min(210, Math.floor((W - 40) / 2)), inner = cw - 20;
     const ch = Math.max(...this.stairs.map((m) => 22 + (wrap(tx(m.name), inner).length + wrap(tx(m.risk), inner - 10).length + wrap(tx(m.reward), inner - 10).length) * 10 + 26));
-    const total = vertical ? n * ch + 8 : ch, top = Math.max(8 + th + 8, Math.round(8 + th + 8 + (H - 16 - th - 8 - total) / 2));
+    const total = vertical ? n * ch + 8 : ch, top = Math.max(8 + th + 8, Math.round(8 + th + 8 + (H - 16 - 24 - th - 8 - total) / 2));
     this.stairs.forEach((m, k) => {
       const x = vertical ? Math.round(W / 2 - cw / 2) : Math.round(W / 2 - (n * cw + 12) / 2 + k * (cw + 12));
       const { focused, hit, idx } = this.menu.item(x, vertical ? top + k * (ch + 8) : top, cw, ch, now);
@@ -2016,6 +2120,8 @@ export class Game {
       para(ui, tx(m.reward), x + 20, line, inner - 10, C.text);
       if (hit) this.descend(m);
     });
+    // the run's damage so far
+    if (button(ui, this.menu, now, Math.round(W / 2 - 60), H - 24, 120, 18, t("stats"), { icon: icon("hud", "trophy") })) this.openStats("stairs", n);
   }
 
 
@@ -2031,6 +2137,8 @@ export class Game {
       this.setState("title");
       return;
     }
+    y += bh + 6;
+    if (button(ui, this.menu, now, bx, y, bw, bh, t("stats"), { icon: icon("hud", "trophy") })) this.openStats("won", 1);
     y += bh + 6;
     if (button(ui, this.menu, now, bx, y, bw, bh, t("menu"), { icon: icon("hud", "back") })) {
       this.newSkin = "";
@@ -2084,6 +2192,8 @@ export class Game {
       this.setState("title");
       return;
     }
+    y += bh + 6;
+    if (button(ui, this.menu, now, bx, y, bw, bh, t("stats"), { icon: icon("hud", "trophy") })) this.openStats("dead", 0);
     y += bh + 6;
     if (button(ui, this.menu, now, bx, y, bw, bh, t("menu"), { icon: icon("hud", "back") })) {
       this.daily = this.weekly = false;

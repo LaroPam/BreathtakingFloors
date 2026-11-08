@@ -80,6 +80,13 @@ export interface FrostOrb {
   /** The last volley's flash, fading. */
   flash: number;
 }
+/**
+ * Where damage comes from, for the statistics: the weapon, the dash's cut, each relic (SRC_RELIC + its kind),
+ * reactions, burning and poison, the hero's ability, the wave and deflected shots (artifacts), and the rest.
+ */
+export const SRC_WEAPON = 0, SRC_DASH = 1, SRC_RELIC = 2, SRC_REACT = 8, SRC_STATUS = 9, SRC_ABILITY = 10, SRC_WAVE = 11, SRC_PARRY = 12, SRC_OTHER = 13, SRC_N = 14;
+/** Elements per source in World.dmgStat. */
+export const SRC_ELS = 7;
 /** How long the frost orb gathers before it looses its lances. */
 export const ORB_CHARGE = 0.5;
 /** The Black Star: the evolved Sphere of Void, one great star that wanders into the horde. */
@@ -434,6 +441,18 @@ export class World {
   stats: Stats = { edge: 1, haste: 1, reach: 1, wave: 0, parry: 0, speed: 1, magnet: 44, dashCd: 3.5, odGain: 1, crit: 0.05, lantern: 1, might: 1 };
   statLevels: Partial<Record<StatId, number>> = {};
   frostOrb: FrostOrb | null = null;
+  /** Damage dealt this run, by source and element: dmgStat[src * SRC_ELS + el]. */
+  dmgStat = new Float64Array(SRC_N * SRC_ELS);
+  /** The source that damage dealt now is put down to (and that new hero bullets carry). */
+  private src = SRC_WEAPON;
+  /** The two elements of the reaction going off now: its damage counts half to each. */
+  private reactEls: [El, El] | null = null;
+  private setSrc(v: number): number {
+    const was = this.src;
+    this.src = v;
+    this.bullets.cur = v;
+    return was;
+  }
   floor = 1;
   biome: Biome = biomeOf(1);
   mod: Modifier;
@@ -1189,6 +1208,7 @@ export class World {
 
   /** The Shade's dash cuts every enemy it passes through, once each. */
   private dashCut(): void {
+    this.setSrc(SRC_DASH);
     const h = this.hero, E = this.enemies, s = this.stats;
     this.grid.query(h.x, h.y, 34, (i) => {
       if (h.dashHits.has(E.uid[i])) return;
@@ -1263,6 +1283,7 @@ export class World {
 
   /** A blow lands. Melee hits what is in its shape and cuts bullets; shots and spells leave the hand. */
   private land(B: Blow, k: number, hit: number, of: number): void {
+    this.setSrc(SRC_WEAPON);
     const h = this.hero, s = this.stats, dir = h.atkDir, W = WEAPONS[h.weapon], wel = this.weaponEl;
     const dmg = B.dmg * s.edge * s.might * this.fury * (h.legend ? 1.4 : 1);
     const cx = h.x, cy = h.y - 18;
@@ -1375,6 +1396,7 @@ export class World {
       if (s.parry) {
         const sp = Math.hypot(Bu.vx[i], Bu.vy[i]) * 1.6 + 60, a = Math.atan2(dy, dx);
         Bu.team[i] = TEAM_HERO;
+        Bu.src[i] = SRC_PARRY;
         Bu.vx[i] = Math.cos(a) * sp;
         Bu.vy[i] = Math.sin(a) * sp;
         Bu.dmg[i] = 14 * s.might;
@@ -1400,11 +1422,14 @@ export class World {
       this.audio.play("boom", 1.6);
     }
     // waves of light: crescents thrown along the blow (once per blow)
-    if (hit === of - 1)
+    if (hit === of - 1 && s.wave > 0) {
+      this.setSrc(SRC_WAVE);
       for (let q = 0; q < s.wave; q++) {
         const a = dir + (q - (s.wave - 1) / 2) * 0.28;
         this.bullets.add(TEAM_HERO, B_CRESCENT, cx + Math.cos(a) * 14, cy + Math.sin(a) * 14, Math.cos(a) * 250, Math.sin(a) * 250, 0.55, dmg * 0.6, 8, wel, 3);
       }
+      this.setSrc(SRC_WEAPON);
+    }
     // an element sings in its own voice when the blow lands
     if (hits && wel) this.audio.play(EL_SFX[wel], 1.1);
     if (hits) {
@@ -1550,6 +1575,7 @@ export class World {
 
   /** The Knight: the lantern bursts, burning everything near and erasing bullets, then wards him for a while. */
   private lanternFlare(): void {
+    this.setSrc(SRC_ABILITY);
     const h = this.hero, R = 120, dmg = this.abilityDmg(60, 25);
     this.addFx("smite", h.x, h.y, { glow: 1.1 });
     this.addFx("frost_nova", h.x, h.y, { tint: rgba("#fff0c0"), glow: 0.7 });
@@ -1614,6 +1640,7 @@ export class World {
 
   /** The Reaper: a scythe of souls sweeps round; the wounded die at once, and souls give hearts back. */
   private harvest(): void {
+    this.setSrc(SRC_ABILITY);
     const h = this.hero, E = this.enemies, R = 150, dmg = this.abilityDmg(50, 20);
     this.addFx("fx_scythe_1", h.x, h.y - 14, { sx: 2.8, sy: 2.8, tint: rgba("#9af0a0"), glow: 1, key: 2 });
     this.addFx("spawn", h.x, h.y, { tint: rgba("#4ab868"), glow: 0.8, sx: 1.6, sy: 1.6 });
@@ -1640,6 +1667,7 @@ export class World {
 
   /** The Berserker: a roar that stuns and hurls back all near, then six seconds of harder, faster blows. */
   private warCry(): void {
+    this.setSrc(SRC_ABILITY);
     const h = this.hero, E = this.enemies, R = 150, dmg = this.abilityDmg(20, 8);
     this.rage = 6;
     h.invuln = Math.max(h.invuln, 0.6);
@@ -1704,6 +1732,7 @@ export class World {
   }
 
   private strike(st: Strike): void {
+    this.setSrc(SRC_ABILITY);
     const h = this.hero, E = this.enemies;
     if (st.kind === "blink") {
       // out of the shadow beside the mark, and a cut
@@ -1745,7 +1774,7 @@ export class World {
 
   // ============================================================================================ damage & elements
   /** Hurt enemy i. Returns true if it died. */
-  damage(i: number, amount: number, el: El, o: { crit?: boolean; force?: boolean; quiet?: boolean; react?: boolean } = {}): boolean {
+  damage(i: number, amount: number, el: El, o: { crit?: boolean; force?: boolean; quiet?: boolean; react?: boolean; as?: El } = {}): boolean {
     const E = this.enemies, d = ENEMIES[E.type[i]];
     if (d.ai === AI.Phantom && !o.force && !this.inLight(E.x[i], E.y[i])) {
       if (this.rng.chance(0.3)) this.popup(E.x[i], E.y[i] - 30, "~", rgba("#8090c0"));
@@ -1754,6 +1783,9 @@ export class World {
     let dmg = amount;
     if (E.hex[i] > 0) dmg *= 1.3;
     if (E.frozen[i] > 0) dmg *= 1.15;
+    const dealt = Math.max(0, Math.min(dmg, E.hp[i])), row = this.src * SRC_ELS, re = this.src === SRC_REACT && o.as === undefined ? this.reactEls : null;
+    if (re) (this.dmgStat[row + re[0]] += dealt / 2), (this.dmgStat[row + re[1]] += dealt / 2);
+    else this.dmgStat[row + (o.as ?? el)] += dealt;
     E.hp[i] -= dmg;
     E.flash[i] = 0.07;
     if (!o.quiet && (this.numbers || o.crit)) {
@@ -1829,54 +1861,61 @@ export class World {
   }
 
   private react(r: Reaction, i: number): void {
-    const E = this.enemies, uid = E.uid[i];
-    this.body(i);
-    const x = this.bx, y = this.by;
-    const base = (18 + 6 * this.floor) * this.stats.might * r.mult;
-    if (!this.reactionsSeen.has(r.id)) {
-      this.reactionsSeen.add(r.id);
-      this.ev.reaction(r);
-    }
-    this.popup(x, y - this.bry - 14, r.name[getLang()], rgba(r.color), true);
-    this.ev.count("reactions");
-    this.questStep("alchemy");
-    this.audio.play("reaction");
-    this.gainOd(3);
-    this.hitstop = Math.max(this.hitstop, 0.025);
-    this.shake = Math.max(this.shake, 0.25);
-    const sc = r.radius > 0 ? Math.max(0.6, r.radius / 50) : 1;
-    this.addFx(r.fx, x, E.y[i], { sx: sc, sy: sc, glow: 0.9 });
-    if (r.radius === 0) {
-      this.damage(i, base, El.None, { crit: true, force: true });
-      return;
-    }
-    // everything in the radius takes the blow; some reactions leave something behind
-    const hit: number[] = [];
-    this.grid.query(x, y, r.radius + 12, (j) => {
-      if ((E.x[j] - x) ** 2 + (E.y[j] - y) ** 2 < r.radius * r.radius) hit.push(E.uid[j]);
-    });
-    if (r.id === "conduct") {
-      const pts = [x, y];
-      for (const u of hit.slice(0, 6)) {
+    const was = this.setSrc(SRC_REACT), wasEls = this.reactEls;
+    this.reactEls = [r.a, r.b];
+    try {
+      const E = this.enemies, uid = E.uid[i];
+      this.body(i);
+      const x = this.bx, y = this.by;
+      const base = (18 + 6 * this.floor) * this.stats.might * r.mult;
+      if (!this.reactionsSeen.has(r.id)) {
+        this.reactionsSeen.add(r.id);
+        this.ev.reaction(r);
+      }
+      this.popup(x, y - this.bry - 14, r.name[getLang()], rgba(r.color), true);
+      this.ev.count("reactions");
+      this.questStep("alchemy");
+      this.audio.play("reaction");
+      this.gainOd(3);
+      this.hitstop = Math.max(this.hitstop, 0.025);
+      this.shake = Math.max(this.shake, 0.25);
+      const sc = r.radius > 0 ? Math.max(0.6, r.radius / 50) : 1;
+      this.addFx(r.fx, x, E.y[i], { sx: sc, sy: sc, glow: 0.9 });
+      if (r.radius === 0) {
+        this.damage(i, base, El.None, { crit: true, force: true });
+        return;
+      }
+      // everything in the radius takes the blow; some reactions leave something behind
+      const hit: number[] = [];
+      this.grid.query(x, y, r.radius + 12, (j) => {
+        if ((E.x[j] - x) ** 2 + (E.y[j] - y) ** 2 < r.radius * r.radius) hit.push(E.uid[j]);
+      });
+      if (r.id === "conduct") {
+        const pts = [x, y];
+        for (const u of hit.slice(0, 6)) {
+          const j = this.indexOf(u);
+          if (j < 0) continue;
+          this.body(j);
+          pts.push(this.bx, this.by);
+        }
+        this.arcs.push({ pts, life: 0.25, color: rgba(r.color) });
+      }
+      for (const u of hit) {
         const j = this.indexOf(u);
         if (j < 0) continue;
-        this.body(j);
-        pts.push(this.bx, this.by);
+        if (r.id === "plague" || r.id === "conduct") (E.poison[j] = 4, E.poisonN[j] = Math.min(6, E.poisonN[j] + 3));
+        if (r.id === "rime") E.frozen[j] = 1.4;
+        if (r.id === "rift") {
+          const dx = x - E.x[j], dy = y - E.y[j], d = Math.hypot(dx, dy) || 1;
+          E.kx[j] += (dx / d) * 160;
+          E.ky[j] += (dy / d) * 160;
+        }
+        if (r.id === "flare") E.stun[j] = 0.6;
+        this.damage(j, u === uid ? base * 1.3 : base, El.None, { force: true, react: false });
       }
-      this.arcs.push({ pts, life: 0.25, color: rgba(r.color) });
-    }
-    for (const u of hit) {
-      const j = this.indexOf(u);
-      if (j < 0) continue;
-      if (r.id === "plague" || r.id === "conduct") (E.poison[j] = 4, E.poisonN[j] = Math.min(6, E.poisonN[j] + 3));
-      if (r.id === "rime") E.frozen[j] = 1.4;
-      if (r.id === "rift") {
-        const dx = x - E.x[j], dy = y - E.y[j], d = Math.hypot(dx, dy) || 1;
-        E.kx[j] += (dx / d) * 160;
-        E.ky[j] += (dy / d) * 160;
-      }
-      if (r.id === "flare") E.stun[j] = 0.6;
-      this.damage(j, u === uid ? base * 1.3 : base, El.None, { force: true, react: false });
+    } finally {
+      this.setSrc(was);
+      this.reactEls = wasEls;
     }
   }
   private indexOf(uid: number): number {
@@ -2325,6 +2364,7 @@ export class World {
     const h = this.hero, E = this.enemies, m = this.stats.might;
     if (h.dead) return;
     for (const r of this.relics) {
+      this.setSrc(SRC_RELIC + r.kind);
       r.timer -= dt;
       const L = r.level;
       switch (r.kind) {
@@ -2559,6 +2599,7 @@ export class World {
       }
     }
     this.flasks = this.flasks.filter((f) => f.t < 1);
+    this.setSrc(SRC_RELIC + RelicKind.Flask);
     for (const p of this.pools) {
       p.life -= dt;
       const pr = p.r * poolSpread(p);
@@ -2572,6 +2613,7 @@ export class World {
     }
     this.pools = this.pools.filter((p) => p.life > 0);
     // void spheres drift toward the thick of the horde
+    this.setSrc(SRC_RELIC + RelicKind.Void);
     const VL = this.relicLevel(RelicKind.Void);
     for (const s of this.spheres) {
       s.life -= dt;
@@ -2666,12 +2708,14 @@ export class World {
         if (E.burn[i] > 0) {
           this.body(i);
           this.parts.add(this.bx + this.rng.range(-4, 4), this.by - this.bry * 0.5, 0, -30, 0.5, rgba("#ff8a2a"), 1, 0, 1);
-          if (this.damage(i, 4 * this.stats.might, El.None, { quiet: true, force: true })) continue;
+          this.setSrc(SRC_STATUS);
+          if (this.damage(i, 4 * this.stats.might, El.None, { quiet: true, force: true, as: El.Fire })) continue;
         }
         if (E.poison[i] > 0) {
           this.body(i);
           this.parts.add(this.bx + this.rng.range(-4, 4), this.by, 0, -12, 0.6, rgba("#8ad83a"), 1, 0, 1);
-          if (this.damage(i, 1.6 * E.poisonN[i] * this.stats.might, El.None, { quiet: true, force: true })) continue;
+          this.setSrc(SRC_STATUS);
+          if (this.damage(i, 1.6 * E.poisonN[i] * this.stats.might, El.None, { quiet: true, force: true, as: El.Venom })) continue;
         }
       }
       E.burn[i] -= dt;
@@ -2955,15 +2999,20 @@ export class World {
   }
 
   private explode(i: number): void {
-    const E = this.enemies, x = E.x[i], y = E.y[i], h = this.hero, R = 38;
-    this.addFx("explosion", x, y, { sx: 0.55, sy: 0.55, glow: 0.8 });
-    this.audio.play("boom", 1.3);
-    this.shake = Math.max(this.shake, 0.4);
-    if ((h.x - x) ** 2 + (h.y - y) ** 2 < R * R) this.hurtHero(this.floor >= 4 ? 2 : 1);
-    const uid = E.uid[i];
-    E.hp[i] = 0;
-    this.kill(i);
-    for (let j = E.n - 1; j >= 0; j--) if (E.uid[j] !== uid && (E.x[j] - x) ** 2 + (E.y[j] - y) ** 2 < R * R) this.damage(j, 30, El.Fire, { force: true });
+    const was = this.setSrc(SRC_OTHER);
+    try {
+      const E = this.enemies, x = E.x[i], y = E.y[i], h = this.hero, R = 38;
+      this.addFx("explosion", x, y, { sx: 0.55, sy: 0.55, glow: 0.8 });
+      this.audio.play("boom", 1.3);
+      this.shake = Math.max(this.shake, 0.4);
+      if ((h.x - x) ** 2 + (h.y - y) ** 2 < R * R) this.hurtHero(this.floor >= 4 ? 2 : 1);
+      const uid = E.uid[i];
+      E.hp[i] = 0;
+      this.kill(i);
+      for (let j = E.n - 1; j >= 0; j--) if (E.uid[j] !== uid && (E.x[j] - x) ** 2 + (E.y[j] - y) ** 2 < R * R) this.damage(j, 30, El.Fire, { force: true });
+    } finally {
+      this.setSrc(was);
+    }
   }
 
   private bossAi(i: number, dt: number, dist: number, ux: number, uy: number): void {
@@ -3065,6 +3114,7 @@ export class World {
       }
       if (B.team[i] === TEAM_HERO) {
         if (this.urns.length) this.smashUrns(x, y + 6, 3);
+        this.setSrc(B.src[i]);
         let gone = false;
         this.grid.query(x, y + 16, 40, (j) => {
           this.body(j);

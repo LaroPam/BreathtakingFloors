@@ -61,6 +61,9 @@ export class Bullets {
   n = 0;
   x: Float32Array; y: Float32Array; vx: Float32Array; vy: Float32Array; life: Float32Array; dmg: Float32Array;
   r: Float32Array; team: Uint8Array; kind: Uint8Array; el: Uint8Array; pierce: Uint8Array; grazed: Uint8Array; t: Float32Array;
+  /** What fired each bullet, for the damage statistics (world.ts SRC_*); new bullets take `cur`. */
+  src: Uint8Array;
+  cur = 0;
   /** The last enemies each bullet hit (so a piercing bullet hits each foe once). */
   hits: Int32Array;
 
@@ -68,7 +71,7 @@ export class Bullets {
     this.cap = cap;
     const F = () => new Float32Array(cap), U = () => new Uint8Array(cap);
     this.x = F(); this.y = F(); this.vx = F(); this.vy = F(); this.life = F(); this.dmg = F(); this.r = F();
-    this.team = U(); this.kind = U(); this.el = U(); this.pierce = U(); this.grazed = U(); this.t = F();
+    this.team = U(); this.kind = U(); this.el = U(); this.pierce = U(); this.grazed = U(); this.t = F(); this.src = U();
     this.hits = new Int32Array(cap * 4);
   }
 
@@ -76,7 +79,7 @@ export class Bullets {
     if (this.n >= this.cap) return -1;
     const i = this.n++;
     this.x[i] = x; this.y[i] = y; this.vx[i] = vx; this.vy[i] = vy; this.life[i] = life; this.dmg[i] = dmg; this.r[i] = r;
-    this.team[i] = team; this.kind[i] = kind; this.el[i] = el; this.pierce[i] = pierce; this.grazed[i] = 0; this.t[i] = 0;
+    this.team[i] = team; this.kind[i] = kind; this.el[i] = el; this.pierce[i] = pierce; this.grazed[i] = 0; this.t[i] = 0; this.src[i] = this.cur;
     this.hits.fill(0, i * 4, i * 4 + 4);
     return i;
   }
@@ -84,7 +87,7 @@ export class Bullets {
   remove(i: number): void {
     const j = --this.n;
     if (i === j) return;
-    for (const a of [this.x, this.y, this.vx, this.vy, this.life, this.dmg, this.r, this.team, this.kind, this.el, this.pierce, this.grazed, this.t]) a[i] = a[j];
+    for (const a of [this.x, this.y, this.vx, this.vy, this.life, this.dmg, this.r, this.team, this.kind, this.el, this.pierce, this.grazed, this.t, this.src]) a[i] = a[j];
     this.hits.copyWithin(i * 4, j * 4, j * 4 + 4);
   }
 }
