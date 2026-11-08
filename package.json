@@ -23,6 +23,7 @@
     "check:clip": "node tools/check/clip.mjs --strict",
     "check:release": "node tools/check/release.mjs",
     "check:sdk": "node tools/check/sdk.mjs",
+    "maps": "node --experimental-strip-types --no-warnings tools/maps.mjs",
     "hero": "node tools/hero.mjs"
   },
   "devDependencies": {

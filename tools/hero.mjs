@@ -16,7 +16,7 @@ import { LOOKS } from "../src/hero/looks.js";
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const args = process.argv.slice(2), flags = {}, ids = [];
 for (let i = 0; i < args.length; i++) args[i].startsWith("--") ? (flags[args[i].slice(2)] = args[++i]) : ids.push(args[i]);
-const OWN = { knight: "sword", ranger: "bow", mage: "spell", reaper: "scythe", berserker: "greatsword", shadow: "claws", spirit: "sword" };
+const OWN = { knight: "sword", ranger: "bow", mage: "spell", reaper: "scythe", berserker: "greatsword", shadow: "claws" };
 // cells big enough for any weapon raised or swung out (nothing a hero draws is cut, here or in the game)
 const zoom = +(flags.zoom ?? 4), CELL_W = 136, CELL_H = 116, FOOT = 92;
 const anims = new Map(weaponAnims({}).filter((e) => e.rig).map((e) => [e.name, e.rig]));

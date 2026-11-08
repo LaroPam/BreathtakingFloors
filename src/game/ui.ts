@@ -11,7 +11,7 @@ import type { Audio } from "../engine/audio";
 import type { Input } from "../engine/input";
 import { Batch, rgba, rgbaf, withAlpha } from "../engine/renderer";
 import { fitScale, measure, text, wrap, type FontName } from "../engine/text";
-import { EL_COLOR, ENEMIES, MUTATORS, questDef, RELIC_SLOTS } from "./defs";
+import { EL_COLOR, ENEMIES, floorInfo, MUTATORS, questDef, RELIC_SLOTS } from "./defs";
 import { t, tx } from "./i18n";
 import type { World } from "./world";
 
@@ -489,7 +489,7 @@ export function drawHud(b: Batch, w: World, W: number, H: number, time: number, 
   }
 
   // ---- where you are: the floor on a plate at the top centre, with what to do on it under the name
-  const floorLine = `${t("floor")} ${w.floor}  ·  ${tx(w.biome.name)}`, fw = measure(floorLine) + (seal ? 30 : 20), bi = w.bossIndex();
+  const floorLine = `${t("floor")} ${w.floor}  ·  ${tx(floorInfo(w.floor).name)}`, fw = measure(floorLine) + (seal ? 30 : 20), bi = w.bossIndex();
   plate(b, W / 2 - fw / 2, 9, fw, 25);
   text(b, floorLine, W / 2 + (seal ? 5 : 0), 13, { align: "center", gradient: [rgba("#fff0b8"), rgba("#e0a84a")], shadow: C.ink });
   // a trial wears its seal by the floor's name (the day's or the week's); a cursed floor its skull on the other side

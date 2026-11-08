@@ -74,6 +74,15 @@ export const ANIMS = [
   { name: "jelly", fx: "critters/jellyfish", fps: 10, light: CRITTER_LIGHT, body: true },
   { name: "bird", fx: "critters/bird", fps: 12, light: CRITTER_LIGHT, body: true, opts: { palette: PAL.blood } },
   { name: "moth", fx: "critters/butterfly", fps: 10, light: CRITTER_LIGHT, body: true, opts: { palette: PAL.heal } },
+  // each place's own creatures: the garden's in moss, spores and bog water, the frost's in ice
+  { name: "snake_moss", fx: "critters/snake", fps: 12, light: CRITTER_LIGHT, body: true, opts: { palette: PAL.leaf, belly: PAL.earth.slice(3, 6) } },
+  { name: "wisp_spore", fx: "critters/wisp", fps: 10, light: CRITTER_LIGHT, body: true, opts: { palette: PAL.poison } },
+  { name: "ghost_bog", fx: "critters/ghost", fps: 12, light: CRITTER_LIGHT, body: true, opts: { palette: PAL.cyber.slice(0, 7) } },
+  { name: "bat_ice", fx: "critters/bat", fps: 12, light: CRITTER_LIGHT, body: true, opts: { palette: PAL.ice.slice(0, 7), eyes: ["#1f4f94", "#58b4ec", "#d8f4ff", "#ffffff"] } },
+  { name: "ghost_ice", fx: "critters/ghost", fps: 12, light: CRITTER_LIGHT, body: true, opts: { palette: ["#162c5c", "#2f7fcc", "#58b4ec", "#9bdcff", "#d8f4ff", "#ffffff", "#ffffff"] } },
+  { name: "eye_frost", fx: "critters/eyeball", fps: 10, light: CRITTER_LIGHT, body: true, opts: { iris: PAL.ice.slice(1, 6), flesh: PAL.water.slice(0, 5) } },
+  { name: "wisp_frost", fx: "critters/wisp", fps: 10, light: CRITTER_LIGHT, body: true, opts: { palette: ICE_FIRE.slice(0, 7) } },
+  { name: "moth_frost", fx: "critters/butterfly", fps: 10, light: CRITTER_LIGHT, body: true },
 
   // ---- enemy bullets
   { name: "orb_red", art: "shots/orb", fps: 10 },
@@ -109,6 +118,19 @@ export const ANIMS = [
   { name: "wall_crypt", art: "tiles/wall", opts: { stone: WALL.crypt }, variants: { variant: [0, 0, 0, 1, 4] } },
   { name: "wall_garden", art: "tiles/wall", opts: { stone: WALL.garden }, variants: { variant: [0, 2, 2, 1, 2] } },
   { name: "wall_frost", art: "tiles/wall", opts: { stone: WALL.frost }, variants: { variant: [0, 3, 3, 1, 3] } },
+  // each place changes as it goes down: its second floor worn and changed, its third at the height of the change
+  { name: "floor_crypt_2", art: "tiles/floor", opts: { stone: ["#1c1a22", "#28252f", "#33303c", "#3f3b4a", "#544e62"] }, variants: { variant: [0, 0, 0, 1, 1, 1, 2, 2, 10, 10, 10, 10, 3, 5, 5, 7] } },
+  { name: "floor_crypt_3", art: "tiles/floor", opts: { stone: ["#1e1618", "#2c2024", "#3a2a2e", "#4a363a", "#62484a"] }, variants: { variant: [0, 0, 0, 1, 1, 2, 2, 2, 11, 11, 11, 3, 10, 5] } },
+  { name: "floor_garden_2", art: "tiles/floor", opts: { stone: ["#141c1a", "#1e2a28", "#283834", "#334640", "#4a6058"], moss: ["#1e3a2c", "#2f5a3c"] }, variants: { variant: [0, 0, 0, 0, 4, 4, 4, 9, 9, 12, 1, 1, 2, 5] } },
+  { name: "floor_garden_3", art: "tiles/floor", opts: { stone: ["#161a12", "#22281a", "#2e3624", "#3a442e", "#526042"], moss: ["#2a4a22", "#4a7a32"] }, variants: { variant: [9, 9, 9, 4, 4, 13, 13, 0, 0, 0, 1, 1, 5, 12] } },
+  { name: "floor_frost_2", art: "tiles/floor", opts: { stone: ["#141e2c", "#1e2c3e", "#2a3c54", "#36506c", "#5878a0"] }, variants: { variant: [0, 0, 0, 0, 8, 8, 8, 8, 14, 1, 1, 2, 3, 7] } },
+  { name: "floor_frost_3", art: "tiles/floor", opts: { stone: ["#120f1e", "#1c182c", "#28223e", "#342c52", "#4e4472"] }, variants: { variant: [0, 0, 0, 0, 1, 1, 2, 2, 15, 15, 8, 3, 7, 7] } },
+  { name: "wall_crypt_2", art: "tiles/wall", opts: { stone: WALL.crypt }, variants: { variant: [0, 0, 1, 5, 5, 5, 4] } },
+  { name: "wall_crypt_3", art: "tiles/wall", opts: { stone: ["#120c10", "#22161c", "#30202a", "#40303a", "#56444e"] }, variants: { variant: [0, 1, 1, 6, 6, 6] } },
+  { name: "wall_garden_2", art: "tiles/wall", opts: { stone: ["#0c1210", "#16201c", "#222e2a", "#2e3c36", "#425650"] }, variants: { variant: [2, 2, 2, 0, 1, 7] } },
+  { name: "wall_garden_3", art: "tiles/wall", opts: { stone: WALL.garden }, variants: { variant: [7, 7, 7, 7, 2, 2, 1] } },
+  { name: "wall_frost_2", art: "tiles/wall", opts: { stone: WALL.frost }, variants: { variant: [3, 3, 3, 3, 0, 1] } },
+  { name: "wall_frost_3", art: "tiles/wall", opts: { stone: ["#0e0c18", "#181426", "#241e38", "#30284a", "#463c66"] }, variants: { variant: [0, 1, 8, 8, 8, 8, 3] } },
   { name: "ledge", art: "tiles/ledge", variants: { variant: [0, 1] } },
   { name: "pillar_crypt", art: "props/pillar", opts: { stone: ["#0e0c14", "#221e2e", "#363046", "#4e4660", "#6e6688"] } },
   { name: "pillar_garden", art: "props/pillar", opts: { stone: ["#0c100c", "#1e261c", "#2e3a2a", "#465640", "#647a58"], decor: 1 } },
@@ -118,6 +140,8 @@ export const ANIMS = [
   { name: "urns", art: "props/urn", variants: { variant: [0, 1, 2, 3] } },
   { name: "mimic", art: "props/mimic", fps: 12, body: true },
   { name: "curse_altar", art: "props/curse-altar", fps: 8, light: { thr: 8, k: 0.9 } },
+  // the floor's spirit, the ghost of a lightbearer with a task: its own sprite, lantern and all
+  { name: "spirit", art: "props/spirit", fps: 12, light: { thr: 8, k: 0.9 } },
   // the hidden cache in the back wall: the cracks (laid over the wall) and the wall broken open, per biome
   { name: "secret_crypt", art: "tiles/secret-wall", opts: { stone: WALL.crypt }, variants: { variant: [0, 1] } },
   { name: "secret_garden", art: "tiles/secret-wall", opts: { stone: WALL.garden }, variants: { variant: [0, 1] } },

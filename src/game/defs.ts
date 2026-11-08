@@ -119,6 +119,16 @@ const DEFS: Def[] = [
   E({ key: "slime_ice", name: { ru: "ЛЕДЯНОЙ СЛИЗЕНЬ", en: "FROST SLIME" }, anim: "slime_ice", ai: AI.Chase, hp: 34, speed: 32, xp: 2, glow: "#78ccf4", scale: 0.65, hops: true }),
   E({ key: "snake_ice", name: { ru: "ИНЕЙНАЯ ЗМЕЯ", en: "RIME SNAKE" }, anim: "snake_ice", ai: AI.Slither, hp: 26, speed: 78, xp: 2, scale: 0.75 }),
   E({ key: "skull_ice", name: { ru: "ХЛАДНЫЙ ЧЕРЕП", en: "COLD SKULL" }, anim: "skull_ice", ai: AI.Shooter, hp: 50, speed: 40, xp: 4, glow: "#78ccf4", every: 2.4, shot: 5, scale: 0.55 }),
+  // the garden's own: an adder in the moss, wisps of spores, the spirits of the bog
+  E({ key: "snake_moss", name: { ru: "МШИСТАЯ ГАДЮКА", en: "MOSS ADDER" }, anim: "snake_moss", ai: AI.Slither, hp: 22, speed: 74, xp: 2, scale: 0.75 }),
+  E({ key: "wisp_spore", name: { ru: "СПОРОВЫЙ ОГОНЁК", en: "SPORE WISP" }, anim: "wisp_spore", ai: AI.Bomber, hp: 20, speed: 56, xp: 2, glow: "#a8e04a", scale: 0.7 }),
+  E({ key: "ghost_bog", name: { ru: "БОЛОТНЫЙ ДУХ", en: "BOG SPIRIT" }, anim: "ghost_bog", ai: AI.Phantom, hp: 38, speed: 44, xp: 3, glow: "#4ce8d8", scale: 0.65 }),
+  // the frost's own: bats, wraiths, watchers, wisps and moths of the cold
+  E({ key: "bat_ice", name: { ru: "ЛЕДЯНОЙ НЕТОПЫРЬ", en: "FROST BAT" }, anim: "bat_ice", ai: AI.Flutter, hp: 18, speed: 66, xp: 2, glow: "#9bdcff", scale: 0.7 }),
+  E({ key: "ghost_ice", name: { ru: "ИНЕЙНЫЙ ПРИЗРАК", en: "RIME WRAITH" }, anim: "ghost_ice", ai: AI.Phantom, hp: 46, speed: 46, xp: 4, glow: "#d8f4ff", scale: 0.65 }),
+  E({ key: "eye_frost", name: { ru: "МОРОЗНОЕ ОКО", en: "FROST WATCHER" }, anim: "eye_frost", ai: AI.Turret, hp: 84, speed: 16, xp: 6, glow: "#78ccf4", every: 3.4, scale: 0.6 }),
+  E({ key: "wisp_frost", name: { ru: "ВЬЮЖНЫЙ ОГОНЁК", en: "BLIZZARD WISP" }, anim: "wisp_frost", ai: AI.Bomber, hp: 22, speed: 60, xp: 3, glow: "#9bdcff", scale: 0.7 }),
+  E({ key: "moth_frost", name: { ru: "СНЕЖНЫЙ МОТЫЛЁК", en: "SNOW MOTH" }, anim: "moth_frost", ai: AI.Healer, hp: 30, speed: 46, xp: 5, glow: "#9bdcff", scale: 0.7 }),
   E({ key: "slime_elite", name: { ru: "КРОВАВЫЙ СЛИЗЕНЬ", en: "BLOOD SLIME" }, anim: "slime_elite", ai: AI.Chase, hp: 150, speed: 36, xp: 15, glow: "#ff3a3a", elite: true, scale: 0.9, hops: true }),
   E({ key: "skull_elite", name: { ru: "ЧЕРЕП-КОЛДУН", en: "HEX SKULL" }, anim: "skull_elite", ai: AI.Shooter, hp: 200, speed: 42, xp: 20, glow: "#c684ff", elite: true, every: 1.9, shot: 3, scale: 0.7 }),
   E({ key: "eye_boss", name: { ru: "ВЕЛИКОЕ ОКО", en: "THE GREAT EYE" }, anim: "eye_boss", ai: AI.Boss, hp: 1700, speed: 22, xp: 100, glow: "#f53cd1", scale: 2, elite: true, title: { ru: "ХРАНИТЕЛЬ СКЛЕПА, ЧТО НЕ СМЫКАЕТ ВЕК", en: "WARDEN OF THE CRYPT, WHO NEVER BLINKS" } }),
@@ -133,6 +143,8 @@ export const EN = {
   slime: id("slime"), bat: id("bat"), skull: id("skull"), eye: id("eye"), ghost: id("ghost"), wisp: id("wisp"), frog: id("frog"),
   snake: id("snake"), jelly: id("jelly"), bird: id("bird"), moth: id("moth"), frogToxic: id("frog_toxic"), slimeIce: id("slime_ice"),
   snakeIce: id("snake_ice"), skullIce: id("skull_ice"), slimeElite: id("slime_elite"), skullElite: id("skull_elite"),
+  snakeMoss: id("snake_moss"), wispSpore: id("wisp_spore"), ghostBog: id("ghost_bog"), batIce: id("bat_ice"), ghostIce: id("ghost_ice"),
+  eyeFrost: id("eye_frost"), wispFrost: id("wisp_frost"), mothFrost: id("moth_frost"),
   eyeBoss: id("eye_boss"), frogKing: id("frog_king"), eyeVoid: id("eye_void"), mimic: id("mimic"),
 };
 
@@ -163,6 +175,24 @@ export const BIOMES: Biome[] = [
   { id: "frost", name: { ru: "ЛЕДЯНЫЕ ЗАЛЫ", en: "THE FROZEN HALLS" }, lore: { ru: "ХОЛОД ПОДНИМАЕТСЯ С САМОГО ДНА БАШНИ", en: "THE COLD RISES FROM THE TOWER'S VERY BOTTOM" }, floor: "floor_frost", wall: "wall_frost", pillar: "pillar_frost", torch: "torch_blue", ambient: [0.8, 0.95, 1.3], torchLight: "#6ab8ff", motes: "snow" },
 ];
 export const FLOORS = 9;
+/**
+ * Each floor's own name and a line for its title card. A place keeps its name; its three floors are its first look,
+ * the same place changed, and the change at its height (with the boss).
+ */
+export const FLOOR_INFO: { name: Text; lore: Text }[] = [
+  { name: { ru: "ВЕРХНИЕ ГАЛЕРЕИ", en: "THE UPPER GALLERIES" }, lore: { ru: "ЗДЕСЬ ЛЕЖАТ ТЕ, КТО НЁС СВЕТ ВНИЗ ДО ТЕБЯ", en: "HERE LIE THOSE WHO CARRIED LIGHT DOWN BEFORE YOU" } },
+  { name: { ru: "ОССУАРИЙ", en: "THE OSSUARY" }, lore: { ru: "КОСТИ СЛОЖЕНЫ РЯДАМИ. КТО-ТО ИХ СЧИТАЛ", en: "THE BONES ARE STACKED IN ROWS. SOMEONE COUNTED THEM" } },
+  { name: { ru: "СЕРДЦЕ КАТАКОМБ", en: "THE HEART OF THE CATACOMBS" }, lore: { ru: "ПОЛ ТРЕСНУЛ, И СНИЗУ ПОДНИМАЕТСЯ ЖАР", en: "THE FLOOR HAS SPLIT, AND HEAT RISES FROM BELOW" } },
+  { name: { ru: "ЗАРОСШИЕ АЛЛЕИ", en: "THE OVERGROWN WALKS" }, lore: { ru: "САД РОС БЕЗ СОЛНЦА И НАУЧИЛСЯ СВЕТИТЬСЯ САМ", en: "THE GARDEN GREW WITHOUT A SUN AND LEARNED TO GLOW" } },
+  { name: { ru: "ЗАТОПЛЕННЫЙ САД", en: "THE DROWNED GARDEN" }, lore: { ru: "ВОДА ПРИШЛА ТИХО И ОСТАЛАСЬ. ИДИ ПО МОСТАМ", en: "THE WATER CAME QUIETLY AND STAYED. KEEP TO THE BRIDGES" } },
+  { name: { ru: "СЕРДЦЕ САДА", en: "THE GARDEN'S HEART" }, lore: { ru: "КОРНИ ДЕРЖАТ БАШНЮ КРЕПЧЕ КАМНЯ", en: "THE ROOTS HOLD THE TOWER TIGHTER THAN STONE" } },
+  { name: { ru: "ИНЕЙНЫЕ ГАЛЕРЕИ", en: "THE RIME GALLERIES" }, lore: { ru: "ХОЛОД ПОДНИМАЕТСЯ С САМОГО ДНА БАШНИ", en: "THE COLD RISES FROM THE TOWER'S VERY BOTTOM" } },
+  { name: { ru: "ЛЕДЯНЫЕ ПЕЩЕРЫ", en: "THE ICE CAVES" }, lore: { ru: "ЛЁД СКОЛЬЗКИЙ: ДЕРЖИСЬ КАМНЯ, КОГДА ЖАРКО", en: "THE ICE IS SLIPPERY: KEEP TO THE STONE WHEN IT GETS HOT" } },
+  { name: { ru: "ТРОН ПУСТОТЫ", en: "THE THRONE OF THE VOID" }, lore: { ru: "ПОД БАШНЕЙ НЕТ ДНА. ЕСТЬ ТОЛЬКО ТОТ, КТО СМОТРИТ", en: "THERE IS NO BOTTOM UNDER THE TOWER. ONLY THE ONE WHO WATCHES" } },
+];
+export const floorInfo = (floor: number) => FLOOR_INFO[Math.max(0, Math.min(FLOOR_INFO.length - 1, floor - 1))];
+/** Where a floor stands in its place: 1 its first look, 2 changed, 3 the height of the change. */
+export const stageOf = (floor: number): number => ((Math.max(1, floor) - 1) % 3) + 1;
 export const biomeOf = (floor: number): Biome => BIOMES[Math.min(BIOMES.length - 1, Math.floor((floor - 1) / 3))];
 export const bossOf = (floor: number): number => (floor === 3 ? EN.eyeBoss : floor === 6 ? EN.frogKing : floor === 9 ? EN.eyeVoid : -1);
 
@@ -173,14 +203,14 @@ export function roster(floor: number, phase: number): [number, number][] {
     [[[EN.slime, 10]], [[EN.bat, 6]], [[EN.skull, 3]]],
     [[[EN.slime, 8], [EN.bat, 5]], [[EN.snake, 6]], [[EN.skull, 4], [EN.wisp, 3]]],
     [[[EN.slime, 6], [EN.snake, 5], [EN.bat, 4]], [[EN.wisp, 4], [EN.skull, 4]], [[EN.ghost, 4], [EN.eye, 2]]],
-    // the garden
-    [[[EN.frog, 8], [EN.bat, 5]], [[EN.snake, 6], [EN.moth, 2]], [[EN.bird, 4]]],
-    [[[EN.frog, 6], [EN.bird, 4], [EN.snake, 4]], [[EN.frogToxic, 4], [EN.moth, 2]], [[EN.jelly, 3], [EN.ghost, 3]]],
-    [[[EN.frogToxic, 5], [EN.bird, 5], [EN.snake, 5]], [[EN.jelly, 4], [EN.moth, 3]], [[EN.ghost, 4], [EN.wisp, 4]]],
-    // the frozen halls
-    [[[EN.slimeIce, 8], [EN.snakeIce, 5]], [[EN.ghost, 4], [EN.jelly, 3]], [[EN.skullIce, 4]]],
-    [[[EN.slimeIce, 6], [EN.snakeIce, 6], [EN.bat, 4]], [[EN.skullIce, 4], [EN.moth, 2]], [[EN.eye, 3], [EN.bird, 4]]],
-    [[[EN.slimeIce, 6], [EN.snakeIce, 6], [EN.bird, 4]], [[EN.skullIce, 4], [EN.jelly, 4], [EN.moth, 2]], [[EN.eye, 3], [EN.ghost, 4], [EN.wisp, 4]]],
+    // the garden: its own toads, swifts, moths, jellies, adders, spore wisps and bog spirits
+    [[[EN.frog, 8], [EN.snakeMoss, 5]], [[EN.bird, 5], [EN.moth, 2]], [[EN.wispSpore, 3]]],
+    [[[EN.frog, 6], [EN.bird, 4], [EN.snakeMoss, 4]], [[EN.frogToxic, 4], [EN.moth, 2]], [[EN.jelly, 3], [EN.ghostBog, 3]]],
+    [[[EN.frogToxic, 5], [EN.bird, 5], [EN.snakeMoss, 5]], [[EN.jelly, 4], [EN.moth, 3], [EN.wispSpore, 3]], [[EN.ghostBog, 4], [EN.jelly, 2]]],
+    // the frost: everything of the cold
+    [[[EN.slimeIce, 8], [EN.snakeIce, 5]], [[EN.batIce, 5], [EN.mothFrost, 2]], [[EN.skullIce, 4]]],
+    [[[EN.slimeIce, 6], [EN.snakeIce, 6], [EN.batIce, 4]], [[EN.skullIce, 4], [EN.wispFrost, 3], [EN.mothFrost, 2]], [[EN.eyeFrost, 3], [EN.ghostIce, 3]]],
+    [[[EN.slimeIce, 6], [EN.snakeIce, 6], [EN.batIce, 4]], [[EN.skullIce, 4], [EN.wispFrost, 4], [EN.mothFrost, 2]], [[EN.eyeFrost, 3], [EN.ghostIce, 4], [EN.wispFrost, 3]]],
   ];
   const f = P[Math.min(P.length - 1, floor - 1)], out: [number, number][] = [];
   for (let k = 0; k <= Math.min(2, phase); k++) out.push(...f[k]);
@@ -282,19 +312,44 @@ export interface Modifier {
   xp: number;
   embers: number;
   heal: boolean;
-  chest: boolean;
+  /** A level-up choice at the start of the floor. */
+  level: boolean;
   size: number;
 }
-const M = (m: Partial<Modifier> & Pick<Modifier, "id" | "name" | "risk" | "reward">): Modifier => ({ spawn: 1, speed: 1, dark: 0, elites: 1, xp: 1, embers: 1, heal: false, chest: false, size: 1, ...m });
+const M = (m: Partial<Modifier> & Pick<Modifier, "id" | "name" | "risk" | "reward">): Modifier => ({ spawn: 1, speed: 1, dark: 0, elites: 1, xp: 1, embers: 1, heal: false, level: false, size: 1, ...m });
 export const MODIFIERS: Modifier[] = [
   M({ id: "swarm", name: { ru: "ЛЕСТНИЦА РОЯ", en: "STAIR OF THE SWARM" }, risk: { ru: "ВРАГОВ НА 50% БОЛЬШЕ", en: "50% MORE ENEMIES" }, reward: { ru: "+40% ОПЫТА", en: "+40% EXPERIENCE" }, spawn: 1.5, xp: 1.4 }),
-  M({ id: "dark", name: { ru: "ЛЕСТНИЦА МРАКА", en: "STAIR OF GLOOM" }, risk: { ru: "ТЕМНЕЕ, ФОНАРЬ СЛАБЕЕ", en: "DARKER, A WEAKER LANTERN" }, reward: { ru: "СУНДУК В НАЧАЛЕ", en: "A CHEST TO START" }, dark: 0.35, chest: true }),
+  M({ id: "dark", name: { ru: "ЛЕСТНИЦА МРАКА", en: "STAIR OF GLOOM" }, risk: { ru: "ТЕМНЕЕ, ФОНАРЬ СЛАБЕЕ", en: "DARKER, A WEAKER LANTERN" }, reward: { ru: "НОВЫЙ УРОВЕНЬ В НАЧАЛЕ", en: "A LEVEL-UP TO START" }, dark: 0.35, level: true }),
   M({ id: "elite", name: { ru: "ЛЕСТНИЦА ЧЕМПИОНОВ", en: "STAIR OF CHAMPIONS" }, risk: { ru: "ВДВОЕ БОЛЬШЕ ЭЛИТЫ", en: "TWICE THE ELITES" }, reward: { ru: "+60% УГЛЕЙ", en: "+60% EMBERS" }, elites: 2, embers: 1.6 }),
   M({ id: "blood", name: { ru: "ЛЕСТНИЦА КРОВИ", en: "STAIR OF BLOOD" }, risk: { ru: "ВРАГИ БЫСТРЕЕ НА 20%", en: "ENEMIES 20% FASTER" }, reward: { ru: "ПОЛНОЕ ЛЕЧЕНИЕ", en: "A FULL HEAL" }, speed: 1.2, heal: true }),
   M({ id: "narrow", name: { ru: "УЗКАЯ ЛЕСТНИЦА", en: "NARROW STAIR" }, risk: { ru: "ЭТАЖ МЕНЬШЕ И ТЕСНЕЕ", en: "A SMALLER, TIGHTER FLOOR" }, reward: { ru: "+25% ОПЫТА И УГЛЕЙ", en: "+25% EXPERIENCE AND EMBERS" }, size: 0.75, xp: 1.25, embers: 1.25 }),
-  M({ id: "quiet", name: { ru: "ТИХАЯ ЛЕСТНИЦА", en: "QUIET STAIR" }, risk: { ru: "НЕТ", en: "NONE" }, reward: { ru: "ВРАГОВ МЕНЬШЕ НА 25%", en: "25% FEWER ENEMIES" }, spawn: 0.75 }),
+  M({ id: "quiet", name: { ru: "ТИХАЯ ЛЕСТНИЦА", en: "QUIET STAIR" }, risk: { ru: "ОПЫТА МЕНЬШЕ НА 15%", en: "15% LESS EXPERIENCE" }, reward: { ru: "ВРАГОВ МЕНЬШЕ НА 25%", en: "25% FEWER ENEMIES" }, spawn: 0.75, xp: 0.85 }),
 ];
 export const NO_MODIFIER: Modifier = M({ id: "none", name: { ru: "", en: "" }, risk: { ru: "", en: "" }, reward: { ru: "", en: "" } });
+/**
+ * The stairs taken so far, added up: what each one changes for good stays for the rest of the run (more enemies,
+ * faster, darker, more elites; more experience and embers; smaller floors), within limits that keep a run
+ * playable. A full heal and a level-up are had once, on the floor the stairs lead to.
+ */
+export function combine(path: readonly Modifier[]): Modifier {
+  const out = M({ id: "path", name: { ru: "", en: "" }, risk: { ru: "", en: "" }, reward: { ru: "", en: "" } });
+  for (const m of path) {
+    out.spawn *= m.spawn;
+    out.speed *= m.speed;
+    out.dark += m.dark;
+    out.elites *= m.elites;
+    out.xp += m.xp - 1;
+    out.embers += m.embers - 1;
+    out.size *= m.size;
+  }
+  out.spawn = Math.max(0.6, Math.min(2.25, out.spawn));
+  out.xp = Math.max(0.6, out.xp);
+  out.speed = Math.min(1.44, out.speed);
+  out.dark = Math.min(0.6, out.dark);
+  out.elites = Math.min(4, out.elites);
+  out.size = Math.max(0.65, out.size);
+  return out;
+}
 
 // ------------------------------------------------------------------------------------------------ the forge
 export interface ForgeItem {
@@ -375,7 +430,7 @@ export const TASKS: TaskDef[] = [
   { id: "reactions", name: { ru: "ВЫЗОВИ {n} РЕАКЦИЙ", en: "SET OFF {n} REACTIONS" }, goals: [15, 25], reward: 40 },
   { id: "evolve", name: { ru: "ПОЛУЧИ ЭВОЛЮЦИЮ", en: "EVOLVE A RELIC" }, goals: [1], reward: 70 },
   { id: "spirits", name: { ru: "ВЫПОЛНИ {n} ЗАДАНИЯ ДУХОВ", en: "COMPLETE {n} SPIRIT QUESTS" }, goals: [2, 3], reward: 45 },
-  { id: "chests", name: { ru: "ОТКРОЙ {n} СУНДУКОВ", en: "OPEN {n} CHESTS" }, goals: [5, 8], reward: 35 },
+  { id: "chests", name: { ru: "ОТКРОЙ {n} СУНДУКОВ", en: "OPEN {n} CHESTS" }, goals: [2, 4], reward: 35 },
   { id: "grazes", name: { ru: "ЗАДЕНЬ {n} СНАРЯДОВ", en: "GRAZE {n} BOLTS" }, goals: [100, 150], reward: 35 },
   { id: "secrets", name: { ru: "ВСКРОЙ ТАЙНИКИ В СТЕНАХ: {n}", en: "BREAK OPEN HIDDEN CACHES: {n}" }, goals: [1, 2], reward: 40 },
   { id: "trial", name: { ru: "ДОЙДИ ДО {n} ЭТАЖА В ИСПЫТАНИИ ДНЯ", en: "REACH FLOOR {n} IN THE DAILY TRIAL" }, goals: [2], reward: 45 },

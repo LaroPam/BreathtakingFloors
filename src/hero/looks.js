@@ -365,7 +365,7 @@ const SHADOW = {
 };
 
 // ================================================================================================= colours of the victor
-/** A look with other materials (the victor's colours, the spirit's ghostly ones). */
+/** A look with other materials (the victor's colours). */
 const recolor = (look, id, mats) => ({ ...look, id, mats: { ...look.mats, ...mats }, _mats: undefined });
 
 const VICTOR = {
@@ -377,21 +377,8 @@ const VICTOR = {
   shadow: { dusk: { ramp: ["#3a5a8a", "#22406e", "#142a4e", "#0a1830"], soft: true }, duskIn: { ramp: ["#142a4e", "#0e1e3a", "#08142a", "#040a18"], soft: true }, violet: { ramp: ["#c8f8ff", "#7ae0ff", "#38a8e0", "#1a64a0"], soft: true }, eyeGlow: { ramp: ["#ffffff"], glow: true } },
 };
 
-/** The spirit of one who came before: the knight in cold, pale light. */
-const GHOST = (() => {
-  const cold = (r) => ({ ramp: r, soft: true });
-  const out = {};
-  for (const k of Object.keys(KNIGHT_MATS)) out[k] = cold(["#e0f4ff", "#9ccae8", "#5e8eb8", "#2e5280"]);
-  out.visor = ["#0e2238"];
-  out.gold = cold(["#ffffff", "#c8ecff", "#8ac0e8", "#4a80b0"]);
-  out.crimson = cold(["#b8e4ff", "#78b0e0", "#4a7ab0", "#284a7a"]);
-  out.crimsonIn = cold(["#4a7ab0", "#3a6496", "#284a7a", "#18305a"]);
-  return out;
-})();
-
 export const LOOKS = Object.fromEntries([KNIGHT, RANGER, MAGE, REAPER, BERSERKER, SHADOW].map((l) => [l.id, l]));
 for (const [id, mats] of Object.entries(VICTOR)) LOOKS[`${id}:victor`] = recolor(LOOKS[id], `${id}:victor`, mats);
-LOOKS.spirit = recolor(KNIGHT, "spirit", GHOST);
 
-/** The look for a hero (its victor's colours if worn), or the spirit's. */
+/** The look for a hero (its victor's colours if worn). */
 export const lookOf = (hero, victor = false) => LOOKS[victor ? `${hero}:victor` : hero] ?? LOOKS[hero] ?? LOOKS.knight;

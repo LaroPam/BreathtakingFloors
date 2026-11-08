@@ -58,27 +58,32 @@ export function stairwell(s: Scene, W: number, H: number, now: number, next: Bio
   s.illum.light(cx, cy, pit * 2.2, pit * 2.2 * sq, withAlpha(deep, 0.55 * breathe));
   s.illum.light(cx, cy, pit * 1.1, pit * 1.1 * sq, withAlpha(deep, 0.6 * breathe));
 
-  // torches under the treads, two on each turn of the side walls: a torch burns upright, so it hangs only where the
-  // wall runs up the screen, along the flight (on the far and near walls it would stand across it)
+  // torches under the treads, set into the walls and leaning out over the shaft: each one points from its wall to
+  // the middle, across the way the stairs run (lying flat on the side walls, standing on the far and near ones);
+  // two on each wall per turn, the far wall's kept out from under the screen's title
+  const SPOTS: [number, number][] = [[1, 0.28], [1, 0.72], [2, 0.22], [2, 0.78], [3, 0.28], [3, 0.72], [0, 0.18], [0, 0.82]];
+  const TURN = [Math.PI, -Math.PI / 2, 0, Math.PI / 2]; // far wall: flame down; right: left; near: up; left: right
   for (let lvl = Math.floor(t) - 1; lvl <= Math.floor(t) + 4; lvl++)
-    for (let n = 0; n < 4; n++) {
-      const side = n < 2 ? 1 : 3, phi = (side + (n % 2 ? 0.72 : 0.28)) / 4, z = lvl + T + 0.3 * (1 - T) - t + Math.floor(phi * N) / N;
-      if (z < -0.3 || z > 3.4) continue;
-      const [x, y, p] = rim(cx, cy, a0, sq, z, phi), k = lvl * 4 + n, size = (p * a0) / 240;
+    SPOTS.forEach(([side, along], n) => {
+      const phi = (side + along) / 4, z = lvl + T + 0.3 * (1 - T) - t + Math.floor(phi * N) / N;
+      if (z < -0.3 || z > 3.4) return;
+      const [x, y, p] = rim(cx, cy, a0, sq, z, phi), k = lvl * 8 + n, size = (p * a0) / 240;
+      const rot = TURN[side], dx = Math.sin(rot), dy = -Math.cos(rot);
       const f = 1 + Math.sin(now * 9 + k) * 0.06 + Math.sin(now * 23 + k * 3) * 0.04;
       // fading in out of the dark as they come up
       const seen = Math.min(1, Math.max(0, (3.4 - z) / 1.2));
-      s.illum.light(x, y - 6 * size, 95 * size * f, 80 * size * f, withAlpha(torchLight, 0.85 * seen));
+      s.illum.light(x + dx * 10 * size, y + dy * 10 * size, 95 * size * f, 80 * size * f, withAlpha(torchLight, 0.85 * seen));
       if (size >= 0.62) {
         const fr = torch.frames[frameAt(torch, now + k * 0.37)];
-        if (fr[0]) s.front.image(fr[0], x, y, 1, 1, 0, rgbaf(1, 1, 1, seen));
-        if (fr[1]) s.glow.image(fr[1], x, y, 1, 1, 0, rgbaf(1, 1, 1, 0.9 * seen));
+        if (fr[0]) s.front.image(fr[0], x, y, 1, 1, rot, rgbaf(1, 1, 1, seen));
+        if (fr[1]) s.glow.image(fr[1], x, y, 1, 1, rot, rgbaf(1, 1, 1, 0.9 * seen));
       } else {
         // far down, a torch is a flicker of its flame
-        s.glow.light(x, y - 3 * size, 4 * size * f + 1, 5 * size * f + 1, withAlpha(torchLight, 0.8 * seen));
-        s.front.rect(Math.round(x), Math.round(y - 2), 1, 1 + (size > 0.4 ? 1 : 0), withAlpha(rgba("#fff0b0"), seen));
+        const fx = x + dx * 4 * size, fy = y + dy * 4 * size;
+        s.glow.light(fx, fy, 4 * size * f + 1, 4 * size * f + 1, withAlpha(torchLight, 0.8 * seen));
+        s.front.rect(Math.round(fx), Math.round(fy), 1, 1, withAlpha(rgba("#fff0b0"), seen));
       }
-    }
+    });
 
   // the air of the floor below drifting in the shaft: we pass it on the way down, so it comes up and out
   for (let i = 0; i < 64; i++) {
