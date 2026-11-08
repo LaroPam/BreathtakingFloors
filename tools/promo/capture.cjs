@@ -195,7 +195,7 @@ async function play(p, n, opts, shoot) {
     await holdKeys(p, held, r.keys);
     if ((r.dash && k - lastDash > 14) || (opts.dashEvery && k % opts.dashEvery === opts.dashEvery - 1)) (await p.keyboard.press('Space'), (lastDash = k));
     const file = shoot(k);
-    if (file) await p.screenshot({ path: file, type: file.endsWith('.jpg') ? 'jpeg' : 'png', quality: file.endsWith('.jpg') ? 95 : undefined });
+    if (file) await p.screenshot({ path: file, type: file.endsWith('.jpg') ? 'jpeg' : 'png', quality: file.endsWith('.jpg') ? 95 : undefined, timeout: 180000 });
   }
   await holdKeys(p, held, []);
 }
@@ -244,7 +244,8 @@ const beatCuts = () => {
         f += sc.n;
         continue;
       }
-      const { p, errs, ctx } = await openGame(b, 960, 540);
+      const [vw, vh] = (process.env.VIEW || '960x540').split('x').map(Number);
+      const { p, errs, ctx } = await openGame(b, vw, vh);
       await setup(p, sc.floor, sc.opts);
       // a little time for the fight to start before recording
       await play(p, 20, sc.opts, () => null);
