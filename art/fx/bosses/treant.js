@@ -149,7 +149,7 @@ export function draw(p0, t, o) {
     for (const [rx, ry] of [[-40, -112], [42, -116], [-52, -98]]) a.add(S.ell(rx + sway * 1.5, ry + 4, 3, 5), "rot", T.core(rx, ry + 3, 5, 0.4, 1.05 * glowK), { flat: true, rim: 0.3 });
   }
 
-  a.half().drawRich(q, { bevel: 1.5, depth: 1.4, levels: 4 });
+  a.half().drawRich(q, { bevel: 1.6, depth: 1.4, levels: 5 });
 
   // ---- light: the eyes and mouth, the fungus or the rot; while it casts, motes of its colour rise about it
   const lc = H(ph === 2 ? "#b070e0" : ph === 1 ? "#ffd04a" : "#e8ffa0");

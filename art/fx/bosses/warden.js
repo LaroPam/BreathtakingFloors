@@ -182,11 +182,11 @@ export function draw(p0, t, o) {
 
   // ---- moss on its upper sides, whole and asleep; cracks with fire in them once it wakes
   if (ph === 0)
-    a.add({ b: [-70, -140, 80, 16], f: (x, y) => y < -30 && Math.sin(x * 0.17 + y * 0.11) + Math.sin(y * 0.23 - x * 0.13 + 2) + 0.5 * Math.sin(x * 0.9 + y * 0.7) > 1.35 }, "moss", (x, y) => 0.5 + 0.3 * Math.sin(x * 0.7 + y * 0.5), { onto: true });
+    a.add({ b: [-70, -140, 80, 16], f: (x, y) => y < -30 && Math.sin(x * 0.17 + y * 0.11) + Math.sin(y * 0.23 - x * 0.13 + 2) + 0.5 * Math.sin(x * 0.9 + y * 0.7) > 1.6 }, "moss", (x, y) => 0.5 + 0.3 * Math.sin(x * 0.7 + y * 0.5), { onto: true });
   if (ph >= 1) {
     // the cracks: edges between cells of broken stone, only some of them open, more in the last phase
     const crack = (x, y) => {
-      const C = 10, gx2 = Math.floor(x / C), gy2 = Math.floor(y / C);
+      const C = 14, gx2 = Math.floor(x / C), gy2 = Math.floor(y / C);
       let d1 = 1e9, d2 = 1e9, c1 = 0;
       for (let j = -1; j <= 1; j++)
         for (let i = -1; i <= 1; i++) {
@@ -196,12 +196,12 @@ export function draw(p0, t, o) {
           if (d < d1) (d2 = d1), (d1 = d), (c1 = (gx2 + i) * 7 + (gy2 + j) * 13);
           else if (d < d2) d2 = d;
         }
-      return Math.sin(c1 * 3.7) > (ph === 2 ? -0.35 : 0.3) && d2 - d1 < (ph === 2 ? 1.5 : 1.05);
+      return Math.sin(c1 * 3.7) > (ph === 2 ? 0.1 : 0.55) && d2 - d1 < (ph === 2 ? 1.1 : 0.8);
     };
     a.add({ b: [-70, -140, 80, 16], f: (x, y) => crack(x, y) && y < -6 }, "molten", (x, y) => (0.6 + 0.25 * Math.sin(x * 0.5 + y * 0.3 + u * 2)) * glowK, { onto: true, flat: true });
   }
 
-  a.half().drawRich(q, { bevel: 1.5, depth: 1.4, levels: 4 });
+  a.half().drawRich(q, { bevel: 1.6, depth: 1.4, levels: 5 });
 
   // ---- light: the eyes, the cracks, the heart, the runes and the burning blade; kneeling, a ring of runes about it
   const ec = H(ph === 0 ? "#a8e8f8" : ph === 1 ? "#ff8a24" : "#fff6c0");

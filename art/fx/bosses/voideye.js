@@ -75,7 +75,7 @@ export function draw(p0, t, o) {
     else a.add(S.ell(0, CY, ph === 1 ? 2.8 : 4.6, ph === 1 ? 7.5 : 4.8), "blackwhite", 0, { onto: true, flat: true });
     a.add(S.disc(-5, CY - 5.5, 2), "sclera", 1.2, { onto: true, flat: true });
     a.add(S.disc(4, CY + 5, 0.8), "sclera", 0.9, { onto: true, flat: true });
-    a.half().drawRich(q, { bevel: 1.5, depth: 1.4, levels: 4 });
+    a.half().drawRich(q, { bevel: 1.6, depth: 1.4, levels: 5 });
     p.glow(0, CY, 16, H(ph === 2 ? "#a884ff" : "#4ab8d8"), 0.45 * glowK);
     return;
   }
@@ -124,7 +124,7 @@ export function draw(p0, t, o) {
     const d = Math.hypot(x, y - CY) / R;
     return T.sph(-9, CY - 11, R + 6, 0.18, 1.05)(x, y) - d * d * 0.18;
   });
-  for (const [x0, y0, x1, y1, w] of veins(ph * 3 + 1, ph === 0 ? 9 : 14))
+  for (const [x0, y0, x1, y1, w] of veins(ph * 3 + 1, ph === 0 ? 6 : 9))
     a.add(S.seg(x0, y0, x1, y1, Math.max(0.8, w)), ph === 2 ? "voidlight" : "vein", ph === 2 ? 0.75 * glowK : 0.45 + w * 0.12, { onto: true, part: ball, flat: ph === 2 });
   if (ph === 1)
     for (const [x0, y0, x1, y1] of [[-14, CY - 18, -4, CY - 6], [-4, CY - 6, -9, CY + 8], [12, CY + 4, 22, CY + 14], [18, CY - 16, 8, CY - 8]])
@@ -153,7 +153,7 @@ export function draw(p0, t, o) {
     for (let k = 0; k < 7; k++) a.add(S.rect(-18 + k * 6, CY - 12 + Math.sin(k * 1.3) * 3, 2, 5), "voidlight", 0.9 * glowK, { onto: true, flat: true });
   }
 
-  a.half().drawRich(q, { bevel: 1.5, depth: 1.4, levels: 4 });
+  a.half().drawRich(q, { bevel: 1.6, depth: 1.4, levels: 5 });
   const lc = H(ph === 0 ? "#4ab8d8" : "#a884ff");
   p.glow(0, CY, 54, lc, (ph === 2 ? 0.3 : 0.14) * glowK);
   if (pose === "charge") p.glow(0, CY, 26, H("#ffffff"), 0.45 * glowK);

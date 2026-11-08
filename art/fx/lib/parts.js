@@ -176,6 +176,8 @@ export class Art {
         this.tone[k] = (typeof tone === "function" ? tone(x, y) : tone) + (o.dither ? (bayer(i, j) - 0.5) * 0.2 : 0);
         if (!o.onto) this.part[k] = part;
         if (!o.onto || o.flat !== undefined) this.flag[k] = (o.flat ? 1 : 0) | (o.bare ? 2 : 0) | (o.rim !== undefined ? 4 : 0);
+        // a detail painted onto a part (a rivet, a rune, a crack, a slit): kept when the piece is brought down to half
+        if (o.onto) this.flag[k] |= 8;
         if (o.rim !== undefined) this.rimT[k] = o.rim;
       }
     return part;
@@ -303,7 +305,12 @@ Art.prototype.half = function () {
         const c = cells.filter((q) => this.part[q] === this.part[k]).length;
         if (c > bestN || (c === bestN && this.part[k] > this.part[best])) (best = k), (bestN = c);
       }
-      const same = cells.filter((q) => this.part[q] === this.part[best] && this.mat[q] === this.mat[best]);
+      // a small detail survives: what glows wins its block, then a detail painted on the part that holds the block
+      const glowing = cells.find((q) => this.flag[q] & 1 && this.flag[q] & 8);
+      const detail = cells.find((q) => this.flag[q] & 8 && this.part[q] === this.part[best] && this.mat[q] !== this.mat[best]) ?? cells.find((q) => this.flag[q] & 8 && this.part[q] === this.part[best] && Math.abs(this.tone[q] - this.tone[best]) > 0.3);
+      if (glowing !== undefined) best = glowing;
+      else if (detail !== undefined) best = detail;
+      const same = this.flag[best] & 8 ? [best] : cells.filter((q) => this.part[q] === this.part[best] && this.mat[q] === this.mat[best]);
       const k2 = y * N2 + x;
       h.mat[k2] = this.mat[best];
       h.part[k2] = this.part[best];
