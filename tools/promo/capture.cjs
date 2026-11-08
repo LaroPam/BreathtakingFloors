@@ -12,7 +12,7 @@ fs.mkdirSync(OUT, { recursive: true });
 const FPS = 30;
 
 async function openGame(b, vw, vh, extra = {}) {
-  const ctx = await b.newContext({ viewport: { width: vw, height: vh }, deviceScaleFactor: 1, locale: 'ru-RU', ...extra });
+  const ctx = await b.newContext({ viewport: { width: vw, height: vh }, deviceScaleFactor: 1, locale: process.env.LOCALE || 'ru-RU', ...extra });
   const p = await ctx.newPage();
   const errs = [];
   p.on('pageerror', (e) => errs.push(e.message));
@@ -254,7 +254,8 @@ const beatCuts = () => {
     }
   } else {
     const mobile = MODE === 'mobile';
-    const [vw, vh] = mobile ? [640, 360] : [960, 540];
+    // desktop shots at a real 1920x1080 screen: the game picks its own pixel scale there, as a player's would
+    const [vw, vh] = mobile ? [640, 360] : (process.env.VIEW || '1920x1080').split('x').map(Number);
     const scenes = mobile
       ? [
           { name: 'm-crypt', floor: 2, opts: SCENES[0].opts, at: 150 },
@@ -265,9 +266,9 @@ const beatCuts = () => {
           { name: '1-crypt', floor: 2, opts: SCENES[0].opts, at: 160 },
           { name: '2-garden', floor: 5, opts: { ...SCENES[0].opts, types: GARDEN, relics: [3, 3, 0, 2, 4] }, at: 160 },
           { name: '3-frost', floor: 8, opts: { ...SCENES[0].opts, types: FROST, relics: [1, 1, 5, 2] }, at: 160 },
-          { name: '4-warden', floor: 3, opts: SCENES[1].opts, at: [45, 75, 105, 135] },
+          { name: '4-warden', floor: 3, opts: BEAT_SCENES[5].opts, at: [40, 70] },
           { name: '5-treant', floor: 6, opts: { boss: true, relics: [0, 2, 3], bossFloor: true, phase: 1, heroAt: [-60, 70], range: 70 }, at: [60, 90, 120] },
-          { name: '6-eye', floor: 9, opts: SCENES[2].opts, at: [60, 100, 140, 180] },
+          { name: '6-eye', floor: 9, opts: BEAT_SCENES[6].opts, at: [60, 100] },
         ];
     const only = process.argv[4];
     for (const sc of scenes) {
