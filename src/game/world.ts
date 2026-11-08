@@ -87,6 +87,9 @@ export interface FrostOrb {
 export const SRC_WEAPON = 0, SRC_DASH = 1, SRC_RELIC = 2, SRC_REACT = 8, SRC_STATUS = 9, SRC_ABILITY = 10, SRC_WAVE = 11, SRC_PARRY = 12, SRC_OTHER = 13, SRC_N = 14;
 /** Elements per source in World.dmgStat. */
 export const SRC_ELS = 7;
+const GREY_MATTER = [rgba("#8a8698"), rgba("#a8a4b8"), rgba("#6a6678"), rgba("#c8c4d4")];
+/** How long a newcomer takes to gather out of grey matter (draw.ts); till then it neither moves nor harms. */
+export const SPAWN_T = 0.7;
 /** An elite's lunge: it stops and shivers (wind-up), then rushes along the line to the hero. */
 export const LUNGE_WIND = 0.42, LUNGE_DASH = 0.34;
 /** How long the frost orb gathers before it looses its lances. */
@@ -922,6 +925,12 @@ export class World {
         // (no banner: names on the screen only clutter it; the books keep them)
       }
     }
+    // grey matter drawn together where it will stand
+    if (i >= 0 && d.ai < AI.Boss)
+      for (let k = 0; k < 10; k++) {
+        const a = this.rng.range(0, Math.PI * 2), r = this.rng.range(10, 18) * Math.max(0.8, d.scale);
+        this.parts.add(x + Math.cos(a) * r, y - 8 + Math.sin(a) * r * 0.8, -Math.cos(a) * r * 2.6, -Math.sin(a) * r * 2.1, 0.38, this.rng.pick(GREY_MATTER), this.rng.chance(0.3) ? 2 : 1, 0, 0);
+      }
     return i;
   }
   /** The hitbox of enemy i, from its art at its current frame, into bx, by, brx, bry. */
@@ -1189,7 +1198,7 @@ export class World {
       this.grid.query(h.x, h.y - 8, 60, (i) => {
         const d = ENEMIES[E.type[i]];
         if (d.ai === AI.Phantom && !this.inLight(E.x[i], E.y[i])) return;
-        if (d.ai === AI.Healer) return;
+        if (d.ai === AI.Healer || (E.age[i] < SPAWN_T && d.ai < AI.Boss)) return;
         this.body(i);
         if (this.touches(h.x, h.y - 12, 5)) {
           this.hurtHero(d.elite || this.floor >= 7 ? 2 : 1);
@@ -1322,7 +1331,7 @@ export class World {
         if (q === 0) {
           // the call: the casting hand flares as the bolt comes down
           const [hx, hy] = this.handPos();
-          this.addFx("zap", hx, hy + 10, { sx: 0.35, sy: 0.35, glow: 0.9, key: 4 });
+          this.addFx("hit_spark", hx, hy + 6, { glow: 0.9, key: 4, tint: rgba("#fff09a") });
         }
         this.arcs.push({ pts: [tx, ty - 120, tx + this.rng.range(-8, 8), ty - 60, tx, ty - 8], life: 0.12, color: rgba("#fff08a") });
         this.blast(tx, ty - 8, B.reach * (0.9 + 0.1 * s.reach), dmg, El.Storm, B.push);
@@ -2266,7 +2275,6 @@ export class World {
     this.enemies.maxHp[i] = this.enemies.hp[i];
     this.enemies.lungeCd[i] = 2;
     q.uid = this.enemies.uid[i];
-    this.addFx("spawn", x, y, { glow: 0.8, tint: rgba("#ff6a5a") });
     this.burst(x, y - 10, 16, rgba("#ff6a5a"), 90, 0.5);
     this.audio.play("roar", 1.6);
   }
@@ -2401,7 +2409,7 @@ export class World {
             r.timer = 2;
             for (let k = 0; k < n; k++) {
               const [ox, oy] = this.orbitPos(r, k, n);
-              this.addFx("explosion", ox, oy + 10, { sx: 0.32, sy: 0.32, glow: 0.9, key: 3 });
+              this.addFx("explosion_s", ox, oy + 10, { glow: 0.9, key: 3 });
               this.blast(ox, oy, 24, 15 * m, El.Fire, 70);
             }
             this.audio.play("boom", 1.7);
@@ -2463,7 +2471,7 @@ export class World {
               const a = Math.atan2(this.by - oy, this.bx - ox);
               this.bullets.add(TEAM_HERO, B_LANCE, ox, oy, Math.cos(a) * 330, Math.sin(a) * 330, 1.1, 24 * m, 4, El.Frost, 3);
             }
-            this.addFx("frost_nova", ox, oy + 10, { sx: 0.3, sy: 0.3, glow: 0.6 });
+            this.addFx("frost_nova_s", ox, oy + 10, { glow: 0.6 });
             this.audio.play("freeze", 0.6);
             break;
           }
@@ -2722,7 +2730,7 @@ export class World {
       const d = ENEMIES[E.type[i]];
       this.shotDmg = d.elite || d.ai >= AI.Boss ? 2 : 1;
       E.age[i] += dt;
-      const held = E.frozen[i] > 0 || E.stun[i] > 0 || h.dead;
+      const held = E.frozen[i] > 0 || E.stun[i] > 0 || h.dead || (E.age[i] < SPAWN_T && d.ai < AI.Boss);
       if (!held || d.ai >= AI.Boss) E.t[i] += dt;
       E.flash[i] = Math.max(0, E.flash[i] - dt);
       E.reactCd[i] -= dt;
@@ -3177,7 +3185,7 @@ export class World {
           const ex = this.bx, ey = this.by;
           if (B.kind[i] === B_FIREBALL) {
             // a fireball bursts on the first thing it meets
-            this.addFx("explosion", ex, ey + this.bry, { sx: 0.35, sy: 0.35, glow: 0.8 });
+            this.addFx("explosion_s", ex, ey + this.bry, { glow: 0.8 });
             this.blast(ex, ey, 26, B.dmg[i], El.Fire, 70);
             this.audio.play("boom", 1.6);
             gone = true;
@@ -3328,7 +3336,7 @@ export class World {
         if (this.quest?.state === "active" && this.quest.kind === "untouched") this.endQuest(true);
         this.questStep("swift");
         this.audio.play("ignite");
-        this.addFx("explosion", b.x, b.y - 22, { sx: 0.4, sy: 0.4, glow: 0.9 });
+        this.addFx("explosion_s", b.x, b.y - 22, { glow: 0.9 });
         this.shake = 0.35;
         this.gainOd(15);
         // the last brazier of a boss floor calls the boss; any other starts a wave to be survived
@@ -3669,7 +3677,7 @@ export class World {
     let room = far ? R.int(1, 2) : 99;
     const at = (x: number, y: number) => {
       if (room <= 0 || x < 20 || y < 24 || x > this.w - 20 || y > this.h - 12 || !this.free(x, y, 10)) return;
-      if (this.spawnAt(type, x, y) >= 0) room--, this.addFx("spawn", x, y, { sx: 0.35, sy: 0.35, glow: 0.4 });
+      if (this.spawnAt(type, x, y) >= 0) room--;
     };
     if (d.elite) {
       const [x, y] = this.edgePoint(dist);

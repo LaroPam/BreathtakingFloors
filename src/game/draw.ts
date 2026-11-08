@@ -9,7 +9,7 @@ import { text } from "../engine/text";
 import { AI, EL_COLOR, ENEMIES, LEGENDS, questDef, RelicKind, stageOf, WEAPONS, weaponName } from "./defs";
 import { t as tr, tx } from "./i18n";
 import { FLOOR, LOOK_BRIDGE, LOOK_ICE, LOOK_VEIN, PIT, WALL } from "./map";
-import { BULLET_ANIMS, LUNGE_DASH, poolSpread, HERO_HIT_Y, HERO_R, B_CRESCENT, B_FIREBALL, B_LANCE, CINE_DUR, D_CHEST, D_EMBER, D_GREEN, D_HEART, D_RED, SANCTUARY_R, STAR_EVERY, TILE, type World } from "./world";
+import { BULLET_ANIMS, LUNGE_DASH, SPAWN_T, poolSpread, HERO_HIT_Y, HERO_R, B_CRESCENT, B_FIREBALL, B_LANCE, CINE_DUR, D_CHEST, D_EMBER, D_GREEN, D_HEART, D_RED, SANCTUARY_R, STAR_EVERY, TILE, type World } from "./world";
 
 export class Scene {
   back = new Batch();
@@ -455,7 +455,9 @@ export function drawWorld(s: Scene, w: World, camX: number, camY: number, viewW:
     let x = E.x[i];
     if (!inView(x, y, 70)) continue;
     w.body(i);
-    s.back.disc(x, y, Math.max(5, w.brx * 0.9), Math.max(2, w.brx * 0.32), C_SHADOW);
+    // a newcomer gathers itself out of grey matter, texel by texel (the sprite shader's materialising), then moves
+    const born = d.ai < AI.Boss ? Math.min(1, E.age[i] / SPAWN_T) : 1;
+    s.back.disc(x, y, Math.max(5, w.brx * 0.9) * born, Math.max(2, w.brx * 0.32) * born, C_SHADOW);
     let tint = 0xffffffff;
     if (E.frozen[i] > 0) tint = STATUS_TINT.frozen;
     else if (E.burn[i] > 0) tint = Math.sin(time * 20 + i) > 0 ? STATUS_TINT.burn : 0xffffffff;
@@ -476,7 +478,8 @@ export function drawWorld(s: Scene, w: World, camX: number, camY: number, viewW:
       x += Math.sin(time * 70) * 1;
       tint = Math.sin(time * 30) > 0 ? rgbaf(1, 0.45, 0.4, 1) : tint;
     }
-    drawAnim(s, anim(d.anim), E.t[i], x, y, { sx: E.face[i] * d.scale * (1 + 0.14 * hit + 0.06 * tk) * grow, sy: d.scale * (1 - 0.12 * hit + 0.06 * tk) * grow, tint, alpha, flash: Math.max(hit, tellFlash), key: y, glow: 0.55 * alpha });
+    const g2 = born < 1 ? 1 : grow;
+    drawAnim(s, anim(d.anim), E.t[i], x, y, { sx: E.face[i] * d.scale * (1 + 0.14 * hit + 0.06 * tk) * g2, sy: d.scale * (1 - 0.12 * hit + 0.06 * tk) * g2, tint, alpha, flash: born < 1 ? -Math.max(0.002, born) : Math.max(hit, tellFlash), key: y, glow: 0.55 * alpha * born * born });
     if (d.glow) s.illum.light(w.bx, w.by, 20 * d.scale, 16 * d.scale, withAlpha(rgba(d.glow), 0.22));
     if (winding) {
       // a red mark over its head, swelling as the rush comes
