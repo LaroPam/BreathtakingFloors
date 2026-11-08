@@ -144,6 +144,8 @@ export interface BossBrain {
   cd: number;
   plan: number;
   combo: number;
+  /** It moved this step (walking, drifting, lurching): the drawing walks it. */
+  moving: boolean;
 }
 const clamp01 = (x: number): number => (x < 0 ? 0 : x > 1 ? 1 : x);
 /** The squash of rings on the floor (the 3/4 view): drawn and hit alike. */
@@ -3196,7 +3198,7 @@ export class World {
   private brainFor(i: number): BossBrain {
     const E = this.enemies, ai = ENEMIES[E.type[i]].ai;
     if (!this.brain || this.brain.uid !== E.uid[i])
-      this.brain = { uid: E.uid[i], kind: ai === AI.Warden ? "warden" : ai === AI.Treant ? "treant" : "eye", phase: 0, act: "idle", t: 0, init: false, n: 0, invuln: false, ang: 0, ax: 0, ay: 0, cd: 1.4, plan: 0, combo: 0 };
+      this.brain = { uid: E.uid[i], kind: ai === AI.Warden ? "warden" : ai === AI.Treant ? "treant" : "eye", phase: 0, act: "idle", t: 0, init: false, n: 0, invuln: false, ang: 0, ax: 0, ay: 0, cd: 1.4, plan: 0, combo: 0, moving: false };
     return this.brain;
   }
   private act(b: BossBrain, act: string, cd = 0): void {
@@ -3219,11 +3221,13 @@ export class World {
     }
     b.t += dt;
     b.cd -= dt;
+    const x0 = E.x[i], y0 = E.y[i];
     if (b.act === "summon") this.summoning(i, b);
     else if (b.kind === "warden") this.warden(i, b, dt, dist);
     else if (b.kind === "treant") this.treant(i, b, dt, dist);
     else this.voidEye(i, b, dt, dist);
     this.keepBoss(i, dt);
+    b.moving = dt > 0 && Math.hypot(E.x[i] - x0, E.y[i] - y0) / dt > 5;
   }
   /** Into the summoning: untouchable, its foes' shots gone so the change is seen, a burst of its light. */
   private beginSummon(i: number, b: BossBrain): void {

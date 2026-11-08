@@ -70,8 +70,8 @@ export const ANIMS = [
   { name: "frog", fx: "critters/frog", fps: 12, light: CRITTER_LIGHT, body: true },
   { name: "frog_toxic", fx: "critters/frog", fps: 12, light: CRITTER_LIGHT, body: true, opts: { palette: PAL.arcane, belly: PAL.candy } },
   // the bosses at their own size, a set of poses for each of their three phases: name_phase_pose
-  ...Object.entries({ warden: ["idle", "windup", "strike", "dash", "kneel"], treant: ["idle", "cast", "slam", "cocoon"], voideye: ["idle", "charge", "closed", "iris"] }).flatMap(([id, poses]) =>
-    [0, 1, 2].flatMap((phase) => poses.map((pose) => ({ name: `${id}_${phase}_${pose}`, art: `bosses/${id}`, fps: pose === "idle" ? 8 : 4, light: { thr: 8, k: 0.9 }, body: pose === "idle", opts: { phase, pose } })))),
+  ...Object.entries({ warden: ["idle", "walk", "windup", "strike", "dash", "kneel"], treant: ["idle", "cast", "slam", "cocoon"], voideye: ["idle", "charge", "closed", "iris"] }).flatMap(([id, poses]) =>
+    [0, 1, 2].flatMap((phase) => poses.map((pose) => ({ name: `${id}_${phase}_${pose}`, art: `bosses/${id}`, fps: pose === "idle" || pose === "walk" ? 8 : 4, light: { thr: 8, k: 0.9 }, body: pose === "idle", opts: { phase, pose } })))),
   { name: "frog_king", fx: "critters/frog", fps: 12, light: CRITTER_LIGHT, body: true, opts: { palette: PAL.lava, belly: PAL.gold } },
   { name: "snake", fx: "critters/snake", fps: 12, light: CRITTER_LIGHT, body: true },
   { name: "snake_ice", fx: "critters/snake", fps: 12, light: CRITTER_LIGHT, body: true, opts: { palette: PAL.ice, belly: PAL.metal } },
