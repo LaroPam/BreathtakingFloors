@@ -51,7 +51,8 @@ export interface Platform {
   gameplayStart(): void;
   gameplayStop(): void;
   load(): Promise<SaveData | null>;
-  save(data: SaveData): Promise<void>;
+  /** Keep the save. `now`: it must reach the platform's storage at once (a purchase was just delivered). */
+  save(data: SaveData, now?: boolean): Promise<void>;
   /** The platform pauses and resumes the game (ads, a hidden tab, the YouTube app going to the background). */
   onPause(cb: () => void): void;
   onResume(cb: () => void): void;
@@ -87,6 +88,8 @@ export abstract class BasePlatform implements Platform {
   protected audioCbs: ((on: boolean) => void)[] = [];
 
   private watching = false;
+  /** Paused for a hidden page or a lost focus (cleared when the platform resumes the game by itself). */
+  protected focusPaused = false;
   /**
    * Pause when the page is hidden or the window loses focus, resume when it comes back (Yandex: "sound stops when
    * the game loses focus"). Not for YouTube Playables, which forbids the Page Visibility API: there only the SDK's
@@ -95,20 +98,23 @@ export abstract class BasePlatform implements Platform {
   protected watchFocus(): void {
     if (this.watching) return;
     this.watching = true;
-    let paused = false;
     const pause = () => {
-      if (paused) return;
-      paused = true;
+      if (this.focusPaused) return;
+      this.focusPaused = true;
       this.pauseCbs.forEach((f) => f());
     };
     const resume = () => {
-      if (!paused || document.hidden || !document.hasFocus()) return;
-      paused = false;
+      if (!this.focusPaused || document.hidden || !document.hasFocus() || this.held()) return;
+      this.focusPaused = false;
       this.resumeCbs.forEach((f) => f());
     };
     document.addEventListener("visibilitychange", () => (document.hidden ? pause() : resume()));
     window.addEventListener("blur", pause);
     window.addEventListener("focus", resume);
+  }
+  /** The platform itself still holds the game paused (an ad, its purchase window): focus coming back does not resume it. */
+  protected held(): boolean {
+    return false;
   }
   async init(): Promise<void> {
     this.watchFocus();
@@ -131,7 +137,7 @@ export abstract class BasePlatform implements Platform {
       return null;
     }
   }
-  async save(data: SaveData): Promise<void> {
+  async save(data: SaveData, _now = false): Promise<void> {
     try {
       localStorage.setItem("bf-save", JSON.stringify(data));
     } catch {

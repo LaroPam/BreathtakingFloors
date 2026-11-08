@@ -50,7 +50,7 @@ export class YouTubePlatform extends BasePlatform {
       return null;
     }
   }
-  override async save(data: SaveData): Promise<void> {
+  override async save(data: SaveData, _now = false): Promise<void> {
     if (!this.yt) return super.save(data);
     if (!this.loaded) return; // saving before a successful load is rejected by the platform
     try {

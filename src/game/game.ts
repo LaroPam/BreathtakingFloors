@@ -17,6 +17,7 @@ import { defaultSave, sanitize, type SaveData } from "./save";
 import { button, slider, C, divider, glow as glowUi, drawHud, drawPointers, drawTouch, fmtTime, frame, header , Menu, panel, para, plate , slot } from "./ui";
 import { CINE_DUR, SRC_ABILITY, SRC_DASH, SRC_ELS, SRC_N, SRC_PARRY, SRC_REACT, SRC_RELIC, SRC_STATUS, SRC_WAVE, SRC_WEAPON, World } from "./world";
 
+type StatRow = { ic: Rect; name: string; col: number; sum: number; segs: [number, number][] };
 type State = "title" | "heroes" | "forge" | "shop" | "daily" | "records" | "tasks" | "settings" | "card" | "play" | "spin" | "pick" | "pause" | "book" | "stairs" | "dead" | "won" | "stats";
 type Choice = { type: "relic"; kind: RelicKind; level: number } | { type: "stat"; id: StatId } | { type: "evo"; kind: RelicKind } | { type: "legend"; weapon: WeaponId } | { type: "rest" };
 
@@ -186,7 +187,9 @@ export class Game {
       if (item.lasting) {
         if (!this.save.purchases.includes(item.id)) this.deliver(item.id);
       } else {
+        // the save first, in the cloud, then the purchase is marked delivered (it cannot be restored after that)
         this.deliver(item.id);
+        await this.platform.save(this.save, true);
         await this.platform.consume(p.token);
       }
     }
@@ -201,6 +204,7 @@ export class Game {
       return;
     }
     this.deliver(item.id);
+    await this.platform.save(this.save, true);
     if (!item.lasting) await this.platform.consume(p.token);
     this.shopNote = t("shopThanks");
     this.audio.play("chest");
@@ -1959,78 +1963,133 @@ export class Game {
     }
   }
 
-  /**
-   * The statistics: every source of the run's damage with its share, biggest first, each a bar split into the
-   * colours of the elements it dealt (the weapon's own element shows as its part of the weapon's bar), and the
-   * elements added up under it all.
-   */
-  private drawStats(): void {
-    const ui = this.ui, W = this.r.w, H = this.r.h, now = this.now, w = this.world, D = w.dmgStat;
-    const total = D.reduce((a, b) => a + b, 0);
-    if (this.statsFrom[0] !== "stairs") ui.rect(0, 0, W, H, rgba("#07060c", 0.55));
-    const th = this.heading(t("stats"), 6, H >= 300 ? 2 : 1, C.gold, 1, `${t("statsTotal")}: ${fmtNum(total)}`);
-    const rows: { src: number; sum: number }[] = [];
+  /** The run's damage gathered for the statistics: sources and elements, each a row, biggest first. */
+  private statData(): { total: number; sources: StatRow[]; els: StatRow[] } {
+    const D = this.world.dmgStat, total = D.reduce((a, b) => a + b, 0), elCol = (e: number) => rgba(e ? EL_COLOR[e as El] : "#d8d0e8");
+    const sources: StatRow[] = [], els: StatRow[] = [];
     for (let src = 0; src < SRC_N; src++) {
       let sum = 0;
-      for (let e = 0; e < SRC_ELS; e++) sum += D[src * SRC_ELS + e];
-      if (sum >= 1) rows.push({ src, sum });
-    }
-    rows.sort((a, b) => b.sum - a.sum);
-    const pw = Math.min(420, W - 16), px = Math.round(W / 2 - pw / 2), top = 6 + th + 8, rowH = 23;
-    const room = Math.max(1, Math.floor((H - top - 64) / rowH)), shown = rows.slice(0, room);
-    if (!rows.length) text(ui, t("statsNone"), W / 2, H / 2 - 10, { align: "center", color: C.dim });
-    const max = rows[0]?.sum ?? 1, elCol = (e: number) => rgba(e ? EL_COLOR[e as El] : "#d8d0e8");
-    shown.forEach((r, k) => {
-      const y = top + k * rowH, { name, ic } = this.sourceOf(r.src), appear = Math.min(1, Math.max(0, (now - this.menu.openedAt - k * 0.04) / 0.25));
-      panel(ui, px, y, pw, rowH - 3, k === 0 ? C.goldDim : C.edge);
-      slot(ui, px + 3, y + 1, 18);
-      ui.image(ic, px + 12, y + 10, 0.8, 0.8);
-      text(ui, name, px + 26, y + 3, { color: k === 0 ? C.goldLight : C.gold, shadow: C.ink });
-      const pct = Math.round((r.sum / Math.max(1, total)) * 100);
-      text(ui, `${fmtNum(r.sum)}  ${pct}%`, px + pw - 6, y + 3, { align: "right", font: "mini", color: C.text });
-      // the bar, split by element, growing in as the screen opens
-      const bx = px + 26, bw = pw - 34, full = Math.max(2, Math.round((bw * r.sum) / max * appear)), by = y + 13;
-      ui.rect(bx, by, bw, 4, rgba("#14111c"));
-      let x = bx;
+      const segs: [number, number][] = [];
       for (let e = 0; e < SRC_ELS; e++) {
-        const part = D[r.src * SRC_ELS + e];
-        if (part <= 0) continue;
-        const pwid = Math.max(1, Math.round((full * part) / r.sum));
-        ui.rect(x, by, Math.min(pwid, bx + full - x), 4, elCol(e));
-        ui.rect(x, by, Math.min(pwid, bx + full - x), 1, withAlpha(rgba("#ffffff"), 0.35));
-        x += pwid;
+        const part = D[src * SRC_ELS + e];
+        sum += part;
+        if (part > 0) segs.push([elCol(e), part]);
       }
-    });
-    // the elements, all told
-    const els: [number, number][] = [];
+      if (sum >= 1) {
+        const { name, ic } = this.sourceOf(src);
+        sources.push({ ic, name, col: C.gold, sum, segs });
+      }
+    }
     for (let e = 0; e < SRC_ELS; e++) {
       let sum = 0;
       for (let src = 0; src < SRC_N; src++) sum += D[src * SRC_ELS + e];
-      if (sum >= 1) els.push([e, sum]);
+      if (sum < 1) continue;
+      const ic = e ? icon("icons", RELIC_ICON[RELICS.findIndex((r) => r.el === e)]) : icon("icons", "w_sword");
+      els.push({ ic, name: e ? tx(EL_NAME[e as El]) : t("elPhys"), col: elCol(e), sum, segs: [[elCol(e), sum]] });
     }
-    els.sort((a, b) => b[1] - a[1]);
-    if (els.length) {
-      const ly = top + shown.length * rowH + 4, items = els.map(([e, sum]) => `${tx(e ? EL_NAME[e as El] : { ru: t("elPhys"), en: t("elPhys") })} ${Math.round((sum / total) * 100)}%`);
-      let lx = 0;
-      const widths = items.map((str) => measure(str, "mini") + 16), lw = widths.reduce((a, b) => a + b, 0);
-      lx = Math.round(W / 2 - lw / 2);
-      if (lw <= pw) {
-        els.forEach(([e], k) => {
-          ui.rect(lx, ly + 2, 6, 6, C.ink);
-          ui.rect(lx + 1, ly + 3, 4, 4, elCol(e));
-          text(ui, items[k], lx + 9, ly + 1, { font: "mini", color: C.dim });
-          lx += widths[k];
-        });
-      } else
-        els.forEach(([e], k) => {
-          const cx = px + (k % 3) * Math.floor(pw / 3), cy = ly + Math.floor(k / 3) * 10;
-          ui.rect(cx, cy + 2, 6, 6, C.ink);
-          ui.rect(cx + 1, cy + 3, 4, 4, elCol(e));
-          text(ui, items[k], cx + 9, cy + 1, { font: "mini", color: C.dim });
-        });
+    sources.sort((a, b) => b.sum - a.sum);
+    els.sort((a, b) => b.sum - a.sum);
+    return { total, sources, els };
+  }
+
+  /**
+   * Rows of the statistics from y down: a badge, the name, the damage and its share of all, and a bar split into the
+   * colours it was dealt in, growing in after `delay`. `compact` rows are half as tall, for the end of a run.
+   */
+  private statRows(rows: StatRow[], x: number, y: number, w: number, total: number, delay: number, compact: boolean, first = true): number {
+    const ui = this.ui, now = this.now, rowH = compact ? 16 : 23, max = rows[0]?.sum ?? 1;
+    rows.forEach((r, k) => {
+      const ry = y + k * rowH, appear = Math.min(1, Math.max(0, (now - this.menu.openedAt - delay - k * 0.04) / 0.25)), top = first && k === 0;
+      panel(ui, x, ry, w, rowH - (compact ? 2 : 3), top ? C.goldDim : C.edge);
+      const pct = Math.round((r.sum / Math.max(1, total)) * 100), value = `${fmtNum(r.sum)}  ${pct}%`;
+      let bx: number, by: number, bh: number;
+      if (compact) {
+        ui.image(r.ic, x + 8, ry + 7, 0.5, 0.5);
+        const vw = measure(value, "mini") + 6, nameW = w - 20 - vw;
+        text(ui, r.name, x + 16, ry + 2, { font: "mini", color: r.col === C.gold && top ? C.goldLight : r.col, shadow: C.ink, scale: Math.min(1, nameW / Math.max(1, measure(r.name, "mini"))) });
+        text(ui, value, x + w - 4, ry + 2, { align: "right", font: "mini", color: C.text });
+        (bx = x + 16), (by = ry + 10), (bh = 2);
+      } else {
+        slot(ui, x + 3, ry + 1, 18);
+        ui.image(r.ic, x + 12, ry + 10, 0.8, 0.8);
+        text(ui, r.name, x + 26, ry + 3, { color: r.col === C.gold && top ? C.goldLight : r.col, shadow: C.ink });
+        text(ui, value, x + w - 6, ry + 3, { align: "right", font: "mini", color: C.text });
+        (bx = x + 26), (by = ry + 13), (bh = 4);
+      }
+      const bw = x + w - (compact ? 4 : 8) - bx, full = Math.max(2, Math.round(((bw * r.sum) / max) * appear));
+      ui.rect(bx, by, bw, bh, rgba("#14111c"));
+      let bxx = bx;
+      for (const [col, part] of r.segs) {
+        const pw = Math.min(Math.max(1, Math.round((full * part) / r.sum)), bx + full - bxx);
+        if (pw <= 0) break;
+        ui.rect(bxx, by, pw, bh, col);
+        ui.rect(bxx, by, pw, 1, withAlpha(rgba("#ffffff"), 0.35));
+        bxx += pw;
+      }
+    });
+    return y + rows.length * rowH;
+  }
+
+  /** A small caption over a column of the statistics. */
+  private statCaption(str: string, x: number, y: number, w: number): void {
+    text(this.ui, str, x + 2, y, { font: "mini", color: C.goldDim });
+    this.ui.rect(x + measure(str, "mini") + 6, y + 3, Math.max(0, w - measure(str, "mini") - 8), 1, rgba("#2a2438"));
+  }
+
+  /**
+   * The statistics: every source of the run's damage with its share, biggest first, each a bar split into the
+   * colours of the elements it dealt; and beside them (or under them, on a narrow screen) a row for each element.
+   */
+  private drawStats(): void {
+    const ui = this.ui, W = this.r.w, H = this.r.h, now = this.now;
+    const { total, sources, els } = this.statData();
+    if (this.statsFrom[0] !== "stairs") ui.rect(0, 0, W, H, rgba("#07060c", 0.55));
+    const th = this.heading(t("stats"), 6, H >= 300 ? 2 : 1, C.gold, 1, `${t("statsTotal")}: ${fmtNum(total)}`);
+    const top = 6 + th + 6, bottom = H - 30;
+    if (!sources.length) text(ui, t("statsNone"), W / 2, H / 2 - 10, { align: "center", color: C.dim });
+    else if (W >= 460) {
+      // two columns: sources at the left, elements at the right
+      const pw = Math.min(600, W - 16), px = Math.round(W / 2 - pw / 2), gap = 8, lw = Math.round((pw - gap) * 0.6), rw = pw - gap - lw;
+      const room = Math.max(1, Math.floor((bottom - top - 10) / 23));
+      this.statCaption(t("statsSources"), px, top, lw);
+      this.statRows(sources.slice(0, room), px, top + 10, lw, total, 0, false);
+      this.statCaption(t("statsEls"), px + lw + gap, top, rw);
+      const compact = els.length * 23 > bottom - top - 10;
+      this.statRows(els, px + lw + gap, top + 10, rw, total, 0.1, compact, false);
+    } else {
+      // one column: the sources, then the elements in short rows
+      const pw = Math.min(420, W - 16), px = Math.round(W / 2 - pw / 2), full = 22 + (sources.length + els.length) * 23 <= bottom - top;
+      const room = Math.max(1, Math.floor((bottom - top - 22 - els.length * (full ? 23 : 16)) / 23));
+      this.statCaption(t("statsSources"), px, top, pw);
+      const y = this.statRows(sources.slice(0, room), px, top + 10, pw, total, 0, false) + 2;
+      this.statCaption(t("statsEls"), px, y, pw);
+      this.statRows(els, px, y + 10, pw, total, 0.1, !full, false);
     }
     if (button(ui, this.menu, now, Math.round(W / 2 - 50), H - 24, 100, 18, t("back"), { icon: icon("hud", "back") }) || this.input.pressed("back")) this.setState(...this.statsFrom);
   }
+
+  /** The damage of the run in short at the end of it, in a frame of height h: the main sources, then the elements. */
+  private statsPanel(x: number, y: number, w: number, h: number): void {
+    const ui = this.ui, { total, sources, els } = this.statData();
+    // as many sources as leave the elements room; elements trimmed only if even three sources do not fit
+    const rows = Math.floor((h - 42) / 16), nEl = Math.min(els.length, Math.max(0, rows - Math.min(3, sources.length))), nSrc = Math.min(sources.length, rows - nEl);
+    const fh = sources.length ? Math.min(h, 18 + 9 + nSrc * 16 + 1 + (nEl ? 9 + nEl * 16 : 0) + 5) : Math.min(h, 44);
+    frame(ui, x, y, w, fh);
+    text(ui, t("statsDamage"), x + 8, y + 6, { color: C.gold, shadow: C.ink });
+    text(ui, fmtNum(total), x + w - 8, y + 6, { align: "right", gradient: [rgba("#fff0b8"), rgba("#e0a84a")], shadow: C.ink });
+    if (!sources.length) {
+      text(ui, t("statsNone"), x + w / 2, y + 26, { align: "center", font: "mini", color: C.dim });
+      return;
+    }
+    let ry = y + 18;
+    this.statCaption(t("statsSources"), x + 4, ry, w - 8);
+    ry = this.statRows(sources.slice(0, nSrc), x + 4, ry + 9, w - 8, total, 0.15, true) + 1;
+    if (nEl) {
+      this.statCaption(t("statsEls"), x + 4, ry, w - 8);
+      this.statRows(els.slice(0, nEl), x + 4, ry + 9, w - 8, total, 0.3, true, false);
+    }
+  }
+
 
   private drawPause(): void {
     const ui = this.ui, W = this.r.w, H = this.r.h, now = this.now;
@@ -2503,8 +2562,10 @@ export class Game {
     const ui = this.ui, W = this.r.w, H = this.r.h, now = this.now, res = this.lastResult;
     const ty = Math.round(H * 0.07), th = this.heading(t("victory"), ty, 2);
     const sh = para(ui, t("victorySub"), Math.round(W / 2 - 150), ty + th + 2, 300, C.dim, "center");
-    let y = this.resultCard(ty + th + sh + 6, [["skull", t("kills"), String(res.kills), C.text], ["time", t("time"), fmtTime(res.time), C.text], ["ember", t("earned"), `+${res.embers}`, C.gold]], res.score) + 10;
-    const bw = 190, bh = 20, bx = Math.round(W / 2 - bw / 2);
+    const L = this.endLayout(), cy = ty + th + sh + 6;
+    if (L.side >= 0) this.statsPanel(L.side, cy, L.sw, H - 22 - cy);
+    let y = this.resultCard(cy, [["skull", t("kills"), String(res.kills), C.text], ["time", t("time"), fmtTime(res.time), C.text], ["ember", t("earned"), `+${res.embers}`, C.gold]], res.score, L.cx) + 10;
+    const bw = 190, bh = 20, bx = Math.round(L.cx - bw / 2);
     if (button(ui, this.menu, now, bx, y, bw, bh, t("again"), { primary: true, icon: icon("hud", "play") })) {
       this.newSkin = "";
       void (this.owns("no_ads") ? Promise.resolve() : this.platform.showInterstitial()).then(() => this.startRun());
@@ -2521,19 +2582,30 @@ export class Game {
       this.attract();
       this.setState("title");
     }
+    // a tall narrow screen has room for the damage under the buttons
+    if (L.side < 0 && H - 40 - (y + bh + 8) >= 110) this.statsPanel(Math.round(W / 2 - Math.min(250, W - 24) / 2), y + bh + 8, Math.min(250, W - 24), H - 40 - (y + bh + 8));
     if (this.tasksReady()) text(ui, t("tasksReady"), W / 2, H - 12, { font: "mini", align: "center", color: C.green });
     // the victor's colours, earned just now
     if (this.newSkin) {
-      const hd = HEROES.find((q) => q.id === this.newSkin)!, sy = H - 24, f = this.heroFrame(hd.id, true);
-      glowUi(ui, W / 2 - 70, sy - 6, 24, 10, C.gold, 0.5);
-      ui.image(f, W / 2 - 70, sy + 2);
-      text(ui, `${t("skinNew")}: ${tx(hd.name)}`, W / 2 - 54, sy - 10, { color: C.gold, shadow: C.ink });
+      const hd = HEROES.find((q) => q.id === this.newSkin)!, sy = L.side >= 0 ? H - 18 : H - 24, f = this.heroFrame(hd.id, true), note = `${t("skinNew")}: ${tx(hd.name)}`;
+      const hx = Math.round(L.cx - (measure(note) + 16) / 2);
+      glowUi(ui, hx, sy - 6, 24, 10, C.gold, 0.5);
+      ui.image(f, hx, sy + 2);
+      text(ui, note, hx + 16, sy - 10, { color: C.gold, shadow: C.ink });
     }
   }
 
+  /** At the end of a run on a wide enough screen: the card and buttons at the left, the run's damage at the right. */
+  private endLayout(): { cx: number; side: number; sw: number } {
+    const W = this.r.w, sw = Math.min(230, W - 16 - 240);
+    if (sw < 170) return { cx: W / 2, side: -1, sw: 0 };
+    const x0 = Math.round(W / 2 - (240 + sw) / 2);
+    return { cx: x0 + 115, side: x0 + 240, sw };
+  }
+
   /** The end of a run on a card: a row per number with its icon, the score at the foot. Returns the card's bottom. */
-  private resultCard(y: number, rows: [string, string, string, number][], score: number): number {
-    const ui = this.ui, W = this.r.w, pw = Math.min(250, W - 24), px = Math.round(W / 2 - pw / 2), rh = 13, ph = rows.length * rh + 34;
+  private resultCard(y: number, rows: [string, string, string, number][], score: number, cx = this.r.w / 2): number {
+    const ui = this.ui, W = this.r.w, pw = Math.min(cx === W / 2 ? 250 : 230, W - 24), px = Math.round(cx - pw / 2), rh = 13, ph = rows.length * rh + 34;
     frame(ui, px, y, pw, ph);
     let ry = y + 8;
     rows.forEach(([ic, label, value, color], k) => {
@@ -2543,7 +2615,7 @@ export class Game {
       if (k < rows.length - 1) ui.rect(px + 8, ry + rh - 2, pw - 16, 1, rgba("#2a2438"));
       ry += rh;
     });
-    divider(ui, W / 2, ry + 3, pw - 20, C.goldDeep);
+    divider(ui, cx, ry + 3, pw - 20, C.goldDeep);
     text(ui, t("score"), px + 10, ry + 9, { font: "mini", color: C.goldDim });
     text(ui, String(score), px + pw - 10, ry + 8, { align: "right", gradient: [rgba("#fff0b8"), rgba("#e0a84a")], shadow: C.ink });
     return y + ph;
@@ -2555,8 +2627,10 @@ export class Game {
     const ty = Math.round(H * 0.08);
     if (res.daily) text(ui, t(res.weekly ? "weekly" : "daily"), W / 2, ty - 7, { font: "mini", align: "center", color: rgba("#ff9a8a") });
     const th = this.heading(t("died"), ty, 2, C.red);
-    let y = this.resultCard(ty + th + 4, [["brazier", t("reached"), String(res.floor), C.gold], ["skull", t("kills"), String(res.kills), C.text], ["time", t("time"), fmtTime(res.time), C.text], ["ember", t("earned"), `+${res.embers}`, C.gold]], res.score) + 10;
-    const bw = 190, bh = 20, bx = Math.round(W / 2 - bw / 2);
+    const L = this.endLayout(), cy = ty + th + 4;
+    if (L.side >= 0) this.statsPanel(L.side, cy, L.sw, H - 22 - cy);
+    let y = this.resultCard(cy, [["brazier", t("reached"), String(res.floor), C.gold], ["skull", t("kills"), String(res.kills), C.text], ["time", t("time"), fmtTime(res.time), C.text], ["ember", t("earned"), `+${res.embers}`, C.gold]], res.score, L.cx) + 10;
+    const bw = 190, bh = 20, bx = Math.round(L.cx - bw / 2);
     if (!this.revived && this.platform.canShowRewarded()) {
       if (button(ui, this.menu, now, bx, y, bw, bh, t("revive"), { color: C.green, icon: icon("hud", "heart") })) void this.revive();
       y += bh + 6;
@@ -2575,6 +2649,7 @@ export class Game {
       this.attract();
       this.setState("title");
     }
+    if (L.side < 0 && H - 28 - (y + bh + 8) >= 110) this.statsPanel(Math.round(W / 2 - Math.min(250, W - 24) / 2), y + bh + 8, Math.min(250, W - 24), H - 28 - (y + bh + 8));
     // a new best gleams under it all; a task reward waiting says so
     let fy = H - 12;
     if (res.best) {
