@@ -12,6 +12,7 @@ import { PAL } from "../../pixelfx/src/core/color.js";
 import { weaponAnims, MODEL_WEAPONS } from "./weapons.mjs";
 import { IDS as UPGRADE_ICONS } from "../../art/fx/icons/upgrades.js";
 import { IDS as HUD_ICONS } from "../../art/fx/icons/hud.js";
+import { IDS as ITEM_ICONS } from "../../art/fx/icons/items.js";
 
 // ---- the heroes are not here: src/hero draws them in the game, each in its own build and costume, from the poses
 // tools/bake/weapons.mjs samples (written to src/generated/poses.json with the atlas).
@@ -68,6 +69,9 @@ export const ANIMS = [
   { name: "wisp", fx: "critters/wisp", fps: 10, light: CRITTER_LIGHT, body: true, opts: { palette: PAL.ember } },
   { name: "frog", fx: "critters/frog", fps: 12, light: CRITTER_LIGHT, body: true },
   { name: "frog_toxic", fx: "critters/frog", fps: 12, light: CRITTER_LIGHT, body: true, opts: { palette: PAL.arcane, belly: PAL.candy } },
+  // the bosses at their own size, a set of poses for each of their three phases: name_phase_pose
+  ...Object.entries({ warden: ["idle", "windup", "strike", "dash", "kneel"], treant: ["idle", "cast", "slam", "cocoon"], voideye: ["idle", "charge", "closed", "iris"] }).flatMap(([id, poses]) =>
+    [0, 1, 2].flatMap((phase) => poses.map((pose) => ({ name: `${id}_${phase}_${pose}`, art: `bosses/${id}`, fps: pose === "idle" ? 8 : 4, light: { thr: 8, k: 0.9 }, body: pose === "idle", opts: { phase, pose } })))),
   { name: "frog_king", fx: "critters/frog", fps: 12, light: CRITTER_LIGHT, body: true, opts: { palette: PAL.lava, belly: PAL.gold } },
   { name: "snake", fx: "critters/snake", fps: 12, light: CRITTER_LIGHT, body: true },
   { name: "snake_ice", fx: "critters/snake", fps: 12, light: CRITTER_LIGHT, body: true, opts: { palette: PAL.ice, belly: PAL.metal } },
@@ -97,11 +101,14 @@ export const ANIMS = [
   { name: "parry", fx: "impacts/parry", fps: 24, maxT: 0.5, light: FX_LIGHT, opts: { height: 0 } },
   { name: "poof", fx: "spawn/poof", fps: 20, maxT: 0.9, light: FX_LIGHT },
   { name: "explosion", fx: "explosions/small-explosion", fps: 12, maxT: 1.2, light: FX_BIG },
+  // small ones baked at their own size, not shrunk in the game: shrunk, fine detail stops reading as pixel art
+  { name: "explosion_s", fx: "explosions/small-explosion", fps: 12, maxT: 1.0, light: FX_BIG, opts: { size: 0.4 } },
   { name: "shatter", fx: "ice/ice-shatter", fps: 12, maxT: 1.0, light: FX_BIG },
   { name: "zap", fx: "lightning/zap-hit", fps: 20, light: FX_LIGHT },
   { name: "acid", fx: "nature/acid-splash", fps: 12, maxT: 1.0, light: FX_BIG },
   { name: "smite", fx: "holy/smite", fps: 12, maxT: 1.2, light: FX_BIG },
   { name: "frost_nova", fx: "ice/frost-nova", fps: 12, maxT: 1.3, light: FX_BIG },
+  { name: "frost_nova_s", fx: "ice/frost-nova", fps: 12, maxT: 1.0, light: FX_BIG, opts: { reach: 30 } },
   { name: "heal_ring", fx: "holy/heal-aoe", fps: 12, maxT: 1.0, light: FX_BIG },
   { name: "spawn", fx: "spawn/spawn-portal", fps: 12, maxT: 1.0, light: FX_BIG },
   { name: "slam", fx: "impacts/ground-slam", fps: 12, maxT: 1.0, light: FX_BIG },
@@ -159,6 +166,8 @@ export const ANIMS = [
   // ---- interface: upgrade badges and HUD icons, one frame per id (the game looks them up by name)
   { name: "icons", art: "icons/upgrades", light: false, variants: { id: UPGRADE_ICONS } },
   { name: "hud", art: "icons/hud", light: false, variants: { id: HUD_ICONS } },
+  // the big detailed badges for cards, the chest's reel, the forge, the shop and the books
+  { name: "items", art: "icons/items", light: false, variants: { id: ITEM_ICONS } },
 
   // ---- pickups
   { name: "shard_blue", art: "pickups/shard", fps: 10 },

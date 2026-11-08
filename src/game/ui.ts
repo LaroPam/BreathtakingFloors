@@ -11,7 +11,7 @@ import type { Audio } from "../engine/audio";
 import type { Input } from "../engine/input";
 import { Batch, rgba, rgbaf, withAlpha } from "../engine/renderer";
 import { fitScale, measure, text, wrap, type FontName } from "../engine/text";
-import { EL_COLOR, ENEMIES, floorInfo, MUTATORS, questDef, RELIC_SLOTS } from "./defs";
+import { ARTIFACT_SLOTS, EL_COLOR, ENEMIES, evolutionOf, floorInfo, MUTATORS, questDef, RARITIES, RELIC_SLOTS, STATS } from "./defs";
 import { t, tx } from "./i18n";
 import type { World } from "./world";
 
@@ -433,7 +433,7 @@ export function drawHud(b: Batch, w: World, W: number, H: number, time: number, 
 
   // ---- the hotbar: the weapon in a gold-rimmed slot (an element's gem in its corner), then a slot per relic
   const hy = py + 38, el = w.weaponEl;
-  slot(b, 2, hy, 24, h.legend ? rgbaf(1, 0.85 + 0.15 * Math.sin(time * 5), 0.45, 1) : el ? rgba(EL_COLOR[el]) : C.goldDim);
+  slot(b, 2, hy, 24, h.legend ? rgbaf(1, 0.85 + 0.15 * Math.sin(time * 5), 0.45, 1) : h.rarity > 0 ? rgba(RARITIES[h.rarity].color) : el ? rgba(EL_COLOR[el]) : C.goldDim);
   if (h.legend) glow(b, 14, hy + 12, 16, 16, C.gold, 0.35);
   b.image(icon("icons", `w_${h.weapon}`), 14, hy + 12);
   if (h.legend) {
@@ -463,10 +463,27 @@ export function drawHud(b: Batch, w: World, W: number, H: number, time: number, 
     for (let q = 0; q < 5; q++) b.rect(x + 3 + q * 3, hy + 23, 2, 1, q < r.level ? (readyEvo && q === 4 && Math.sin(time * 8) > 0 ? rgba("#ffffff") : C.gold) : rgba("#2a2438"));
   }
 
+  // ---- the artifacts under the relics, a slot each, their levels in pips; one that is a relic's key to its
+  // evolution has a gold rim while that relic waits for it
+  const ay = hy + 26, held = w.artifacts;
+  for (let k = 0; k < ARTIFACT_SLOTS; k++) {
+    const id = held[k], x = 30 + k * 22;
+    const key = !!id && w.relics.some((r) => !r.evo && evolutionOf(r.kind).stat === id);
+    slot(b, x, ay, 21, key ? C.goldDim : undefined);
+    if (!id) {
+      b.rect(x + 10, ay + 9, 1, 3, S.wellHi), b.rect(x + 9, ay + 10, 3, 1, S.wellHi);
+      continue;
+    }
+    b.image(icon("icons", id), x + 10.5, ay + 10.5, 0.85, 0.85);
+    const lv = w.statLevels[id] ?? 0, max = STATS.find((st) => st.id === id)!.max, pw2 = max <= 5 ? 2 : 1, step = pw2 + 1;
+    const x0 = x + Math.round((21 - max * step + 1) / 2);
+    for (let q = 0; q < max; q++) b.rect(x0 + q * step, ay + 22, pw2, 1, q < lv ? rgba("#9ad4ff") : rgba("#2a2438"));
+  }
+
   // ---- the spirit's quest: a plate under the hotbar with its name, the count, the clock
   const q = w.quest;
   if (q) {
-    const a = q.state === "active" ? 1 : Math.max(0, Math.min(1, (3 - q.endT) / 0.6)), qy = hy + 29, qw = 132;
+    const a = q.state === "active" ? 1 : Math.max(0, Math.min(1, (3 - q.endT) / 0.6)), qy = hy + 54, qw = 132;
     const accent = q.state === "failed" ? C.red : q.state === "done" ? C.green : C.sky;
     plate(b, 2, qy, qw, 24, withAlpha(accent, a));
     b.image(icon("hud", "scroll"), 11, qy + 8, 1, 1, 0, rgbaf(1, 1, 1, a));
@@ -489,14 +506,21 @@ export function drawHud(b: Batch, w: World, W: number, H: number, time: number, 
   }
 
   // ---- where you are: the floor on a plate at the top centre, with what to do on it under the name
-  const floorLine = `${t("floor")} ${w.floor}  ·  ${tx(floorInfo(w.floor).name)}`, fw = measure(floorLine) + (seal ? 30 : 20), bi = w.bossIndex();
-  plate(b, W / 2 - fw / 2, 9, fw, 25);
-  text(b, floorLine, W / 2 + (seal ? 5 : 0), 13, { align: "center", gradient: [rgba("#fff0b8"), rgba("#e0a84a")], shadow: C.ink });
+  // the floor's name on its plate for the first seconds; then the plate draws in to just the braziers (or the
+  // boss, or the portal), leaving the top of the screen to the floor
+  const floorLine = `${t("floor")} ${w.floor}  ·  ${tx(floorInfo(w.floor).name)}`, bi = w.bossIndex();
+  const intro = Math.max(0, Math.min(1, (6.5 - w.time) / 0.5)), e = intro * intro * (3 - 2 * intro);
+  const bossName = bi >= 0 ? tx(ENEMIES[w.enemies.type[bi]].name) : "";
+  const small = Math.max(w.portal ? measure(t("portalOpen"), "mini") + 12 : bi >= 0 ? measure(bossName, "mini") + 22 : w.braziers.length * 14 + 10, 48);
+  const wide = measure(floorLine) + (seal ? 30 : 20), fw = Math.round(small + (Math.max(wide, small) - small) * e), ph = Math.round(16 + 9 * e), ty = Math.round(6 + 3 * e);
+  plate(b, W / 2 - fw / 2, ty, fw, ph);
+  if (e > 0.6) text(b, floorLine, W / 2 + (seal ? 5 : 0), 13, { align: "center", gradient: [rgba("#fff0b8"), rgba("#e0a84a")], shadow: C.ink });
   // a trial wears its seal by the floor's name (the day's or the week's); a cursed floor its skull on the other side
-  if (seal) b.image(icon("hud", seal), W / 2 - fw / 2 + 9, 16);
-  if (w.curse) b.image(icon("hud", "curse"), W / 2 + fw / 2 + 8, 16, 1, 1, 0, rgbaf(1, 0.7 + 0.3 * Math.sin(time * 6), 0.7, 1));
+  if (seal && e > 0.6) b.image(icon("hud", seal), W / 2 - fw / 2 + 9, 16);
+  if (w.curse) b.image(icon("hud", "curse"), W / 2 + fw / 2 + 8, ty + ph / 2 + 1, 1, 1, 0, rgbaf(1, 0.7 + 0.3 * Math.sin(time * 6), 0.7, 1));
+  const row = Math.round(ty + ph - 7);
   // a wave burning: how long to hold out, a bar running down under the plate
-  let under = 38;
+  let under = ty + ph + 4;
   if (w.wave) {
     const wv = w.wave, left = Math.max(0, Math.ceil(wv.left)), k = wv.left / wv.total, urgent = wv.left < 5;
     const label = `${t("wave")} ${wv.n}  ·  ${t("hold")} ${fmtTime(left)}`, bw = Math.max(90, measure(label) + 16);
@@ -508,16 +532,15 @@ export function drawHud(b: Batch, w: World, W: number, H: number, time: number, 
   // the week's rule, under the plate, for the whole run
   const mut = w.mutator && MUTATORS.find((m) => m.id === w.mutator);
   if (mut) text(b, tx(mut.name), W / 2, under, { font: "mini", align: "center", color: rgba("#ff9a8a"), shadow: C.ink });
-  if (w.portal) text(b, t("portalOpen"), W / 2, 24, { font: "mini", align: "center", color: rgba("#c684ff") });
+  if (w.portal) text(b, t("portalOpen"), W / 2, row - 3, { font: "mini", align: "center", color: rgba("#c684ff") });
   else if (bi >= 0) {
-    const name = tx(ENEMIES[w.enemies.type[bi]].name);
-    b.image(icon("hud", "boss"), W / 2 - measure(name, "mini") / 2 - 8, 27);
-    text(b, name, W / 2 + 2, 24, { font: "mini", align: "center", color: rgba(ENEMIES[w.enemies.type[bi]].glow || "#f53cd1") });
+    b.image(icon("hud", "boss"), W / 2 - measure(bossName, "mini") / 2 - 8, row);
+    text(b, bossName, W / 2 + 2, row - 3, { font: "mini", align: "center", color: rgba(ENEMIES[w.enemies.type[bi]].glow || "#f53cd1") });
   } else
     w.braziers.forEach((br, k) => {
       const x = W / 2 + (k - (w.braziers.length - 1) / 2) * 14;
-      b.image(icon("hud", br.lit ? "brazier" : "brazier_cold"), x, 27);
-      if (!br.lit && br.progress > 0) b.rect(x - 4, 32, Math.round(8 * br.progress), 1, rgba("#ffc040"));
+      b.image(icon("hud", br.lit ? "brazier" : "brazier_cold"), x, row);
+      if (!br.lit && br.progress > 0) b.rect(x - 4, row + 5, Math.round(8 * br.progress), 1, rgba("#ffc040"));
     });
 
   // ---- how long, how many: a plate at the top right
@@ -538,7 +561,10 @@ export function drawHud(b: Batch, w: World, W: number, H: number, time: number, 
     text(b, tx(d.name), W / 2, by - 13, { font: "title", align: "center", color: col, shadow: C.ink });
     inset(b, bx - 16, by - 4, 13, 13, withAlpha(col, 0.9));
     b.image(icon("hud", "boss"), bx - 10, by + 2);
-    bar(b, bx, by, bw, 5, k, rgba("#a01858"), rgba("#ff86e6"), { well: rgba("#1a0a14"), lag: bossLag, ticks: 4 });
+    // in thirds, a phase each; grey and marked while it cannot be touched
+    const shut = !!w.brain?.invuln;
+    bar(b, bx, by, bw, 5, k, shut ? rgba("#5a5a6a") : rgba("#a01858"), shut ? rgba("#b8b8c8") : rgba("#ff86e6"), { well: rgba("#1a0a14"), lag: bossLag, ticks: 3 });
+    if (shut && Math.sin(time * 6) > -0.4) text(b, t("invulnerable"), bx + bw, by - 12, { font: "mini", align: "right", color: rgba("#c8d4ff"), shadow: C.ink });
   } else bossLag = 1;
 
   // a banner on a band of darkness; it holds a little longer when it carries a line of what to do under it

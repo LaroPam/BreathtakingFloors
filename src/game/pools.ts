@@ -16,6 +16,8 @@ export class Enemies {
   reactCd: Float32Array; tick: Float32Array;
   // per-source contact cooldowns: orbit fireballs, void spheres, poison pools
   orbitCd: Float32Array; voidCd: Float32Array; poolCd: Float32Array;
+  /** An elite's lunge: its clock (wind-up, then the rush), the wait before the next, and its line. */
+  lunge: Float32Array; lungeCd: Float32Array; lx: Float32Array; ly: Float32Array;
   private nextUid = 1;
 
   constructor(cap: number) {
@@ -29,6 +31,7 @@ export class Enemies {
     this.poison = F(); this.poisonN = U(); this.holy = F(); this.hex = F(); this.stun = F();
     this.reactCd = F(); this.tick = F();
     this.orbitCd = F(); this.voidCd = F(); this.poolCd = F();
+    this.lunge = F(); this.lungeCd = F(); this.lx = F(); this.ly = F();
   }
 
   add(type: number, x: number, y: number, hp: number, phase: number, speedMul: number): number {
@@ -41,6 +44,7 @@ export class Enemies {
     this.burn[i] = 0; this.chill[i] = 0; this.chillN[i] = 0; this.frozen[i] = 0; this.shock[i] = 0;
     this.poison[i] = 0; this.poisonN[i] = 0; this.holy[i] = 0; this.hex[i] = 0; this.stun[i] = 0;
     this.reactCd[i] = 0; this.tick[i] = 0; this.orbitCd[i] = 0; this.voidCd[i] = 0; this.poolCd[i] = 0;
+    this.lunge[i] = 0; this.lungeCd[i] = 1.2 + phase * 1.5; this.lx[i] = 0; this.ly[i] = 0;
     return i;
   }
 
@@ -49,7 +53,7 @@ export class Enemies {
     if (i === j) return;
     const all = [this.x, this.y, this.vx, this.vy, this.kx, this.ky, this.hp, this.maxHp, this.type, this.t, this.flash, this.cd, this.fuse, this.uid, this.phase, this.speedMul,
       this.face, this.st, this.at, this.ax, this.ay, this.age,
-      this.burn, this.chill, this.chillN, this.frozen, this.shock, this.poison, this.poisonN, this.holy, this.hex, this.stun, this.reactCd, this.tick, this.orbitCd, this.voidCd, this.poolCd];
+      this.burn, this.chill, this.chillN, this.frozen, this.shock, this.poison, this.poisonN, this.holy, this.hex, this.stun, this.reactCd, this.tick, this.orbitCd, this.voidCd, this.poolCd, this.lunge, this.lungeCd, this.lx, this.ly];
     for (const a of all) a[i] = a[j];
   }
 }
@@ -61,6 +65,9 @@ export class Bullets {
   n = 0;
   x: Float32Array; y: Float32Array; vx: Float32Array; vy: Float32Array; life: Float32Array; dmg: Float32Array;
   r: Float32Array; team: Uint8Array; kind: Uint8Array; el: Uint8Array; pierce: Uint8Array; grazed: Uint8Array; t: Float32Array;
+  /** What fired each bullet, for the damage statistics (world.ts SRC_*); new bullets take `cur`. */
+  src: Uint8Array;
+  cur = 0;
   /** The last enemies each bullet hit (so a piercing bullet hits each foe once). */
   hits: Int32Array;
 
@@ -68,7 +75,7 @@ export class Bullets {
     this.cap = cap;
     const F = () => new Float32Array(cap), U = () => new Uint8Array(cap);
     this.x = F(); this.y = F(); this.vx = F(); this.vy = F(); this.life = F(); this.dmg = F(); this.r = F();
-    this.team = U(); this.kind = U(); this.el = U(); this.pierce = U(); this.grazed = U(); this.t = F();
+    this.team = U(); this.kind = U(); this.el = U(); this.pierce = U(); this.grazed = U(); this.t = F(); this.src = U();
     this.hits = new Int32Array(cap * 4);
   }
 
@@ -76,7 +83,7 @@ export class Bullets {
     if (this.n >= this.cap) return -1;
     const i = this.n++;
     this.x[i] = x; this.y[i] = y; this.vx[i] = vx; this.vy[i] = vy; this.life[i] = life; this.dmg[i] = dmg; this.r[i] = r;
-    this.team[i] = team; this.kind[i] = kind; this.el[i] = el; this.pierce[i] = pierce; this.grazed[i] = 0; this.t[i] = 0;
+    this.team[i] = team; this.kind[i] = kind; this.el[i] = el; this.pierce[i] = pierce; this.grazed[i] = 0; this.t[i] = 0; this.src[i] = this.cur;
     this.hits.fill(0, i * 4, i * 4 + 4);
     return i;
   }
@@ -84,7 +91,7 @@ export class Bullets {
   remove(i: number): void {
     const j = --this.n;
     if (i === j) return;
-    for (const a of [this.x, this.y, this.vx, this.vy, this.life, this.dmg, this.r, this.team, this.kind, this.el, this.pierce, this.grazed, this.t]) a[i] = a[j];
+    for (const a of [this.x, this.y, this.vx, this.vy, this.life, this.dmg, this.r, this.team, this.kind, this.el, this.pierce, this.grazed, this.t, this.src]) a[i] = a[j];
     this.hits.copyWithin(i * 4, j * 4, j * 4 + 4);
   }
 }

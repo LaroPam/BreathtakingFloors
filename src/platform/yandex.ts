@@ -2,7 +2,7 @@
 // LoadingAPI and GameplayAPI markup the moderators check. https://yandex.ru/dev/games/doc/ru/sdk/sdk-about
 
 import type { SaveData } from "../game/save";
-import { BasePlatform, dayNumber, weekNumber, type Board, type BoardName } from "./platform";
+import { BasePlatform, dayNumber, weekNumber, type Board, type BoardName, type Product, type Purchase } from "./platform";
 
 /**
  * Yandex keeps one best score per player and never resets a board, so a trial's board stores period * DAY + score
@@ -21,6 +21,8 @@ export class YandexPlatform extends BasePlatform {
   private sdk: YSDK = null;
   private player: any = null;
   private adOpen = false;
+  /** The payments object (the SDK's own, or from getPayments on older SDKs). */
+  private pay: any = null;
 
   override async init(): Promise<void> {
     this.watchFocus();
@@ -34,6 +36,12 @@ export class YandexPlatform extends BasePlatform {
         this.player = await this.sdk.getPlayer({ scopes: false });
       } catch {
         this.player = null;
+      }
+      // purchases: the payments object (signed: false, the game delivers by itself)
+      try {
+        this.pay = this.sdk.payments ?? (await this.sdk.getPayments({ signed: false }));
+      } catch {
+        this.pay = null;
       }
     } catch (e) {
       console.warn("Yandex SDK unavailable, running without it", e);
@@ -112,6 +120,49 @@ export class YandexPlatform extends BasePlatform {
       return this.player?.getMode?.() !== "lite";
     } catch {
       return false;
+    }
+  }
+  override shopAvailable(): boolean {
+    return !!this.pay;
+  }
+  override async catalog(): Promise<Product[]> {
+    if (!this.pay) return [];
+    try {
+      const list = (await this.pay.getCatalog()) as any[];
+      return list.map((p) => ({
+        id: p.id,
+        title: p.title ?? p.id,
+        price: p.price ?? `${p.priceValue ?? ""}`,
+        priceValue: Number(p.priceValue ?? 0),
+        currencyImage: typeof p.getPriceCurrencyImage === "function" ? p.getPriceCurrencyImage("medium") : "",
+      }));
+    } catch {
+      return [];
+    }
+  }
+  override async buy(id: string): Promise<Purchase | null> {
+    if (!this.pay) return null;
+    try {
+      const p = await this.pay.purchase({ id });
+      return p ? { id: p.productID ?? id, token: p.purchaseToken } : null;
+    } catch {
+      return null;
+    }
+  }
+  override async purchases(): Promise<Purchase[]> {
+    if (!this.pay) return [];
+    try {
+      const list = (await this.pay.getPurchases()) as any[];
+      return list.map((p) => ({ id: p.productID, token: p.purchaseToken }));
+    } catch {
+      return [];
+    }
+  }
+  override async consume(token: string): Promise<void> {
+    try {
+      await this.pay?.consumePurchase(token);
+    } catch {
+      /* consumed next time the game starts (it is delivered again then: see Game.deliverPending) */
     }
   }
   override canShowRewarded(): boolean {

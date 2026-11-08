@@ -7,18 +7,18 @@ import { Batch, rgba, rgbaf, withAlpha, type Lighting, type Renderer } from "../
 import { anim, FONTS, frameAt, icon, type Anim, type Rect } from "../engine/atlas";
 import { heroSprites, initHeroSprites, lookId, type HeroAnim, type HeroSprites } from "./heroSprites";
 import { fitScale, measure, text, wrap } from "../engine/text";
-import { dayNumber, weekNumber, type Board, type BoardName, type Platform } from "../platform/platform";
-import { ACHIEVEMENTS, heroDef, biomeOf, bossOf, combine, floorInfo, stageOf, EL_COLOR, LEGENDS, legendDesc, type WeaponId, EL_NAME, ENEMIES, EVOLUTIONS, evolutionOf, FLOORS, FORGE, questDef, TASK_BONUS, TASKS, type TaskId, HEROES, WEAPONS, weaponName, MODIFIERS, MUTATORS, NO_MODIFIER, REACTIONS, RELIC_MAX, RELIC_SLOTS, RELICS, STATS, type Modifier, type Reaction, type RelicKind, type StatId } from "./defs";
+import { dayNumber, weekNumber, type Board, type BoardName, type Platform, type Product } from "../platform/platform";
+import { ACHIEVEMENTS, heroDef, biomeOf, bossOf, combine, floorInfo, stageOf, EL_COLOR, LEGENDS, legendDesc, type WeaponId, EL_NAME, ENEMIES, EVOLUTIONS, evolutionOf, FLOORS, FORGE, questDef, TASK_BONUS, TASKS, type TaskId, type ForgeId, SHOP, type ShopItem, HEROES, WEAPONS, weaponName, MODIFIERS, MUTATORS, NO_MODIFIER, REACTIONS, RELIC_MAX, RELIC_SLOTS, ARTIFACT_SLOTS, RELICS, STATS, El, fullWeaponName, STAIR_EVENTS, type Outcome, type StairEvent, MYTHIC, PERK_TEXT, RARITIES, UNIQUES, type Modifier, type Reaction, type RelicKind, type StatId } from "./defs";
 import { drawWorld, Scene } from "./draw";
-import { stairwell } from "./stairwell";
+import { ascent } from "./ascent";
 import { getLang, langFor, setLang, t, tx, type Lang } from "./i18n";
 import { Rng } from "./rng";
 import { defaultSave, sanitize, type SaveData } from "./save";
-import { button, slider, C, divider, glow as glowUi, drawHud, drawPointers, drawTouch, fmtTime, frame, header, inset, Menu, panel, para, plate , slot } from "./ui";
-import { CINE_DUR, World } from "./world";
+import { button, slider, C, divider, glow as glowUi, drawHud, drawPointers, drawTouch, fmtTime, frame, header , Menu, panel, para, plate , slot } from "./ui";
+import { CINE_DUR, SRC_ABILITY, SRC_DASH, SRC_ELS, SRC_N, SRC_PARRY, SRC_REACT, SRC_RELIC, SRC_STATUS, SRC_WAVE, SRC_WEAPON, World } from "./world";
 
-type State = "title" | "heroes" | "forge" | "daily" | "records" | "tasks" | "settings" | "card" | "play" | "spin" | "pick" | "pause" | "codex" | "stairs" | "dead" | "won";
-type Choice = { type: "relic"; kind: RelicKind; level: number } | { type: "stat"; id: StatId } | { type: "evo"; kind: RelicKind } | { type: "legend"; weapon: WeaponId };
+type State = "title" | "heroes" | "forge" | "shop" | "daily" | "records" | "tasks" | "settings" | "card" | "play" | "spin" | "pick" | "pause" | "book" | "stairs" | "dead" | "won" | "stats";
+type Choice = { type: "relic"; kind: RelicKind; level: number } | { type: "stat"; id: StatId } | { type: "evo"; kind: RelicKind } | { type: "legend"; weapon: WeaponId } | { type: "rest" };
 
 /**
  * The roulette that picks an upgrade: a reel of badges spins fast, slows down and stops on the winner, which
@@ -48,7 +48,9 @@ interface Pick {
 /** The chest's screen (s): it comes in and shakes, its lid flies up, then the reel rises out of it and spins. */
 const SPIN_LID = 0.42, SPIN_OPEN = 0.62;
 const RELIC_ICON = ["orbit", "lance", "coil", "flask", "halo", "void"];
-const iconKey = (c: Choice) => (c.type === "relic" ? RELIC_ICON[c.kind] : c.type === "evo" ? evolutionOf(c.kind).icon : c.type === "legend" ? `w_${c.weapon}` : c.id);
+/** A big number short: 950, 12.3K, 4.1M (К and М in Russian). */
+const fmtNum = (n: number): string => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}${t("mega")}` : n >= 1e4 ? `${(n / 1e3).toFixed(n >= 1e5 ? 0 : 1)}${t("kilo")}` : String(Math.round(n)));
+const iconKey = (c: Choice) => (c.type === "relic" ? RELIC_ICON[c.kind] : c.type === "evo" ? evolutionOf(c.kind).icon : c.type === "legend" ? `w_${c.weapon}` : c.type === "rest" ? "maxhp" : c.id);
 
 /**
  * Part of a sprite inside a box, nothing outside it: the window (wx, wy) w x h of the sprite's own space (from its
@@ -89,7 +91,14 @@ export class Game {
   private wipe: { t: number; dur: number; out: boolean; then?: () => void } | null = null;
   private cardT = 0;
   private heroIdx = 0;
-  private codexPage = 0;
+  /** The pause's books: which is open, the card opened from it (growing out of its tile) and its live demo. */
+  private bookKind: "evo" | "el" = "el";
+  private card: { idx: number; t: number; dir: 1 | -1; from: [number, number, number, number] } | null = null;
+  private demo: World | null = null;
+  private demoCam: [number, number] = [0, 0];
+  private bookNote = "";
+  private bookNoteT = -9;
+  private bookShake = -1;
   private unlockedAt = -9;
   private claimedAt = -9;
   /** A hero who just earned the victor's colours (the victory screen says so). */
@@ -97,9 +106,20 @@ export class Game {
   /** Achievements earned and waiting to be shown. */
   private toasts: { id: string; t: number }[] = [];
   private startSpins = 0;
+  /** The forge's rerolls left this run, and its second wind (unused). */
+  private rerolls = 0;
+  private secondWind = false;
   /** The stairs taken this run, in order: their changes add up (combine()). */
   private path: Modifier[] = [];
   private stairs: Modifier[] = [];
+  /**
+   * What happens on the climb this time (before the stairs are chosen): the scene, then the roll of the choice made
+   * (its marker sweeping over the odds and stopping), then what came of it. Its floor modifiers hold for the next
+   * floor only; the events met are not met again in the run.
+   */
+  private stairEvent: { ev: StairEvent; phase: "ask" | "roll" | "done"; pick: number; t: number; roll: number; win: boolean; applied: boolean } | null = null;
+  private eventMods: Modifier[] = [];
+  private eventsSeen: string[] = [];
   private revived = false;
   private platformPaused = false;
   private runRng = new Rng(Date.now() & 0xffffff);
@@ -138,6 +158,60 @@ export class Game {
     this.heroIdx = Math.max(0, HEROES.findIndex((h) => h.id === this.save.hero));
     this.newWorld();
     this.attract();
+    // purchases bought but not yet delivered (the game closed mid-way), and lasting ones on a new device
+    void this.deliverPending();
+  }
+
+  // =========================================================================================== the shop
+  /** The platform's catalog, once loaded (null while loading), and what the shop just said. */
+  private catalog: Product[] | null = null;
+  private shopNote = "";
+  private shopBusy = false;
+  /** Give the player what a purchase bought: embers, every hero, or a lasting boon recorded in the save. */
+  private deliver(id: string): void {
+    const item = SHOP.find((q) => q.id === id);
+    if (!item) return;
+    if (item.embers) this.save.embers += item.embers;
+    if (item.lasting && !this.save.purchases.includes(id)) this.save.purchases.push(id);
+    if (id === "heroes_all") for (const hd of HEROES) if (!this.save.unlocked.includes(hd.id)) this.save.unlocked.push(hd.id);
+    this.persist();
+    this.checkAch();
+  }
+  /** Consumables bought but not delivered are delivered and consumed; lasting ones are restored. */
+  private async deliverPending(): Promise<void> {
+    if (!this.platform.shopAvailable()) return;
+    for (const p of await this.platform.purchases()) {
+      const item = SHOP.find((q) => q.id === p.id);
+      if (!item) continue;
+      if (item.lasting) {
+        if (!this.save.purchases.includes(item.id)) this.deliver(item.id);
+      } else {
+        this.deliver(item.id);
+        await this.platform.consume(p.token);
+      }
+    }
+  }
+  private async purchase(item: ShopItem): Promise<void> {
+    if (this.shopBusy) return;
+    this.shopBusy = true;
+    const p = await this.platform.buy(item.id);
+    this.shopBusy = false;
+    if (!p) {
+      this.shopNote = t("shopFail");
+      return;
+    }
+    this.deliver(item.id);
+    if (!item.lasting) await this.platform.consume(p.token);
+    this.shopNote = t("shopThanks");
+    this.audio.play("chest");
+    this.audio.play("levelup", 1.2);
+  }
+  /** 1 when the title menu has the shop's button (the buttons after it move down one). */
+  private get shopSlot(): number {
+    return this.platform.shopAvailable() ? 1 : 0;
+  }
+  private owns(id: string): boolean {
+    return this.save.purchases.includes(id);
   }
 
   /** Volumes from the save into the mixer; the comfort switches are read where they act. */
@@ -147,6 +221,12 @@ export class Game {
   }
   /** Where the settings screen goes back to. */
   private settingsFrom: State = "title";
+  /** The screen the statistics go back to, and the focus to give it. */
+  private statsFrom: [State, number] = ["stairs", 0];
+  private openStats(from: State, focus: number): void {
+    this.statsFrom = [from, focus];
+    this.setState("stats");
+  }
 
   private wearsVictor(id: string): boolean {
     return this.save.skins.includes(id) && this.save.skinOn.includes(id);
@@ -156,6 +236,12 @@ export class Game {
     const hs = heroSprites(), a = hs.anim(lookId(id, victor), heroDef(id).weapon, name);
     for (let f = 0; f < a.poses.length; f++) hs.ready(a, f);
     return a;
+  }
+  /** The hero's frame climbing the stair between floors (null while it is being drawn). */
+  private climbFrame(): Rect | null {
+    const h = this.world.hero, sp = heroSprites(), a = sp.anim(lookId(h.def.id, h.victor), h.weapon, "climb");
+    const f = sp.ready(a, Math.floor(this.now * a.fps) % a.poses.length);
+    return a.frames[f][0];
   }
   /** A hero's frame at time t of an animation, for the menus. */
   private heroFrame(id: string, victor: boolean, name = "idle", t = this.now): Rect {
@@ -208,7 +294,14 @@ export class Game {
           this.showBanner(t("secretOpened"), C.gold);
         }
       },
-      weapon: (id, el) => (heroSprites().prefetch(lookId(this.world.hero.def.id, this.world.hero.victor), id), this.world.hero.legend) ? this.showBanner(tx(LEGENDS[id]), C.gold, t("legendary")) : this.showBanner(tx(weaponName(id, el)), el || WEAPONS[id].el ? rgba(EL_COLOR[el || WEAPONS[id].el!]) : C.gold),
+      weapon: (id, el, rarity) => {
+        heroSprites().prefetch(lookId(this.world.hero.def.id, this.world.hero.victor), id);
+        if (this.world.hero.legend) return this.showBanner(tx(LEGENDS[id]), C.gold, t("legendary"));
+        // its name in its quality's colour; a mythic one says what gift it brings
+        const col = rarity > 0 ? rgba(RARITIES[rarity].color) : el || WEAPONS[id].el ? rgba(EL_COLOR[el || WEAPONS[id].el!]) : C.gold;
+        const sub = rarity >= MYTHIC ? `${RARITIES[rarity].name[getLang() === "ru" ? WEAPONS[id].g : "en"]} · ${tx(PERK_TEXT[UNIQUES[id].perk])}` : rarity > 0 ? `${t("damage")} ×${RARITIES[rarity].dmg}` : undefined;
+        this.showBanner(tx(fullWeaponName(id, el, rarity)), col, sub);
+      },
     }, NO_MODIFIER);
     this.world.numbers = this.save.numbers;
   }
@@ -308,10 +401,22 @@ export class Game {
     w.hero.victor = this.wearsVictor(hero.id);
     // their frames for this weapon, drawn ahead behind the floor's title card
     heroSprites().prefetch(lookId(hero.id, w.hero.victor), hero.weapon);
-    w.hero.maxHp += f.heart ?? 0;
+    // the forge, level by level (each item's step a level: see FORGE)
+    const lv = (id: ForgeId) => f[id] ?? 0, step = (id: ForgeId) => (FORGE.find((q) => q.id === id)!.step * lv(id)) / 100;
+    w.hero.maxHp += lv("heart");
     w.hero.hp = w.hero.maxHp;
-    w.stats.might = hero.might * (1 + 0.1 * (f.might ?? 0));
-    w.stats.magnet *= 1 + 0.25 * (f.reach ?? 0);
+    w.stats.might = hero.might * (1 + step("might"));
+    w.stats.haste *= 1 + step("haste");
+    w.stats.crit += step("crit");
+    w.stats.speed *= 1 + step("swift");
+    w.dodge = step("temper");
+    w.stats.magnet *= 1 + step("reach");
+    w.xpMul = 1 + step("wisdom");
+    w.stats.odGain *= 1 + step("surge");
+    w.stats.dashCd *= 1 - step("dash");
+    w.stats.lantern *= 1 + step("lantern");
+    this.rerolls = lv("reroll");
+    this.secondWind = lv("revive") > 0;
     w.autoAim = true;
     // the week's rule
     let spins = f.start ? 2 : 1;
@@ -324,6 +429,8 @@ export class Game {
     }
     // a day's trial starts on its own stairs, the first on the path
     this.path = this.daily && !this.weekly ? [plan.mod] : [];
+    this.eventMods = [];
+    this.eventsSeen = [];
     w.startFloor(1, combine(this.path), "portal", this.path[0]);
     this.reached(1);
     this.revived = false;
@@ -344,7 +451,10 @@ export class Game {
   /** A run is over: embers, records, the leaderboards, the result screen. */
   private finishRun(won: boolean): void {
     const w = this.world;
-    const embers = Math.round(((w.floor - 1) * 8 + w.kills / 10 + w.embersBonus + (won ? 60 : 0)) * (w.mod.embers ?? 1));
+    // embers are earned slowly: floors cleared and bosses beaten count most, the embers picked up a little, kills
+    // barely; the stairs' reward and the forge's greed multiply it
+    const cleared = w.floor - 1 + (won ? 1 : 0), bosses = Math.floor(cleared / 3), greed = 1 + ((FORGE.find((q) => q.id === "greed")!.step * (this.daily ? 0 : this.save.forge.greed ?? 0)) / 100);
+    const embers = Math.round((cleared * 6 + bosses * 20 + (won ? 50 : 0) + w.embersBonus * 0.35 + w.kills / 80) * (w.mod.embers ?? 1) * greed * (this.owns("embers_double") ? 2 : 1));
     const score = w.floor * 1000 + w.kills * 5 + w.hero.level * 50 + (won ? 5000 : 0);
     let best: boolean;
     if (this.daily) {
@@ -394,6 +504,10 @@ export class Game {
     const pool = [...MODIFIERS];
     this.stairs = [];
     for (let k = 0; k < 2; k++) this.stairs.push(pool.splice(this.runRng.int(0, pool.length - 1), 1)[0]);
+    // most climbs bring something to deal with on the way
+    const fresh = STAIR_EVENTS.filter((e) => !this.eventsSeen.includes(e.id));
+    this.stairEvent = fresh.length && this.runRng.chance(0.75) ? { ev: fresh[this.runRng.int(0, fresh.length - 1)], phase: "ask", pick: -1, t: 0, roll: 0, win: false, applied: false } : null;
+    if (this.stairEvent) this.eventsSeen.push(this.stairEvent.ev.id);
     this.transition(() => this.setState("stairs"));
   }
 
@@ -401,7 +515,9 @@ export class Game {
     this.transition(() => {
       const w = this.world;
       this.path.push(mod);
-      w.startFloor(w.floor + 1, combine(this.path), "stairs", mod);
+      // the climb's own happenings count for the floor above only
+      w.startFloor(w.floor + 1, combine([...this.path, ...this.eventMods]), "stairs", mod);
+      this.eventMods = [];
       this.reached(w.floor);
       this.cardT = 0;
       this.setState("card");
@@ -417,7 +533,23 @@ export class Game {
     }
   }
 
-  private onDeath(): void {
+  private onDeath(quit = false): void {
+    // the forge's second wind: once a run the hero rises with two hearts (not when the player gives up)
+    if (this.secondWind && !quit) {
+      this.secondWind = false;
+      setTimeout(() => {
+        const w = this.world, h = w.hero;
+        if (!h.dead) return;
+        h.dead = false;
+        h.hp = Math.min(h.maxHp, 2);
+        h.invuln = 3;
+        w.bullets.n = 0;
+        w.addFx("heal_ring", h.x, h.y, { tint: rgba("#ffd27a"), glow: 1 });
+        this.audio.play("levelup");
+        this.showBanner(t("secondWind"), C.gold);
+      }, 1200);
+      return;
+    }
     // let the death play out for a moment before the screen
     setTimeout(() => {
       if (this.state !== "play" && this.state !== "pause") return;
@@ -544,7 +676,10 @@ export class Game {
   }
 
   // =========================================================================================== the roulette
-  /** What an upgrade can be right now, with weights: new relics, relic levels and, on a level-up, stats. */
+  /**
+   * What an upgrade can be right now, with weights: new relics, relic levels and, on a level-up, artifacts. A new
+   * relic or artifact only while a slot of its kind is free; the ones held come up more often, to be raised.
+   */
   private pool(relicsOnly: boolean, evolutions = true): [Choice, number][] {
     const w = this.world, out: [Choice, number][] = [];
     // an evolution ready: a chest always gives it, a level-up favours it strongly
@@ -559,13 +694,17 @@ export class Game {
       if (lv === 0 && slotsFree) out.push([{ type: "relic", kind: def.kind, level: 1 }, relicsOnly ? 10 : 6]);
       else if (lv > 0 && lv < RELIC_MAX) out.push([{ type: "relic", kind: def.kind, level: lv + 1 }, relicsOnly ? 12 : 8]);
     }
-    if (!relicsOnly)
+    if (!relicsOnly) {
+      const artFree = w.artifacts.length < ARTIFACT_SLOTS;
       for (const s of STATS) {
         // deflecting bullets is a blade's trick: no use to a bow or a spellbook
         if (s.id === "parry" && WEAPONS[w.hero.weapon].ranged) continue;
-        if ((w.statLevels[s.id] ?? 0) < s.max) out.push([{ type: "stat", id: s.id }, s.weight]);
+        const lv = w.statLevels[s.id] ?? 0;
+        if (lv === 0 ? artFree : lv < s.max) out.push([{ type: "stat", id: s.id }, lv ? s.weight * 1.3 : s.weight]);
       }
-    if (!out.length) for (const id of ["edge", "haste", "speed"] as StatId[]) out.push([{ type: "stat", id }, 1]);
+    }
+    // every slot full and every level taken: a breather instead
+    if (!out.length) out.push([{ type: "rest" }, 1]);
     return out;
   }
   private roll(pool: [Choice, number][]): Choice {
@@ -621,14 +760,15 @@ export class Game {
   }
   private take(c: Choice, kind: Spin["kind"] | Pick["kind"]): void {
     const w = this.world;
-    if (c.type === "relic") w.addRelic(c.kind);
+    if (c.type === "relic") (w.addRelic(c.kind), this.markSeen(`r${c.kind}`));
     else if (c.type === "evo") (w.evolve(c.kind), (this.save.stats[`evo_${c.kind}`] = 1), this.bump("evolve"));
     else if (c.type === "legend") {
       w.makeLegend();
       this.unlock("legend");
       this.showBanner(tx(LEGENDS[c.weapon]), C.gold, t("legendary"));
     }
-    else w.addStat(c.id);
+    else if (c.type === "rest") w.hero.hp = Math.min(w.hero.maxHp, w.hero.hp + 2);
+    else (w.addStat(c.id), this.markSeen(`a:${c.id}`));
     if (kind === "chest") this.bump("chests");
     if (kind === "level") w.pendingLevels = Math.max(0, w.pendingLevels - 1);
     else if (kind === "chest") w.pendingChests = Math.max(0, w.pendingChests - 1);
@@ -725,6 +865,12 @@ export class Game {
     this.audio.theme = w.cine || w.bossIndex() >= 0 ? 3 : w.biome.id === "garden" ? 1 : w.biome.id === "frost" ? 2 : 0;
     if (this.state === "spin") this.updateSpin(dt);
     if (this.state === "pick") this.updatePick(dt);
+    if (this.state === "book" && this.card) {
+      const c = this.card;
+      c.t += dt * c.dir;
+      if (c.dir < 0 && c.t <= 0) (this.card = null), (this.demo = null), this.menu.open(this.now, c.idx);
+      else if (this.demo) this.updateDemo(dt);
+    }
     if (this.state === "play" && !this.platformPaused && !this.wipe) {
       if (input.pressed("pause")) this.setState("pause");
       else {
@@ -756,7 +902,14 @@ export class Game {
     const lead = this.state === "play" ? 18 : 0;
     // during a boss's entrance the camera goes to it and holds, then comes back
     const look = c && c.t < CINE_DUR - 0.45;
-    const tx = look ? c.x - W / 2 : h.x + h.aimX * lead - W / 2, ty = look ? c.y - 30 - H / 2 : h.y - 20 + h.aimY * lead - H / 2;
+    let tx = look ? c.x - W / 2 : h.x + h.aimX * lead - W / 2, ty = look ? c.y - 30 - H / 2 : h.y - 20 + h.aimY * lead - H / 2;
+    // with a boss up the view leans toward it, so the fight (and a floating eye) stays on screen; the hero stays well in
+    const bi = c ? -1 : w.bossIndex();
+    if (bi >= 0 && this.state === "play") {
+      const bx = w.enemies.x[bi] - W / 2, by = w.enemies.y[bi] - 60 - H / 2;
+      tx += Math.max(-W * 0.3, Math.min(W * 0.3, (bx - tx) * 0.4));
+      ty += Math.max(-H * 0.28, Math.min(H * 0.28, (by - ty) * 0.4));
+    }
     const k = 1 - Math.exp(-dt * (c ? 4.5 : 8));
     this.camX += (tx - this.camX) * k;
     this.camY += (ty - this.camY) * k;
@@ -769,26 +922,30 @@ export class Game {
 
   // =========================================================================================== drawing
   private draw(): void {
-    const w = this.world, W = this.r.w, H = this.r.h, s = this.scene, ui = this.ui;
+    // an open card in the books shows its own small world in place of the paused one
+    const demo = this.state === "book" && this.card && this.card.t > 0.3 ? this.demo : null;
+    const w = demo ?? this.world, W = this.r.w, H = this.r.h, s = this.scene, ui = this.ui;
     s.clear();
     ui.clear();
     this.menu.begin();
     const shake = w.shake > 0 && this.state === "play" && this.save.shake ? w.shake * w.shake * 6 : 0;
     const sx = shake ? (Math.random() - 0.5) * shake : 0, sy = shake ? (Math.random() - 0.5) * shake : 0;
     // between floors the floor behind is gone: the stairwell down to the next one takes its place
-    const down = this.state === "stairs" ? stairwell(s, W, H, this.now, biomeOf(w.floor + 1)) : null;
-    const cx = down ? 0 : this.camX + sx, cy = down ? 0 : this.camY + sy;
+    // between floors the floor behind is gone: the climb up to the next one takes its place
+    const climbing = this.state === "stairs" || (this.state === "stats" && this.statsFrom[0] === "stairs");
+    const down = climbing ? ascent(s, W, H, this.now, w.biome, biomeOf(w.floor + 1), this.climbFrame()) : null;
+    const cx = down ? 0 : demo ? this.demoCam[0] : this.camX + sx, cy = down ? 0 : demo ? this.demoCam[1] : this.camY + sy;
     if (!down) drawWorld(s, w, cx, cy, W, H, this.now);
 
-    const dim = this.state !== "play" && this.state !== "title" && !down;
+    const dim = this.state !== "play" && this.state !== "title" && !down && !demo;
     // a choice or a chest dims the floor smoothly, and a choice made lets it light up again as the game goes on
     const over = this.state === "pick" || this.state === "spin";
     const closing = this.pick && this.pick.chosen >= 0 ? Math.min(1, this.pick.t / 0.2) : 0;
-    const dimK = over ? 0.5 * Math.min(1, (this.now - this.menu.openedAt) / 0.16) * (1 - closing) : 0.55;
+    const dimK = over ? 0.5 * Math.min(1, (this.now - this.menu.openedAt) / 0.16) * (1 - closing) : this.state === "stats" ? 0.78 : 0.55;
     const light: Lighting = {
       ambient: down ? down.ambient : [w.ambient * w.biome.ambient[0], w.ambient * w.biome.ambient[1], w.ambient * w.biome.ambient[2]],
       steps: 7,
-      vignette: down ? 0.8 : 0.55,
+      vignette: down ? 0.8 : 0.35,
       tint: w.flash > 0 && this.save.flashes && !down ? [1, 0.95, 0.85] : [0.03, 0.025, 0.06],
       tintK: w.flash > 0 && this.save.flashes && !down ? w.flash * 0.25 : dim ? dimK : 0,
     };
@@ -808,6 +965,7 @@ export class Game {
       case "heroes": this.drawHeroes(); break;
       case "card": this.drawCard(); break;
       case "forge": this.drawForge(); break;
+      case "shop": this.drawShop(); break;
       case "daily": this.drawDaily(); break;
       case "records": this.drawRecords(); break;
       case "tasks": this.drawTasks(); break;
@@ -829,10 +987,11 @@ export class Game {
       case "spin": this.drawSpin(); break;
       case "pick": this.drawPick(); break;
       case "pause": this.drawPause(); break;
-      case "codex": this.drawCodex(); break;
+      case "book": this.drawBook(); break;
       case "stairs": this.drawStairs(); break;
       case "dead": this.drawDead(); break;
       case "won": this.drawWon(); break;
+      case "stats": this.drawStats(); break;
     }
     if (this.state !== "heroes") this.menu.end(this.state === "stairs" || (this.state === "pick" && this.pickRow), this.state !== "settings");
     // a screen comes up out of the dark
@@ -844,7 +1003,7 @@ export class Game {
     if (this.r.canvas.style.cursor !== cursor) this.r.canvas.style.cursor = cursor;
     this.drawToast(this.dt);
     this.drawWipe();
-    this.r.render(s, ui, cx, cy, light, [0.025, 0.02, 0.045], down?.well);
+    this.r.render(s, ui, cx, cy, light, [0.025, 0.02, 0.045]);
   }
 
   /** The world's word to the player (what to do now), on a plate low in the middle: it fades in, holds, fades out. */
@@ -885,7 +1044,8 @@ export class Game {
     const th = this.heading(t("title"), ty, 3);
     text(ui, t("subtitle"), W / 2, ty + th + 2, { align: "center", color: rgba("#c8b8a0"), shadow: C.ink });
     const bw = 160, bh = H >= 300 ? 20 : 17, gap = H >= 300 ? 6 : 4, bx = Math.round(W / 2 - bw / 2);
-    let y = Math.round(Math.min(H * 0.46, H - 34 - 6 * (bh + gap)));
+    const count = this.platform.shopAvailable() ? 7 : 6;
+    let y = Math.round(Math.min(H * 0.46, H - 34 - count * (bh + gap)));
     if (button(ui, this.menu, now, bx, y, bw, bh, t("play"), { primary: true, icon: icon("hud", "play") })) {
       this.audio.unlock();
       this.daily = this.weekly = false;
@@ -909,6 +1069,10 @@ export class Game {
     y += bh + gap;
     if (button(ui, this.menu, now, bx, y, bw, bh, t("forge"), { icon: icon("hud", "anvil") })) this.setState("forge");
     y += bh + gap;
+    if (this.platform.shopAvailable()) {
+      if (button(ui, this.menu, now, bx, y, bw, bh, t("shop"), { color: C.gold, icon: icon("hud", "ember") })) this.openShop();
+      y += bh + gap;
+    }
     if (button(ui, this.menu, now, bx, y, bw, bh, t("records"), { icon: icon("hud", "crown") })) {
       this.recordsTab = "score";
       // the keys start on the tab last open
@@ -1038,6 +1202,14 @@ export class Game {
     const ty = stripY + 22;
     HEROES.forEach((hd, k) => {
       const x = Math.round(W / 2 + (k - (n - 1) / 2) * 34), f = this.heroFrame(hd.id, this.wearsVictor(hd.id), "idle", 0);
+      // a click or a tap on a portrait picks that hero
+      const c = this.input.click;
+      if (c && k !== this.heroIdx && c.x >= x - 16 && c.x < x + 16 && c.y >= ty - 24 && c.y < ty + 8) {
+        this.heroIdx = k;
+        this.world.setHero(HEROES[k]);
+        this.world.hero.victor = this.wearsVictor(HEROES[k].id);
+        this.audio.play("click");
+      }
       slot(ui, x - 14, ty - 22, 28, k === this.heroIdx ? C.gold : undefined);
       if (k === this.heroIdx) ui.rect(x - 13, ty + 5, 26, 1, C.goldDim);
       const own = this.save.unlocked.includes(hd.id);
@@ -1261,8 +1433,7 @@ export class Game {
       }
       y += rh;
     }
-    text(ui, t("settingsHint"), W / 2, y + 6, { font: "mini", align: "center", color: C.dim });
-    if (button(ui, this.menu, now, Math.round(W / 2 - 50), H - 26, 100, 18, t("back"), { icon: icon("hud", "back") }) || this.input.pressed("back")) this.setState(this.settingsFrom, this.settingsFrom === "title" ? 5 : 2);
+    if (button(ui, this.menu, now, Math.round(W / 2 - 50), H - 26, 100, 18, t("back"), { icon: icon("hud", "back") }) || this.input.pressed("back")) this.setState(this.settingsFrom, this.settingsFrom === "title" ? 5 + this.shopSlot : 4);
   }
 
   /** Achievements: a card each, earned ones gilded, the rest dim with how far along; paged to fit the screen. */
@@ -1370,7 +1541,7 @@ export class Game {
       this.drawAchievements(px, y, pw);
       if (button(ui, this.menu, now, Math.round(W / 2 - 50), H - 24, 100, 18, t("back"), { icon: icon("hud", "back") }) || this.input.pressed("back")) {
         this.boards = {};
-        this.setState("title", 4);
+        this.setState("title", 4 + this.shopSlot);
       }
       return;
     }
@@ -1428,7 +1599,7 @@ export class Game {
     });
     if (button(ui, this.menu, now, Math.round(W / 2 - 50), H - 24, 100, 18, t("back"), { icon: icon("hud", "back") }) || this.input.pressed("back")) {
       this.boards = {};
-      this.setState("title", 4);
+      this.setState("title", 4 + this.shopSlot);
     }
   }
 
@@ -1447,40 +1618,128 @@ export class Game {
       }
   }
 
+  private openShop(): void {
+    this.shopNote = "";
+    this.catalog = null;
+    this.setState("shop");
+    void this.platform.catalog().then((c) => (this.catalog = c));
+  }
+  /**
+   * The shop: a card for each product the platform's catalog has, its badge, what it gives and the platform's own
+   * price on the button; lasting ones already bought say so. A note under them thanks, or says it did not go through.
+   */
+  private drawShop(): void {
+    const ui = this.ui, W = this.r.w, H = this.r.h, now = this.now;
+    const th = this.heading(t("shop"), 6, H >= 300 ? 2 : 1);
+    this.purse(W - 8, 8);
+    const top = 6 + th + 8, cat = this.catalog;
+    if (!cat) text(ui, t("shopLoading"), W / 2, H / 2, { align: "center", color: C.dim });
+    else {
+      const items = SHOP.map((it) => [it, cat.find((p) => p.id === it.id)] as const).filter(([, p]) => !!p);
+      if (!items.length) text(ui, t("shopNone"), W / 2, H / 2, { align: "center", color: C.dim });
+      const cols = W >= 560 ? 3 : W >= 380 ? 2 : 1, gap = 8, cw = Math.min(170, Math.floor((W - 20 - (cols - 1) * gap) / cols)), ch = H >= 300 ? 76 : 60;
+      const x0 = Math.round(W / 2 - (cols * cw + (cols - 1) * gap) / 2);
+      items.forEach(([it, p], k) => {
+        const x = x0 + (k % cols) * (cw + gap), y = top + Math.floor(k / cols) * (ch + gap), owned = !!it.lasting && this.owns(it.id);
+        frame(ui, x, y, cw, ch, { edge: it.lasting ? C.gold : undefined });
+        ui.image(icon("items", it.item), x + 25, y + 25);
+        text(ui, tx(it.name), x + 50, y + 7, { color: C.gold, shadow: C.ink });
+        para(ui, tx(it.desc), x + 50, y + 18, cw - 56, C.text, "left", 8, "mini");
+        const label = owned ? t("owned") : p!.price;
+        if (button(ui, this.menu, now, x + 8, y + ch - 22, cw - 16, 16, label, { primary: !owned, disabled: owned || this.shopBusy })) void this.purchase(it);
+      });
+      if (this.shopNote) text(ui, this.shopNote, W / 2, H - 40, { align: "center", color: this.shopNote === t("shopThanks") ? C.green : C.red, shadow: C.ink });
+    }
+    if (button(ui, this.menu, now, Math.round(W / 2 - 50), H - 24, 100, 18, t("back"), { icon: icon("hud", "back") }) || this.input.pressed("back")) this.setState("title", 4);
+  }
+
+  /** The forge item the player is looking at, and how far the list is scrolled. */
+  private forgeSel = 0;
+  private forgeScroll = 0;
+  /**
+   * The forge: a list of every lasting upgrade on the left (its badge, its name, a pip per level), and on the right
+   * the one picked, in full: its badge large, what it does, the level now and what the next gives, the price and the
+   * button. A phone held upright shows the list above and the card below.
+   */
   private drawForge(): void {
     const ui = this.ui, W = this.r.w, H = this.r.h, now = this.now, f = this.save.forge;
-    const pw = Math.min(360, W - 20), px = Math.round(W / 2 - pw / 2);
-    const th = this.heading(t("forgeTitle"), 8, 1);
+    const th = this.heading(t("forgeTitle"), 6, H >= 300 ? 2 : 1);
     this.purse(W - 8, 8);
-    let y = 8 + th + 6;
-    const rowH = Math.min(42, Math.floor((H - y - 34) / FORGE.length));
-    const ICON: Record<string, [string, string]> = { heart: ["hud", "heart"], might: ["icons", "edge"], reach: ["icons", "magnet"], start: ["icons", "orbit"] };
-    for (const item of FORGE) {
-      const lv = f[item.id] ?? 0, maxed = lv >= item.costs.length, cost = item.costs[lv], [atlas, ic] = ICON[item.id] ?? ["hud", "ember"];
-      frame(ui, px, y, pw, rowH - 4, { edge: maxed ? C.goldDim : undefined });
-      // its badge in a well, its name and what it does, a pip per level bought
-      const bs = Math.min(24, rowH - 12);
-      slot(ui, px + 6, y + Math.round((rowH - 4 - bs) / 2), bs);
-      ui.image(icon(atlas, ic), px + 6 + bs / 2, y + Math.round((rowH - 4) / 2), atlas === "icons" ? Math.min(1, (bs - 4) / 20) : 1, atlas === "icons" ? Math.min(1, (bs - 4) / 20) : 1);
-      const tx0 = px + bs + 12;
-      text(ui, tx(item.name), tx0, y + 6, { color: maxed ? C.gold : C.text });
-      text(ui, tx(item.desc), tx0, y + 16, { font: "mini", color: C.dim });
-      for (let q = 0; q < item.costs.length; q++) {
-        inset(ui, tx0 + q * 7, y + rowH - 13, 6, 5);
-        if (q < lv) ui.rect(tx0 + q * 7 + 1, y + rowH - 12, 4, 3, C.gold);
+    const narrow = W < 430, top = 6 + th + 6, bottomBar = H - 28;
+    const listW = narrow ? W - 20 : Math.min(230, Math.floor(W * 0.46)), listX = narrow ? 10 : Math.max(10, Math.round(W / 2 - (listW + 8 + Math.min(260, W - listW - 30)) / 2));
+    const cardX = narrow ? 10 : listX + listW + 8, cardW = narrow ? W - 20 : Math.min(260, W - cardX - 10);
+    const listH = narrow ? Math.floor((bottomBar - top) * 0.48) : bottomBar - top - 4, rowH = 19, rows = Math.max(3, Math.floor((listH - 6) / rowH));
+    const cardY = narrow ? top + listH + 6 : top, cardH = narrow ? bottomBar - cardY - 4 : listH;
+    // keep the picked one in view
+    this.forgeSel = Math.max(0, Math.min(FORGE.length - 1, this.forgeSel));
+    if (this.forgeSel < this.forgeScroll) this.forgeScroll = this.forgeSel;
+    if (this.forgeSel >= this.forgeScroll + rows) this.forgeScroll = this.forgeSel - rows + 1;
+    frame(ui, listX, top, listW, rows * rowH + 6);
+    const buyItem = (k: number) => {
+      const item = FORGE[k], lv = f[item.id] ?? 0, cost = item.costs[lv];
+      if (lv >= item.costs.length || this.save.embers < cost) return void this.audio.play("deny");
+      this.save.embers -= cost;
+      f[item.id] = lv + 1;
+      this.audio.play("chest");
+      this.audio.play("levelup", 1.2);
+      this.forgeFlash = now;
+      this.persist();
+      this.checkAch();
+    };
+    for (let r = 0; r < rows && this.forgeScroll + r < FORGE.length; r++) {
+      const k = this.forgeScroll + r, item = FORGE[k], lv = f[item.id] ?? 0, maxed = lv >= item.costs.length, y = top + 3 + r * rowH;
+      const { focused, hit } = this.menu.item(listX + 3, y, listW - 6, rowH - 1, now);
+      if (focused && this.input.mode !== "touch") this.forgeSel = k;
+      if (hit) k === this.forgeSel ? buyItem(k) : (this.forgeSel = k);
+      const sel = k === this.forgeSel;
+      if (sel) ui.rect(listX + 3, y, listW - 6, rowH - 1, rgba("#3a2e1a", 0.9));
+      if (sel) ui.rect(listX + 3, y, 2, rowH - 1, C.gold);
+      const [atlas, ic] = item.icon;
+      ui.image(icon(atlas, ic), listX + 16, y + rowH / 2, atlas === "icons" ? 0.75 : 1, atlas === "icons" ? 0.75 : 1);
+      text(ui, tx(item.name), listX + 30, y + 2, { color: maxed ? C.gold : sel ? C.goldLight : C.text, shadow: C.ink });
+      // a pip per level
+      const pips = item.costs.length, pw = Math.min(6, Math.floor((listW - 40) / Math.max(1, pips)) - 1);
+      for (let q = 0; q < pips; q++) {
+        const px = listX + 30 + q * (pw + 1);
+        ui.rect(px, y + 13, pw, 3, rgba("#14121c"));
+        if (q < lv) ui.rect(px, y + 13, pw, 3, maxed ? C.gold : rgba("#e8a848"));
       }
-      const label = maxed ? t("owned") : `${cost}`;
-      if (button(ui, this.menu, now, px + pw - 72, y + 7, 64, Math.max(14, rowH - 18), label, { disabled: maxed || this.save.embers < cost, primary: !maxed, icon: maxed ? undefined : icon("hud", "ember") })) {
-        this.save.embers -= cost;
-        f[item.id] = lv + 1;
-        this.audio.play("chest");
-        this.persist();
-        this.checkAch();
+      if (!maxed) {
+        const cost = String(item.costs[lv]), afford = this.save.embers >= item.costs[lv];
+        text(ui, cost, listX + listW - 8, y + 4, { align: "right", font: "mini", color: afford ? C.gold : C.dim });
       }
-      y += rowH;
     }
-    if (button(ui, this.menu, now, Math.round(W / 2 - 50), H - 26, 100, 18, t("back"), { icon: icon("hud", "back") }) || this.input.pressed("back")) this.setState("title", 3);
+    // a little bar that shows where in the list the view is
+    if (FORGE.length > rows) {
+      const bh = Math.max(10, Math.round(((rows * rowH) * rows) / FORGE.length)), by = top + 3 + Math.round(((rows * rowH - bh) * this.forgeScroll) / (FORGE.length - rows));
+      ui.rect(listX + listW - 3, by, 2, bh, C.goldDim);
+    }
+
+    // ---- the card of the one picked
+    const item = FORGE[this.forgeSel], lv = f[item.id] ?? 0, maxed = lv >= item.costs.length, cost = item.costs[lv] ?? 0;
+    const flash = Math.max(0, 1 - (now - this.forgeFlash) / 0.5);
+    frame(ui, cardX, cardY, cardW, cardH, { edge: maxed ? C.gold : undefined });
+    if (flash > 0) glowUi(ui, cardX + cardW / 2, cardY + 30, cardW * 0.4, 30, C.gold, 0.5 * flash);
+    const bx = cardX + (narrow ? 23 : cardW / 2), by = cardY + (narrow ? 23 : 31);
+    if (!narrow) glowUi(ui, bx, by, 30, 26, C.gold, 0.18);
+    ui.image(icon("items", item.item), bx, by);
+    let y = narrow ? cardY + 8 : cardY + 58;
+    const tx0 = narrow ? cardX + 46 : cardX + 12, tw = narrow ? cardW - 56 : cardW - 24, align = narrow ? "left" : "center", mid = narrow ? tx0 : cardX + cardW / 2;
+    text(ui, tx(item.name), mid, y, { align, color: C.gold, shadow: C.ink, scale: narrow ? 1 : 1 });
+    y += 12;
+    y += para(ui, tx(item.desc), tx0, y, tw, C.text, align) + 4;
+    text(ui, `${t("forgeLevel")} ${lv}/${item.costs.length}`, mid, y, { align, font: "mini", color: C.goldDim });
+    y += 10;
+    // what it gives now, and what the next level would
+    const show = (n: number) => (item.unit === "%" ? `+${item.step * n}%` : item.id === "heart" ? `+${n}` : item.id === "reroll" ? `${n}` : n ? t("owned") : "—");
+    if (item.costs.length > 1 || maxed) text(ui, `${t("forgeNow")}: ${show(lv)}${maxed ? "" : `   ${t("forgeNext")}: ${show(lv + 1)}`}`, mid, y, { align, font: "mini", color: C.green });
+    // the price and the button, at the foot of the card
+    const bw = Math.min(150, cardW - 24), bxx = Math.round(cardX + cardW / 2 - bw / 2), byy = cardY + cardH - 24;
+    if (maxed) text(ui, t("forgeMax"), cardX + cardW / 2, byy + 4, { align: "center", color: C.gold, shadow: C.ink });
+    else if (button(ui, this.menu, now, bxx, byy, bw, 18, `${t("forgeBuy")} · ${cost}`, { primary: true, disabled: this.save.embers < cost, icon: icon("hud", "ember") })) buyItem(this.forgeSel);
+    if (button(ui, this.menu, now, Math.round(W / 2 - 50), H - 24, 100, 18, t("back"), { icon: icon("hud", "back") }) || this.input.pressed("back")) this.setState("title", 3);
   }
+  private forgeFlash = -9;
 
   /** The embers the player has, in a small plate at the top right of a screen. */
   private purse(right: number, y: number): void {
@@ -1511,13 +1770,20 @@ export class Game {
       name = tx(def.name);
       desc = c.level === 1 ? tx(def.desc) : tx(def.levels[c.level - 2]);
       // at its last level, the relic says what it evolves with
-      tag = c.level === 1 ? `${t("new")}  ${tx(EL_NAME[def.el])}` : `${t("lv")} ${c.level}${c.level >= RELIC_MAX ? ` ${t("max")} · ${t("evoWith")}: ${tx(STATS.find((q) => q.id === e.stat)!.name)}` : ""}`;
+      tag = c.level === 1 ? `${t("newRelic")} · ${tx(EL_NAME[def.el])}` : `${t("relic")} · ${t("lv")} ${c.level}${c.level >= RELIC_MAX ? ` ${t("max")} · ${t("evoWith")}: ${tx(STATS.find((q) => q.id === e.stat)!.name)}` : ""}`;
       col = rgba(EL_COLOR[def.el]);
+    } else if (c.type === "rest") {
+      name = t("rest");
+      desc = t("restDesc");
+      tag = t("restTag");
+      col = C.red;
     } else {
       const stat = STATS.find((q) => q.id === c.id)!, opens = EVOLUTIONS.some((e) => e.stat === stat.id && w.relicLevel(e.relic) >= RELIC_MAX && !w.evolved(e.relic) && !(w.statLevels[stat.id] ?? 0));
+      const lv = w.statLevels[stat.id] ?? 0;
       name = tx(stat.name);
       desc = tx(stat.desc);
-      tag = `${t("lv")} ${(w.statLevels[stat.id] ?? 0) + 1}/${stat.max}${opens ? ` · ${t("evoKey")}` : ""}`;
+      // a new artifact takes a slot; one held goes up a level
+      tag = (lv ? `${t("artifact")} · ${t("lv")} ${lv + 1}/${stat.max}` : `${t("newArtifact")} · ${w.artifacts.length + 1}/${ARTIFACT_SLOTS}`) + (opens ? ` · ${t("evoKey")}` : "");
       col = opens ? rgba("#fff09a") : C.gold;
     }
     return { name, desc, tag, col };
@@ -1542,7 +1808,7 @@ export class Game {
     const cw = row ? Math.min(156, Math.floor((W - 24 - (n - 1) * gap) / n)) : Math.min(300, W - 24);
     const texts = pk.options.map((c) => this.describe(c));
     const inner = row ? cw - 16 : cw - 58;
-    const heights = texts.map((d) => (row ? 44 : 6) + 9 + wrap(d.name, inner).length * 10 + 5 + wrap(d.desc, inner).length * 10 + 8);
+    const heights = texts.map((d) => (row ? 48 : 6) + 9 + wrap(d.name, inner).length * 10 + 5 + wrap(d.desc, inner).length * 10 + 8);
     const ch = row ? Math.max(...heights) : Math.max(52, ...heights);
     const total = row ? ch : n * ch + (n - 1) * 6, top = Math.max(ty + th + 10, Math.round(ty + th + 10 + (H - 8 - (ty + th + 10) - total) / 2.4));
     pk.options.forEach((c, k) => {
@@ -1565,13 +1831,12 @@ export class Game {
       const d = texts[k], special = c.type === "evo" || c.type === "legend";
       if (focused || taken || special) glowUi(ui, x + cw2 / 2, y + ch2 / 2, cw2 * 0.65, ch2 * 0.7, special ? C.gold : d.col, taken ? 0.5 : 0.22);
       frame(ui, x, y, cw2, ch2, { edge: focused || taken || special ? C.gold : undefined });
-      // the badge: the upgrade's icon at twice its size in a dark socket
-      const r = icon("icons", iconKey(c)), bx = row ? x + cw2 / 2 : x + 26, by = row ? y + 24 : y + ch2 / 2;
-      ui.disc(bx, by, 17, 17, rgba("#07060c", 0.85));
-      ui.disc(bx, by, 16, 16, withAlpha(d.col, 0.18));
+      // the badge: the upgrade's big icon, a glow of its colour behind it
+      const bx = row ? x + cw2 / 2 : x + 26, by = row ? y + 25 : y + ch2 / 2;
+      glowUi(ui, bx, by, 26, 22, d.col, focused ? 0.3 : 0.16);
       const bob = focused && pk.chosen < 0 ? Math.round(Math.sin(now * 5) * 1) : 0;
-      ui.image(r, bx - (r[5] + r[3] / 2) * 2, by + bob - (r[6] + r[4] / 2) * 2, 2, 2);
-      let line = row ? y + 46 : y + 7;
+      ui.image(icon("items", iconKey(c)), bx, by + bob);
+      let line = row ? y + 50 : y + 7;
       const tx0 = row ? x + 8 : x + 50, align = row ? "center" : "left", mid = row ? x + cw2 / 2 : tx0;
       text(ui, d.tag, mid, line, { font: "mini", align, color: d.col });
       line += 9;
@@ -1584,6 +1849,16 @@ export class Game {
       // the flash of the taken card
       if (taken && out < 0.6) ui.rect(x + 2, y + 2, cw2 - 4, ch2 - 4, rgba("#fff6d0", 0.5 * (1 - out / 0.6)));
     });
+    // the forge's reroll: three new cards instead of these (a button under them)
+    if (this.rerolls > 0 && pk.chosen < 0) {
+      const rw = 120, ry = Math.min(H - 24, top + total + 10);
+      if (button(ui, this.menu, now, Math.round(W / 2 - rw / 2), ry, rw, 16, `${t("reroll")} · ${this.rerolls}`, { icon: icon("hud", "scroll") })) {
+        this.rerolls--;
+        pk.options = this.options(pk.kind);
+        this.menu.open(now, 1);
+        this.audio.play("chest");
+      }
+    }
   }
 
   private drawSpin(): void {
@@ -1632,9 +1907,8 @@ export class Game {
       if (x < cx - ww / 2 + 22 || x > cx + ww / 2 - 22) continue;
       const win = landed && j === sp.target;
       const pop = win ? 1 + 0.25 * Math.max(0, 1 - sp.held * 4) * Math.sin(Math.min(1, sp.held * 4) * Math.PI) : 1;
-      const k = 2 * pop, dim = win ? 1 : Math.max(0.35, 1 - d * 0.28);
-      const r = icon("icons", iconKey(sp.reel[j]));
-      ui.image(r, x - (r[5] + r[3] / 2) * k, cy - (r[6] + r[4] / 2) * k, k, k, 0, rgbaf(dim, dim, dim, 1));
+      const k = pop, dim = win ? 1 : Math.max(0.35, 1 - d * 0.28);
+      ui.image(icon("items", iconKey(sp.reel[j])), x, cy, k, k, 0, rgbaf(dim, dim, dim, 1));
     }
     // the frame around the winning slot and the pointers above and below it
     const fx = cx - S / 2 + 1, fw = S - 2, glow = landed ? 0.6 + 0.4 * Math.sin(this.now * 10) : 0;
@@ -1665,9 +1939,102 @@ export class Game {
     }
   }
 
+  /** A source of damage by name and badge (for the statistics). */
+  private sourceOf(src: number): { name: string; ic: Rect } {
+    const w = this.world, h = w.hero;
+    if (src === SRC_WEAPON) return { name: tx(h.legend ? LEGENDS[h.weapon] : fullWeaponName(h.weapon, h.weaponEl, h.rarity)), ic: icon("icons", `w_${h.weapon}`) };
+    if (src >= SRC_RELIC && src < SRC_RELIC + 6) {
+      const kind = (src - SRC_RELIC) as RelicKind, evo = w.evolved(kind);
+      return { name: tx(evo ? evolutionOf(kind).name : RELICS[kind].name), ic: icon("icons", evo ? evolutionOf(kind).icon : RELIC_ICON[kind]) };
+    }
+    const stat = (id: StatId) => tx(STATS.find((q) => q.id === id)!.name);
+    switch (src) {
+      case SRC_DASH: return { name: t("srcDash"), ic: icon("icons", "dashcd") };
+      case SRC_REACT: return { name: t("srcReact"), ic: icon("hud", "curse") };
+      case SRC_STATUS: return { name: t("srcStatus"), ic: icon("hud", "skull") };
+      case SRC_ABILITY: return { name: tx(h.def.ability.name), ic: icon("hud", "overdrive") };
+      case SRC_WAVE: return { name: stat("wave"), ic: icon("icons", "wave") };
+      case SRC_PARRY: return { name: stat("parry"), ic: icon("icons", "parry") };
+      default: return { name: t("srcOther"), ic: icon("hud", "urn") };
+    }
+  }
+
+  /**
+   * The statistics: every source of the run's damage with its share, biggest first, each a bar split into the
+   * colours of the elements it dealt (the weapon's own element shows as its part of the weapon's bar), and the
+   * elements added up under it all.
+   */
+  private drawStats(): void {
+    const ui = this.ui, W = this.r.w, H = this.r.h, now = this.now, w = this.world, D = w.dmgStat;
+    const total = D.reduce((a, b) => a + b, 0);
+    if (this.statsFrom[0] !== "stairs") ui.rect(0, 0, W, H, rgba("#07060c", 0.55));
+    const th = this.heading(t("stats"), 6, H >= 300 ? 2 : 1, C.gold, 1, `${t("statsTotal")}: ${fmtNum(total)}`);
+    const rows: { src: number; sum: number }[] = [];
+    for (let src = 0; src < SRC_N; src++) {
+      let sum = 0;
+      for (let e = 0; e < SRC_ELS; e++) sum += D[src * SRC_ELS + e];
+      if (sum >= 1) rows.push({ src, sum });
+    }
+    rows.sort((a, b) => b.sum - a.sum);
+    const pw = Math.min(420, W - 16), px = Math.round(W / 2 - pw / 2), top = 6 + th + 8, rowH = 23;
+    const room = Math.max(1, Math.floor((H - top - 64) / rowH)), shown = rows.slice(0, room);
+    if (!rows.length) text(ui, t("statsNone"), W / 2, H / 2 - 10, { align: "center", color: C.dim });
+    const max = rows[0]?.sum ?? 1, elCol = (e: number) => rgba(e ? EL_COLOR[e as El] : "#d8d0e8");
+    shown.forEach((r, k) => {
+      const y = top + k * rowH, { name, ic } = this.sourceOf(r.src), appear = Math.min(1, Math.max(0, (now - this.menu.openedAt - k * 0.04) / 0.25));
+      panel(ui, px, y, pw, rowH - 3, k === 0 ? C.goldDim : C.edge);
+      slot(ui, px + 3, y + 1, 18);
+      ui.image(ic, px + 12, y + 10, 0.8, 0.8);
+      text(ui, name, px + 26, y + 3, { color: k === 0 ? C.goldLight : C.gold, shadow: C.ink });
+      const pct = Math.round((r.sum / Math.max(1, total)) * 100);
+      text(ui, `${fmtNum(r.sum)}  ${pct}%`, px + pw - 6, y + 3, { align: "right", font: "mini", color: C.text });
+      // the bar, split by element, growing in as the screen opens
+      const bx = px + 26, bw = pw - 34, full = Math.max(2, Math.round((bw * r.sum) / max * appear)), by = y + 13;
+      ui.rect(bx, by, bw, 4, rgba("#14111c"));
+      let x = bx;
+      for (let e = 0; e < SRC_ELS; e++) {
+        const part = D[r.src * SRC_ELS + e];
+        if (part <= 0) continue;
+        const pwid = Math.max(1, Math.round((full * part) / r.sum));
+        ui.rect(x, by, Math.min(pwid, bx + full - x), 4, elCol(e));
+        ui.rect(x, by, Math.min(pwid, bx + full - x), 1, withAlpha(rgba("#ffffff"), 0.35));
+        x += pwid;
+      }
+    });
+    // the elements, all told
+    const els: [number, number][] = [];
+    for (let e = 0; e < SRC_ELS; e++) {
+      let sum = 0;
+      for (let src = 0; src < SRC_N; src++) sum += D[src * SRC_ELS + e];
+      if (sum >= 1) els.push([e, sum]);
+    }
+    els.sort((a, b) => b[1] - a[1]);
+    if (els.length) {
+      const ly = top + shown.length * rowH + 4, items = els.map(([e, sum]) => `${tx(e ? EL_NAME[e as El] : { ru: t("elPhys"), en: t("elPhys") })} ${Math.round((sum / total) * 100)}%`);
+      let lx = 0;
+      const widths = items.map((str) => measure(str, "mini") + 16), lw = widths.reduce((a, b) => a + b, 0);
+      lx = Math.round(W / 2 - lw / 2);
+      if (lw <= pw) {
+        els.forEach(([e], k) => {
+          ui.rect(lx, ly + 2, 6, 6, C.ink);
+          ui.rect(lx + 1, ly + 3, 4, 4, elCol(e));
+          text(ui, items[k], lx + 9, ly + 1, { font: "mini", color: C.dim });
+          lx += widths[k];
+        });
+      } else
+        els.forEach(([e], k) => {
+          const cx = px + (k % 3) * Math.floor(pw / 3), cy = ly + Math.floor(k / 3) * 10;
+          ui.rect(cx, cy + 2, 6, 6, C.ink);
+          ui.rect(cx + 1, cy + 3, 4, 4, elCol(e));
+          text(ui, items[k], cx + 9, cy + 1, { font: "mini", color: C.dim });
+        });
+    }
+    if (button(ui, this.menu, now, Math.round(W / 2 - 50), H - 24, 100, 18, t("back"), { icon: icon("hud", "back") }) || this.input.pressed("back")) this.setState(...this.statsFrom);
+  }
+
   private drawPause(): void {
     const ui = this.ui, W = this.r.w, H = this.r.h, now = this.now;
-    const bw = 170, bh = 20, gap = 6, ph = 4 * (bh + gap) + 18, py = Math.round(Math.max(H * 0.2 + 30, H / 2 - ph / 2 + 10));
+    const bw = 170, bh = 20, gap = 6, ph = 6 * (bh + gap) + 18, py = Math.round(Math.max(H * 0.2 + 30, H / 2 - ph / 2 + 10));
     this.heading(t("paused"), py - 40, 2);
     frame(ui, W / 2 - bw / 2 - 14, py - 10, bw + 28, ph);
     const bx = Math.round(W / 2 - bw / 2);
@@ -1679,7 +2046,11 @@ export class Game {
       return;
     }
     y += bh + gap;
-    if (button(ui, this.menu, now, bx, y, bw, bh, t("codex"), { icon: icon("hud", "book") })) this.setState("codex");
+    if (button(ui, this.menu, now, bx, y, bw, bh, t("bookEvo"), { icon: icon("hud", "book") })) this.openBook("evo");
+    y += bh + gap;
+    if (button(ui, this.menu, now, bx, y, bw, bh, t("bookEl"), { icon: icon("hud", "curse") })) this.openBook("el");
+    y += bh + gap;
+    if (button(ui, this.menu, now, bx, y, bw, bh, t("stats"), { icon: icon("hud", "trophy") })) this.openStats("pause", 3);
     y += bh + gap;
     if (button(ui, this.menu, now, bx, y, bw, bh, t("settings"), { icon: icon("hud", "gear") })) {
       this.settingsFrom = "pause";
@@ -1690,7 +2061,7 @@ export class Game {
       this.world.hero.hp = 0;
       this.world.hero.dead = true;
       this.setState("play");
-      this.onDeath();
+      this.onDeath(true);
     }
     // the run so far, under the panel
     const w = this.world;
@@ -1698,55 +2069,269 @@ export class Game {
   }
 
 
-  /** The codex: the reactions found so far, or (second page) every evolution's recipe. */
-  private drawCodex(): void {
-    const ui = this.ui, W = this.r.w, H = this.r.h, now = this.now, pw = Math.min(380, W - 16), px = Math.round(W / 2 - pw / 2);
-    const bw = 100, by = H - 26;
-    if (button(ui, this.menu, now, Math.round(W / 2 - bw - 4), by, bw, 18, this.codexPage ? t("codex") : t("evolutions"), { icon: icon("hud", "book") })) this.codexPage = 1 - this.codexPage;
-    if (button(ui, this.menu, now, Math.round(W / 2 + 4), by, bw, 18, t("back"), { icon: icon("hud", "back") }) || this.input.pressed("back")) {
-      this.codexPage = 0;
-      this.setState("pause", 1);
-      return;
-    }
-    if (this.codexPage) {
-      this.heading(t("evolutions"), 8, 1);
-      text(ui, t("evoHint"), W / 2, 22, { font: "mini", align: "center", color: C.dim });
-      text(ui, t("legendHint"), W / 2, H - 36, { font: "mini", align: "center", color: C.goldDim });
-      const rowH = Math.min(34, Math.floor((H - 70) / EVOLUTIONS.length));
-      EVOLUTIONS.forEach((e, k) => {
-        const y = 32 + k * rowH, mine = this.world.evolved(e.relic), relic = RELICS[e.relic], col = rgba(EL_COLOR[relic.el]);
-        panel(ui, px, y, pw, rowH - 2, mine ? C.gold : C.edge);
-        const cy = y + Math.round((rowH - 2) / 2), small = rowH < 26;
-        // relic + upgrade = evolution, as badges
-        const ic = (id: string, x: number) => (small ? ui.image(icon("icons", id), x, cy, 0.5, 0.5) : ui.image(icon("icons", id), x, cy));
-        const step = small ? 14 : 24;
-        ic(RELIC_ICON[e.relic], px + 6 + step / 2);
-        text(ui, "+", px + 6 + step, cy - 3, { font: "mini", color: C.dim });
-        ic(e.stat, px + 10 + step * 1.5);
-        text(ui, "=", px + 10 + step * 2, cy - 3, { font: "mini", color: C.dim });
-        ic(e.icon, px + 14 + step * 2.5);
-        const tx0 = px + 18 + step * 3;
-        text(ui, tx(e.name), tx0, y + 3, { color: col });
-        if (!small) wrap(tx(e.desc), pw - (tx0 - px) - 6, "mini").slice(0, 2).forEach((l, q) => text(ui, l, tx0, y + 14 + q * 8, { font: "mini", color: C.text }));
-        else text(ui, `${tx(relic.name)} + ${tx(STATS.find((q) => q.id === e.stat)!.name)}`, px + pw - 6, y + 4, { font: "mini", align: "right", color: C.dim });
-      });
-      return;
-    }
-    this.heading(t("codex"), 8, 1);
-    const rowH = Math.min(26, Math.floor((H - 60) / REACTIONS.length));
-    REACTIONS.forEach((r, k) => {
-      const y = 26 + k * rowH, known = this.save.reactions.includes(r.id);
-      panel(ui, px, y, pw, rowH - 2);
-      ui.rect(px + 4, y + 4, 3, rowH - 10, known ? rgba(r.color) : C.edge);
-      text(ui, known ? tx(r.name) : t("notDiscovered"), px + 12, y + 4, { color: known ? rgba(r.color) : C.dim });
-      if (rowH >= 22) text(ui, tx(r.desc), px + 12, y + 13, { font: "mini", color: known ? C.text : C.dim });
-      else text(ui, tx(r.desc), px + pw - 6, y + 5, { font: "mini", align: "right", color: known ? C.text : C.dim });
-    });
+  // =========================================================================================== the books
+  private markSeen(key: string): void {
+    if (this.save.seen.includes(key)) return;
+    this.save.seen.push(key);
+    this.persist();
   }
+  private relicKnown(kind: RelicKind): boolean {
+    return this.save.seen.includes(`r${kind}`) || !!this.save.stats[`evo_${kind}`];
+  }
+  private artifactKnown(id: StatId): boolean {
+    return this.save.seen.includes(`a:${id}`) || EVOLUTIONS.some((e) => e.stat === id && this.evoKnown(e.relic));
+  }
+  private evoKnown(kind: RelicKind): boolean {
+    return !!this.save.stats[`evo_${kind}`];
+  }
+  private openBook(kind: "evo" | "el"): void {
+    // what this run holds counts as found, whatever came before the books kept count
+    for (const r of this.world.relics) this.markSeen(`r${r.kind}`);
+    for (const id of this.world.artifacts) this.markSeen(`a:${id}`);
+    this.bookKind = kind;
+    this.card = null;
+    this.demo = null;
+    this.bookNote = "";
+    this.setState("book");
+  }
+  /** Where the open card puts its live demo (win) and its words (pan): side by side, or one over the other. */
+  private cardLayout(): { win: [number, number, number, number]; pan: [number, number, number, number]; wide: boolean } {
+    const W = this.r.w, H = this.r.h, m = 10, wide = W >= H * 1.15;
+    if (wide) {
+      const pw = Math.min(250, Math.round(W * 0.4));
+      return { wide, win: [m, m, W - pw - m * 2 - 6, H - m * 2], pan: [W - m - pw, m, pw, H - m * 2] };
+    }
+    const wh = Math.round(H * 0.44);
+    return { wide, win: [m, m, W - m * 2, wh], pan: [m, m + wh + 6, W - m * 2, H - wh - m * 2 - 6] };
+  }
+  /** A small world of its own for a card: the hero, what the card shows, and foes that keep coming. */
+  private makeDemo(setup: (w: World) => void): World {
+    const quiet = { play() {}, intensity: 0 } as unknown as Audio;
+    const none = new Proxy({}, { get: () => () => {} }) as ConstructorParameters<typeof World>[2];
+    const d = new World(7 + this.bookKind.length, quiet, none, NO_MODIFIER), def = this.world.hero.def;
+    d.setHero(def);
+    d.hero.victor = this.world.hero.victor;
+    d.startFloor(1, NO_MODIFIER);
+    d.hero.arriveT = 9;
+    d.fx = [];
+    d.enemies.n = 0;
+    d.numbers = this.save.numbers;
+    // no waves: the card brings its own foes
+    (d as unknown as { director: () => void }).director = () => {};
+    // the hero in the middle of the roomiest floor nearest the map's middle, room all round for the fight
+    let best = -Infinity, bx = d.hero.x, by = d.hero.y;
+    for (let y = 48; y < d.h - 48; y += 16)
+      for (let x = 48; x < d.w - 48; x += 16) {
+        let open = true;
+        for (let k = 0; k < 16 && open; k++)
+          for (const r of [24, 56, 90]) if (d.map.wall(x + Math.cos((k / 16) * Math.PI * 2) * r, y + Math.sin((k / 16) * Math.PI * 2) * r * 0.8)) (open = false);
+        if (!open) continue;
+        const score = -Math.hypot(x - d.w / 2, y - d.h / 2);
+        if (score > best) (best = score), (bx = x), (by = y);
+      }
+    d.hero.x = bx;
+    d.hero.y = by;
+    setup(d);
+    return d;
+  }
+  private updateDemo(dt: number): void {
+    const d = this.demo!, h = d.hero, E = d.enemies, [wx, wy, ww, wh] = this.cardLayout().win;
+    h.invuln = 5;
+    h.hp = h.maxHp;
+    d.moveX = d.moveY = 0;
+    d.autoAim = true;
+    d.aimTarget = null;
+    h.attacking = false;
+    // foes walk in from round about, a few at a time
+    if (E.n < 9 && this.runRng.chance(dt * 6))
+      for (let tries = 0; tries < 8; tries++) {
+        const a = this.runRng.range(0, Math.PI * 2), r = this.runRng.range(95, 140), x = h.x + Math.cos(a) * r, y = h.y + Math.sin(a) * r * 0.75;
+        if (d.map.wall(x, y) || d.map.wall(x, y + 8)) continue;
+        const j = d.spawnAt(this.runRng.int(0, 2), x, y);
+        if (j >= 0) E.hp[j] = 70 + this.runRng.int(0, 50);
+        break;
+      }
+    const n = Math.max(1, Math.ceil(dt / STEP - 1e-6));
+    for (let k = 0; k < n; k++) d.step(dt / n);
+    this.demoCam = [Math.round(h.x - (wx + ww / 2)), Math.round(h.y - 14 - (wy + wh / 2))];
+  }
+  private openCard(idx: number, from: [number, number, number, number]): void {
+    const kindOf = (el: El) => RELICS.findIndex((r) => r.el === el) as RelicKind;
+    if (this.bookKind === "el") {
+      const r = REACTIONS[idx];
+      this.demo = this.makeDemo((d) => {
+        d.hero.weaponEl = r.a;
+        for (let k = 0; k < 4; k++) d.addRelic(kindOf(r.b));
+        for (let k = 0; k < 3; k++) d.addRelic(kindOf(r.a));
+      });
+    } else {
+      const e = EVOLUTIONS[idx];
+      this.demo = this.makeDemo((d) => {
+        for (let k = 0; k < RELIC_MAX; k++) d.addRelic(e.relic);
+        d.addStat(e.stat);
+        d.evolve(e.relic);
+      });
+    }
+    // a moment of fighting already under way when the window opens
+    for (let k = 0; k < 30; k++) this.updateDemo(1 / 30);
+    this.card = { idx, t: 0, dir: 1, from };
+    this.audio.play("chest");
+  }
+
+  /**
+   * The book of evolutions and the book of elements: a tile for each evolution (its relic + artifact = what it
+   * becomes) or each reaction (its two elements), a question mark for what is not found yet. A found one opens into a
+   * card over the whole screen: a live fight showing it, and beside it how it works.
+   */
+  private drawBook(): void {
+    const ui = this.ui, W = this.r.w, H = this.r.h, now = this.now, evo = this.bookKind === "evo", card = this.card;
+    // a card open in full covers the book: only the card and its window onto the fight
+    if (card && card.t >= 0.32) {
+      this.drawCard2();
+      return;
+    }
+    ui.rect(0, 0, W, H, rgba("#07060c", 0.5));
+    const th = this.heading(evo ? t("bookEvo") : t("bookEl"), 6, H >= 300 ? 2 : 1, C.gold, 1, evo ? t("evoHint") : t("elHint"));
+    const n = evo ? EVOLUTIONS.length : REACTIONS.length, gap = 6, tH = evo ? 84 : 78, minW = evo ? 150 : 86, avail = H - 30 - (6 + th + 8);
+    // as few columns as let the rows fit the height, the tiles never narrower than their badges
+    let cols = evo ? 2 : 3;
+    while (cols < n && Math.ceil(n / cols) * (tH + gap) > avail && Math.floor((W - 16 - cols * gap) / (cols + 1)) >= minW) cols++;
+    const tw = Math.min(evo ? 200 : 118, Math.floor((W - 16 - (cols - 1) * gap) / cols));
+    const rows = Math.ceil(n / cols), x0 = Math.round(W / 2 - (cols * tw + (cols - 1) * gap) / 2);
+    const top = Math.max(6 + th + 8, Math.round(6 + th + 8 + (avail - rows * (tH + gap)) / 2));
+    const elIcon = (el: El) => icon("items", RELIC_ICON[RELICS.findIndex((r) => r.el === el)]);
+    for (let k = 0; k < n; k++) {
+      const x = x0 + (k % cols) * (tw + gap), y = top + Math.floor(k / cols) * (tH + gap);
+      const it = card ? { focused: false, hit: false, idx: -1 } : this.menu.item(x, y, tw, tH, now);
+      const known = evo ? this.evoKnown(EVOLUTIONS[k].relic) : this.save.reactions.includes(REACTIONS[k].id);
+      const shake = this.bookShake === k && now - this.bookNoteT < 0.3 ? Math.round(Math.sin((now - this.bookNoteT) * 60) * 2) : 0;
+      const lift = it.focused ? 2 : 0, rise = card ? 0 : Math.round((1 - this.menu.appear(now, it.idx)) * 10), tx0 = x + shake, ty = y - lift + rise;
+      if (it.focused && known) glowUi(ui, tx0 + tw / 2, ty + tH / 2, tw * 0.6, tH * 0.6, C.gold, 0.2);
+      frame(ui, tx0, ty, tw, tH, { edge: it.focused ? C.gold : known ? C.goldDim : undefined });
+      const mid = tx0 + tw / 2;
+      if (evo) {
+        const e = EVOLUTIONS[k], rk = this.relicKnown(e.relic), ak = this.artifactKnown(e.stat), dim = known ? 0xffffffff : rgbaf(0.75, 0.75, 0.8, 1);
+        ui.image(icon("items", rk ? RELIC_ICON[e.relic] : "unknown"), mid - 52, ty + 25, 1, 1, 0, rk ? 0xffffffff : dim);
+        text(ui, "+", mid - 26, ty + 21, { color: C.dim });
+        ui.image(icon("items", ak ? e.stat : "unknown"), mid, ty + 25, 1, 1, 0, ak ? 0xffffffff : dim);
+        text(ui, "=", mid + 26, ty + 21, { color: C.dim });
+        if (known) glowUi(ui, mid + 52, ty + 25, 22, 22, C.gold, 0.25 + 0.1 * Math.sin(now * 3 + k));
+        ui.image(icon("items", known ? e.icon : "unknown"), mid + 52, ty + 25);
+        text(ui, known ? tx(e.name) : "?", mid, ty + 49, { align: "center", color: known ? rgba(EL_COLOR[RELICS[e.relic].el]) : C.dim, shadow: C.ink });
+        const recipe = `${rk ? tx(RELICS[e.relic].name) : "?"} + ${ak ? tx(STATS.find((q) => q.id === e.stat)!.name) : "?"}`;
+        wrap(recipe, tw - 10, "mini").slice(0, 2).forEach((l, q) => text(ui, l, mid, ty + 61 + q * 8, { font: "mini", align: "center", color: C.dim }));
+      } else {
+        const r = REACTIONS[k], dim = known ? 0xffffffff : rgbaf(0.55, 0.55, 0.6, 1);
+        ui.image(elIcon(r.a), mid - 11, ty + 24, 1, 1, 0, dim);
+        ui.image(elIcon(r.b), mid + 11, ty + 30, 1, 1, 0, dim);
+        if (!known) ui.image(icon("hud", "lock"), mid + 26, ty + 12);
+        text(ui, known ? tx(r.name) : "?", mid, ty + 54, { align: "center", color: known ? rgba(r.color) : C.dim, shadow: C.ink });
+        this.elPair(r.a, r.b, mid, ty + 66);
+      }
+      if (it.hit) {
+        if (known) this.openCard(k, [tx0, ty, tw, tH]);
+        else {
+          this.bookShake = k;
+          this.bookNoteT = now;
+          this.bookNote = evo ? t("evoLocked") : t("elLocked").replace("{a}", tx(EL_NAME[REACTIONS[k].a])).replace("{b}", tx(EL_NAME[REACTIONS[k].b]));
+          this.audio.play("click", 0.6);
+        }
+      }
+    }
+    if (this.bookNote && now - this.bookNoteT < 3) text(ui, this.bookNote, W / 2, H - 36, { font: "mini", align: "center", color: withAlpha(C.red, Math.min(1, 3 - (now - this.bookNoteT))), shadow: C.ink });
+    if (card) {
+      this.drawCard2();
+      return;
+    }
+    const bw = 124, by = H - 24;
+    if (button(ui, this.menu, now, Math.round(W / 2 - bw - 4), by, bw, 18, evo ? t("bookEl") : t("bookEvo"), { icon: icon("hud", "book") })) this.openBook(evo ? "el" : "evo");
+    if (button(ui, this.menu, now, Math.round(W / 2 + 4), by, bw, 18, t("back"), { icon: icon("hud", "back") }) || this.input.pressed("back")) this.setState("pause", evo ? 1 : 2);
+  }
+  /** "FIRE + FROST", each in its colour, centred on x. */
+  private elPair(a: El, b: El, x: number, y: number): void {
+    const A = tx(EL_NAME[a]), B = tx(EL_NAME[b]), wa = measure(A, "mini"), wp = measure(" + ", "mini"), wb = measure(B, "mini"), x0 = Math.round(x - (wa + wp + wb) / 2);
+    text(this.ui, A, x0, y, { font: "mini", color: rgba(EL_COLOR[a]), shadow: C.ink });
+    text(this.ui, " + ", x0 + wa, y, { font: "mini", color: C.dim });
+    text(this.ui, B, x0 + wa + wp, y, { font: "mini", color: rgba(EL_COLOR[b]), shadow: C.ink });
+  }
+  /** The open card: it grows out of its tile to the whole screen, the fight shows through its window, the words fade in. */
+  private drawCard2(): void {
+    const ui = this.ui, W = this.r.w, H = this.r.h, now = this.now, c = this.card!, evo = this.bookKind === "evo";
+    const u = Math.min(1, c.t / 0.32), e = 1 - (1 - u) ** 3, [fx, fy, fw, fh] = c.from;
+    const rx = Math.round(fx + (0 - fx) * e), ry = Math.round(fy + (0 - fy) * e), rw = Math.round(fw + (W - fw) * e), rh = Math.round(fh + (H - fh) * e);
+    const L = this.cardLayout(), [wx, wy, ww, wh] = L.win, [px, py, pw, ph] = L.pan, bg = rgba("#0d0b14");
+    if (u < 1) {
+      ui.rect(rx, ry, rw, rh, bg);
+      frame(ui, rx, ry, rw, rh, { edge: C.gold });
+      return;
+    }
+    // the card round the window: the fight shows through it
+    ui.rect(0, 0, W, wy, bg);
+    ui.rect(0, wy + wh, W, H - wy - wh, bg);
+    ui.rect(0, wy, wx, wh, bg);
+    ui.rect(wx + ww, wy, W - wx - ww, wh, bg);
+    const reveal = Math.min(1, (c.t - 0.32) / 0.3);
+    if (reveal < 1) ui.rect(wx, wy, ww, wh, withAlpha(bg, 1 - reveal));
+    frame(ui, 0, 0, W, H, { edge: C.gold, fill: 0, shadow: false });
+    ui.rect(wx - 1, wy - 1, ww + 2, 1, C.goldDim), ui.rect(wx - 1, wy + wh, ww + 2, 1, C.goldDim);
+    ui.rect(wx - 1, wy, 1, wh, C.goldDim), ui.rect(wx + ww, wy, 1, wh, C.goldDim);
+    // a small sign that the window is live
+    const live = 0.6 + 0.4 * Math.sin(now * 5);
+    ui.rect(wx + 6, wy + 6, 4, 4, rgbaf(1, 0.3, 0.3, live));
+    text(ui, t("demoLive"), wx + 13, wy + 5, { font: "mini", color: C.text, shadow: C.ink });
+    // the words, fading in beside it
+    const a = Math.min(1, (c.t - 0.32) / 0.25), mid = px + pw / 2;
+    let y = py + 8 + Math.round((1 - a) * 6);
+    const col = (k: number) => withAlpha(k, a);
+    if (evo) {
+      const ev = EVOLUTIONS[c.idx], st = STATS.find((q) => q.id === ev.stat)!;
+      ui.image(icon("items", RELIC_ICON[ev.relic]), mid - 52, y + 20, 1, 1, 0, col(0xffffffff));
+      text(ui, "+", mid - 26, y + 16, { color: col(C.dim) });
+      ui.image(icon("items", ev.stat), mid, y + 20, 1, 1, 0, col(0xffffffff));
+      text(ui, "=", mid + 26, y + 16, { color: col(C.dim) });
+      glowUi(ui, mid + 52, y + 20, 24, 24, C.gold, 0.3 * a);
+      ui.image(icon("items", ev.icon), mid + 52, y + 20, 1, 1, 0, col(0xffffffff));
+      y += 46;
+      y += para(ui, tx(ev.name), px + 8, y, pw - 16, col(rgba(EL_COLOR[RELICS[ev.relic].el])), "center") + 2;
+      y += para(ui, `${tx(RELICS[ev.relic].name)} ${t("lv")} ${RELIC_MAX} + ${tx(st.name)}`, px + 8, y, pw - 16, col(C.goldDim), "center", 8, "mini") + 4;
+      divider(ui, mid, y, pw - 30, C.goldDeep);
+      y += 6;
+      text(ui, t("howWorks"), mid, y, { font: "mini", align: "center", color: col(C.gold) });
+      y += 10;
+      y += para(ui, tx(ev.desc), px + 8, y, pw - 16, col(C.text), "center") + 6;
+      text(ui, t("howGet"), mid, y, { font: "mini", align: "center", color: col(C.gold) });
+      y += 10;
+      para(ui, t("evoHow"), px + 8, y, pw - 16, col(C.dim), "center", 8, "mini");
+    } else {
+      const r = REACTIONS[c.idx], el = (x: El) => icon("items", RELIC_ICON[RELICS.findIndex((q) => q.el === x)]);
+      ui.image(el(r.a), mid - 12, y + 20, 1, 1, 0, col(0xffffffff));
+      ui.image(el(r.b), mid + 12, y + 26, 1, 1, 0, col(0xffffffff));
+      y += 52;
+      y += para(ui, tx(r.name), px + 8, y, pw - 16, col(rgba(r.color)), "center") + 2;
+      this.elPair(r.a, r.b, mid, y);
+      y += 12;
+      divider(ui, mid, y, pw - 30, C.goldDeep);
+      y += 6;
+      text(ui, t("howWorks"), mid, y, { font: "mini", align: "center", color: col(C.gold) });
+      y += 10;
+      y += para(ui, tx(r.how ?? r.desc), px + 8, y, pw - 16, col(C.text), "center") + 6;
+      text(ui, `${t("power")} ×${r.mult}   ·   ${r.radius ? t("areaWide") : t("areaOne")}`, mid, y, { font: "mini", align: "center", color: col(C.goldDim) });
+    }
+    const bw = Math.min(140, pw - 16);
+    if (button(ui, this.menu, now, Math.round(mid - bw / 2), py + ph - 26, bw, 18, t("back"), { icon: icon("hud", "back") }) || this.input.pressed("back")) {
+      c.dir = -1;
+      c.t = Math.min(c.t, 0.32);
+      this.audio.play("click", 0.8);
+    }
+  }
+
 
   /** What the stairs taken so far add up to, as two lists of short phrases: the risks and the rewards. */
   private pathSummary(): [string[], string[]] {
-    const m = combine(this.path), risk: string[] = [], gain: string[] = [];
+    return this.modSummary(combine(this.path));
+  }
+  private modSummary(m: Modifier): [string[], string[]] {
+    const risk: string[] = [], gain: string[] = [];
     const num = (v: number) => {
       const str = String(Math.round(v * 100) / 100);
       return getLang() === "ru" ? str.replace(".", ",") : str;
@@ -1764,8 +2349,112 @@ export class Game {
     return [risk, gain];
   }
 
+  /** What an outcome does, in words, each line good (green) or bad (red). */
+  private outcomeLines(o: Outcome): [string, boolean][] {
+    const out: [string, boolean][] = [];
+    if (o.heal) out.push([t("oHeal").replace("{n}", String(o.heal)), true]);
+    if (o.hurt) out.push([t("oHurt").replace("{n}", String(o.hurt)), false]);
+    if (o.maxhp) out.push([t("oMaxhp"), true]);
+    if (o.embers) out.push([t("oEmbers").replace("{n}", String(o.embers)), true]);
+    if (o.level) out.push([t("oLevel"), true]);
+    if (o.chest) out.push([t("oChest"), true]);
+    if (o.sharpen) out.push([t(o.sharpen > 0 ? "oSharpen" : "oDull"), o.sharpen > 0]);
+    if (o.mod) {
+      const [risk, gain] = this.modSummary({ ...NO_MODIFIER, ...o.mod });
+      for (const l of gain) out.push([`${t("oNext")}: ${l}`, true]);
+      for (const l of risk) out.push([`${t("oNext")}: ${l}`, false]);
+    }
+    return out.length ? out : [[t("oNothing"), true]];
+  }
+  /** An outcome comes to pass. */
+  private applyOutcome(o: Outcome): void {
+    const w = this.world, h = w.hero;
+    if (o.heal) h.hp = Math.min(h.maxHp, h.hp + o.heal);
+    if (o.hurt) h.hp = Math.max(1, h.hp - o.hurt);
+    if (o.maxhp) (h.maxHp += o.maxhp), (h.hp += o.maxhp);
+    if (o.embers) (this.save.embers += o.embers), this.persist();
+    if (o.level) w.pendingLevels++;
+    if (o.chest) w.pendingChests++;
+    if (o.sharpen) w.reforge(o.sharpen);
+    if (o.mod) this.eventMods.push({ ...NO_MODIFIER, ...o.mod });
+  }
+  /**
+   * An event on the climb: its scene in words, and its choices side by side, each with its odds and what follows
+   * if it goes well or badly. A choice taken rolls: a marker sweeps over a bar, green as far as the odds, red past
+   * them, slows and stops; then what came of it, and on to the stairs.
+   */
+  private drawEvent(): void {
+    const ui = this.ui, W = this.r.w, H = this.r.h, now = this.now, se = this.stairEvent!, ev = se.ev;
+    se.t += this.dt;
+    const pw = Math.min(460, W - 12), px = Math.round(W / 2 - pw / 2), n = ev.choices.length, gap = 6;
+    const textLines = wrap(tx(ev.text), pw - 20);
+    const colW = se.phase === "ask" ? Math.floor((pw - 16 - (n - 1) * gap) / n) : pw - 16;
+    const descs = ev.choices.map((c) => ({ win: this.outcomeLines(c.win), lose: c.lose ? this.outcomeLines(c.lose) : [] }));
+    const lineCount = (k: number) => [...descs[k].win, ...descs[k].lose].reduce((a, [l]) => a + wrap(l, colW - 6, "mini").length, 0);
+    const choiceH = se.phase === "ask" ? 22 + Math.max(...ev.choices.map((_, k) => lineCount(k))) * 8 + 6 : 64;
+    const ph = 14 + 12 + textLines.length * 10 + 6 + choiceH + 6, py = H - 6 - ph, a = Math.min(1, se.t / 0.25), rise = Math.round((1 - a) * 12);
+    frame(ui, px, py + rise, pw, ph, { edge: C.gold });
+    text(ui, tx(ev.title), W / 2, py + rise + 7, { align: "center", color: C.gold, shadow: C.ink });
+    textLines.forEach((l, k) => text(ui, l, W / 2, py + rise + 21 + k * 10, { align: "center", color: C.text }));
+    const cy = py + rise + 21 + textLines.length * 10 + 6;
+    divider(ui, W / 2, cy - 3, pw - 30, C.goldDeep);
+    if (se.phase === "ask") {
+      ev.choices.forEach((c, k) => {
+        const x = px + 8 + k * (colW + gap), pct = `${Math.round(c.chance * 100)}%`;
+        if (button(ui, this.menu, now, x, cy + 2, colW, 18, `${tx(c.label)} · ${pct}`, { primary: k === 0, color: c.chance >= 1 ? C.text : c.chance >= 0.7 ? C.green : c.chance >= 0.5 ? C.gold : C.red })) {
+          se.pick = k;
+          se.roll = this.runRng.next();
+          se.win = se.roll < c.chance;
+          se.phase = "roll";
+          se.t = 0;
+          this.audio.play("click");
+          this.menu.open(now, 0);
+        }
+        let y = cy + 24;
+        // what follows if it goes well, then (after "or") if it goes badly
+        const put = (lines: [string, boolean][]) => lines.forEach(([l, good]) => wrap(l, colW - 6, "mini").forEach((q) => (text(ui, q, x + colW / 2, y, { font: "mini", align: "center", color: good ? C.green : C.red }), (y += 8))));
+        put(descs[k].win);
+        put(descs[k].lose);
+      });
+      return;
+    }
+    // the roll: the marker sweeps fast, slows and stops on the number drawn
+    const c = ev.choices[se.pick], sure = c.chance >= 1, rollT = sure ? 0 : 1.1, u = Math.min(1, se.t / Math.max(0.01, rollT));
+    const bw = Math.min(260, pw - 40), bx = Math.round(W / 2 - bw / 2), by = cy + 16;
+    text(ui, tx(c.label), W / 2, cy + 3, { align: "center", color: C.goldLight, shadow: C.ink });
+    if (!sure) {
+      ui.rect(bx - 1, by - 1, bw + 2, 8, C.ink);
+      ui.rect(bx, by, Math.round(bw * c.chance), 6, rgba("#2e7a3a"));
+      ui.rect(bx + Math.round(bw * c.chance), by, bw - Math.round(bw * c.chance), 6, rgba("#7a2a2e"));
+      text(ui, `${Math.round(c.chance * 100)}%`, bx + Math.round(bw * c.chance), by + 8, { font: "mini", align: "center", color: C.dim });
+      // the sweep: several passes, easing out onto the roll
+      const e = 1 - (1 - u) ** 3, sweep = e * (3 + se.roll), pos = sweep % 2 < 1 ? sweep % 1 : 1 - (sweep % 1), mx = bx + Math.round(bw * (u >= 1 ? se.roll : pos));
+      ui.rect(mx - 1, by - 4, 3, 14, C.ink);
+      ui.rect(mx, by - 3, 1, 12, rgba("#fff6d0"));
+      if (u < 1 && Math.floor(sweep * 6) !== Math.floor((sweep - this.dt * 3) * 6)) this.audio.play("click", 1.4 + pos * 0.4);
+    }
+    if (u < 1) return;
+    // what came of it (once, as the marker stops)
+    if (!se.applied) {
+      se.applied = true;
+      this.applyOutcome(se.win ? c.win : c.lose ?? {});
+      this.audio.play(se.win ? "levelup" : "hurt", se.win ? 1.3 : 0.8);
+    }
+    const res = se.win ? c.win : c.lose ?? {}, ry = by + (sure ? -2 : 20);
+    if (!sure) text(ui, se.win ? t("evWin") : t("evLose"), W / 2, ry, { align: "center", color: se.win ? C.green : C.red, shadow: C.ink });
+    this.outcomeLines(res).forEach(([l, good], k) => text(ui, l, W / 2, ry + 11 + k * 9, { font: "mini", align: "center", color: good ? C.green : C.red }));
+    if (button(ui, this.menu, now, Math.round(W / 2 - 60), py + ph - 24 + rise, 120, 18, t("onward"), { primary: true, icon: icon("hud", "play") })) {
+      se.phase = "done";
+      this.menu.open(now, 0);
+    }
+  }
+
   private drawStairs(): void {
     const ui = this.ui, W = this.r.w, H = this.r.h, now = this.now;
+    if (this.stairEvent && this.stairEvent.phase !== "done") {
+      this.drawEvent();
+      return;
+    }
     let th = this.heading(t("cleared"), 8, H >= 300 ? 2 : 1, C.gold, 1, t("stairs"));
     // what the path so far adds up to, under the heading: risks in red, rewards in green
     const [risk, gain] = this.pathSummary();
@@ -1779,7 +2468,8 @@ export class Game {
     const vertical = W < 420, n = this.stairs.length;
     const cw = vertical ? Math.min(300, W - 24) : Math.min(210, Math.floor((W - 40) / 2)), inner = cw - 20;
     const ch = Math.max(...this.stairs.map((m) => 22 + (wrap(tx(m.name), inner).length + wrap(tx(m.risk), inner - 10).length + wrap(tx(m.reward), inner - 10).length) * 10 + 26));
-    const total = vertical ? n * ch + 8 : ch, top = Math.max(8 + th + 8, Math.round(8 + th + 8 + (H - 16 - th - 8 - total) / 2));
+    // the cards low on the screen, leaving the climb in view above them
+    const total = vertical ? n * ch + 8 : ch, top = Math.max(8 + th + 8, H - 30 - total);
     this.stairs.forEach((m, k) => {
       const x = vertical ? Math.round(W / 2 - cw / 2) : Math.round(W / 2 - (n * cw + 12) / 2 + k * (cw + 12));
       const { focused, hit, idx } = this.menu.item(x, vertical ? top + k * (ch + 8) : top, cw, ch, now);
@@ -1804,6 +2494,8 @@ export class Game {
       para(ui, tx(m.reward), x + 20, line, inner - 10, C.text);
       if (hit) this.descend(m);
     });
+    // the run's damage so far
+    if (button(ui, this.menu, now, Math.round(W / 2 - 60), H - 24, 120, 18, t("stats"), { icon: icon("hud", "trophy") })) this.openStats("stairs", n);
   }
 
 
@@ -1815,10 +2507,12 @@ export class Game {
     const bw = 190, bh = 20, bx = Math.round(W / 2 - bw / 2);
     if (button(ui, this.menu, now, bx, y, bw, bh, t("again"), { primary: true, icon: icon("hud", "play") })) {
       this.newSkin = "";
-      void this.platform.showInterstitial().then(() => this.startRun());
+      void (this.owns("no_ads") ? Promise.resolve() : this.platform.showInterstitial()).then(() => this.startRun());
       this.setState("title");
       return;
     }
+    y += bh + 6;
+    if (button(ui, this.menu, now, bx, y, bw, bh, t("stats"), { icon: icon("hud", "trophy") })) this.openStats("won", 1);
     y += bh + 6;
     if (button(ui, this.menu, now, bx, y, bw, bh, t("menu"), { icon: icon("hud", "back") })) {
       this.newSkin = "";
@@ -1868,10 +2562,12 @@ export class Game {
       y += bh + 6;
     }
     if (button(ui, this.menu, now, bx, y, bw, bh, t("again"), { primary: true, icon: icon("hud", "play") })) {
-      void this.platform.showInterstitial().then(() => this.startRun());
+      void (this.owns("no_ads") ? Promise.resolve() : this.platform.showInterstitial()).then(() => this.startRun());
       this.setState("title");
       return;
     }
+    y += bh + 6;
+    if (button(ui, this.menu, now, bx, y, bw, bh, t("stats"), { icon: icon("hud", "trophy") })) this.openStats("dead", 0);
     y += bh + 6;
     if (button(ui, this.menu, now, bx, y, bw, bh, t("menu"), { icon: icon("hud", "back") })) {
       this.daily = this.weekly = false;

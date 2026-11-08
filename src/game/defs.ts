@@ -46,17 +46,19 @@ export interface Reaction {
   mult: number;
   radius: number;
   color: string;
+  /** How it goes off and what it does, at length (the book of elements). */
+  how?: Text;
 }
 export const REACTIONS: Reaction[] = [
-  { id: "steam", a: El.Fire, b: El.Frost, name: { ru: "ПАР", en: "STEAM" }, desc: { ru: "ОГОНЬ + ЛЁД: ОБЖИГАЮЩЕЕ ОБЛАКО", en: "FIRE + FROST: A SCALDING CLOUD" }, fx: "poof", mult: 1.4, radius: 40, color: "#e8f0f8" },
-  { id: "overload", a: El.Fire, b: El.Storm, name: { ru: "ПЕРЕГРУЗКА", en: "OVERLOAD" }, desc: { ru: "ОГОНЬ + ГРОЗА: ВЗРЫВ", en: "FIRE + STORM: AN EXPLOSION" }, fx: "explosion", mult: 2.2, radius: 50, color: "#ff9a3a" },
-  { id: "plague", a: El.Fire, b: El.Venom, name: { ru: "ЧУМНОЙ ВЫБРОС", en: "PLAGUE BURST" }, desc: { ru: "ОГОНЬ + ЯД: ЯД РАЗЛЕТАЕТСЯ ПО ТОЛПЕ", en: "FIRE + VENOM: POISON SPRAYS THE CROWD" }, fx: "acid", mult: 1.2, radius: 46, color: "#8ad83a" },
-  { id: "shatter", a: El.Frost, b: El.Storm, name: { ru: "РАСКОЛ", en: "SHATTER" }, desc: { ru: "ЛЁД + ГРОЗА: ТРОЙНОЙ УРОН ПО ЦЕЛИ", en: "FROST + STORM: TRIPLE DAMAGE TO ONE" }, fx: "shatter", mult: 3.5, radius: 0, color: "#c4ecff" },
-  { id: "conduct", a: El.Storm, b: El.Venom, name: { ru: "ПРОВОДНИК", en: "CONDUCT" }, desc: { ru: "ГРОЗА + ЯД: ЯД БЬЁТ ЦЕПЬЮ", en: "STORM + VENOM: POISON ARCS IN A CHAIN" }, fx: "zap", mult: 1.0, radius: 70, color: "#d0ff8a" },
-  { id: "eclipse", a: El.Holy, b: El.Void, name: { ru: "ЗАТМЕНИЕ", en: "ECLIPSE" }, desc: { ru: "СИЯНИЕ + ПУСТОТА: КАРА С НЕБЕС", en: "HOLY + VOID: JUDGEMENT FROM ABOVE" }, fx: "smite", mult: 3, radius: 56, color: "#fff09a" },
-  { id: "rime", a: El.Frost, b: El.Venom, name: { ru: "ИЗМОРОЗЬ", en: "RIME" }, desc: { ru: "ЛЁД + ЯД: ЯД ЗАМОРАЖИВАЕТ", en: "FROST + VENOM: THE POISON FREEZES" }, fx: "hit_frost", mult: 1.2, radius: 34, color: "#9bdcff" },
-  { id: "flare", a: El.Holy, b: El.Fire, name: { ru: "СОЛНЕЧНАЯ ВСПЫШКА", en: "SOLAR FLARE" }, desc: { ru: "СИЯНИЕ + ОГОНЬ: СЛЕПЯЩИЙ ВЗРЫВ", en: "HOLY + FIRE: A BLINDING BLAST" }, fx: "heal_ring", mult: 1.6, radius: 52, color: "#ffe58a" },
-  { id: "rift", a: El.Void, b: El.Storm, name: { ru: "РАЗЛОМ", en: "RIFT" }, desc: { ru: "ПУСТОТА + ГРОЗА: ВРАГОВ ЗАТЯГИВАЕТ", en: "VOID + STORM: ENEMIES ARE PULLED IN" }, fx: "zap", mult: 1.3, radius: 64, color: "#c684ff" },
+  { id: "steam", a: El.Fire, b: El.Frost, name: { ru: "ПАР", en: "STEAM" }, desc: { ru: "ОГОНЬ + ЛЁД: ОБЖИГАЮЩЕЕ ОБЛАКО", en: "FIRE + FROST: A SCALDING CLOUD" }, fx: "poof", mult: 1.4, radius: 40, color: "#e8f0f8", how: { ru: "ЛЁД НА ГОРЯЩЕМ ВРАГЕ ИЛИ ОГОНЬ НА ОБМЁРЗШЕМ ВЗРЫВАЕТСЯ ОБЛАКОМ ПАРА. ОНО ОБЖИГАЕТ ВСЕХ ВОКРУГ ЦЕЛИ, А САМУ ЦЕЛЬ СИЛЬНЕЕ ВСЕХ.", en: "FROST ON A BURNING FOE, OR FIRE ON A CHILLED ONE, BURSTS INTO A CLOUD OF STEAM. IT SCALDS EVERYONE ROUND THE TARGET, THE TARGET HARDEST." } },
+  { id: "overload", a: El.Fire, b: El.Storm, name: { ru: "ПЕРЕГРУЗКА", en: "OVERLOAD" }, desc: { ru: "ОГОНЬ + ГРОЗА: ВЗРЫВ", en: "FIRE + STORM: AN EXPLOSION" }, fx: "explosion", mult: 2.2, radius: 50, color: "#ff9a3a", how: { ru: "ГРОЗА, ПОПАВ В ГОРЯЩЕГО ВРАГА, ИЛИ ОГОНЬ В НАЭЛЕКТРИЗОВАННОГО ВЗРЫВАЕТСЯ. ВЗРЫВ ТЯЖЁЛЫЙ И ШИРОКИЙ: ЛУЧШЕЕ СРЕДСТВО ПРОТИВ ТОЛПЫ.", en: "LIGHTNING ON A BURNING FOE, OR FIRE ON A CHARGED ONE, EXPLODES. A WIDE, HEAVY BLAST: THE BEST ANSWER TO A CROWD." } },
+  { id: "plague", a: El.Fire, b: El.Venom, name: { ru: "ЧУМНОЙ ВЫБРОС", en: "PLAGUE BURST" }, desc: { ru: "ОГОНЬ + ЯД: ЯД РАЗЛЕТАЕТСЯ ПО ТОЛПЕ", en: "FIRE + VENOM: POISON SPRAYS THE CROWD" }, fx: "acid", mult: 1.2, radius: 46, color: "#8ad83a", how: { ru: "ОГОНЬ ПОДЖИГАЕТ ЯД В ОТРАВЛЕННОМ ВРАГЕ. ВСЕ ВОКРУГ ПОЛУЧАЮТ УРОН И САМИ ОТРАВЛЯЮТСЯ, СИЛЬНЕЕ, ЧЕМ ОТ ЛУЖИ.", en: "FIRE LIGHTS THE VENOM IN A POISONED FOE. EVERYONE ROUND IT IS HURT AND POISONED IN TURN, WORSE THAN ANY POOL." } },
+  { id: "shatter", a: El.Frost, b: El.Storm, name: { ru: "РАСКОЛ", en: "SHATTER" }, desc: { ru: "ЛЁД + ГРОЗА: ТРОЙНОЙ УРОН ПО ЦЕЛИ", en: "FROST + STORM: TRIPLE DAMAGE TO ONE" }, fx: "shatter", mult: 3.5, radius: 0, color: "#c4ecff", how: { ru: "ГРОЗА РАЗБИВАЕТ ОБМЁРЗШЕГО ВРАГА. УДАР ТОЛЬКО ПО ОДНОЙ ЦЕЛИ, ЗАТО САМЫЙ СИЛЬНЫЙ И ВСЕГДА КРИТИЧЕСКИЙ: ГИБЕЛЬ ДЛЯ ЭЛИТЫ И БОССОВ.", en: "LIGHTNING SHATTERS A CHILLED FOE. ONE TARGET ONLY, BUT THE STRONGEST BLOW THERE IS, AND ALWAYS A CRITICAL: DEATH TO ELITES AND BOSSES." } },
+  { id: "conduct", a: El.Storm, b: El.Venom, name: { ru: "ПРОВОДНИК", en: "CONDUCT" }, desc: { ru: "ГРОЗА + ЯД: ЯД БЬЁТ ЦЕПЬЮ", en: "STORM + VENOM: POISON ARCS IN A CHAIN" }, fx: "zap", mult: 1.0, radius: 70, color: "#d0ff8a", how: { ru: "ГРОЗА БЬЁТ В ОТРАВЛЕННОГО ВРАГА, И ЯД ПЕРЕСКАКИВАЕТ ЦЕПЬЮ НА ШЕСТЕРЫХ СОСЕДЕЙ: КАЖДОМУ УРОН И НОВАЯ ДОЗА ЯДА.", en: "LIGHTNING ON A POISONED FOE SENDS THE VENOM LEAPING IN A CHAIN TO SIX MORE: DAMAGE AND A NEW DOSE OF POISON FOR EACH." } },
+  { id: "eclipse", a: El.Holy, b: El.Void, name: { ru: "ЗАТМЕНИЕ", en: "ECLIPSE" }, desc: { ru: "СИЯНИЕ + ПУСТОТА: КАРА С НЕБЕС", en: "HOLY + VOID: JUDGEMENT FROM ABOVE" }, fx: "smite", mult: 3, radius: 56, color: "#fff09a", how: { ru: "СИЯНИЕ И ПУСТОТА НА ОДНОМ ВРАГЕ ЗОВУТ КАРУ С НЕБЕС. ОГРОМНЫЙ УРОН ПО ШИРОКОМУ КРУГУ, ОДНА ИЗ САМЫХ СИЛЬНЫХ РЕАКЦИЙ.", en: "HOLY LIGHT AND VOID ON ONE FOE CALL JUDGEMENT FROM ABOVE: HUGE DAMAGE IN A WIDE RING, ONE OF THE STRONGEST REACTIONS." } },
+  { id: "rime", a: El.Frost, b: El.Venom, name: { ru: "ИЗМОРОЗЬ", en: "RIME" }, desc: { ru: "ЛЁД + ЯД: ЯД ЗАМОРАЖИВАЕТ", en: "FROST + VENOM: THE POISON FREEZES" }, fx: "hit_frost", mult: 1.2, radius: 34, color: "#9bdcff", how: { ru: "ЛЁД ЗАМОРАЖИВАЕТ ЯД В ОТРАВЛЕННОМ ВРАГЕ. ВСЕ РЯДОМ ЗАМЕРЗАЮТ НАМЕРТВО НА ПОЛТОРЫ СЕКУНДЫ И ПОЛУЧАЮТ УРОН, А ЗАМЁРЗШИЕ РАНЯТСЯ СИЛЬНЕЕ.", en: "FROST FREEZES THE VENOM IN A POISONED FOE: EVERYONE NEAR IS FROZEN SOLID FOR A SECOND AND A HALF AND HURT, AND THE FROZEN TAKE MORE DAMAGE." } },
+  { id: "flare", a: El.Holy, b: El.Fire, name: { ru: "СОЛНЕЧНАЯ ВСПЫШКА", en: "SOLAR FLARE" }, desc: { ru: "СИЯНИЕ + ОГОНЬ: СЛЕПЯЩИЙ ВЗРЫВ", en: "HOLY + FIRE: A BLINDING BLAST" }, fx: "heal_ring", mult: 1.6, radius: 52, color: "#ffe58a", how: { ru: "ОГОНЬ ВСПЫХИВАЕТ В ОСВЯЩЁННОМ ВРАГЕ. ВСПЫШКА ОБЖИГАЕТ ВСЕХ ВОКРУГ И ОСЛЕПЛЯЕТ: ВРАГИ НА МИГ ЗАМИРАЮТ.", en: "FIRE FLARES IN A SANCTIFIED FOE. THE FLASH BURNS ALL ROUND AND BLINDS: FOES STAND STUNNED FOR A MOMENT." } },
+  { id: "rift", a: El.Void, b: El.Storm, name: { ru: "РАЗЛОМ", en: "RIFT" }, desc: { ru: "ПУСТОТА + ГРОЗА: ВРАГОВ ЗАТЯГИВАЕТ", en: "VOID + STORM: ENEMIES ARE PULLED IN" }, fx: "zap", mult: 1.3, radius: 64, color: "#c684ff", how: { ru: "ГРОЗА РАСКАЛЫВАЕТ ПУСТОТУ В ПРОКЛЯТОМ ВРАГЕ. РАЗЛОМ ТЯНЕТ ВСЕХ ВРАГОВ ВОКРУГ К СЕБЕ И РАНИТ: ОНИ СБИВАЮТСЯ В КУЧУ ПОД СЛЕДУЮЩИЙ УДАР.", en: "LIGHTNING SPLITS THE VOID IN A HEXED FOE. THE RIFT PULLS EVERY FOE AROUND INTO IT AND WOUNDS THEM: THEY BUNCH UP FOR THE NEXT BLOW." } },
 ];
 export function reactionFor(x: El, y: El): Reaction | undefined {
   return REACTIONS.find((r) => (r.a === x && r.b === y) || (r.a === y && r.b === x));
@@ -77,6 +79,10 @@ export enum AI {
   Healer = 10,
   Boss = 11,
   BossFrog = 12,
+  /** The Crypt Warden: a stone knight that walks, cleaves, charges and raises spikes. */
+  Warden = 13,
+  /** The Rotting Treant: rooted, roots out of the ground, spore pods, thorns; walks in its last phase. */
+  Treant = 14,
 }
 export interface EnemyDef {
   id: number;
@@ -129,11 +135,13 @@ const DEFS: Def[] = [
   E({ key: "eye_frost", name: { ru: "МОРОЗНОЕ ОКО", en: "FROST WATCHER" }, anim: "eye_frost", ai: AI.Turret, hp: 84, speed: 16, xp: 6, glow: "#78ccf4", every: 3.4, scale: 0.6 }),
   E({ key: "wisp_frost", name: { ru: "ВЬЮЖНЫЙ ОГОНЁК", en: "BLIZZARD WISP" }, anim: "wisp_frost", ai: AI.Bomber, hp: 22, speed: 60, xp: 3, glow: "#9bdcff", scale: 0.7 }),
   E({ key: "moth_frost", name: { ru: "СНЕЖНЫЙ МОТЫЛЁК", en: "SNOW MOTH" }, anim: "moth_frost", ai: AI.Healer, hp: 30, speed: 46, xp: 5, glow: "#9bdcff", scale: 0.7 }),
-  E({ key: "slime_elite", name: { ru: "КРОВАВЫЙ СЛИЗЕНЬ", en: "BLOOD SLIME" }, anim: "slime_elite", ai: AI.Chase, hp: 150, speed: 36, xp: 15, glow: "#ff3a3a", elite: true, scale: 0.9, hops: true }),
-  E({ key: "skull_elite", name: { ru: "ЧЕРЕП-КОЛДУН", en: "HEX SKULL" }, anim: "skull_elite", ai: AI.Shooter, hp: 200, speed: 42, xp: 20, glow: "#c684ff", elite: true, every: 1.9, shot: 3, scale: 0.7 }),
+  E({ key: "slime_elite", name: { ru: "КРОВАВЫЙ СЛИЗЕНЬ", en: "BLOOD SLIME" }, anim: "slime_elite", ai: AI.Chase, hp: 150, speed: 36, xp: 34, glow: "#ff3a3a", elite: true, scale: 0.9, hops: true }),
+  E({ key: "skull_elite", name: { ru: "ЧЕРЕП-КОЛДУН", en: "HEX SKULL" }, anim: "skull_elite", ai: AI.Shooter, hp: 200, speed: 42, xp: 46, glow: "#c684ff", elite: true, every: 1.9, shot: 3, scale: 0.7 }),
   E({ key: "eye_boss", name: { ru: "ВЕЛИКОЕ ОКО", en: "THE GREAT EYE" }, anim: "eye_boss", ai: AI.Boss, hp: 1700, speed: 22, xp: 100, glow: "#f53cd1", scale: 2, elite: true, title: { ru: "ХРАНИТЕЛЬ СКЛЕПА, ЧТО НЕ СМЫКАЕТ ВЕК", en: "WARDEN OF THE CRYPT, WHO NEVER BLINKS" } }),
   E({ key: "frog_king", name: { ru: "ЖАБИЙ КОРОЛЬ", en: "THE TOAD KING" }, anim: "frog_king", ai: AI.BossFrog, hp: 2800, speed: 0, xp: 140, glow: "#ff8a2a", scale: 2.2, elite: true, title: { ru: "ВЛАДЫКА ТОПКОГО САДА", en: "LORD OF THE SUNKEN GARDEN" } }),
-  E({ key: "eye_void", name: { ru: "ОКО ПУСТОТЫ", en: "THE VOID EYE" }, anim: "eye_void", ai: AI.Boss, hp: 4600, speed: 26, xp: 200, glow: "#78ccf4", scale: 2.3, elite: true, title: { ru: "ТО, ЧТО СМОТРИТ ИЗ-ПОД БАШНИ", en: "WHAT WATCHES FROM BENEATH THE TOWER" } }),
+  E({ key: "warden", name: { ru: "СТРАЖ СКЛЕПА", en: "THE CRYPT WARDEN" }, anim: "warden_0_idle", ai: AI.Warden, hp: 2200, speed: 30, xp: 100, glow: "#78ccf4", scale: 2, elite: true, title: { ru: "КАМЕННЫЙ РЫЦАРЬ, ЧТО СТЕРЕЖЁТ ПРАХ", en: "THE STONE KNIGHT WHO KEEPS THE DUST" } }),
+  E({ key: "treant", name: { ru: "ГНИЮЩИЙ ДРЕВЕНЬ", en: "THE ROTTING TREANT" }, anim: "treant_0_idle", ai: AI.Treant, hp: 3300, speed: 16, xp: 140, glow: "#8ad83a", scale: 2, elite: true, title: { ru: "СТАРЕЙШЕЕ ДЕРЕВО ЗАБЫТОГО САДА", en: "THE ELDEST TREE OF THE LOST GARDEN" } }),
+  E({ key: "eye_void", name: { ru: "ОКО ПУСТОТЫ", en: "THE VOID EYE" }, anim: "voideye_0_idle", ai: AI.Boss, hp: 4600, speed: 26, xp: 200, glow: "#a884ff", scale: 2, elite: true, title: { ru: "ТО, ЧТО СМОТРИТ ИЗ-ПОД БАШНИ", en: "WHAT WATCHES FROM BENEATH THE TOWER" } }),
   // not on any roster: it waits on the floor looking like a chest
   E({ key: "mimic", name: { ru: "МИМИК", en: "MIMIC" }, anim: "mimic", ai: AI.Chase, hp: 240, speed: 62, xp: 30, glow: "#ffd84a", elite: true }),
 ];
@@ -145,7 +153,7 @@ export const EN = {
   snakeIce: id("snake_ice"), skullIce: id("skull_ice"), slimeElite: id("slime_elite"), skullElite: id("skull_elite"),
   snakeMoss: id("snake_moss"), wispSpore: id("wisp_spore"), ghostBog: id("ghost_bog"), batIce: id("bat_ice"), ghostIce: id("ghost_ice"),
   eyeFrost: id("eye_frost"), wispFrost: id("wisp_frost"), mothFrost: id("moth_frost"),
-  eyeBoss: id("eye_boss"), frogKing: id("frog_king"), eyeVoid: id("eye_void"), mimic: id("mimic"),
+  eyeBoss: id("eye_boss"), frogKing: id("frog_king"), eyeVoid: id("eye_void"), warden: id("warden"), treant: id("treant"), mimic: id("mimic"),
 };
 
 // ------------------------------------------------------------------------------------------------ the run
@@ -194,7 +202,8 @@ export const floorInfo = (floor: number) => FLOOR_INFO[Math.max(0, Math.min(FLOO
 /** Where a floor stands in its place: 1 its first look, 2 changed, 3 the height of the change. */
 export const stageOf = (floor: number): number => ((Math.max(1, floor) - 1) % 3) + 1;
 export const biomeOf = (floor: number): Biome => BIOMES[Math.min(BIOMES.length - 1, Math.floor((floor - 1) / 3))];
-export const bossOf = (floor: number): number => (floor === 3 ? EN.eyeBoss : floor === 6 ? EN.frogKing : floor === 9 ? EN.eyeVoid : -1);
+/** Each place's own boss at its end, each one stronger than the last, none met twice. */
+export const bossOf = (floor: number): number => (floor === 3 ? EN.warden : floor === 6 ? EN.treant : floor === 9 ? EN.eyeVoid : -1);
 
 /** The roster of a floor, in three phases, as [enemy, weight]. */
 export function roster(floor: number, phase: number): [number, number][] {
@@ -274,6 +283,8 @@ export const RELICS: RelicDef[] = [
 ];
 export const RELIC_MAX = 5;
 export const RELIC_SLOTS = 5;
+/** Slots for artifacts (the passive upgrades): a new one only while one is free, then only their levels. */
+export const ARTIFACT_SLOTS = 5;
 
 // ------------------------------------------------------------------------------------------------ upgrades
 export type StatId = "edge" | "haste" | "reach" | "wave" | "parry" | "speed" | "maxhp" | "magnet" | "dashcd" | "overdrive" | "crit" | "lantern";
@@ -342,7 +353,7 @@ export function combine(path: readonly Modifier[]): Modifier {
     out.embers += m.embers - 1;
     out.size *= m.size;
   }
-  out.spawn = Math.max(0.6, Math.min(2.25, out.spawn));
+  out.spawn = Math.max(0.6, Math.min(3.4, out.spawn));
   out.xp = Math.max(0.6, out.xp);
   out.speed = Math.min(1.44, out.speed);
   out.dark = Math.min(0.6, out.dark);
@@ -351,18 +362,167 @@ export function combine(path: readonly Modifier[]): Modifier {
   return out;
 }
 
+// ------------------------------------------------------------------------------------------------ stair events
+/**
+ * What may happen on the climb between floors: a scene and two or three things to do, each with its chance of going
+ * well and what follows either way (on the hero now, or on the floor above: a modifier for that floor alone).
+ */
+export interface Outcome {
+  heal?: number;
+  hurt?: number;
+  maxhp?: number;
+  embers?: number;
+  /** A level-up at the start of the floor above. */
+  level?: boolean;
+  chest?: boolean;
+  /** The weapon in hand a quality better (or, negative, worse). */
+  sharpen?: number;
+  /** For the floor above only. */
+  mod?: Partial<Pick<Modifier, "spawn" | "speed" | "dark" | "elites" | "xp" | "embers" | "size">>;
+}
+export interface EventChoice {
+  label: Text;
+  /** 0..1: the chance it goes well. */
+  chance: number;
+  win: Outcome;
+  lose?: Outcome;
+}
+export interface StairEvent {
+  id: string;
+  title: Text;
+  text: Text;
+  choices: EventChoice[];
+}
+const LEAVE: EventChoice = { label: { ru: "ИДТИ ДАЛЬШЕ", en: "WALK ON" }, chance: 1, win: {} };
+export const STAIR_EVENTS: StairEvent[] = [
+  {
+    id: "gap", title: { ru: "ПРОВАЛ В СТУПЕНЯХ", en: "A GAP IN THE STAIR" },
+    text: { ru: "ПРОЛЁТ ВПЕРЕДИ ОБРУШИЛСЯ. ЧЕРЕЗ ПРОВАЛ МОЖНО ПЕРЕПРЫГНУТЬ - ИЛИ ПОЙТИ В ОБХОД ПО ТЁМНОМУ КАРНИЗУ.", en: "THE FLIGHT AHEAD HAS FALLEN IN. YOU CAN JUMP THE GAP, OR GO ROUND BY A DARK LEDGE." },
+    choices: [
+      { label: { ru: "ПЕРЕПРЫГНУТЬ", en: "JUMP IT" }, chance: 0.7, win: { mod: { xp: 1.25 } }, lose: { hurt: 1 } },
+      { label: { ru: "ПО КАРНИЗУ", en: "TAKE THE LEDGE" }, chance: 1, win: { mod: { dark: 0.15 } } },
+    ],
+  },
+  {
+    id: "altar", title: { ru: "ЗАБЫТЫЙ АЛТАРЬ", en: "A FORGOTTEN ALTAR" },
+    text: { ru: "НА ПЛОЩАДКЕ ТЛЕЕТ АЛТАРЬ, НА НЁМ ОГАРКИ СВЕЧЕЙ И ГОРСТЬ УГЛЕЙ.", en: "AN ALTAR SMOULDERS ON THE LANDING, CANDLE ENDS AND A HANDFUL OF EMBERS ON IT." },
+    choices: [
+      { label: { ru: "ПОМОЛИТЬСЯ", en: "PRAY" }, chance: 0.6, win: { heal: 2 }, lose: { mod: { speed: 1.15 } } },
+      { label: { ru: "ВЗЯТЬ УГЛИ", en: "TAKE THE EMBERS" }, chance: 0.85, win: { embers: 15 }, lose: { mod: { dark: 0.2 } } },
+      LEAVE,
+    ],
+  },
+  {
+    id: "chest", title: { ru: "СУНДУК НА СТУПЕНЯХ", en: "A CHEST ON THE STEPS" },
+    text: { ru: "ОКОВАННЫЙ СУНДУК, А ВОКРУГ НЕГО В КАМНЕ ГЛУБОКИЕ ЦАРАПИНЫ ОТ ЛЕЗВИЙ.", en: "AN IRON-BOUND CHEST, AND ROUND IT DEEP SCORES OF BLADES IN THE STONE." },
+    choices: [
+      { label: { ru: "ВСКРЫТЬ", en: "FORCE IT" }, chance: 0.55, win: { chest: true }, lose: { hurt: 2 } },
+      { label: { ru: "ОБЕЗВРЕДИТЬ ЛОВУШКУ", en: "DISARM THE TRAP" }, chance: 0.8, win: { embers: 20 }, lose: { hurt: 1 } },
+      LEAVE,
+    ],
+  },
+  {
+    id: "wanderer", title: { ru: "РАНЕНЫЙ СТРАННИК", en: "A WOUNDED WANDERER" },
+    text: { ru: "ОН СИДИТ У СТЕНЫ, ПРИЖИМАЯ К ГРУДИ ПОГАСШИЙ ФОНАРЬ, И ПРОСИТ ПОМОЧЬ ЕМУ ПОДНЯТЬСЯ.", en: "HE SITS BY THE WALL, A DEAD LANTERN CLUTCHED TO HIS CHEST, AND ASKS YOU TO HELP HIM UP." },
+    choices: [
+      { label: { ru: "ПОМОЧЬ", en: "HELP HIM" }, chance: 0.75, win: { maxhp: 1 }, lose: { mod: { elites: 1.5 } } },
+      { label: { ru: "ЗАБРАТЬ ЕГО ФЛЯГУ", en: "TAKE HIS FLASK" }, chance: 1, win: { heal: 2, mod: { dark: 0.1 } } },
+    ],
+  },
+  {
+    id: "voices", title: { ru: "ГОЛОСА СВЕРХУ", en: "VOICES FROM ABOVE" },
+    text: { ru: "СВЕРХУ ДОНОСИТСЯ ШЁПОТ. МОЖНО ПОЙТИ НА ЗВУК - ИЛИ ЗАТАИТЬСЯ И ПЕРЕЖДАТЬ.", en: "A WHISPER COMES DOWN FROM ABOVE. YOU CAN FOLLOW THE SOUND, OR HIDE AND WAIT." },
+    choices: [
+      { label: { ru: "ИДТИ НА ЗВУК", en: "FOLLOW IT" }, chance: 0.5, win: { level: true }, lose: { mod: { spawn: 1.3 } } },
+      { label: { ru: "ЗАТАИТЬСЯ", en: "HIDE" }, chance: 1, win: { mod: { spawn: 0.85, xp: 0.9 } } },
+    ],
+  },
+  {
+    id: "rubble", title: { ru: "ОБВАЛ", en: "A ROCKFALL" },
+    text: { ru: "ПРОЛЁТ ЗАВАЛЕН КАМНЯМИ, А ПОД НИМИ ЧТО-ТО ТЕПЛИТСЯ.", en: "THE FLIGHT IS CHOKED WITH STONES, AND SOMETHING GLOWS UNDER THEM." },
+    choices: [
+      { label: { ru: "РАЗОБРАТЬ", en: "DIG IT OUT" }, chance: 0.65, win: { embers: 25 }, lose: { hurt: 1 } },
+      { label: { ru: "ПРОТИСНУТЬСЯ", en: "SQUEEZE PAST" }, chance: 1, win: { mod: { size: 0.85 } } },
+    ],
+  },
+  {
+    id: "smith", title: { ru: "КУЗНЕЦ-ПРИЗРАК", en: "THE GHOST SMITH" },
+    text: { ru: "ТЕНЬ КУЗНЕЦА БЬЁТ МОЛОТОМ ПО ПУСТОЙ НАКОВАЛЬНЕ И ПРОТЯГИВАЕТ РУКУ К ТВОЕМУ ОРУЖИЮ.", en: "A SMITH'S SHADE HAMMERS AN EMPTY ANVIL, AND REACHES FOR YOUR WEAPON." },
+    choices: [
+      { label: { ru: "ДАТЬ ПЕРЕКОВАТЬ", en: "LET HIM REFORGE IT" }, chance: 0.6, win: { sharpen: 1 }, lose: { sharpen: -1 } },
+      { label: { ru: "ПОПРОСИТЬ ЗАТОЧИТЬ", en: "ASK FOR AN EDGE" }, chance: 0.9, win: { mod: { xp: 1.1 }, embers: 5 }, lose: { mod: { speed: 1.1 } } },
+      LEAVE,
+    ],
+  },
+  {
+    id: "mirror", title: { ru: "ЗЕРКАЛО ВО ТЬМЕ", en: "A MIRROR IN THE DARK" },
+    text: { ru: "В НИШЕ СТОИТ ЗЕРКАЛО. ОТРАЖЕНИЕ УЛЫБАЕТСЯ НЕ ТАК, КАК ТЫ.", en: "A MIRROR STANDS IN A NICHE. YOUR REFLECTION SMILES NOT QUITE AS YOU DO." },
+    choices: [
+      { label: { ru: "ВГЛЯДЕТЬСЯ", en: "LOOK DEEP" }, chance: 0.45, win: { level: true, heal: 1 }, lose: { hurt: 1, mod: { dark: 0.2 } } },
+      { label: { ru: "РАЗБИТЬ", en: "BREAK IT" }, chance: 0.8, win: { embers: 10 }, lose: { mod: { elites: 1.3 } } },
+    ],
+  },
+];
+
 // ------------------------------------------------------------------------------------------------ the forge
+export type ForgeId = "heart" | "might" | "haste" | "crit" | "swift" | "temper" | "reach" | "wisdom" | "greed" | "surge" | "dash" | "lantern" | "reroll" | "start" | "revive";
+/**
+ * A lasting upgrade, bought with embers between runs, level by level, each dearer than the last. `step` is what a
+ * level adds (in `unit`), so the forge can say what the next one gives.
+ */
 export interface ForgeItem {
-  id: "heart" | "might" | "reach" | "start";
+  id: ForgeId;
   name: Text;
   desc: Text;
+  step: number;
+  unit: "%" | "";
   costs: number[];
+  icon: [string, string];
+  /** Its big badge in the "items" atlas animation. */
+  item: string;
 }
 export const FORGE: ForgeItem[] = [
-  { id: "heart", name: { ru: "ЖИВУЧЕСТЬ", en: "VITALITY" }, desc: { ru: "+1 СЕРДЦЕ НА СТАРТЕ", en: "+1 STARTING HEART" }, costs: [40, 120] },
-  { id: "might", name: { ru: "МОЩЬ", en: "MIGHT" }, desc: { ru: "+10% ВСЕГО УРОНА", en: "+10% ALL DAMAGE" }, costs: [30, 80, 160] },
-  { id: "reach", name: { ru: "ПРИТЯЖЕНИЕ", en: "PULL" }, desc: { ru: "+25% РАДИУС СБОРА", en: "+25% PICKUP RANGE" }, costs: [25, 70] },
-  { id: "start", name: { ru: "НАСЛЕДИЕ", en: "LEGACY" }, desc: { ru: "ВТОРАЯ РЕЛИКВИЯ НА СТАРТЕ", en: "A SECOND RELIC AT THE START" }, costs: [100] },
+  { id: "heart", name: { ru: "ЖИВУЧЕСТЬ", en: "VITALITY" }, desc: { ru: "СЕРДЦА СВЕРХ ТЕХ, С КОТОРЫМИ ГЕРОЙ НАЧИНАЕТ ЗАБЕГ", en: "HEARTS ON TOP OF THOSE THE HERO STARTS A RUN WITH" }, step: 1, unit: "", costs: [150, 450, 1200], icon: ["hud", "heart"], item: "maxhp" },
+  { id: "might", name: { ru: "МОЩЬ", en: "MIGHT" }, desc: { ru: "УРОН ОТ ВСЕГО: ОРУЖИЯ, РЕЛИКВИЙ, СТИХИЙ, СПОСОБНОСТИ", en: "DAMAGE FROM EVERYTHING: WEAPON, RELICS, ELEMENTS, ABILITY" }, step: 6, unit: "%", costs: [80, 140, 220, 330, 480, 680, 950, 1300], icon: ["icons", "edge"], item: "edge" },
+  { id: "haste", name: { ru: "ЛЁГКАЯ РУКА", en: "QUICK HAND" }, desc: { ru: "УДАРЫ И ВЫСТРЕЛЫ ЧАЩЕ", en: "BLOWS AND SHOTS COME FASTER" }, step: 5, unit: "%", costs: [120, 260, 480, 800, 1300], icon: ["icons", "haste"], item: "haste" },
+  { id: "crit", name: { ru: "УДАЧА", en: "FORTUNE" }, desc: { ru: "ШАНС КРИТИЧЕСКОГО УДАРА", en: "CRITICAL HIT CHANCE" }, step: 4, unit: "%", costs: [180, 420, 800, 1400], icon: ["icons", "crit"], item: "crit" },
+  { id: "swift", name: { ru: "ПРОВОРСТВО", en: "AGILITY" }, desc: { ru: "ГЕРОЙ БЕГАЕТ БЫСТРЕЕ", en: "THE HERO RUNS FASTER" }, step: 4, unit: "%", costs: [120, 280, 560, 1000], icon: ["icons", "speed"], item: "speed" },
+  { id: "temper", name: { ru: "ЗАКАЛКА", en: "TEMPERING" }, desc: { ru: "ШАНС, ЧТО УДАР ПО ГЕРОЮ ОТРАЗИТСЯ", en: "CHANCE A BLOW AT THE HERO IS TURNED ASIDE" }, step: 6, unit: "%", costs: [200, 450, 900, 1600], icon: ["icons", "parry"], item: "parry" },
+  { id: "reach", name: { ru: "ПРИТЯЖЕНИЕ", en: "PULL" }, desc: { ru: "РАДИУС, С КОТОРОГО ЛЕТЯТ КРИСТАЛЛЫ И СЕРДЦА", en: "THE REACH THAT DRAWS GEMS AND HEARTS IN" }, step: 15, unit: "%", costs: [60, 150, 320, 600], icon: ["icons", "magnet"], item: "magnet" },
+  { id: "wisdom", name: { ru: "МУДРОСТЬ", en: "WISDOM" }, desc: { ru: "БОЛЬШЕ ОПЫТА С КАЖДОГО КРИСТАЛЛА", en: "MORE EXPERIENCE FROM EVERY GEM" }, step: 6, unit: "%", costs: [100, 220, 400, 700, 1100], icon: ["hud", "xp"], item: "wisdom" },
+  { id: "greed", name: { ru: "АЛЧНОСТЬ", en: "GREED" }, desc: { ru: "БОЛЬШЕ УГЛЕЙ ЗА КАЖДЫЙ ЗАБЕГ", en: "MORE EMBERS FROM EVERY RUN" }, step: 8, unit: "%", costs: [150, 350, 700, 1200, 2000], icon: ["hud", "ember"], item: "greed" },
+  { id: "surge", name: { ru: "ВЫБРОС", en: "SURGE" }, desc: { ru: "СПОСОБНОСТЬ ГЕРОЯ КОПИТСЯ БЫСТРЕЕ", en: "THE HERO'S ABILITY CHARGES FASTER" }, step: 10, unit: "%", costs: [150, 350, 700, 1200], icon: ["icons", "overdrive"], item: "overdrive" },
+  { id: "dash", name: { ru: "ВЕТЕР", en: "WIND" }, desc: { ru: "РЫВОК ПЕРЕЗАРЯЖАЕТСЯ БЫСТРЕЕ", en: "THE DASH RECHARGES FASTER" }, step: 8, unit: "%", costs: [150, 400, 900], icon: ["icons", "dashcd"], item: "dashcd" },
+  { id: "lantern", name: { ru: "ФОНАРЬ", en: "LANTERN" }, desc: { ru: "СВЕТ ГЕРОЯ ШИРЕ", en: "THE HERO'S LIGHT REACHES FURTHER" }, step: 10, unit: "%", costs: [80, 200, 450], icon: ["icons", "lantern"], item: "lantern" },
+  { id: "reroll", name: { ru: "ПЕРЕБРОС", en: "REROLL" }, desc: { ru: "РАЗ ЗА ЗАБЕГ ЗАМЕНИТЬ ТРИ КАРТОЧКИ УЛУЧШЕНИЙ НОВЫМИ", en: "SWAP THE THREE UPGRADE CARDS FOR NEW ONES, ONCE A RUN" }, step: 1, unit: "", costs: [300, 800, 1600], icon: ["hud", "scroll"], item: "reroll" },
+  { id: "start", name: { ru: "НАСЛЕДИЕ", en: "LEGACY" }, desc: { ru: "ВТОРАЯ РЕЛИКВИЯ НА ВЫБОР В НАЧАЛЕ ЗАБЕГА", en: "A SECOND RELIC OF YOUR CHOICE AT THE START" }, step: 1, unit: "", costs: [1500], icon: ["icons", "orbit"], item: "start" },
+  { id: "revive", name: { ru: "ВТОРОЕ ДЫХАНИЕ", en: "SECOND WIND" }, desc: { ru: "РАЗ ЗА ЗАБЕГ ГЕРОЙ ВСТАЁТ С ДВУМЯ СЕРДЦАМИ", en: "ONCE A RUN THE HERO RISES AGAIN WITH TWO HEARTS" }, step: 1, unit: "", costs: [2500], icon: ["hud", "crown"], item: "revive" },
+];
+/** Every level the forge sells, all told. */
+export const FORGE_LEVELS = FORGE.reduce((n, f) => n + f.costs.length, 0);
+
+// ------------------------------------------------------------------------------------------------ the shop
+/**
+ * What the shop sells (on Yandex Games: in-app purchases with these ids, set up in the console; their prices come
+ * from the platform's catalog). Ember packs are consumables, delivered and consumed; the rest last.
+ */
+export interface ShopItem {
+  id: string;
+  name: Text;
+  desc: Text;
+  embers?: number;
+  lasting?: boolean;
+  icon: [string, string];
+  /** Its big badge in the "items" atlas animation. */
+  item: string;
+}
+export const SHOP: ShopItem[] = [
+  { id: "embers_500", name: { ru: "ГОРСТЬ УГЛЕЙ", en: "A HANDFUL OF EMBERS" }, desc: { ru: "500 УГЛЕЙ ДЛЯ КУЗНИЦЫ И ГЕРОЕВ", en: "500 EMBERS FOR THE FORGE AND HEROES" }, embers: 500, icon: ["hud", "ember"], item: "embers_s" },
+  { id: "embers_1500", name: { ru: "МЕШОК УГЛЕЙ", en: "A SACK OF EMBERS" }, desc: { ru: "1500 УГЛЕЙ", en: "1500 EMBERS" }, embers: 1500, icon: ["hud", "ember"], item: "embers_m" },
+  { id: "embers_4000", name: { ru: "СУНДУК УГЛЕЙ", en: "A CHEST OF EMBERS" }, desc: { ru: "4000 УГЛЕЙ: ВЫГОДНЕЕ ВСЕГО", en: "4000 EMBERS: THE BEST VALUE" }, embers: 4000, icon: ["hud", "ember"], item: "embers_l" },
+  { id: "embers_double", name: { ru: "ВЕЧНЫЙ ЖАР", en: "EVERLASTING HEAT" }, desc: { ru: "ВСЕ УГЛИ ЗА ЗАБЕГИ ×2 НАВСЕГДА", en: "EMBERS FROM EVERY RUN ×2, FOR GOOD" }, lasting: true, icon: ["hud", "anvil"], item: "heat" },
+  { id: "heroes_all", name: { ru: "ВСЕ ГЕРОИ", en: "EVERY HERO" }, desc: { ru: "СРАЗУ ОТКРЫВАЕТ ВСЕХ ГЕРОЕВ", en: "UNLOCKS EVERY HERO AT ONCE" }, lasting: true, icon: ["hud", "crown"], item: "heroes" },
+  { id: "no_ads", name: { ru: "БЕЗ РЕКЛАМЫ", en: "NO ADS" }, desc: { ru: "НИКАКОЙ РЕКЛАМЫ МЕЖДУ ЗАБЕГАМИ", en: "NO ADS BETWEEN RUNS" }, lasting: true, icon: ["hud", "mute"], item: "noads" },
 ];
 
 // ------------------------------------------------------------------------------------------------ evolutions
@@ -408,7 +568,7 @@ export const QUESTS: QuestDef[] = [
   { kind: "untouched", from: 1, name: { ru: "НИ ЦАРАПИНЫ", en: "UNTOUCHED" }, goal: { ru: "ЗАЖГИ ЖАРОВНЮ, НЕ ПОЛУЧИВ НИ ОДНОГО УДАРА", en: "LIGHT A BRAZIER WITHOUT TAKING A SINGLE HIT" } },
   { kind: "swift", from: 1, name: { ru: "БЫСТРЫЕ НОГИ", en: "SWIFT FEET" }, goal: { ru: "ЗАЖГИ ВСЕ ЖАРОВНИ, ПОКА НЕ ВЫШЛО ВРЕМЯ", en: "LIGHT EVERY BRAZIER BEFORE TIME RUNS OUT" } },
   { kind: "bounty", from: 2, name: { ru: "НАГРАДА ЗА ГОЛОВУ", en: "BOUNTY" }, goal: { ru: "УБЕЙ МЕЧЕНУЮ ЭЛИТУ, ПОКА ОНА НЕ УШЛА", en: "SLAY THE MARKED ELITE BEFORE IT ESCAPES" } },
-  { kind: "graze", from: 2, name: { ru: "ТАНЕЦ СО СНАРЯДАМИ", en: "BOLT DANCE" }, goal: { ru: "ЗАДЕНЬ {n} СНАРЯДОВ, НЕ ПОПАДАЯ ПОД НИХ", en: "GRAZE {n} BOLTS WITHOUT BEING HIT" } },
+  { kind: "graze", from: 2, name: { ru: "ТАНЕЦ СО СНАРЯДАМИ", en: "BOLT DANCE" }, goal: { ru: "ЗАДЕНЬ ИЛИ ОТБЕЙ {n} СНАРЯДОВ, НЕ ПОПАДАЯ ПОД НИХ", en: "GRAZE OR STOP {n} BOLTS WITHOUT BEING HIT" } },
   { kind: "alchemy", from: 2, name: { ru: "АЛХИМИЯ", en: "ALCHEMY" }, goal: { ru: "ВЫЗОВИ {n} РЕАКЦИИ СТИХИЙ", en: "SET OFF {n} REACTIONS" } },
 ];
 export const questDef = (kind: QuestKind): QuestDef => QUESTS.find((q) => q.kind === kind)!;
@@ -431,7 +591,7 @@ export const TASKS: TaskDef[] = [
   { id: "evolve", name: { ru: "ПОЛУЧИ ЭВОЛЮЦИЮ", en: "EVOLVE A RELIC" }, goals: [1], reward: 70 },
   { id: "spirits", name: { ru: "ВЫПОЛНИ {n} ЗАДАНИЯ ДУХОВ", en: "COMPLETE {n} SPIRIT QUESTS" }, goals: [2, 3], reward: 45 },
   { id: "chests", name: { ru: "ОТКРОЙ {n} СУНДУКОВ", en: "OPEN {n} CHESTS" }, goals: [2, 4], reward: 35 },
-  { id: "grazes", name: { ru: "ЗАДЕНЬ {n} СНАРЯДОВ", en: "GRAZE {n} BOLTS" }, goals: [100, 150], reward: 35 },
+  { id: "grazes", name: { ru: "ЗАДЕНЬ ИЛИ ОТБЕЙ {n} СНАРЯДОВ", en: "GRAZE OR STOP {n} BOLTS" }, goals: [100, 150], reward: 35 },
   { id: "secrets", name: { ru: "ВСКРОЙ ТАЙНИКИ В СТЕНАХ: {n}", en: "BREAK OPEN HIDDEN CACHES: {n}" }, goals: [1, 2], reward: 40 },
   { id: "trial", name: { ru: "ДОЙДИ ДО {n} ЭТАЖА В ИСПЫТАНИИ ДНЯ", en: "REACH FLOOR {n} IN THE DAILY TRIAL" }, goals: [2], reward: 45 },
 ];
@@ -492,7 +652,7 @@ export const ACHIEVEMENTS: AchDef[] = [
   { id: "urns", icon: ["hud", "urn"], reward: 20, stat: "urns", goal: 100, name: { ru: "ГОНЧАРНЫЙ ПОГРОМ", en: "POTTERY RAMPAGE" }, desc: { ru: "РАЗБЕЙ 100 УРН", en: "BREAK 100 URNS" } },
   { id: "grazes", icon: ["hud", "stamina"], reward: 20, stat: "grazes", goal: 500, name: { ru: "ТАНЕЦ СРЕДИ СНАРЯДОВ", en: "DANCER AMONG BOLTS" }, desc: { ru: "ЗАДЕНЬ 500 СНАРЯДОВ", en: "GRAZE 500 BOLTS" } },
   { id: "heroes", icon: ["hud", "lock"], reward: 50, stat: "heroesKnown", goal: 6, name: { ru: "ПОЛНЫЙ ОТРЯД", en: "THE FULL COMPANY" }, desc: { ru: "ОТКРОЙ ВСЕХ ГЕРОЕВ", en: "UNLOCK EVERY HERO" } },
-  { id: "forge", icon: ["hud", "anvil"], reward: 40, stat: "forgeLevels", goal: 8, name: { ru: "КУЗНЕЦ", en: "SMITH" }, desc: { ru: "КУПИ ВСЁ В КУЗНИЦЕ", en: "BUY EVERYTHING IN THE FORGE" } },
+  { id: "forge", icon: ["hud", "anvil"], reward: 200, stat: "forgeLevels", goal: FORGE_LEVELS, name: { ru: "КУЗНЕЦ", en: "SMITH" }, desc: { ru: "КУПИ ВСЁ В КУЗНИЦЕ", en: "BUY EVERYTHING IN THE FORGE" } },
   { id: "tasks", icon: ["hud", "daily"], reward: 25, name: { ru: "ПРИЛЕЖНЫЙ", en: "DILIGENT" }, desc: { ru: "ВЫПОЛНИ ВСЕ ТРИ ЗАДАНИЯ ДНЯ", en: "COMPLETE ALL THREE DAILY TASKS" } },
   { id: "trial", icon: ["hud", "daily"], reward: 25, name: { ru: "ИСПЫТАННЫЙ", en: "TRIED AND TRUE" }, desc: { ru: "ДОЙДИ ДО 3 ЭТАЖА В ИСПЫТАНИИ ДНЯ", en: "REACH FLOOR 3 IN THE DAILY TRIAL" } },
 ];
@@ -653,6 +813,65 @@ export function weaponName(id: WeaponId, el: El): Text {
   return { ru: `${a[W.g]} ${W.name.ru}`, en: `${a.en} ${W.name.en}` };
 }
 
+// ------------------------------------------------------------------------------------------------ weapon quality
+/**
+ * How good a weapon found on an altar is: more damage and quicker blows the rarer it is. The odds of a better one
+ * rise floor by floor, and an armoury behind a cracked wall holds nothing below rare. A mythic weapon is always one
+ * of a kind: a variant of its weapon found at no other quality, with its own name, element and gift (UNIQUES).
+ */
+export interface Rarity {
+  name: { m: string; f: string; n: string; pl: string; en: string };
+  color: string;
+  dmg: number;
+  speed: number;
+}
+export const RARITIES: Rarity[] = [
+  { name: { m: "ОБЫЧНЫЙ", f: "ОБЫЧНАЯ", n: "ОБЫЧНОЕ", pl: "ОБЫЧНЫЕ", en: "COMMON" }, color: "#c8c4d4", dmg: 1, speed: 1 },
+  { name: { m: "ДОБРОТНЫЙ", f: "ДОБРОТНАЯ", n: "ДОБРОТНОЕ", pl: "ДОБРОТНЫЕ", en: "FINE" }, color: "#7ee88a", dmg: 1.2, speed: 1.04 },
+  { name: { m: "РЕДКИЙ", f: "РЕДКАЯ", n: "РЕДКОЕ", pl: "РЕДКИЕ", en: "RARE" }, color: "#58a8ff", dmg: 1.45, speed: 1.08 },
+  { name: { m: "ЭПИЧЕСКИЙ", f: "ЭПИЧЕСКАЯ", n: "ЭПИЧЕСКОЕ", pl: "ЭПИЧЕСКИЕ", en: "EPIC" }, color: "#c684ff", dmg: 1.75, speed: 1.12 },
+  { name: { m: "МИФИЧЕСКИЙ", f: "МИФИЧЕСКАЯ", n: "МИФИЧЕСКОЕ", pl: "МИФИЧЕСКИЕ", en: "MYTHIC" }, color: "#ffae35", dmg: 2.1, speed: 1.16 },
+];
+export const MYTHIC = 4;
+/** A rarity for a weapon found on `floor`; `bonus` for better places (an armoury). r01 is a roll in 0..1. */
+export function rollRarity(r01: number, floor: number, bonus = 0): number {
+  const x = r01 + floor * 0.055 + bonus;
+  return x < 0.5 ? 0 : x < 0.78 ? 1 : x < 0.95 ? 2 : x < 1.2 ? 3 : 4;
+}
+export type Perk = "crit" | "reach" | "haste" | "vamp";
+export interface UniqueWeapon {
+  name: Text;
+  /** Its element (None: the weapon's own, or the spellbook's three). */
+  el: El;
+  perk: Perk;
+}
+export const PERK_TEXT: Record<Perk, Text> = {
+  crit: { ru: "+15% ШАНС КРИТА", en: "+15% CRIT CHANCE" },
+  reach: { ru: "+25% ДАЛЬНОСТИ", en: "+25% REACH" },
+  haste: { ru: "+20% СКОРОСТИ АТАК", en: "+20% ATTACK SPEED" },
+  vamp: { ru: "КАЖДЫЕ 30 УБИЙСТВ - СЕРДЦЕ", en: "A HEART EVERY 30 KILLS" },
+};
+export const UNIQUES: Record<WeaponId, UniqueWeapon> = {
+  sword: { name: { ru: "РАССВЕТНЫЙ КЛИНОК", en: "DAWNBLADE" }, el: El.Holy, perk: "crit" },
+  hammer: { name: { ru: "ГРОМОВЕРЖЕЦ", en: "THUNDERER" }, el: El.Storm, perk: "reach" },
+  spear: { name: { ru: "ЖАЛО ЗМЕЯ", en: "SERPENT'S STING" }, el: El.Venom, perk: "haste" },
+  scythe: { name: { ru: "ЖНИЦА ПУСТОТЫ", en: "VOID REAPER" }, el: El.Void, perk: "vamp" },
+  daggers: { name: { ru: "КЛЫКИ ВЬЮГИ", en: "BLIZZARD FANGS" }, el: El.Frost, perk: "haste" },
+  greatsword: { name: { ru: "ПЛАМЯ ВЕЛИКАНА", en: "GIANT'S FLAME" }, el: El.Fire, perk: "reach" },
+  claws: { name: { ru: "КОГТИ ЗАТМЕНИЯ", en: "ECLIPSE CLAWS" }, el: El.Void, perk: "crit" },
+  whip: { name: { ru: "ПЛЕТЬ ПРЕИСПОДНЕЙ", en: "HELL'S LASH" }, el: El.None, perk: "vamp" },
+  bow: { name: { ru: "ЗАКАТНЫЙ ЛУК", en: "SUNSET BOW" }, el: El.Fire, perk: "crit" },
+  spell: { name: { ru: "КНИГА ПЕПЛА", en: "BOOK OF ASHES" }, el: El.None, perk: "reach" },
+};
+/** A weapon's name with its quality: "РЕДКИЙ ЛЕДЯНОЙ МЕЧ", or a mythic one's own name. */
+export function fullWeaponName(id: WeaponId, el: El, rarity: number): Text {
+  if (rarity >= MYTHIC) return UNIQUES[id].name;
+  const base = weaponName(id, el);
+  if (rarity <= 0) return base;
+  const r = RARITIES[rarity].name;
+  return { ru: `${r[WEAPONS[id].g]} ${base.ru}`, en: `${r.en} ${base.en}` };
+}
+
 // ------------------------------------------------------------------------------------------------ heroes
 export type HeroId = "knight" | "ranger" | "mage" | "reaper" | "berserker" | "shadow";
 export interface HeroDef {
@@ -688,7 +907,7 @@ export const HEROES: HeroDef[] = [
 
   },
   {
-    id: "ranger", cost: 60, name: { ru: "СЛЕДОПЫТ", en: "RANGER" }, title: { ru: "ЛУК, КОЖА И ЛЁГКИЙ ШАГ", en: "BOW, LEATHER, A LIGHT STEP" },
+    id: "ranger", cost: 300, name: { ru: "СЛЕДОПЫТ", en: "RANGER" }, title: { ru: "ЛУК, КОЖА И ЛЁГКИЙ ШАГ", en: "BOW, LEATHER, A LIGHT STEP" },
     perk: { ru: "ДВА РЫВКА ПОДРЯД, БЕГАЕТ БЫСТРЕЕ, СТРЕЛЫ ПРОБИВАЮТ +1", en: "TWO DASHES, FASTER FEET, ARROWS PIERCE +1" },
     weapon: "bow", hearts: 4, speed: 1.12, dashCd: 3.2, dashes: 2, lantern: 1, light: "lantern", lightColor: [1, 0.85, 0.6],
     might: 0.9, haste: 1.15, crit: 0.1,
@@ -696,7 +915,7 @@ export const HEROES: HeroDef[] = [
 
   },
   {
-    id: "mage", cost: 90, name: { ru: "ЧАРОДЕЙКА", en: "SORCERESS" }, title: { ru: "ОГОНЬ, ЛЁД И ГРОЗА", en: "FIRE, ICE AND STORM" },
+    id: "mage", cost: 500, name: { ru: "ЧАРОДЕЙКА", en: "SORCERESS" }, title: { ru: "ОГОНЬ, ЛЁД И ГРОЗА", en: "FIRE, ICE AND STORM" },
     perk: { ru: "ЗАКЛИНАНИЯ ЧЕРЕДУЮТ СТИХИИ И САМИ ВЫЗЫВАЮТ РЕАКЦИИ", en: "HER SPELLS TAKE TURNS AND SET OFF REACTIONS" },
     weapon: "spell", hearts: 4, speed: 0.98, dashCd: 3.5, dashes: 1, lantern: 1, light: "wisp", lightColor: [0.55, 0.85, 1],
     might: 1.15, haste: 0.95, crit: 0.05,
@@ -704,7 +923,7 @@ export const HEROES: HeroDef[] = [
 
   },
   {
-    id: "reaper", cost: 140, name: { ru: "ЖНЕЦ", en: "REAPER" }, title: { ru: "КОСА И ЗЕЛЁНЫЙ ОГОНЬ ДУШ", en: "A SCYTHE AND GREEN SOUL-FIRE" },
+    id: "reaper", cost: 800, name: { ru: "ЖНЕЦ", en: "REAPER" }, title: { ru: "КОСА И ЗЕЛЁНЫЙ ОГОНЬ ДУШ", en: "A SCYTHE AND GREEN SOUL-FIRE" },
     perk: { ru: "ЖАТВА: КАЖДЫЕ 25 УБИЙСТВ ВОЗВРАЩАЮТ СЕРДЦЕ", en: "HARVEST: EVERY 25 KILLS GIVE A HEART BACK" },
     weapon: "scythe", hearts: 5, speed: 0.95, dashCd: 3.8, dashes: 1, lantern: 1, light: "wisp", lightColor: [0.55, 1, 0.6],
     might: 1.1, haste: 0.9, crit: 0.08,
@@ -712,7 +931,7 @@ export const HEROES: HeroDef[] = [
 
   },
   {
-    id: "berserker", cost: 180, name: { ru: "БЕРСЕРК", en: "BERSERKER" }, title: { ru: "БРОНЗА, МЕХ И ЯРОСТЬ", en: "BRONZE, FUR AND FURY" },
+    id: "berserker", cost: 1100, name: { ru: "БЕРСЕРК", en: "BERSERKER" }, title: { ru: "БРОНЗА, МЕХ И ЯРОСТЬ", en: "BRONZE, FUR AND FURY" },
     perk: { ru: "ЯРОСТЬ: ЧЕМ МЕНЬШЕ СЕРДЕЦ, ТЕМ СИЛЬНЕЕ УДАРЫ (ДО +70%)", en: "FURY: THE FEWER HEARTS, THE HARDER THE BLOWS (UP TO +70%)" },
     weapon: "greatsword", hearts: 7, speed: 0.95, dashCd: 4, dashes: 1, lantern: 0.95, light: "lantern", lightColor: [1, 0.7, 0.45],
     might: 1.25, haste: 0.85, crit: 0.05,
@@ -720,7 +939,7 @@ export const HEROES: HeroDef[] = [
 
   },
   {
-    id: "shadow", cost: 240, name: { ru: "ТЕНЬ", en: "SHADE" }, title: { ru: "КОГТИ ИЗ СУМРАКА", en: "CLAWS OUT OF THE DUSK" },
+    id: "shadow", cost: 1500, name: { ru: "ТЕНЬ", en: "SHADE" }, title: { ru: "КОГТИ ИЗ СУМРАКА", en: "CLAWS OUT OF THE DUSK" },
     perk: { ru: "+20% КРИТА, РЫВОК РЕЖЕТ ВСЕХ НА ПУТИ", en: "+20% CRIT, THE DASH CUTS ALL IN ITS WAY" },
     weapon: "claws", hearts: 4, speed: 1.15, dashCd: 2.8, dashes: 2, lantern: 0.9, light: "wisp", lightColor: [0.8, 0.5, 1],
     might: 0.85, haste: 1.3, crit: 0.25,

@@ -39,6 +39,12 @@ cells.forEach(({ m }, n) => {
       for (let y = 0; y < K; y++) for (let x = 0; x < K; x++) put(ox + c * K + x, oy + r * K + y, col);
     }
   for (let y = -2; y <= 2; y++) for (let x = -2; x <= 2; x++) put(ox + m.start[0] * K + 2 + x, oy + m.start[1] * K + 2 + y, [60, 220, 90]);
+  // a boss's arena, outlined in red
+  if (m.arena) {
+    const a = m.arena;
+    for (let x = a.x * K; x < (a.x + a.w) * K; x++) (put(ox + x, oy + a.y * K, [230, 60, 60]), put(ox + x, oy + (a.y + a.h) * K - 1, [230, 60, 60]));
+    for (let y = a.y * K; y < (a.y + a.h) * K; y++) (put(ox + a.x * K, oy + y, [230, 60, 60]), put(ox + (a.x + a.w) * K - 1, oy + y, [230, 60, 60]));
+  }
   for (const [x, y] of m.columns) for (let q = 0; q < 2; q++) for (let p = 0; p < 2; p++) put(ox + Math.floor((x / 16) * K) + p, oy + Math.floor((y / 16) * K) + q, [255, 255, 255]);
   console.log(`floor ${cells[n].f + 1} ${cells[n].plan.gen.padEnd(5)} ${m.cols}x${m.rows}  floor tiles ${floor}  areas ${m.areas.length}  columns ${m.columns.length}`);
 });

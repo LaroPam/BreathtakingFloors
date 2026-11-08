@@ -100,7 +100,21 @@ void main() {
   else if (v_layer > -1.5) { float d = clamp(1.0 - length(v_local), 0.0, 1.0); t = vec4(1.0, 1.0, 1.0, d * d); }
   else if (v_layer > -2.5) { if (dot(v_local, v_local) > 1.0) discard; t = vec4(1.0); }
   else t = vec4(1.0);
-  vec3 rgb = mix(t.rgb * v_color.rgb, vec3(1.0), v_flash);
+  // a negative flash is a sprite materialising (-u, u from 0 to 1): its texels appear one by one in a scattered
+  // order, each first as grey matter, then taking its colour; the newest glint pale
+  if (tex && v_flash < 0.0) {
+    float u = -v_flash;
+    vec2 texel = floor(v_uv * vec2(textureSize(u_tex, 0).xy));
+    float n = fract(sin(dot(texel, vec2(12.9898, 78.233))) * 43758.5453) * 0.8 + (0.5 - v_local.y * 0.5) * 0.2;
+    if (n > u * 1.05) discard;
+    float l = dot(t.rgb, vec3(0.299, 0.587, 0.114));
+    vec3 grey = mix(vec3(l), vec3(0.62, 0.6, 0.68), 0.45);
+    float k = clamp((u * 1.05 - n) / 0.35, 0.0, 1.0);
+    t.rgb = mix(grey, t.rgb, k * k);
+    if (u * 1.05 - n < 0.05) t.rgb = mix(t.rgb, vec3(0.9, 0.9, 0.95), 0.6);
+  }
+  // a flash of 2 or more is a solid silhouette in the tint's colour (a boss's red outline before its blow)
+  vec3 rgb = v_flash >= 1.5 ? v_color.rgb : mix(t.rgb * v_color.rgb, vec3(1.0), max(v_flash, 0.0));
   if (u_additive == 1) {
     o = vec4(rgb * t.a * v_color.a, 1.0);
     return;
