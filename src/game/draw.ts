@@ -6,7 +6,7 @@ import { heroSprites, lookId, type HeroAnim } from "./heroSprites";
 import { TEAM_HERO } from "./pools";
 import { Batch, rgba, rgbaf, SOFT, withAlpha } from "../engine/renderer";
 import { text } from "../engine/text";
-import { AI, EL_COLOR, ENEMIES, LEGENDS, questDef, RelicKind, stageOf, WEAPONS, weaponName } from "./defs";
+import { AI, EL_COLOR, ENEMIES, fullWeaponName, LEGENDS, questDef, RARITIES, RelicKind, stageOf, WEAPONS } from "./defs";
 import { t as tr, tx } from "./i18n";
 import { FLOOR, LOOK_BRIDGE, LOOK_ICE, LOOK_VEIN, PIT, WALL } from "./map";
 import { BULLET_ANIMS, LUNGE_DASH, SPAWN_T, poolSpread, HERO_HIT_Y, HERO_R, B_CRESCENT, B_FIREBALL, B_LANCE, CINE_DUR, D_CHEST, D_EMBER, D_GREEN, D_HEART, D_RED, SANCTUARY_R, STAR_EVERY, TILE, type World } from "./world";
@@ -711,12 +711,25 @@ export function drawWorld(s: Scene, w: World, camX: number, camY: number, viewW:
     else s.color.image(icon("icons", `w_${r.weapon}`), r.x, r.y - 36 + bob, 1, 1, 0, 0xffffffff, 0, r.y + 0.5);
     s.glow.light(r.x, r.y - 40 + bob, 10, 16, withAlpha(col, el ? 0.35 : 0.18));
     s.illum.light(r.x, r.y - 28, 46, 36, withAlpha(col, 0.5));
+    // its quality as a ring of light turning about it, and motes rising for the rarest
+    if (r.rarity > 0) {
+      const rc = rgba(RARITIES[r.rarity].color), n = 10 + r.rarity * 4, R = 16 + r.rarity;
+      for (let k = 0; k < n; k++) {
+        const a = (k / n) * Math.PI * 2 + time * (0.8 + r.rarity * 0.3);
+        if (k % 3 === 2) continue;
+        const px = Math.round(r.x + Math.cos(a) * R), py = Math.round(r.y - 40 + bob + Math.sin(a) * R * 0.35);
+        (Math.sin(a) < 0 ? s.back : s.front).rect(px, py, 1, 1, rc);
+        s.glow.rect(px, py, 1, 1, withAlpha(rc, 0.7));
+      }
+      if (r.rarity >= 3 && Math.sin(time * 9 + r.x) > 0.6) s.glow.rect(Math.round(r.x + Math.sin(time * 3) * 9), Math.round(r.y - 30 - ((time * 20) % 30)), 1, 2, withAlpha(rc, 0.8));
+      s.illum.light(r.x, r.y - 36, 30 + r.rarity * 6, 24 + r.rarity * 5, withAlpha(rc, 0.25 + r.rarity * 0.08));
+    }
     // its name when the hero comes close
     const near = (h.x - r.x) ** 2 + (h.y - r.y) ** 2;
     if (near < 80 * 80 && !h.dead) {
       const a = Math.min(1, (80 - Math.sqrt(near)) / 25);
       // (in the glow layer as well, so it reads in the dark above the stone)
-      const name = tx(r.legend ? LEGENDS[r.weapon] : weaponName(r.weapon, r.el)), nc = r.legend ? rgba("#ffd84a") : el ? col : rgba("#e8dcff");
+      const name = tx(r.legend ? LEGENDS[r.weapon] : fullWeaponName(r.weapon, r.el, r.rarity)), nc = r.legend ? rgba("#ffd84a") : r.rarity > 0 ? rgba(RARITIES[r.rarity].color) : el ? col : rgba("#e8dcff");
       text(s.front, name, r.x, r.y - 72 + bob, { font: "mini", align: "center", color: withAlpha(nc, a), shadow: withAlpha(rgba("#0b0a12"), a) });
       text(s.glow, name, r.x, r.y - 72 + bob, { font: "mini", align: "center", color: withAlpha(nc, a * 0.7) });
     }

@@ -11,7 +11,7 @@ import type { Audio } from "../engine/audio";
 import type { Input } from "../engine/input";
 import { Batch, rgba, rgbaf, withAlpha } from "../engine/renderer";
 import { fitScale, measure, text, wrap, type FontName } from "../engine/text";
-import { ARTIFACT_SLOTS, EL_COLOR, ENEMIES, evolutionOf, floorInfo, MUTATORS, questDef, RELIC_SLOTS, STATS } from "./defs";
+import { ARTIFACT_SLOTS, EL_COLOR, ENEMIES, evolutionOf, floorInfo, MUTATORS, questDef, RARITIES, RELIC_SLOTS, STATS } from "./defs";
 import { t, tx } from "./i18n";
 import type { World } from "./world";
 
@@ -433,7 +433,7 @@ export function drawHud(b: Batch, w: World, W: number, H: number, time: number, 
 
   // ---- the hotbar: the weapon in a gold-rimmed slot (an element's gem in its corner), then a slot per relic
   const hy = py + 38, el = w.weaponEl;
-  slot(b, 2, hy, 24, h.legend ? rgbaf(1, 0.85 + 0.15 * Math.sin(time * 5), 0.45, 1) : el ? rgba(EL_COLOR[el]) : C.goldDim);
+  slot(b, 2, hy, 24, h.legend ? rgbaf(1, 0.85 + 0.15 * Math.sin(time * 5), 0.45, 1) : h.rarity > 0 ? rgba(RARITIES[h.rarity].color) : el ? rgba(EL_COLOR[el]) : C.goldDim);
   if (h.legend) glow(b, 14, hy + 12, 16, 16, C.gold, 0.35);
   b.image(icon("icons", `w_${h.weapon}`), 14, hy + 12);
   if (h.legend) {

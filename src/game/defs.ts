@@ -704,6 +704,65 @@ export function weaponName(id: WeaponId, el: El): Text {
   return { ru: `${a[W.g]} ${W.name.ru}`, en: `${a.en} ${W.name.en}` };
 }
 
+// ------------------------------------------------------------------------------------------------ weapon quality
+/**
+ * How good a weapon found on an altar is: more damage and quicker blows the rarer it is. The odds of a better one
+ * rise floor by floor, and an armoury behind a cracked wall holds nothing below rare. A mythic weapon is always one
+ * of a kind: a variant of its weapon found at no other quality, with its own name, element and gift (UNIQUES).
+ */
+export interface Rarity {
+  name: { m: string; f: string; n: string; pl: string; en: string };
+  color: string;
+  dmg: number;
+  speed: number;
+}
+export const RARITIES: Rarity[] = [
+  { name: { m: "ОБЫЧНЫЙ", f: "ОБЫЧНАЯ", n: "ОБЫЧНОЕ", pl: "ОБЫЧНЫЕ", en: "COMMON" }, color: "#c8c4d4", dmg: 1, speed: 1 },
+  { name: { m: "ДОБРОТНЫЙ", f: "ДОБРОТНАЯ", n: "ДОБРОТНОЕ", pl: "ДОБРОТНЫЕ", en: "FINE" }, color: "#7ee88a", dmg: 1.2, speed: 1.04 },
+  { name: { m: "РЕДКИЙ", f: "РЕДКАЯ", n: "РЕДКОЕ", pl: "РЕДКИЕ", en: "RARE" }, color: "#58a8ff", dmg: 1.45, speed: 1.08 },
+  { name: { m: "ЭПИЧЕСКИЙ", f: "ЭПИЧЕСКАЯ", n: "ЭПИЧЕСКОЕ", pl: "ЭПИЧЕСКИЕ", en: "EPIC" }, color: "#c684ff", dmg: 1.75, speed: 1.12 },
+  { name: { m: "МИФИЧЕСКИЙ", f: "МИФИЧЕСКАЯ", n: "МИФИЧЕСКОЕ", pl: "МИФИЧЕСКИЕ", en: "MYTHIC" }, color: "#ffae35", dmg: 2.1, speed: 1.16 },
+];
+export const MYTHIC = 4;
+/** A rarity for a weapon found on `floor`; `bonus` for better places (an armoury). r01 is a roll in 0..1. */
+export function rollRarity(r01: number, floor: number, bonus = 0): number {
+  const x = r01 + floor * 0.055 + bonus;
+  return x < 0.5 ? 0 : x < 0.78 ? 1 : x < 0.95 ? 2 : x < 1.2 ? 3 : 4;
+}
+export type Perk = "crit" | "reach" | "haste" | "vamp";
+export interface UniqueWeapon {
+  name: Text;
+  /** Its element (None: the weapon's own, or the spellbook's three). */
+  el: El;
+  perk: Perk;
+}
+export const PERK_TEXT: Record<Perk, Text> = {
+  crit: { ru: "+15% ШАНС КРИТА", en: "+15% CRIT CHANCE" },
+  reach: { ru: "+25% ДАЛЬНОСТИ", en: "+25% REACH" },
+  haste: { ru: "+20% СКОРОСТИ АТАК", en: "+20% ATTACK SPEED" },
+  vamp: { ru: "КАЖДЫЕ 30 УБИЙСТВ - СЕРДЦЕ", en: "A HEART EVERY 30 KILLS" },
+};
+export const UNIQUES: Record<WeaponId, UniqueWeapon> = {
+  sword: { name: { ru: "РАССВЕТНЫЙ КЛИНОК", en: "DAWNBLADE" }, el: El.Holy, perk: "crit" },
+  hammer: { name: { ru: "ГРОМОВЕРЖЕЦ", en: "THUNDERER" }, el: El.Storm, perk: "reach" },
+  spear: { name: { ru: "ЖАЛО ЗМЕЯ", en: "SERPENT'S STING" }, el: El.Venom, perk: "haste" },
+  scythe: { name: { ru: "ЖНИЦА ПУСТОТЫ", en: "VOID REAPER" }, el: El.Void, perk: "vamp" },
+  daggers: { name: { ru: "КЛЫКИ ВЬЮГИ", en: "BLIZZARD FANGS" }, el: El.Frost, perk: "haste" },
+  greatsword: { name: { ru: "ПЛАМЯ ВЕЛИКАНА", en: "GIANT'S FLAME" }, el: El.Fire, perk: "reach" },
+  claws: { name: { ru: "КОГТИ ЗАТМЕНИЯ", en: "ECLIPSE CLAWS" }, el: El.Void, perk: "crit" },
+  whip: { name: { ru: "ПЛЕТЬ ПРЕИСПОДНЕЙ", en: "HELL'S LASH" }, el: El.None, perk: "vamp" },
+  bow: { name: { ru: "ЗАКАТНЫЙ ЛУК", en: "SUNSET BOW" }, el: El.Fire, perk: "crit" },
+  spell: { name: { ru: "КНИГА ПЕПЛА", en: "BOOK OF ASHES" }, el: El.None, perk: "reach" },
+};
+/** A weapon's name with its quality: "РЕДКИЙ ЛЕДЯНОЙ МЕЧ", or a mythic one's own name. */
+export function fullWeaponName(id: WeaponId, el: El, rarity: number): Text {
+  if (rarity >= MYTHIC) return UNIQUES[id].name;
+  const base = weaponName(id, el);
+  if (rarity <= 0) return base;
+  const r = RARITIES[rarity].name;
+  return { ru: `${r[WEAPONS[id].g]} ${base.ru}`, en: `${r.en} ${base.en}` };
+}
+
 // ------------------------------------------------------------------------------------------------ heroes
 export type HeroId = "knight" | "ranger" | "mage" | "reaper" | "berserker" | "shadow";
 export interface HeroDef {

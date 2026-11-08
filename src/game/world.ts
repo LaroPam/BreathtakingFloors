@@ -7,7 +7,7 @@ import type { Audio } from "../engine/audio";
 import { rgba, rgbaf } from "../engine/renderer";
 import {
   AI, biomeOf, bossOf, El, EL_COLOR, EN, ENEMIES, evolutionOf, FLOORS, heroDef, QUESTS, RELIC_MAX, RELICS, RelicKind, reactionFor, roster, stageOf, WEAPON_IDS, WEAPONS,
-  type Biome, type Blow, type HeroDef, type Modifier, type QuestKind, type Reaction, type StatId, type TaskId, type WeaponId,
+  type Biome, type Blow, type HeroDef, type Modifier, type QuestKind, type Reaction, type StatId, type TaskId, type WeaponId, MYTHIC, RARITIES, rollRarity, UNIQUES, type Perk,
 } from "./defs";
 import { getLang, t as tr } from "./i18n";
 import { Bullets, Drops, Enemies, Grid, Particles, TEAM_FOE, TEAM_HERO } from "./pools";
@@ -198,6 +198,8 @@ export interface Rack {
   el: El;
   /** A legendary weapon left on the altar keeps its name. */
   legend: boolean;
+  /** Its quality (defs.ts RARITIES): 4 is a mythic one of a kind. */
+  rarity: number;
   progress: number;
   /** The hero must step off before swapping again. */
   armed: boolean;
@@ -332,7 +334,7 @@ export interface WorldEvents {
   floorCleared(): void;
   victory(): void;
   reaction(r: Reaction): void;
-  weapon(id: WeaponId, el: El): void;
+  weapon(id: WeaponId, el: El, rarity: number): void;
   /** The curse of the floor's altar was taken, or lifted (the floor done, the reward given). */
   curse(state: "taken" | "lifted"): void;
   /** The floor's hidden cache was spotted in the lantern's light, or broken open. */
@@ -398,6 +400,9 @@ export class Hero {
   weaponEl: El = El.None;
   /** The weapon in hand is legendary (LEGENDS). */
   legend = false;
+  /** The quality of the weapon in hand (defs.ts RARITIES), and kills toward a mythic scythe's or whip's heart. */
+  rarity = 0;
+  vampKills = 0;
   /** Wearing the victor's colours. */
   victor = false;
   /** Where the weapon hand is this frame (draw.ts writes it from the animation; sparks of an element fly from it). */
@@ -759,8 +764,10 @@ export class World {
       if (!clear(x, y, 14)) continue;
       const pool = WEAPON_IDS.filter((id) => id !== this.hero.weapon), weapon = R.pick(pool);
       // from the second floor on, more and more of them are steeped in an element (not the spellbook, not the fire whip)
-      const el = this.floor >= 2 && !WEAPONS[weapon].el && weapon !== "spell" && R.chance(0.25 + 0.06 * this.floor) ? R.pick(ELEMENTS) : El.None;
-      this.racks.push({ x: Math.round(x), y: Math.round(y), weapon, el, legend: false, progress: 0, armed: true });
+      const rarity = rollRarity(R.next(), this.floor);
+      let el = this.floor >= 2 && !WEAPONS[weapon].el && weapon !== "spell" && R.chance(0.25 + 0.06 * this.floor) ? R.pick(ELEMENTS) : El.None;
+      if (rarity >= MYTHIC) el = UNIQUES[weapon].el;
+      this.racks.push({ x: Math.round(x), y: Math.round(y), weapon, el, legend: false, rarity, progress: 0, armed: true });
       break;
     }
     // the spirit of one who came before, somewhere away from the start and the altar, with a task fit for this floor
@@ -842,6 +849,7 @@ export class World {
     h.weapon = def.weapon;
     h.weaponEl = El.None;
     h.legend = false;
+    h.rarity = 0;
     s.crit = def.crit;
     s.might = def.might;
     s.haste = def.haste;
@@ -1272,7 +1280,7 @@ export class World {
       this.audio.play("dash", W.ranged ? 2.2 : 1.8);
     }
     const hits = attackHits(h.weapon, h.atk), frames = attackFrames(h.weapon, h.atk);
-    h.atkT += dt * s.haste * W.speed * (this.rage > 0 ? 1.3 : 1);
+    h.atkT += dt * s.haste * W.speed * RARITIES[h.rarity].speed * (this.rage > 0 ? 1.3 : 1);
     const frame = Math.floor(h.atkT * ATK_FPS);
     while (h.hitsDone < hits.length && frame >= hits[h.hitsDone]) {
       this.land(W.blows[h.atk], h.atk, h.hitsDone, hits.length);
@@ -1296,7 +1304,7 @@ export class World {
   private land(B: Blow, k: number, hit: number, of: number): void {
     this.setSrc(SRC_WEAPON);
     const h = this.hero, s = this.stats, dir = h.atkDir, W = WEAPONS[h.weapon], wel = this.weaponEl;
-    const dmg = B.dmg * s.edge * s.might * this.fury * (h.legend ? 1.4 : 1);
+    const dmg = B.dmg * s.edge * s.might * this.fury * (h.legend ? 1.4 : 1) * RARITIES[h.rarity].dmg;
     const cx = h.x, cy = h.y - 18;
     if (B.kind === "arrow" || B.kind === "fire" || B.kind === "frost") {
       const [hx, hy] = this.handPos(), n = 1 + s.wave + (h.legend && B.kind !== "arrow" ? 1 : 0), spread = B.kind === "arrow" ? 0.1 : 0.22;
@@ -1486,13 +1494,17 @@ export class World {
       if (!r.armed) continue;
       r.progress += dt / 0.8;
       if (r.progress >= 1) {
-        const old = h.weapon, oldEl = h.weaponEl, oldLegend = h.legend;
+        const old = h.weapon, oldEl = h.weaponEl, oldLegend = h.legend, oldRarity = h.rarity;
+        this.weaponPerk(-1);
         h.weapon = r.weapon;
         h.weaponEl = r.el;
         h.legend = r.legend;
+        h.rarity = r.rarity;
+        this.weaponPerk(1);
         r.weapon = old;
         r.el = oldEl;
         r.legend = oldLegend;
+        r.rarity = oldRarity;
         r.progress = 0;
         r.armed = false;
         h.atk = -1;
@@ -1501,9 +1513,20 @@ export class World {
         if (h.weaponEl) this.addFx("heal_ring", h.x, h.y, { tint: rgba(EL_COLOR[h.weaponEl]), glow: 0.7, sx: 0.5, sy: 0.5 });
         this.burst(h.x, h.y - 18, 14, rgba(EL_COLOR[this.weaponEl]), 90, 0.5);
         this.audio.play("chest");
-        this.ev.weapon(h.weapon, h.weaponEl);
+        this.ev.weapon(h.weapon, h.weaponEl, h.rarity);
       }
     }
+  }
+
+  /** A mythic weapon's gift, put on (+1) as it comes to hand or taken off (-1) as it is left on the altar. */
+  private weaponPerk(sign: number): void {
+    const h = this.hero, s = this.stats;
+    if (h.rarity < MYTHIC) return;
+    const p: Perk = UNIQUES[h.weapon].perk;
+    if (p === "crit") s.crit += 0.15 * sign;
+    else if (p === "reach") s.reach += 0.25 * sign;
+    else if (p === "haste") s.haste += 0.2 * sign;
+    h.vampKills = 0;
   }
 
   private inBrazierLight(x: number, y: number): boolean {
@@ -1939,11 +1962,16 @@ export class World {
   }
 
   private kill(i: number): void {
-    const E = this.enemies, type = E.type[i], d = ENEMIES[type], x = E.x[i], y = E.y[i];
+    const E = this.enemies, type = E.type[i], d = ENEMIES[type], x = E.x[i], y = E.y[i], h0 = this.hero;
     this.body(i);
     const cx = this.bx, cy = this.by;
     this.kills++;
     this.gainOd(0.45);
+    // a mythic scythe or whip feeds the hand that holds it
+    if (h0.rarity >= MYTHIC && UNIQUES[h0.weapon].perk === "vamp" && ++h0.vampKills >= 30) {
+      h0.vampKills = 0;
+      if (h0.hp < h0.maxHp) (h0.hp++, this.popup(h0.x, h0.y - 40, "+1", rgba("#7ee88a"), true), this.audio.play("heal"));
+    }
     this.ev.count("kills");
     if (this.quest?.state === "active") {
       if (this.quest.kind === "purge" || (this.quest.kind === "hunt" && type === this.quest.type)) this.questStep(this.quest.kind);
@@ -2185,7 +2213,9 @@ export class World {
     } else {
       // an armoury: a weapon on its altar, steeped in an element
       const pool = WEAPON_IDS.filter((id) => id !== this.hero.weapon && id !== "spell" && !WEAPONS[id].el), weapon = R.pick(pool.length ? pool : WEAPON_IDS);
-      this.racks.push({ x: Math.round(mx), y: Math.round(my), weapon, el: R.pick(ELEMENTS), legend: false, progress: 0, armed: true });
+      // ...better than any out on the floor: rare at the least
+      const rarity = Math.max(2, rollRarity(R.next(), this.floor, 0.35));
+      this.racks.push({ x: Math.round(mx), y: Math.round(my), weapon, el: rarity >= MYTHIC ? UNIQUES[weapon].el : R.pick(ELEMENTS), legend: false, rarity, progress: 0, armed: true });
       for (let q = 0; q < 4; q++) this.drops.add(D_EMBER, mx + R.range(-36, 36), my + R.range(-16, 16), 1, 0, 0);
     }
   }

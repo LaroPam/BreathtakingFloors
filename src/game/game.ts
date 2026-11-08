@@ -8,7 +8,7 @@ import { anim, FONTS, frameAt, icon, type Anim, type Rect } from "../engine/atla
 import { heroSprites, initHeroSprites, lookId, type HeroAnim, type HeroSprites } from "./heroSprites";
 import { fitScale, measure, text, wrap } from "../engine/text";
 import { dayNumber, weekNumber, type Board, type BoardName, type Platform, type Product } from "../platform/platform";
-import { ACHIEVEMENTS, heroDef, biomeOf, bossOf, combine, floorInfo, stageOf, EL_COLOR, LEGENDS, legendDesc, type WeaponId, EL_NAME, ENEMIES, EVOLUTIONS, evolutionOf, FLOORS, FORGE, questDef, TASK_BONUS, TASKS, type TaskId, type ForgeId, SHOP, type ShopItem, HEROES, WEAPONS, weaponName, MODIFIERS, MUTATORS, NO_MODIFIER, REACTIONS, RELIC_MAX, RELIC_SLOTS, ARTIFACT_SLOTS, RELICS, STATS, El, type Modifier, type Reaction, type RelicKind, type StatId } from "./defs";
+import { ACHIEVEMENTS, heroDef, biomeOf, bossOf, combine, floorInfo, stageOf, EL_COLOR, LEGENDS, legendDesc, type WeaponId, EL_NAME, ENEMIES, EVOLUTIONS, evolutionOf, FLOORS, FORGE, questDef, TASK_BONUS, TASKS, type TaskId, type ForgeId, SHOP, type ShopItem, HEROES, WEAPONS, weaponName, MODIFIERS, MUTATORS, NO_MODIFIER, REACTIONS, RELIC_MAX, RELIC_SLOTS, ARTIFACT_SLOTS, RELICS, STATS, El, fullWeaponName, MYTHIC, PERK_TEXT, RARITIES, UNIQUES, type Modifier, type Reaction, type RelicKind, type StatId } from "./defs";
 import { drawWorld, Scene } from "./draw";
 import { stairwell } from "./stairwell";
 import { getLang, langFor, setLang, t, tx, type Lang } from "./i18n";
@@ -280,7 +280,14 @@ export class Game {
           this.showBanner(t("secretOpened"), C.gold);
         }
       },
-      weapon: (id, el) => (heroSprites().prefetch(lookId(this.world.hero.def.id, this.world.hero.victor), id), this.world.hero.legend) ? this.showBanner(tx(LEGENDS[id]), C.gold, t("legendary")) : this.showBanner(tx(weaponName(id, el)), el || WEAPONS[id].el ? rgba(EL_COLOR[el || WEAPONS[id].el!]) : C.gold),
+      weapon: (id, el, rarity) => {
+        heroSprites().prefetch(lookId(this.world.hero.def.id, this.world.hero.victor), id);
+        if (this.world.hero.legend) return this.showBanner(tx(LEGENDS[id]), C.gold, t("legendary"));
+        // its name in its quality's colour; a mythic one says what gift it brings
+        const col = rarity > 0 ? rgba(RARITIES[rarity].color) : el || WEAPONS[id].el ? rgba(EL_COLOR[el || WEAPONS[id].el!]) : C.gold;
+        const sub = rarity >= MYTHIC ? `${RARITIES[rarity].name[getLang() === "ru" ? WEAPONS[id].g : "en"]} · ${tx(PERK_TEXT[UNIQUES[id].perk])}` : rarity > 0 ? `${t("damage")} ×${RARITIES[rarity].dmg}` : undefined;
+        this.showBanner(tx(fullWeaponName(id, el, rarity)), col, sub);
+      },
     }, NO_MODIFIER);
     this.world.numbers = this.save.numbers;
   }
@@ -1904,7 +1911,7 @@ export class Game {
   /** A source of damage by name and badge (for the statistics). */
   private sourceOf(src: number): { name: string; ic: Rect } {
     const w = this.world, h = w.hero;
-    if (src === SRC_WEAPON) return { name: tx(weaponName(h.weapon, w.weaponEl)), ic: icon("icons", `w_${h.weapon}`) };
+    if (src === SRC_WEAPON) return { name: tx(h.legend ? LEGENDS[h.weapon] : fullWeaponName(h.weapon, h.weaponEl, h.rarity)), ic: icon("icons", `w_${h.weapon}`) };
     if (src >= SRC_RELIC && src < SRC_RELIC + 6) {
       const kind = (src - SRC_RELIC) as RelicKind, evo = w.evolved(kind);
       return { name: tx(evo ? evolutionOf(kind).name : RELICS[kind].name), ic: icon("icons", evo ? evolutionOf(kind).icon : RELIC_ICON[kind]) };
