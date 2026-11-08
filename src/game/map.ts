@@ -20,6 +20,8 @@ export interface MapPlan {
   veins?: boolean;
   /** Clumps of wall (roots, rubble) standing in the open. */
   clumps?: boolean;
+  /** A boss's floor: a great open arena, where the last brazier stands and the boss comes. */
+  arena?: boolean;
 }
 
 /** The random source the builders use (the run's Rng). */
@@ -48,6 +50,8 @@ export class TileMap {
   start: [number, number] = [0, 0];
   /** The rooms or galleries a builder made (tiles). */
   areas: Area[] = [];
+  /** The boss's arena (tiles), on a boss's floor. */
+  arena: Area | null = null;
   /** Where the builder wants columns (tile centres, in px). */
   columns: [number, number][] = [];
   constructor(cols: number, rows: number) {
@@ -192,7 +196,9 @@ export class Flow {
         const [dc, dr] = DIR8[k], cc = ci + dc, rr = ri + dr;
         if (!m.passable(cc, rr, this.flyer)) continue;
         if (k >= 4 && (!m.passable(ci + dc, ri, this.flyer) || !m.passable(ci, ri + dr, this.flyer))) continue;
-        const j = rr * cols + cc, nd = D[i] + (k >= 4 ? 14 : 10);
+        // a step costs more right beside a wall or a drop, so ways keep to the middle of corridors and round
+        // corners wide, where bodies fit
+        const j = rr * cols + cc, op = m.open[j], nd = D[i] + (k >= 4 ? 14 : 10) + (op <= 1 ? 9 : op === 2 ? 3 : 0);
         if (nd < D[j]) {
           D[j] = nd;
           this.pushHeap(j, nd);
@@ -311,33 +317,39 @@ function links(points: [number, number][], R: Rnd, extra: number): [number, numb
   return out;
 }
 
-/** Rooms of many sizes, apart by thick walls, joined by corridors three wide; columns in the big ones. */
-function rooms(m: TileMap, R: Rnd): void {
-  const want = Math.round((m.cols * m.rows) / 360), list: Area[] = [];
+/** Rooms of many sizes, apart by thick walls, joined by corridors five wide; columns in the big ones. */
+function rooms(m: TileMap, R: Rnd, plan: MapPlan): void {
+  const want = Math.round((m.cols * m.rows) / 430), list: Area[] = [];
+  // a boss's floor: a great hall first, about the middle
+  if (plan.arena) {
+    const w = 26, h = 17, x = Math.round(m.cols / 2 - w / 2 + R.range(-6, 6)), y = Math.round(m.rows / 2 - h / 2 + R.range(-3, 3));
+    list.push({ x, y, w, h });
+    m.arena = { x, y, w, h };
+  }
   for (let tries = 0; tries < 900 && list.length < want; tries++) {
-    const w = R.int(9, 17), h = R.int(7, 12), x = R.int(3, m.cols - w - 3), y = R.int(5, m.rows - h - 3);
+    const w = R.int(11, 20), h = R.int(9, 14), x = R.int(3, m.cols - w - 3), y = R.int(5, m.rows - h - 3);
     if (list.some((o) => x < o.x + o.w + 4 && x + w + 4 > o.x && y < o.y + o.h + 4 && y + h + 4 > o.y)) continue;
     list.push({ x, y, w, h });
   }
   for (const a of list) carve(m, a.x, a.y, a.w, a.h);
   const mid = list.map((a): [number, number] => [Math.floor(a.x + a.w / 2), Math.floor(a.y + a.h / 2)]);
-  for (const [a, b] of links(mid, R, Math.ceil(list.length / 4))) corridor(m, mid[a][0], mid[a][1], mid[b][0], mid[b][1], 3, R.chance(0.5));
+  for (const [a, b] of links(mid, R, Math.ceil(list.length / 4))) corridor(m, mid[a][0], mid[a][1], mid[b][0], mid[b][1], 5, R.chance(0.5));
   for (const a of list)
-    if (a.w >= 12 && a.h >= 9 && R.chance(0.7))
+    if (a.w >= 14 && a.h >= 11 && a !== list[0] && R.chance(0.7))
       for (const [cx, cy] of [[a.x + 3, a.y + 3], [a.x + a.w - 4, a.y + 3], [a.x + 3, a.y + a.h - 3], [a.x + a.w - 4, a.y + a.h - 3]]) m.columns.push([cx * 16 + 8, cy * 16 + 8]);
   m.areas = list;
 }
 
 /** A lattice of long galleries crossing at right angles, side chambers cut into the blocks between, columns along them. */
-function halls(m: TileMap, R: Rnd): void {
+function halls(m: TileMap, R: Rnd, plan: MapPlan): void {
   const nh = 3, nv = m.cols >= 82 ? 5 : 4;
   const hy: [number, number][] = [], vx: [number, number][] = [];
   for (let k = 0; k < nh; k++) {
-    const h = R.int(4, 7), y = Math.round(5 + ((m.rows - 8 - h - 5) * k) / (nh - 1) + (k > 0 && k < nh - 1 ? R.range(-2, 2) : 0));
+    const h = R.int(6, 9), y = Math.round(5 + ((m.rows - 8 - h - 5) * k) / (nh - 1) + (k > 0 && k < nh - 1 ? R.range(-2, 2) : 0));
     hy.push([y, h]);
   }
   for (let k = 0; k < nv; k++) {
-    const w = R.int(4, 7), x = Math.round(3 + ((m.cols - 6 - w - 3) * k) / (nv - 1) + (k > 0 && k < nv - 1 ? R.range(-2, 2) : 0));
+    const w = R.int(6, 9), x = Math.round(3 + ((m.cols - 6 - w - 3) * k) / (nv - 1) + (k > 0 && k < nv - 1 ? R.range(-2, 2) : 0));
     vx.push([x, w]);
   }
   const left = vx[0][0], right = vx[nv - 1][0] + vx[nv - 1][1], top = hy[0][0], bottom = hy[nh - 1][0] + hy[nh - 1][1];
@@ -350,7 +362,7 @@ function halls(m: TileMap, R: Rnd): void {
       carve(m, x0, y, x1 - x0, h);
       areas.push({ x: x0, y, w: x1 - x0, h });
       // columns down both sides of the length
-      if (h >= 6) for (let c = x0 + vx[s][1] + 3; c < x1 - vx[s + 1][1] - 2; c += 5) (m.columns.push([c * 16 + 8, (y + 1) * 16 + 8]), m.columns.push([c * 16 + 8, (y + h - 2) * 16 + 8]));
+      if (h >= 8) for (let c = x0 + vx[s][1] + 3; c < x1 - vx[s + 1][1] - 2; c += 6) (m.columns.push([c * 16 + 8, (y + 1) * 16 + 8]), m.columns.push([c * 16 + 8, (y + h - 2) * 16 + 8]));
     }
   });
   vx.forEach(([x, w], k) => {
@@ -372,10 +384,17 @@ function halls(m: TileMap, R: Rnd): void {
       const cw = Math.max(3, bw - 6 - R.int(0, 2)), ch = Math.max(2, bh - 6), cx = bx + 3 + R.int(0, bw - 6 - cw), cy = by + 3;
       carve(m, cx, cy, cw, ch);
       areas.push({ x: cx, y: cy, w: cw, h: ch });
-      const door = cx + Math.floor(cw / 2) - 1;
-      if (R.chance(0.5)) carve(m, door, by, 3, 3);
-      else carve(m, door, cy + ch, 3, by + bh - (cy + ch));
+      const door = cx + Math.floor(cw / 2) - 2;
+      if (R.chance(0.5)) carve(m, door, by, 5, 3);
+      else carve(m, door, cy + ch, 5, by + bh - (cy + ch));
     }
+  // a boss's floor: the blocks about the middle crossing knocked through into one great hall
+  if (plan.arena) {
+    const b = Math.floor((nv - 1) / 2), x0 = vx[b][0], x1 = vx[b + 1][0] + vx[b + 1][1], y0 = hy[0][0] + 2, y1 = hy[1][0] + hy[1][1];
+    carve(m, x0, y0, x1 - x0, y1 - y0);
+    m.arena = { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+    m.columns = m.columns.filter(([x, y]) => !(x / 16 >= x0 - 1 && x / 16 <= x1 + 1 && y / 16 >= y0 - 1 && y / 16 <= y1 + 1));
+  }
   m.areas = areas;
 }
 
@@ -387,12 +406,20 @@ function caves(m: TileMap, R: Rnd, plan: MapPlan): void {
   const { cols, rows } = m, hollows: [number, number, number, number][] = [];
   const want = Math.round((cols * rows) / 470);
   for (let tries = 0; tries < 600 && hollows.length < want; tries++) {
-    const rx = R.range(5, 10), ry = R.range(3.5, 7), cx = R.range(3 + rx, cols - 3 - rx), cy = R.range(6 + ry, rows - 3 - ry);
+    const rx = R.range(6, 11), ry = R.range(4.5, 8), cx = R.range(3 + rx, cols - 3 - rx), cy = R.range(6 + ry, rows - 3 - ry);
     if (hollows.some(([x, y, a, b]) => Math.hypot((x - cx) / (a + rx + 4), (y - cy) / (b + ry + 3)) < 1)) continue;
     hollows.push([cx, cy, rx, ry]);
   }
   // the biggest hollow in the middle, for what the plan puts there
   if (plan.pit) hollows[0] = [cols / 2 + R.range(-3, 3), rows / 2 + R.range(-2, 2), cols * 0.17, rows * 0.17];
+  // a boss's floor: a great hollow of its own, to one side (the chasm keeps the middle)
+  if (plan.arena && hollows.length > 1) {
+    const left = R.chance(0.5), ax = left ? cols * 0.24 : cols * 0.76, ay = rows * R.range(0.4, 0.6);
+    hollows.splice(1, 0, [ax, ay, 13, 9]);
+    // hollows that would run into it go
+    for (let k = hollows.length - 1; k >= 2; k--) if (Math.hypot((hollows[k][0] - ax) / (13 + hollows[k][2]), (hollows[k][1] - ay) / (9 + hollows[k][3])) < 1) hollows.splice(k, 1);
+    m.arena = { x: Math.round(ax - 12), y: Math.round(ay - 8), w: 24, h: 16 };
+  }
   for (const [cx, cy, rx, ry] of hollows) {
     const ph = R.range(0, 6.3);
     for (let r = Math.floor(cy - ry - 2); r <= cy + ry + 2; r++)
@@ -405,7 +432,7 @@ function caves(m: TileMap, R: Rnd, plan: MapPlan): void {
   const mids = hollows.map(([x, y]): [number, number] => [x, y]);
   for (const [a, b] of links(mids, R, Math.ceil(hollows.length / 3))) {
     let [x, y] = mids[a];
-    const [tx, ty] = mids[b], wd = R.range(1.3, 2);
+    const [tx, ty] = mids[b], wd = R.range(2.2, 3);
     let ang = Math.atan2(ty - y, tx - x);
     for (let step = 0; step < 400 && Math.hypot(tx - x, ty - y) > 2; step++) {
       const want2 = Math.atan2(ty - y, tx - x);
@@ -459,8 +486,8 @@ function caves(m: TileMap, R: Rnd, plan: MapPlan): void {
   m.areas = hollows.map(([x, y, rx, ry]) => ({ x: Math.round(x - rx), y: Math.round(y - ry), w: Math.round(rx * 2), h: Math.round(ry * 2) }));
 }
 
-/** Islands over a drop, on a loose grid, joined by bridges two wide. */
-function isles(m: TileMap, R: Rnd): void {
+/** Islands over a drop, on a loose grid, joined by bridges three wide; on a boss's floor a great one in the middle. */
+function isles(m: TileMap, R: Rnd, plan: MapPlan): void {
   const { cols, rows } = m, gx = cols >= 86 ? 5 : 4, gy = rows >= 60 ? 4 : 3, centres: [number, number][] = [];
   for (let r = 4; r < rows - 2; r++) for (let c = 2; c < cols - 2; c++) m.set(c, r, PIT);
   for (let j = 0; j < gy; j++)
@@ -468,7 +495,9 @@ function isles(m: TileMap, R: Rnd): void {
       if (R.chance(0.12) && centres.length > 3) continue;
       const cw = (cols - 8) / gx, ch = (rows - 10) / gy;
       const cx = Math.round(4 + cw * (i + 0.5) + R.range(-cw * 0.15, cw * 0.15)), cy = Math.round(6 + ch * (j + 0.5) + R.range(-ch * 0.15, ch * 0.15));
-      const rx = R.range(cw * 0.3, cw * 0.4), ry = R.range(ch * 0.3, ch * 0.4), ph = R.range(0, 6.3);
+      const mid = plan.arena && i === Math.floor(gx / 2) && j === Math.floor(gy / 2);
+      const rx = mid ? 13 : R.range(cw * 0.34, cw * 0.44), ry = mid ? 9 : R.range(ch * 0.34, ch * 0.44), ph = R.range(0, 6.3);
+      if (mid) m.arena = { x: cx - 11, y: cy - 7, w: 22, h: 14 };
       for (let r = -Math.ceil(ry) - 2; r <= Math.ceil(ry) + 2; r++)
         for (let c = -Math.ceil(rx) - 2; c <= Math.ceil(rx) + 2; c++) {
           const a = Math.atan2(r, c), wob = 1 + 0.15 * Math.sin(a * 3 + ph) + 0.08 * Math.sin(a * 5 + ph * 1.7);
@@ -477,7 +506,7 @@ function isles(m: TileMap, R: Rnd): void {
       centres.push([cx, cy]);
       m.areas.push({ x: Math.round(cx - rx), y: Math.round(cy - ry), w: Math.round(rx * 2), h: Math.round(ry * 2) });
     }
-  for (const [a, b] of links(centres, R, 2)) corridor(m, centres[a][0], centres[a][1], centres[b][0], centres[b][1], 2, R.chance(0.5), FLOOR, LOOK_BRIDGE, PIT);
+  for (const [a, b] of links(centres, R, 2)) corridor(m, centres[a][0], centres[a][1], centres[b][0], centres[b][1], 3, R.chance(0.5), FLOOR, LOOK_BRIDGE, PIT);
 }
 
 /** Flood the floor from a tile; returns the region's tiles. */
@@ -534,7 +563,7 @@ function joinUp(m: TileMap, R: Rnd): void {
     const ac = pa % m.cols, ar = (pa - ac) / m.cols, bc = pb % m.cols, br = (pb - bc) / m.cols;
     // over drops a bridge; through walls a passage
     const over = (v: number) => v;
-    for (const kind of [PIT, WALL]) corridor(m, ac, ar, bc, br, 2, R.chance(0.5), FLOOR, kind === PIT ? LOOK_BRIDGE : LOOK_PLAIN, over(kind));
+    for (const kind of [PIT, WALL]) corridor(m, ac, ar, bc, br, 3, R.chance(0.5), FLOOR, kind === PIT ? LOOK_BRIDGE : LOOK_PLAIN, over(kind));
   }
 }
 
@@ -553,10 +582,10 @@ function veins(m: TileMap, R: Rnd): void {
 /** Make the floor's map. The frame (four rows of wall on top, two around) is always there. */
 export function buildMap(plan: MapPlan, R: Rnd): TileMap {
   const m = new TileMap(plan.cols, plan.rows);
-  if (plan.gen === "rooms") rooms(m, R);
-  else if (plan.gen === "halls") halls(m, R);
+  if (plan.gen === "rooms") rooms(m, R, plan);
+  else if (plan.gen === "halls") halls(m, R, plan);
   else if (plan.gen === "caves") caves(m, R, plan);
-  else isles(m, R);
+  else isles(m, R, plan);
   m.measure();
   // the way in: an open tile towards one side, in the left third or the right third
   const fromLeft = R.chance(0.5);
@@ -565,7 +594,9 @@ export function buildMap(plan: MapPlan, R: Rnd): TileMap {
     for (let c = 0; c < m.cols; c++) {
       const i = r * m.cols + c;
       if (m.t[i] !== FLOOR || m.open[i] < 2 || m.look[i] === LOOK_BRIDGE) continue;
-      const side = fromLeft ? m.cols - c : c, score = Math.min(m.open[i], 4) * 6 + side * 0.8 - Math.abs(r - m.rows / 2) * 0.6 + R.range(0, 6);
+      // (on a boss's floor, as far from the arena as can be)
+      const A = m.arena, away = A ? Math.hypot(c - (A.x + A.w / 2), (r - (A.y + A.h / 2)) * 1.3) : 0;
+      const side = A ? away * 1.6 : fromLeft ? m.cols - c : c, score = Math.min(m.open[i], 4) * 6 + side * 0.8 - Math.abs(r - m.rows / 2) * 0.6 + R.range(0, 6);
       if (score > bs) (bs = score), (best = i);
     }
   if (best < 0) best = m.t.findIndex((v) => v === FLOOR);
@@ -585,16 +616,16 @@ export function buildMap(plan: MapPlan, R: Rnd): TileMap {
  */
 export const MAP_PLANS: MapPlan[] = [
   // the crypt: galleries of rooms; the ossuary's lattice of halls; the catacombs' heart, a cave round a chasm
-  { gen: "rooms", cols: 72, rows: 52 },
-  { gen: "halls", cols: 78, rows: 56 },
-  { gen: "caves", cols: 84, rows: 58, pit: true, veins: true },
+  { gen: "rooms", cols: 84, rows: 60 },
+  { gen: "halls", cols: 90, rows: 64 },
+  { gen: "caves", cols: 96, rows: 66, pit: true, veins: true, arena: true },
   // the garden: walled walks; the drowned garden, islands in water; its heart, a cave of roots round a pond
-  { gen: "rooms", cols: 78, rows: 56 },
-  { gen: "isles", cols: 84, rows: 60 },
-  { gen: "caves", cols: 88, rows: 62, pit: true, clumps: true },
+  { gen: "rooms", cols: 90, rows: 64 },
+  { gen: "isles", cols: 96, rows: 68 },
+  { gen: "caves", cols: 100, rows: 70, pit: true, clumps: true, arena: true },
   // the frost: galleries of rime; ice caves to slide in; the throne of the void, islands over nothing
-  { gen: "halls", cols: 84, rows: 60 },
-  { gen: "caves", cols: 90, rows: 62, ice: true, clumps: true },
-  { gen: "isles", cols: 92, rows: 64 },
+  { gen: "halls", cols: 96, rows: 68 },
+  { gen: "caves", cols: 102, rows: 70, ice: true, clumps: true },
+  { gen: "isles", cols: 104, rows: 72, arena: true },
 ];
 

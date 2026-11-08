@@ -469,6 +469,7 @@ export class World {
   hint: { text: string; t: number; dur: number } | null = null;
   private waitSaid = false;
   private bossAttack = 0;
+  private bossCheck = 1;
   private bossPhase = 0;
   private enemyAnims: Anim[];
   private sepR: number[];
@@ -600,9 +601,15 @@ export class World {
       const g = end.length ? end[Math.floor(R.next() * end.length)] : ground[ground.length - 1];
       if (g) (this.stairs = { x: g[0], y: g[1], open: false, t: 0 }), taken.push([g[0], g[1]]);
     }
-    // three braziers, each as far as can be from the way in, the stairs and the others
+    // three braziers, each as far as can be from the way in, the stairs and the others; on a boss's floor one
+    // stands in the middle of its arena
     this.braziers = [];
-    for (let k = 0; k < 3; k++) {
+    if (m.arena) {
+      const ax = (m.arena.x + m.arena.w / 2) * TILE, ay = (m.arena.y + m.arena.h / 2) * TILE;
+      const g = ground.reduce<[number, number, number] | null>((best, q) => (!best || Math.hypot(q[0] - ax, q[1] - ay) < Math.hypot(best[0] - ax, best[1] - ay) ? q : best), null);
+      if (g) (this.braziers.push({ x: g[0], y: g[1], lit: false, progress: 0, litT: 0 }), taken.push([g[0], g[1]]));
+    }
+    for (let k = this.braziers.length; k < 3; k++) {
       const g = pickFar(taken, far * 0.22) ?? ground[Math.floor(R.next() * ground.length)];
       if (!g) break;
       this.braziers.push({ x: g[0], y: g[1], lit: false, progress: 0, litT: 0 });
@@ -818,14 +825,15 @@ export class World {
       const a = this.rng.range(0, Math.PI * 2), d = this.rng.range(minDist, minDist + 100);
       const x = h.x + Math.cos(a) * d, y = h.y + Math.sin(a) * d * 0.8;
       if (x < 20 || y < 24 || x > this.w - 20 || y > this.h - 12 || !this.free(x, y, 12)) continue;
-      // the walk there (10 a tile) no longer than about twice the straight way
-      const wd = (F.at(Math.floor(x / TILE), Math.floor(y / TILE)) / 10) * TILE;
-      if (wd < Flow.FAR && wd < d * 2.2 + 80) return [x, y];
+      // the walk there (about 10 a tile) not much longer than the straight way: they come round the next corner,
+      // not from the far side of the floor
+      const raw = F.at(Math.floor(x / TILE), Math.floor(y / TILE));
+      if (raw < Flow.FAR && (raw / 10) * TILE < d * 1.6 + 48) return [x, y];
     }
     // any reachable open floor at about that walk
     for (let k = 0; k < 400; k++) {
       const c = this.rng.int(1, m.cols - 2), r = this.rng.int(1, m.rows - 2), wd = (F.at(c, r) / 10) * TILE;
-      if (wd < minDist * 0.8 || wd > minDist * 3 + 200 || F.at(c, r) >= Flow.FAR || !this.free(c * TILE + 8, r * TILE + 8, 10)) continue;
+      if (wd < minDist * 0.8 || wd > minDist * 2 + 80 || F.at(c, r) >= Flow.FAR || !this.free(c * TILE + 8, r * TILE + 8, 10)) continue;
       return [c * TILE + 8, r * TILE + 8];
     }
     return [m.start[0] * TILE + 8, m.start[1] * TILE + 8];
@@ -2549,12 +2557,21 @@ export class World {
 
       const dx = h.x - E.x[i], dy = h.y - E.y[i], dist = Math.hypot(dx, dy) || 1;
       let ux = dx / dist, uy = dy / dist;
-      // walls between: the way the walking distances lead (ghosts go through walls, straight at him)
-      if (d.ai !== AI.Phantom) {
-        const F = FLYERS.has(d.ai) ? this.toHeroFly : this.toHero, walk = F.at(Math.floor(E.x[i] / TILE), Math.floor(E.y[i] / TILE)) * 1.6;
-        if (walk > dist * 1.2 + 26) {
-          F.way(E.x[i], E.y[i], this.way);
-          if (this.way[0] || this.way[1]) (ux = this.way[0]), (uy = this.way[1]);
+      // straight at him only when he is near and in plain sight; otherwise the way the walking distances lead,
+      // looked at a few tiles ahead, so they round corners instead of pressing into them (ghosts go through walls)
+      if (d.ai !== AI.Phantom && d.ai !== AI.Boss && d.ai !== AI.BossFrog) {
+        const fly = FLYERS.has(d.ai);
+        if (!(dist < 150 && this.map.sight(E.x[i], E.y[i] - 4, h.x, h.y - 4, fly))) {
+          const F = fly ? this.toHeroFly : this.toHero;
+          let x = E.x[i], y = E.y[i];
+          for (let k = 0; k < 3; k++) {
+            F.way(x, y, this.way);
+            if (!this.way[0] && !this.way[1]) break;
+            x += this.way[0] * 12;
+            y += this.way[1] * 12;
+          }
+          const lx = x - E.x[i], ly = y - E.y[i], ld = Math.hypot(lx, ly);
+          if (ld > 0.5) (ux = lx / ld), (uy = ly / ld);
         }
       }
       let slow = E.speedMul[i];
@@ -2762,7 +2779,8 @@ export class World {
       if (d.ai !== AI.Phantom) {
         this.tmp.x = E.x[i];
         this.tmp.y = E.y[i];
-        this.map.push(this.tmp, Math.min(7, ri * 0.8), FLYERS.has(d.ai));
+        // (a boss floats, but never out over a drop where the hero cannot follow)
+        this.map.push(this.tmp, Math.min(7, ri * 0.8), FLYERS.has(d.ai) && d.ai !== AI.Boss);
         if (!FLYERS.has(d.ai)) this.pushOut(this.tmp, ri * 0.8);
         E.x[i] = this.tmp.x;
         E.y[i] = this.tmp.y;
@@ -2825,6 +2843,8 @@ export class World {
     const want = dist > 170 ? 1 : dist < 120 ? -1 : 0;
     E.x[i] += (ux * want * d.speed - uy * 14) * dt;
     E.y[i] += (uy * want * d.speed + ux * 14) * dt;
+    // it floats, but over ground the hero can reach, in its arena
+    this.keepBoss(i, dt);
     this.bossAttack -= dt;
     this.body(i);
     const sx = this.bx, sy = this.by;
@@ -2864,12 +2884,8 @@ export class World {
     const [mx, my] = this.leaper(i, dt, enraged ? 1.4 : 2.0, false, 2.2);
     E.x[i] = Math.max(30, Math.min(this.w - 30, E.x[i] + mx * dt));
     E.y[i] = Math.max(30, Math.min(this.h - 10, E.y[i] + my * dt));
-    // it leaps over drops but not through walls
-    this.tmp.x = E.x[i];
-    this.tmp.y = E.y[i];
-    this.map.push(this.tmp, 10, true);
-    E.x[i] = this.tmp.x;
-    E.y[i] = this.tmp.y;
+    // it leaps, but only from floor to floor, and keeps to its arena
+    this.keepBoss(i, dt);
     if (wasAir && E.t[i] >= 1.78) {
       // landing: the floor cracks, a ring of bullets, the camera shakes
       this.addFx("slam", E.x[i], E.y[i], { sx: 0.8, sy: 0.8, glow: 0.8 });
@@ -3104,7 +3120,12 @@ export class World {
       if (this.wave.left <= 0) this.endWave();
     }
     // a boss gone without its death being seen (nothing should do this, but the way on must never be lost)
-    if (this.bossSpawned && !this.portal && !this.cine && !this.won && this.floor < FLOORS && this.bossIndex() < 0) this.openPortal(...this.portalSpot());
+    if (this.bossSpawned && !this.portal && !this.cine && !this.won && this.bossIndex() < 0) {
+      if (this.floor >= FLOORS) {
+        this.won = true;
+        this.ev.victory();
+      } else this.openPortal(...this.portalSpot());
+    }
     const st = this.stairs;
     if (st?.open) {
       st.t += dt;
@@ -3194,7 +3215,13 @@ export class World {
   objective(): [number, number] | null {
     if (this.portal) return [this.portal.x, this.portal.y];
     if (this.stairs?.open) return [this.stairs.x, this.stairs.y];
-    if (this.wave || this.bossIndex() >= 0 || this.cine) return null;
+    // a boss up: the way to it, while the hero is far from it
+    const bi = this.bossIndex();
+    if (bi >= 0 && !this.cine) {
+      const E = this.enemies;
+      return Math.hypot(E.x[bi] - this.hero.x, E.y[bi] - this.hero.y) > 220 ? [E.x[bi], E.y[bi]] : null;
+    }
+    if (this.wave || this.cine) return null;
     let best: [number, number] | null = null, bd = Infinity;
     for (const b of this.braziers)
       if (!b.lit) {
@@ -3294,7 +3321,8 @@ export class World {
   private spawnBoss(): void {
     if (this.bossSpawned) return;
     this.bossSpawned = true;
-    const type = bossOf(this.floor), [x, y] = this.edgePoint(150);
+    // it comes in the middle of the arena on a boss's floor (else not far from the hero, on open ground)
+    const type = bossOf(this.floor), [x, y] = this.arenaPoint() ?? this.edgePoint(150);
     const i = this.spawnAt(type, x, y);
     if (i >= 0) {
       this.bossUid = this.enemies.uid[i];
@@ -3308,6 +3336,50 @@ export class World {
   }
   bossIndex(): number {
     return this.bossUid ? this.indexOf(this.bossUid) : -1;
+  }
+  /** The middle of the boss's arena (px), on open floor near it; null if the floor has none. */
+  arenaPoint(): [number, number] | null {
+    const A = this.map.arena;
+    if (!A) return null;
+    const cx = (A.x + A.w / 2) * TILE, cy = (A.y + A.h / 2) * TILE;
+    for (let k = 0; k < 40; k++) {
+      const x = cx + this.rng.range(-k * 3, k * 3), y = cy + this.rng.range(-k * 2, k * 2);
+      if (this.map.clear(x, y, 14)) return [x, y];
+    }
+    return [cx, cy];
+  }
+  /**
+   * A boss keeps to ground the hero can reach: inside its arena (a leash pulls it back to the middle), never out
+   * over a drop; if it is somehow cut off from the hero, it reappears in the middle of its arena.
+   */
+  private keepBoss(i: number, dt: number): void {
+    const E = this.enemies, A = this.map.arena;
+    if (A) {
+      const x0 = (A.x + 1.5) * TILE, x1 = (A.x + A.w - 1.5) * TILE, y0 = (A.y + 2) * TILE, y1 = (A.y + A.h - 1) * TILE;
+      const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+      if (E.x[i] < x0 || E.x[i] > x1 || E.y[i] < y0 || E.y[i] > y1) {
+        const dx = cx - E.x[i], dy = cy - E.y[i], d = Math.hypot(dx, dy) || 1;
+        E.x[i] += (dx / d) * 60 * dt;
+        E.y[i] += (dy / d) * 60 * dt;
+      }
+    }
+    this.tmp.x = E.x[i];
+    this.tmp.y = E.y[i];
+    this.map.push(this.tmp, 10, false);
+    E.x[i] = this.tmp.x;
+    E.y[i] = this.tmp.y;
+    this.bossCheck -= dt;
+    if (this.bossCheck <= 0) {
+      this.bossCheck = 1;
+      const far = this.toHero.at(Math.floor(E.x[i] / TILE), Math.floor(E.y[i] / TILE)) >= Flow.FAR;
+      if (far && !this.hero.dead) {
+        const [x, y] = this.arenaPoint() ?? this.edgePoint(120);
+        this.addFx("blink", E.x[i], E.y[i], { glow: 1 });
+        E.x[i] = x;
+        E.y[i] = y;
+        this.addFx("spawn", x, y, { sx: 1.2, sy: 1.2, glow: 0.8 });
+      }
+    }
   }
 
   // ============================================================================================ the director
@@ -3351,7 +3423,7 @@ export class World {
    * wisps from different edges, watchers and moths alone. `far`: well off screen (the wanderers between waves).
    */
   private spawnPack(type: number, far: boolean): void {
-    const d = ENEMIES[type], h = this.hero, R = this.rng, f = this.floor, dist = far ? 320 : 220, TAU = Math.PI * 2;
+    const d = ENEMIES[type], h = this.hero, R = this.rng, f = this.floor, dist = far ? 280 : 190, TAU = Math.PI * 2;
     // between waves the wanderers come one or two at a time, never a whole pack
     let room = far ? R.int(1, 2) : 99;
     const at = (x: number, y: number) => {
