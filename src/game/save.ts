@@ -1,7 +1,11 @@
-// What survives between runs: embers and the forge, records, discovered reactions, settings.
+// What survives between runs: embers and the forge, records, discovered reactions, settings; what the player has
+// opened in the tower (gifts, places, items, vaults).
+
+/** The save's shape now; older saves are brought up to it by sanitize(). */
+export const SAVE_VERSION = 2;
 
 export interface SaveData {
-  version: 1;
+  version: typeof SAVE_VERSION;
   embers: number;
   bestFloor: number;
   bestScore: number;
@@ -45,10 +49,21 @@ export interface SaveData {
   daily?: { day: string; best: number; tries: number };
   /** The weekly run, the same for its week. */
   weekly?: { day: string; best: number; tries: number };
+  /** The gifts won from the bosses, for good: each opens its own kind of gate. */
+  gifts: string[];
+  /** The places of the tower the player has reached (the atlas, the ways opened). */
+  places: string[];
+  /**
+   * Weapons, relics and artifacts opened for the runs ("weapon:bow", "relic:0", "stat:edge"), beyond those there from
+   * the start.
+   */
+  opened: string[];
+  /** The vaults behind gates the player has found ("place:stage:n"). */
+  vaults: string[];
 }
 
 export const defaultSave = (): SaveData => ({
-  version: 1,
+  version: SAVE_VERSION,
   embers: 0,
   bestFloor: 0,
   bestScore: 0,
@@ -73,7 +88,14 @@ export const defaultSave = (): SaveData => ({
   purchases: [],
   delivered: [],
   seen: [],
+  gifts: [],
+  places: [],
+  opened: [],
+  vaults: [],
 });
+
+/** The places a version-1 save could have reached, one for each three floors of its deepest. */
+const V1_PLACES = ["crypt", "garden", "frost"];
 
 const clamp01 = (v: unknown, d: number): number => (typeof v === "number" && isFinite(v) ? Math.max(0, Math.min(1, v)) : d);
 
@@ -104,17 +126,21 @@ const tasks = (v: unknown): SaveData["tasks"] => {
 /**
  * Accept whatever was stored, filling in anything missing, so old saves keep working; every field is checked for
  * its type and range, so a damaged save cannot put bad values into the game (it falls back to the defaults field by
- * field). Unknown fields are dropped. `version` is where a later change of the save's shape would be migrated.
+ * field). Unknown fields are dropped.
+ *
+ * Older saves are brought up to date, never losing anything: a save from before the tower's places (version 1)
+ * gets the places its deepest floor shows it reached, and everything it has already met counts as opened.
  */
 export function sanitize(raw: unknown): SaveData {
   const d = defaultSave();
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return d;
   const r = raw as Record<string, unknown> & Partial<SaveData>;
   const lang = r.lang === "ru" || r.lang === "en" ? r.lang : null;
+  const old = int(r.version, 1, 99) < 2, seen = strs(r.seen), bestFloor = int(r.bestFloor, 0, 99);
   return {
-    version: 1,
+    version: SAVE_VERSION,
     embers: int(r.embers),
-    bestFloor: int(r.bestFloor, 0, 99),
+    bestFloor,
     bestScore: int(r.bestScore),
     runs: int(r.runs),
     wins: r.wins === undefined ? undefined : int(r.wins),
@@ -139,9 +165,13 @@ export function sanitize(raw: unknown): SaveData {
     ach: strs(r.ach),
     purchases: strs(r.purchases),
     delivered: strs(r.delivered, 50),
-    seen: strs(r.seen),
+    seen,
     tasks: tasks(r.tasks),
     daily: trial(r.daily),
     weekly: trial(r.weekly),
+    gifts: strs(r.gifts, 50),
+    places: old ? V1_PLACES.filter((_, k) => bestFloor > k * 3) : strs(r.places, 50),
+    opened: old ? seen.filter((k) => /^(weapon|relic|stat):/.test(k)) : strs(r.opened),
+    vaults: strs(r.vaults, 500),
   };
 }

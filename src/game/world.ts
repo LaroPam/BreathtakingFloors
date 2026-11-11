@@ -6,8 +6,8 @@ import { attackFrames, attackHits, HERO_FPS, heroHands, lookId } from "./heroSpr
 import type { Audio } from "../engine/audio";
 import { rgba, rgbaf } from "../engine/renderer";
 import {
-  AI, biomeOf, bossOf, El, EL_COLOR, EN, ENEMIES, evolutionOf, FLOORS, heroDef, QUESTS, RELIC_MAX, RELICS, RelicKind, reactionFor, roster, stageOf, WEAPON_IDS, WEAPONS,
-  type Biome, type Blow, type HeroDef, type Modifier, type QuestKind, type Reaction, type StatId, type TaskId, type WeaponId, MYTHIC, RARITIES, rollRarity, UNIQUES, type Perk,
+  AI, depthOf, El, EL_COLOR, EN, ENEMIES, evolutionOf, heroDef, mainStop, nextStop, PLACE_FLOORS, QUESTS, RELIC_MAX, RELICS, RelicKind, reactionFor, roster, WEAPON_IDS, WEAPONS,
+  type PlaceDef, type PlaceId, type Stop, type GateKind, giftFor, type Blow, type HeroDef, type Modifier, type QuestKind, type Reaction, type StatId, type TaskId, type WeaponId, MYTHIC, RARITIES, rollRarity, UNIQUES, type Perk,
 } from "./defs";
 import { getLang, t as tr } from "./i18n";
 import { Bullets, Drops, Enemies, Grid, Particles, TEAM_FOE, TEAM_HERO } from "./pools";
@@ -29,7 +29,7 @@ BULLET_ANIMS.push("arrow", "fireball");
 const ATK_FPS = 20;
 const ELEMENTS = [El.Fire, El.Frost, El.Storm, El.Venom, El.Holy, El.Void];
 /** What the floor kicks up under the feet, per biome. */
-const DUST = { crypt: ["#6a6078", "#4a4258"], garden: ["#6a7a46", "#4a5a30"], frost: ["#d8e8f8", "#a8c0dc"] } as const;
+const DUST: Record<PlaceId, readonly [string, string]> = { crypt: ["#6a6078", "#4a4258"], garden: ["#6a7a46", "#4a5a30"], frost: ["#d8e8f8", "#a8c0dc"] };
 /** The sound each element makes when a blow lands with it. */
 const EL_SFX = ["hit", "burn", "freeze", "zap", "venom", "holy", "void"] as const;
 const ORB_TRAIL = ["", "", "#ff5a6a", "#c684ff", "#8ad83a", "#78ccf4"];
@@ -321,7 +321,33 @@ export interface Secret {
    * The sealed room behind it (tiles), and what waits there: a treasure, a guardian over a chest, a fountain, an
    * armoury. Breaking the wall cuts the passage and opens the room.
    */
-  room: { x: number; y: number; w: number; h: number; kind: "treasure" | "guardian" | "fountain" | "armory" } | null;
+  room: Room | null;
+}
+/** A sealed room in the stone (tiles), and what waits there. */
+export interface Room {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  kind: "treasure" | "guardian" | "fountain" | "armory" | "vault";
+}
+/**
+ * A gate in the back wall, in plain sight from the first visit: closed until the hero holds the gift that opens its
+ * kind; behind it, a vault.
+ */
+export interface Gate {
+  kind: GateKind;
+  /** The left edge of its two wall columns (px), and the foot of the wall it is in (px), as a Secret's. */
+  x: number;
+  y: number;
+  /** 0 closed, rising to 1 as it opens (the bars sink, the runes flare). */
+  open: number;
+  opening: boolean;
+  /** How strongly it answers the hero near it (0..1): the runes stir. */
+  near: number;
+  /** Seconds since it last said what it needs. */
+  sayT: number;
+  room: Room;
 }
 /** A healing fountain in a secret room: one long drink restores the hero. */
 export interface Fountain {
@@ -330,8 +356,6 @@ export interface Fountain {
   used: boolean;
   t: number;
 }
-/** The middle of a cracked stretch (px). */
-const cx2 = (sc: Secret): number => sc.x + TILE;
 /** Each urn's colours, for its shards. */
 const URN_SHARDS = [["#7a4a2a", "#b87848", "#3a2216"], ["#9a4a26", "#d07040", "#7ac048"], ["#3a6a98", "#78b0d8", "#e8f8ff"], ["#5a5068", "#8a809a", "#2a2430"]].map((c) => c.map((h) => rgba(h)));
 
@@ -405,6 +429,8 @@ export interface WorldEvents {
   curse(state: "taken" | "lifted"): void;
   /** The floor's hidden cache was spotted in the lantern's light, or broken open. */
   secret(state: "found" | "opened"): void;
+  /** The floor's gate: the hero came to it without its gift, or it opened (its vault is found). */
+  gate(kind: GateKind, state: "locked" | "opened"): void;
   /** A spirit's quest was taken, done or failed. */
   quest(q: Quest): void;
   /** Something the day's tasks count happened. */
@@ -535,8 +561,15 @@ export class World {
     this.bullets.cur = v;
     return was;
   }
+  /** The depth: floor 1, 2, ... down the whole tower, whichever places the run went through. */
   floor = 1;
-  biome: Biome = biomeOf(1);
+  /** The place this floor is in, and how far into it (1..3, the third its boss's). */
+  place: PlaceDef = mainStop(1).place;
+  stage = 1;
+  /** A place of the next tier the run has opened the way to (through a gate); the portal leads there. */
+  branch: PlaceId | null = null;
+  /** The places this run has been through, in order. */
+  trail: PlaceId[] = [];
   mod: Modifier;
   w = 800;
   h = 560;
@@ -597,6 +630,17 @@ export class World {
   strikes: Strike[] = [];
   /** The floor's curse is on: enemies tougher and faster until the floor is done. */
   curse = false;
+  /** The floor's gate, if it has one. */
+  gate: Gate | null = null;
+  /** The gifts the player holds (the game sets them at a run's start and when one is won). */
+  gifts = new Set<string>();
+  /** The weapons, relics and artifacts not yet opened by the player (arsenal keys): kept out of this run's pools. */
+  locked = new Set<string>();
+  /** The weapons that may lie on an altar: opened ones that pass the test (any at all, if none is left). */
+  weaponsOpen(test: (id: WeaponId) => boolean): WeaponId[] {
+    const all = WEAPON_IDS.filter(test), open = all.filter((id) => !this.locked.has(`weapon:${id}`));
+    return open.length ? open : all;
+  }
   /** Hits the hero took on this floor (an achievement wants none). */
   floorHits = 0;
   /** The weekly trial's rule, on every floor of the run ("" for none). */
@@ -627,19 +671,36 @@ export class World {
   }
 
   // ============================================================================================ floor setup
+  /** This floor as a stop on the way down. */
+  get stop(): Stop {
+    return { place: this.place, stage: this.stage };
+  }
+  /** The last floor of a place: its boss's, a portal out instead of stairs. */
+  bossFloor(): boolean {
+    return this.stage >= PLACE_FLOORS;
+  }
+  /** Where the way goes on from here (null after the tower's last boss). */
+  next(): Stop | null {
+    return nextStop(this.stop, this.branch);
+  }
   /** How the hero came onto this floor: down the stairs (within a location) or through a portal (a new one). */
   arrivedBy: "stairs" | "portal" = "portal";
   /**
    * Set up a floor. `mod` is the run's path added up (combine()); `fresh` the stairs just taken, whose one-off gifts
    * (a full heal, a level-up) are had here.
    */
-  startFloor(floor: number, mod: Modifier, via: "stairs" | "portal" = "portal", fresh?: Modifier): void {
+  startFloor(at: Stop | number, mod: Modifier, via: "stairs" | "portal" = "portal", fresh?: Modifier): void {
+    const stop = typeof at === "number" ? mainStop(at) : at, floor = depthOf(stop);
     this.floor = floor;
+    this.place = stop.place;
+    this.stage = stop.stage;
+    // a run starts at the top: nothing taken yet
+    if (floor === 1) (this.trail = []), (this.branch = null);
+    if (this.trail[this.trail.length - 1] !== stop.place.id) this.trail.push(stop.place.id);
     this.arrivedBy = via;
     this.mod = mod;
-    this.biome = biomeOf(floor);
     // the floor's own map, built the way its plan says (a narrow stair makes it smaller)
-    const plan = MAP_PLANS[Math.min(MAP_PLANS.length, floor) - 1];
+    const plan = MAP_PLANS[stop.place.id][stop.stage - 1];
     this.map = buildMap({ ...plan, cols: Math.round(plan.cols * mod.size), rows: Math.round(plan.rows * mod.size) }, this.rng);
     this.toHero = new Flow(this.map, false);
     this.toHeroFly = new Flow(this.map, true);
@@ -753,7 +814,7 @@ export class World {
     // the stairs down (not on a boss's floor, where a portal comes instead): in the last chamber, the way's end
     this.stairs = null;
     const taken: [number, number][] = [[sx, sy]];
-    if (bossOf(this.floor) < 0 && this.floor < FLOORS) {
+    if (!this.bossFloor()) {
       const g = (n ? centre(route[n - 1], 3) : null) ?? ground[ground.length - 1];
       if (g) (this.stairs = { x: g[0], y: g[1], open: false, t: 0 }), taken.push([g[0], g[1]]);
     }
@@ -794,27 +855,48 @@ export class World {
         } else run = 0;
       }
     }
-    // now and then a stretch of wall is cracked, and behind it, deep in the stone, a sealed room: two faces side by
-    // side, clear of the torches, with solid wall behind them deep enough for the room
+    // sealed rooms deep in the stone, behind stretches of back wall two faces wide: a gate's vault, a cracked wall's
+    // secret room. Each as big as the stone behind allows (8 x 5 tiles, else 6 x 4), a passage of a few rows up to
+    // it, all of it and a tile round it solid now; clear of the torches and of each other
     this.secret = null;
+    this.gate = null;
     this.fountain = null;
     this.guardianUid = 0;
+    const wallRoom = (list: [number, number][], minD: number, avoid: Room | null, torches = true): { x: number; y: number; room: Omit<Room, "kind"> } | null => {
+      for (const [w, h, pass] of [[8, 5, 4], [6, 4, 3]])
+        for (const [c, r] of list) {
+          const x = c * TILE, y = (r + 1) * TILE, top = r - pass - h, x0 = c - (w - 2) / 2;
+          if (top < 1 || m.at(c + 1, r) !== WALL || m.at(c + 1, r + 1) !== FLOOR || m.at(c + 1, r - 2) !== WALL) continue;
+          if (torches && this.torches.some(([tx, ty]) => ty === y && tx > x - 26 && tx < x + TILE * 2 + 26)) continue;
+          if ((x - sx) ** 2 + (y - sy) ** 2 < minD * minD) continue;
+          if (avoid && x0 - 2 < avoid.x + avoid.w && x0 + w + 2 > avoid.x && top - 1 < avoid.y + avoid.h + 5 && r + 1 > avoid.y - 1) continue;
+          let solid = true;
+          for (let rr = top; rr <= r && solid; rr++) for (let cc = x0 - 1; cc <= x0 + w && solid; cc++) if (m.at(cc, rr) !== WALL) solid = false;
+          if (solid) return { x, y, room: { x: x0, y: top + 1, w, h } };
+        }
+      return null;
+    };
     // (every face is tried, in a shuffled order, until one has room behind it)
     const order = faces.map((_, k): [number, number] => [R.next(), k]).sort((a, b) => a[0] - b[0]).map(([, k]) => faces[k]);
-    if (R.chance(0.6 + 0.03 * this.floor))
-      for (const [c, r] of order) {
-        const x = c * TILE, y = (r + 1) * TILE;
-        if (m.at(c + 1, r) !== WALL || m.at(c + 1, r + 1) !== FLOOR || m.at(c + 1, r - 2) !== WALL) continue;
-        if (this.torches.some(([tx, ty]) => ty === y && tx > x - 26 && tx < x + TILE * 2 + 26)) continue;
-        if ((x - sx) ** 2 + (y - sy) ** 2 < 120 * 120) continue;
-        // the room: 8 x 5 tiles, three rows up behind the face, all of it and a tile round it solid now
-        let solid = r >= 10;
-        for (let rr = r - 9; rr <= r && solid; rr++) for (let cc = c - 4; cc <= c + 5 && solid; cc++) if (m.at(cc, rr) !== WALL) solid = false;
-        if (!solid) continue;
-        const kinds = ["treasure", "treasure", "guardian", "guardian", "fountain", "armory"] as const;
-        this.secret = { x, y, hp: 3, seen: 0, found: false, hitT: 9, room: { x: c - 3, y: r - 8, w: 8, h: 5, kind: R.pick(kinds) } };
-        break;
+    // the gate first: on the tower's first floor always (it is seen from the first run on, long before the gift that
+    // opens it; a torch gives way to it if it must), on others now and then; on the way rather than in a side room,
+    // where the hero passes it. Its runes are its light: no torch of its own beside it
+    const gateKinds = this.place.gates;
+    if (gateKinds.length && (this.floor === 1 || R.chance(0.5))) {
+      const onWay = ([c, r]: [number, number]) => m.route.some((a) => c >= a.x && c + 1 < a.x + a.w && r + 1 >= a.y && r + 1 < a.y + a.h);
+      const list = [...order.filter(onWay), ...order.filter((f) => !onWay(f))];
+      const spot = wallRoom(list, 100, null) ?? (this.floor === 1 ? wallRoom(list, 60, null, false) : null);
+      if (spot) {
+        this.torches = this.torches.filter(([tx, ty]) => !(ty === spot.y && tx > spot.x - 26 && tx < spot.x + TILE * 2 + 26));
+        this.gate = { kind: R.pick(gateKinds), x: spot.x, y: spot.y, open: 0, opening: false, near: 0, sayT: 9, room: { ...spot.room, kind: "vault" } };
       }
+    }
+    // now and then a stretch of wall is cracked, and behind it a secret room
+    if (R.chance(0.6 + 0.03 * this.floor)) {
+      const spot = wallRoom(order, 120, this.gate?.room ?? null);
+      const kinds = ["treasure", "treasure", "guardian", "guardian", "fountain", "armory"] as const;
+      if (spot) this.secret = { x: spot.x, y: spot.y, hp: 3, seen: 0, found: false, hitT: 9, room: { ...spot.room, kind: R.pick(kinds) } };
+    }
     // a random place on open ground
     const anyGround = (): [number, number] => {
       const g = ground[Math.floor(R.next() * ground.length)] ?? [sx, sy];
@@ -823,7 +905,7 @@ export class World {
     // things lying about: flat ones under everything, standing ones sorted with the rest
     this.decor = [];
     // (each stage of a place has its own: the ossuary is strewn with bones, the garden's heart grows mushrooms...)
-    const stage = stageOf(this.floor), id = this.biome.id;
+    const stage = this.stage, id = this.place.id;
     // (the lights among them, candles, glowing mushrooms, crystals, stand only in the chambers' corners, below)
     const kinds: [string, boolean, number][] =
       id === "crypt" ? [["bones", true, 3]] : id === "garden" ? (stage === 3 ? [["grass", false, 1], ["mushrooms", false, 1]] : [["grass", false, 1]]) : [];
@@ -862,7 +944,7 @@ export class World {
     for (let tries = 0; tries < 80; tries++) {
       const [x, y] = tries === 0 && nooks.length ? nooks[0] : anyGround();
       if (!clear(x, y, 14) && !(tries === 0 && nooks.length)) continue;
-      const pool = WEAPON_IDS.filter((id) => id !== this.hero.weapon), weapon = R.pick(pool);
+      const pool = this.weaponsOpen((id) => id !== this.hero.weapon), weapon = R.pick(pool);
       // from the second floor on, more and more of them are steeped in an element (not the spellbook, not the fire whip)
       const rarity = rollRarity(R.next(), this.floor);
       let el = this.floor >= 2 && !WEAPONS[weapon].el && weapon !== "spell" && R.chance(0.25 + 0.06 * this.floor) ? R.pick(ELEMENTS) : El.None;
@@ -888,7 +970,7 @@ export class World {
       (!this.spirit || (x - this.spirit.x) ** 2 + (y - this.spirit.y) ** 2 > 36 * 36);
     // things to break: urns in twos and threes at the foot of the walls and by the columns
     this.urns = [];
-    const urnKinds = this.biome.id === "crypt" ? [0, 0, 3] : this.biome.id === "garden" ? [1] : [2, 2, 3];
+    const urnKinds = this.place.id === "crypt" ? [0, 0, 3] : this.place.id === "garden" ? [1] : [2, 2, 3];
     const groups = 3 + Math.round(ground.length / 300);
     for (let g = 0, tries = 0; g < groups && tries < 160; tries++) {
       const pil = this.pillars.length && R.chance(0.35) ? R.pick(this.pillars) : null, face = faces.length ? faces[Math.floor(R.next() * faces.length)] : null;
@@ -1056,6 +1138,7 @@ export class World {
     const dx = (x - this.bx) / (this.brx + r), dy = (y - this.by) / (this.bry + r);
     return dx * dx + dy * dy < 1;
   }
+  /** The enemy whose hitbox comes nearest to a point, within maxR of its edge. */
   private nearestEnemy(x: number, y: number, maxR: number, skip?: Set<number>): number {
     const E = this.enemies;
     let best = -1, bd = maxR * maxR;
@@ -1064,8 +1147,10 @@ export class World {
       // a cheap test on the feet first; the art's hitbox only for those that could be near
       if ((E.x[i] - x) ** 2 + (E.y[i] - y) ** 2 > far) continue;
       if (skip && skip.has(E.uid[i])) continue;
+      // (by the edge of its hitbox, not its middle: a big boss's body stands high over its feet, and one hugged
+      // must come before the little ones further off)
       this.body(i);
-      const d = (this.bx - x) ** 2 + (this.by - y) ** 2;
+      const d = Math.max(0, Math.hypot(this.bx - x, this.by - y) - (this.brx + this.bry) / 2) ** 2;
       if (d < bd) {
         bd = d;
         best = i;
@@ -1252,7 +1337,8 @@ export class World {
         h.ghostT = 0.035;
         this.ghosts.push({ x: h.x, y: h.y, frame: 0, flip: h.face, life: 0.22 });
       }
-      if (h.def.id === "shadow") this.dashCut();
+      // the Shade cuts with every dash; with the Shadow Step anyone does (the Shade the harder)
+      if (h.def.id === "shadow" || this.gifts.has("shade")) this.dashCut();
       // the dash ends with the feet skidding into the floor
       if (h.dashT <= 0) this.dust(h.x + h.dashDx * 6, h.y, 7, 45);
     } else {
@@ -1323,7 +1409,7 @@ export class World {
 
   /** Dust kicked up off the floor, in the floor's colour. */
   dust(x: number, y: number, n: number, speed: number): void {
-    const [a, b] = DUST[this.biome.id];
+    const [a, b] = DUST[this.place.id];
     for (let k = 0; k < n; k++) {
       const ang = this.rng.range(Math.PI * 0.95, Math.PI * 2.05), sp = this.rng.range(0.3, 1) * speed;
       this.parts.add(x + this.rng.range(-3, 3), y - this.rng.range(0, 2), Math.cos(ang) * sp, Math.sin(ang) * sp * 0.5, this.rng.range(0.25, 0.45), rgba(k % 2 ? a : b, 0.8), this.rng.chance(0.3) ? 2 : 1, 30, 0);
@@ -1340,7 +1426,8 @@ export class World {
       if (!this.touches(h.x, h.y - 12, 9)) return;
       h.dashHits.add(E.uid[i]);
       const crit = this.rng.chance(s.crit), ex = this.bx, ey = this.by;
-      this.damage(i, 11 * s.edge * s.might * (crit ? 2 : 1), this.weaponEl, { crit });
+      const k = h.def.id === "shadow" ? (this.gifts.has("shade") ? 1.4 : 1) : 0.7;
+      this.damage(i, 11 * k * s.edge * s.might * (crit ? 2 : 1), this.weaponEl, { crit });
       this.addFx(crit ? "crit" : "hit_spark", ex, ey + 10, { rot: Math.atan2(h.dashDy, h.dashDx), sx: 0.6, sy: 0.6, glow: 0.8, key: 2 });
       this.burst(ex, ey, 4, rgba("#e05aff"), 70, 0.3);
       this.hitstop = Math.max(this.hitstop, 0.015);
@@ -1885,6 +1972,22 @@ export class World {
     }
   }
 
+  /**
+   * Where the hero can come out of a blink aimed at (x, y): there if it is clear ground, else at `alt` (the mark's
+   * other side), else the nearest clear ground on the straight way back to him; null if there is none.
+   */
+  private landing(x: number, y: number, alt?: number): [number, number] | null {
+    const h = this.hero, m = this.map;
+    if (m.clear(x, y, 6)) return [x, y];
+    if (alt !== undefined && m.clear(alt, y, 6)) return [alt, y];
+    const n = Math.max(1, Math.ceil(Math.hypot(x - h.x, y - h.y) / 6));
+    for (let k = 1; k <= n; k++) {
+      const px = x + ((h.x - x) * k) / n, py = y + ((h.y - y) * k) / n;
+      if (m.clear(px, py, 6)) return [px, py];
+    }
+    return null;
+  }
+
   private strike(st: Strike): void {
     this.setSrc(SRC_ABILITY);
     const h = this.hero, E = this.enemies;
@@ -1892,11 +1995,12 @@ export class World {
       // out of the shadow beside the mark, and a cut
       this.ghosts.push({ x: h.x, y: h.y, frame: 0, flip: h.face, life: 0.3 });
       this.addFx("blink", h.x, h.y - 14, { glow: 0.8, sx: 0.7, sy: 0.7, tint: rgba("#c684ff") });
-      const side = h.x < st.x ? -1 : 1;
-      h.x = st.x + side * 12;
-      h.y = st.y;
+      // (beside the mark on the near side, or the far one; a mark over a drop or against a wall: the nearest clear
+      // ground on the way to it; none at all, and he stays where he is)
+      const side = h.x < st.x ? -1 : 1, spot = this.landing(st.x + side * 12, st.y, st.x - side * 12);
+      if (spot) [h.x, h.y] = spot;
       this.map.push(h, 5, false);
-      h.face = side > 0 ? -1 : 1;
+      h.face = st.x < h.x ? -1 : 1;
       this.pushOut(h, 6);
       this.addFx("blink", h.x, h.y - 14, { glow: 0.8, sx: 0.7, sy: 0.7, tint: rgba("#c684ff") });
       const i = st.uid >= 0 ? this.byUid(st.uid) : -1;
@@ -2196,7 +2300,7 @@ export class World {
       this.embersBonus += 25 * (this.floor / 3);
       this.pendingLevels += 1;
       E.remove(i);
-      if (this.floor >= FLOORS) {
+      if (!this.next()) {
         this.won = true;
         this.ev.victory();
       } else this.openPortal(...this.portalSpot());
@@ -2240,6 +2344,29 @@ export class World {
           this.ev.secret("found");
         }
         if (sc.seen > 0.3 && this.rng.chance(dt * 4)) this.parts.add(cx + this.rng.range(-7, 7), sc.y - this.rng.range(12, 26), this.rng.range(-5, 5), this.rng.range(6, 14), 1.4, rgba("#d8d0e8", 0.55 * sc.seen), 1, 8, 0);
+      }
+    }
+    // the gate: its runes stir as the hero comes; with its gift held it opens, else it says what it needs
+    const g = this.gate;
+    if (g && g.open < 1) {
+      const cx = g.x + TILE, near = Math.abs(h.x - cx) < 26 && h.y - g.y > -4 && h.y - g.y < 34;
+      g.near += ((near ? 1 : 0) - g.near) * Math.min(1, dt * 5);
+      g.sayT += dt;
+      if (g.opening) {
+        g.open = Math.min(1, g.open + dt / 1.1);
+        if (this.rng.chance(dt * 40)) this.parts.add(cx + this.rng.range(-12, 12), g.y - this.rng.range(4, 40), this.rng.range(-10, 10), -this.rng.range(10, 30), 0.7, rgba("#b58cff"), 1, -20, 1);
+        if (g.open >= 1) this.openGate(g);
+      } else if (near && !h.dead) {
+        if (this.gifts.has(giftFor(g.kind).id)) {
+          g.opening = true;
+          this.audio.play("secret");
+          this.shake = Math.max(this.shake, 0.3);
+        } else if (g.sayT > 5) {
+          // what it needs, and where that is to be had (the game's banner says it)
+          g.sayT = 0;
+          this.audio.play("deny", 0.8);
+          this.ev.gate(g.kind, "locked");
+        }
       }
     }
     // a secret room's fountain: stand at it a moment and it restores every heart (once)
@@ -2330,7 +2457,7 @@ export class World {
    * The wall is down: the passage is cut through to the room and the room stands open, lit, with what waits in
    * it. The ways over the map are made again at once.
    */
-  private openRoom(sc: Secret): void {
+  private openRoom(sc: { x: number; y: number; room: Room | null }): void {
     const m = this.map, R = this.rng, room = sc.room, c = sc.x / TILE, r = sc.y / TILE - 1;
     if (!room) return;
     for (let rr = room.y + room.h; rr <= r; rr++) for (let cc = c; cc <= c + 1; cc++) m.set(cc, rr, FLOOR);
@@ -2341,8 +2468,14 @@ export class World {
     const mx = (room.x + room.w / 2) * TILE, my = (room.y + room.h / 2) * TILE + 4;
     // its torches on the far wall, and the old air puffing out
     for (const tc of [room.x + 1, room.x + room.w - 2]) this.torches.push([tc * TILE + 8, room.y * TILE]);
-    this.dust(cx2(sc), sc.y - 30, 14, 40);
-    if (room.kind === "treasure") {
+    this.dust(sc.x + TILE, sc.y - 30, 14, 40);
+    if (room.kind === "vault") {
+      // a vault behind a gate: a chest on a dais, a heart, and more embers than any cache
+      this.drops.add(D_CHEST, mx, my, 1, 0, 0);
+      this.drops.add(D_HEART, mx + R.range(-30, 30), my + R.range(-10, 10), 1, 0, 0);
+      for (let q = 0; q < 16; q++) this.drops.add(D_EMBER, mx + R.range(-44, 44), my + R.range(-18, 18), 1, 0, 0);
+      for (let q = 0; q < 4; q++) this.drops.add(D_RED, mx + R.range(-44, 44), my + R.range(-18, 18), 20, 0, 0);
+    } else if (room.kind === "treasure") {
       // a hoard: a chest in the middle, embers and gems about it
       this.drops.add(D_CHEST, mx, my, 1, 0, 0);
       for (let q = 0; q < 10; q++) this.drops.add(D_EMBER, mx + R.range(-40, 40), my + R.range(-18, 18), 1, 0, 0);
@@ -2365,12 +2498,23 @@ export class World {
       for (let q = 0; q < 4; q++) this.drops.add(D_EMBER, mx + R.range(-36, 36), my + R.range(-16, 16), 1, 0, 0);
     } else {
       // an armoury: a weapon on its altar, steeped in an element
-      const pool = WEAPON_IDS.filter((id) => id !== this.hero.weapon && id !== "spell" && !WEAPONS[id].el), weapon = R.pick(pool.length ? pool : WEAPON_IDS);
+      const pool = this.weaponsOpen((id) => id !== this.hero.weapon && id !== "spell" && !WEAPONS[id].el), weapon = R.pick(pool.length ? pool : WEAPON_IDS);
       // ...better than any out on the floor: rare at the least
       const rarity = Math.max(2, rollRarity(R.next(), this.floor, 0.35));
       this.racks.push({ x: Math.round(mx), y: Math.round(my), weapon, el: rarity >= MYTHIC ? UNIQUES[weapon].el : R.pick(ELEMENTS), legend: false, rarity, progress: 0, armed: true });
       for (let q = 0; q < 4; q++) this.drops.add(D_EMBER, mx + R.range(-36, 36), my + R.range(-16, 16), 1, 0, 0);
     }
+  }
+  /** The gate is open: the passage behind it is cut through to its vault, the vault lit and full. */
+  private openGate(g: Gate): void {
+    const cx = g.x + TILE;
+    this.openRoom(g);
+    this.addFx("frost_nova", cx, g.y - 8, { tint: rgba("#b58cff"), glow: 0.9, sx: 0.6, sy: 0.6 });
+    this.burst(cx, g.y - 20, 24, rgba("#c8a8ff"), 110, 0.6);
+    this.flash = Math.max(this.flash, 0.25);
+    this.shake = Math.max(this.shake, 0.5);
+    this.audio.play("chest");
+    this.ev.gate(g.kind, "opened");
   }
   /** An urn shatters: shards fly and fall, dust puffs, and whatever was inside spills out. */
   private breakUrn(u: Urn): void {
@@ -2411,7 +2555,7 @@ export class World {
     switch (kind) {
       case "hunt": {
         // the kind hunted is one of those the floor sends from the start, so there are always enough of them
-        const pool = roster(f, 0);
+        const pool = roster(this.stop, 0);
         let total = 0;
         for (const [, w] of pool) total += w;
         let r = this.rng.range(0, total);
@@ -3918,7 +4062,7 @@ export class World {
         this.shake = 0.35;
         this.gainOd(15);
         // the last brazier of a boss floor calls the boss; any other starts a wave to be survived
-        if (this.phase >= 3 && bossOf(this.floor) >= 0) this.spawnBoss();
+        if (this.phase >= 3 && this.bossFloor()) this.spawnBoss();
         else this.startWave();
       }
     }
@@ -3929,7 +4073,7 @@ export class World {
     }
     // a boss gone without its death being seen (nothing should do this, but the way on must never be lost)
     if (this.bossSpawned && !this.portal && !this.cine && !this.won && this.bossIndex() < 0) {
-      if (this.floor >= FLOORS) {
+      if (!this.next()) {
         this.won = true;
         this.ev.victory();
       } else this.openPortal(...this.portalSpot());
@@ -3958,7 +4102,7 @@ export class World {
     }
   }
   private updateMotes(dt: number): void {
-    const kind = this.biome.motes, W = this.w, H = this.h;
+    const kind = this.place.motes, W = this.w, H = this.h;
     for (const m of this.motes) {
       m.ph += dt;
       if (kind === "dust") {
@@ -4126,7 +4270,7 @@ export class World {
     if (this.bossSpawned) return;
     this.bossSpawned = true;
     // it comes in the middle of the arena on a boss's floor (else not far from the hero, on open ground)
-    const type = bossOf(this.floor), [x, y] = this.arenaPoint() ?? this.edgePoint(150);
+    const type = this.place.boss, [x, y] = this.arenaPoint() ?? this.edgePoint(150);
     const i = this.spawnAt(type, x, y);
     if (i >= 0) {
       this.bossUid = this.enemies.uid[i];
@@ -4191,7 +4335,7 @@ export class World {
   // ============================================================================================ the director
   /** An enemy from the floor's roster, up to the given phase. */
   private pickEnemy(phase = this.phase): number {
-    const pool = roster(this.floor, phase);
+    const pool = roster(this.stop, phase);
     let total = 0;
     for (const [, w] of pool) total += w;
     let r = this.rng.range(0, total);

@@ -12,19 +12,24 @@ The user writes in Russian; docs and in-game text are Russian-first (English is 
 - `npm run art -- <category>/<name>`: contact sheet of a game effect from `art/fx`.
 - `npm run check:play` (after `npm run build:web`): a bot plays every hero through the whole tower in headless Chromium,
   ~50x faster than real time, and reports what breaks: a boss gone without dying, a stale enemy index, NaN, someone
-  inside a wall or off the map, a floor not got through, page errors, slow frames. `-- --heroes=mage --floors=3 --seed=2`.
+  inside a wall or off the map, a floor not got through, a gate that does not open with its gift, page errors, slow
+  frames. `-- --heroes=mage --floors=3 --seed=2`, `--from=9` (start deeper), `--gifts=shade`.
 - `npm run check:clip` (nothing cut off its bake canvas), `npm run check:release` and `npm run check:sdk` (the built
   Yandex and YouTube bundles against the stores' rules; the last plays them with stand-in SDKs). See `docs/RELEASE.md`.
 - `node pixelfx/tools/render.mjs <id>`: the same for a library effect.
-- `npm run maps [seed]`: the nine floors' map plans (`src/game/map.ts`) drawn to `records/maps/`.
+- `npm run maps [seed]`: every place's map plans (`src/game/map.ts`) drawn to `records/maps/`.
 
 ## Where things are
 
 - Content lives in `src/game/defs.ts` (elements, reactions, enemies, relics, stats, stair modifiers, forge).
+- The tower: tiers (`TIERS`) of places (`PLACES`: look, three floors' names, rosters, boss), three floors each, joined by
+  stairs; a portal after each boss leads to the next tier's place (`nextStop`, into `World.branch` if a gate opened
+  one). `World.floor` is the depth down the whole tower (difficulty and records go by it); `World.place` and
+  `World.stage` say where. A floor is a `Stop` (`startFloor` takes one, or a depth on the main way). Plan of the
+  update in progress: `docs/PLAN-BRANCHES.md`.
 - Each floor is a tile map built by `src/game/map.ts`: a way snaking through rows of chambers (`route`, in order) with side
-  rooms (`nooks`); each floor's shape and extras in `MAP_PLANS`;
-  walls and drops are real, the horde walks the `Flow` distances round them. Three floors make a place (biome),
-  joined by stairs; a portal after each boss leads to the next place.
+  rooms (`nooks`); each place's three floors' shapes and extras in `MAP_PLANS[place]`;
+  walls and drops are real, the horde walks the `Flow` distances round them.
 - The simulation is `src/game/world.ts` over the typed-array stores in `src/game/pools.ts`. Swap-remove means
   grid indices can go stale mid-step; `Grid.query` skips indices past the live count, and loops over enemies run
   backwards.

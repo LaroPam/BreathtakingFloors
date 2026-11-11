@@ -8,7 +8,7 @@ import { anim, FONTS, frameAt, icon, type Anim, type Rect } from "../engine/atla
 import { heroSprites, initHeroSprites, lookId, type HeroAnim, type HeroSprites } from "./heroSprites";
 import { fitScale, measure, text, wrap } from "../engine/text";
 import { dayNumber, weekNumber, type Board, type BoardName, type Platform, type Product } from "../platform/platform";
-import { ACHIEVEMENTS, heroDef, biomeOf, bossOf, combine, floorInfo, stageOf, EL_COLOR, LEGENDS, legendDesc, type WeaponId, EL_NAME, ENEMIES, EVOLUTIONS, evolutionOf, FLOORS, FORGE, questDef, TASK_BONUS, TASKS, type TaskId, type ForgeId, SHOP, type ShopItem, HEROES, WEAPONS, weaponName, MODIFIERS, MUTATORS, NO_MODIFIER, REACTIONS, RELIC_MAX, RELIC_SLOTS, ARTIFACT_SLOTS, RELICS, STATS, El, fullWeaponName, STAIR_EVENTS, type Outcome, type StairEvent, MYTHIC, PERK_TEXT, RARITIES, UNIQUES, type Modifier, type Reaction, type RelicKind, type StatId } from "./defs";
+import { ACHIEVEMENTS, heroDef, combine, DEPTH, floorText, PLACE_FLOORS, EL_COLOR, LEGENDS, legendDesc, type WeaponId, EL_NAME, ENEMIES, EVOLUTIONS, evolutionOf, FORGE, questDef, TASK_BONUS, TASKS, type TaskId, type ForgeId, SHOP, type ShopItem, HEROES, WEAPONS, weaponName, MODIFIERS, MUTATORS, NO_MODIFIER, REACTIONS, RELIC_MAX, RELIC_SLOTS, ARTIFACT_SLOTS, RELICS, STATS, El, fullWeaponName, STAIR_EVENTS, type Outcome, type StairEvent, MYTHIC, PERK_TEXT, RARITIES, UNIQUES, type Modifier, type PlaceId, type GiftId, giftDef, giftFor, giftFrom, UNLOCKS, arsenalName, ARSENAL, unlockOf, type Reaction, type RelicKind, type StatId } from "./defs";
 import { drawWorld, Scene } from "./draw";
 import { ascent } from "./ascent";
 import { getLang, langFor, setLang, t, tx, type Lang } from "./i18n";
@@ -19,7 +19,7 @@ import { button, slider, C, divider, glow as glowUi, drawHud, drawPointers, draw
 import { CINE_DUR, LUNGE_DASH, SRC_ABILITY, SRC_DASH, SRC_ELS, SRC_N, SRC_PARRY, SRC_REACT, SRC_RELIC, SRC_STATUS, SRC_WAVE, SRC_WEAPON, World } from "./world";
 
 type StatRow = { ic: Rect; name: string; col: number; sum: number; segs: [number, number][] };
-type State = "title" | "heroes" | "forge" | "shop" | "daily" | "records" | "tasks" | "settings" | "card" | "play" | "spin" | "pick" | "pause" | "book" | "stairs" | "dead" | "won" | "stats";
+type State = "title" | "heroes" | "forge" | "shop" | "daily" | "records" | "tasks" | "settings" | "card" | "play" | "spin" | "pick" | "pause" | "book" | "stairs" | "dead" | "won" | "stats" | "gift" | "arsenal";
 type Choice = { type: "relic"; kind: RelicKind; level: number } | { type: "stat"; id: StatId } | { type: "evo"; kind: RelicKind } | { type: "legend"; weapon: WeaponId } | { type: "rest" };
 
 /**
@@ -52,6 +52,11 @@ const SPIN_LID = 0.42, SPIN_OPEN = 0.62;
 const RELIC_ICON = ["orbit", "lance", "coil", "flask", "halo", "void"];
 /** A big number short: 950, 12.3K, 4.1M (К and М in Russian). */
 const fmtNum = (n: number): string => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}${t("mega")}` : n >= 1e4 ? `${(n / 1e3).toFixed(n >= 1e5 ? 0 : 1)}${t("kilo")}` : String(Math.round(n)));
+/** An arsenal key's badge in the icons: a weapon's, a relic's, an artifact's. */
+const arsenalIcon = (key: string): string => {
+  const [kind, id] = key.split(":");
+  return kind === "weapon" ? `w_${id}` : kind === "relic" ? RELIC_ICON[+id] : id;
+};
 const iconKey = (c: Choice) => (c.type === "relic" ? RELIC_ICON[c.kind] : c.type === "evo" ? evolutionOf(c.kind).icon : c.type === "legend" ? `w_${c.weapon}` : c.type === "rest" ? "maxhp" : c.id);
 
 /**
@@ -101,17 +106,22 @@ const CONSOLATION = 25;
 const CONSOLATION_EVERY = 4;
 const FIRST_GIFT = 120;
 const FLOOR_ONE_HERO = "ranger";
+/** The achievement for beating each place's boss (the last one's is the victory itself). */
+const BOSS_FEAT: Partial<Record<PlaceId, string>> = { crypt: "eye", garden: "toad" };
+/** Each gift's sign, as on its gates: a rune of three by three. */
+const GIFT_RUNES: Record<GiftId, string[]> = { shade: ["x.x", ".x.", "x.x"] };
 /** A button of the end screens: its label and look, and what it does (true if it has left the screen). */
 type EndAct = { label: string; opts: ButtonOpts; go: () => boolean | void };
 /** The title menu's buttons, in order, and after how many runs each is shown to a newcomer. */
-type TitleItem = "play" | "trials" | "tasks" | "forge" | "shop" | "records" | "settings";
-const TITLE_ORDER: TitleItem[] = ["play", "trials", "tasks", "forge", "shop", "records", "settings"];
+type TitleItem = "play" | "trials" | "tasks" | "forge" | "shop" | "arsenal" | "records" | "settings";
+const TITLE_ORDER: TitleItem[] = ["play", "trials", "tasks", "forge", "shop", "arsenal", "records", "settings"];
 const TITLE_ITEMS: Record<TitleItem, { label: Parameters<typeof t>[0]; icon: string; color?: string; after: number }> = {
   play: { label: "play", icon: "play", after: 0 },
   trials: { label: "trials", icon: "daily", color: "#ffb0a0", after: 3 },
   tasks: { label: "tasks", icon: "scroll", after: 2 },
   forge: { label: "forge", icon: "anvil", after: 1 },
   shop: { label: "shop", icon: "ember", color: "#ffd84a", after: 2 },
+  arsenal: { label: "arsenal", icon: "book", after: 2 },
   records: { label: "records", icon: "crown", after: 0 },
   settings: { label: "settings", icon: "gear", after: 0 },
 };
@@ -168,7 +178,8 @@ export class Game {
   /** A hero who just earned the victor's colours (the victory screen says so). */
   private newSkin = "";
   /** Achievements earned and waiting to be shown. */
-  private toasts: { id: string; t: number }[] = [];
+  /** The plates at the top right waiting their turn: achievements, and things opened for the runs (`open`). */
+  private toasts: { id: string; t: number; open?: boolean }[] = [];
   private startSpins = 0;
   /** The forge's rerolls left this run, and its second wind (unused). */
   private rerolls = 0;
@@ -188,6 +199,11 @@ export class Game {
   private platformPaused = false;
   private runRng = new Rng(Date.now() & 0xffffff);
   /** The run just ended: what it reached, the embers it earned (`base`, and `embers` shown: doubled for an ad), its score. */
+  /** The arsenal's tile shown in its panel (the one tapped last; with keys, the one in focus). */
+  private arsenalSel = 0;
+  /** A gift just won, waiting for the boss's fall to play out; and the gift on its screen now. */
+  private giftDue: { id: GiftId; t: number } | null = null;
+  private giftShow: { id: GiftId; t: number } | null = null;
   private lastResult = { floor: 0, kills: 0, time: 0, embers: 0, base: 0, gift: 0, doubled: false, score: 0, best: false, daily: false, weekly: false };
   /** A rewarded ad asked for and not yet answered: its button does nothing meanwhile. */
   private adBusy = false;
@@ -221,6 +237,8 @@ export class Game {
   async init(): Promise<void> {
     this.save = sanitize(await this.platform.load());
     setLang(this.save.lang ?? langFor(this.platform.language()));
+    // what the deeds already done have opened (quietly: a save from before the arsenal opens its share at once)
+    this.checkUnlocks(true);
     this.audio.setEnabled(this.save.sound && this.platform.audioAllowed());
     this.applySettings();
     this.touch = this.platform.isMobile();
@@ -346,6 +364,10 @@ export class Game {
       case "shop":
         this.openShop();
         return false;
+      case "arsenal":
+        this.arsenalSel = 0;
+        this.setState("arsenal");
+        return false;
       case "records":
         this.recordsTab = "score";
         // the keys start on the tab last open
@@ -424,13 +446,30 @@ export class Game {
       count: (id, n) => {
         this.bump(id, n ?? 1);
         // the bosses each have their own
-        if (id === "boss") this.unlock(this.world.floor === 3 ? "eye" : this.world.floor === 6 ? "toad" : "");
+        if (id === "boss") {
+          this.unlock(BOSS_FEAT[this.world.place.id] ?? "");
+          this.bossFell();
+        }
       },
       curse: (state) => {
         if (state === "taken") {
           this.audio.play("curse");
           this.showBanner(t("curseTaken"), rgba("#ff5a5a"), t("curseTakenSub"));
         } else this.showBanner(t("curseLifted"), C.gold, t("curseLiftedSub"));
+      },
+      gate: (kind, state) => {
+        const gift = giftFor(kind);
+        if (state === "locked") {
+          // what opens it, and who keeps that
+          const giver = giftFrom(gift.id), where = giver ? `. ${t("gateWhere").replace("{who}", tx(ENEMIES[giver.boss].name))}` : "";
+          return this.showBanner(tx(gift.gateName), rgba(gift.color), t("gateNeeds").replace("{gift}", tx(gift.name)) + where);
+        }
+        // a vault found: kept for the atlas
+        const key = `${this.world.place.id}:${this.world.stage}`;
+        if (!this.save.vaults.includes(key)) this.save.vaults.push(key);
+        this.stat("vaults");
+        this.persist();
+        this.showBanner(t("vaultFound"), rgba(gift.color), t("vaultFoundSub"));
       },
       secret: (state) => {
         if (state === "found") {
@@ -489,6 +528,17 @@ export class Game {
       this.audio.suspend();
       if (this.state === "play") this.setState("pause");
     } else this.audio.resume();
+  }
+
+  /** A place's boss has fallen: the first time, its gift is the player's for good, shown a moment later. */
+  private bossFell(): void {
+    const gift = this.world.place.gift;
+    if (!gift || this.save.gifts.includes(gift)) return;
+    this.save.gifts.push(gift);
+    this.persist();
+    // (a trial is the same for everyone: a gift won in one works from the next ordinary run)
+    if (!this.daily) this.world.gifts.add(gift);
+    this.giftDue = { id: gift, t: 1.8 };
   }
 
   private showBanner(textStr: string, color = C.gold, sub?: string): void {
@@ -588,6 +638,10 @@ export class Game {
     this.eventsSeen = [];
     // the first run's lessons: a gentler first floor, and its long word about the braziers (veterans get the short one)
     w.gentle = this.save.tutorial && !this.daily && !this.weekly;
+    // the gifts held work in every ordinary run, and only what the player has opened comes up in it (a trial is the
+    // same for everyone: no gifts, and everything there)
+    w.gifts = new Set(this.daily ? [] : this.save.gifts);
+    w.locked = new Set(this.daily ? [] : UNLOCKS.map((u) => u.key).filter((k) => !this.save.opened.includes(k)));
     w.startFloor(1, combine(this.path), "portal", this.path[0]);
     this.reached(1);
     this.revived = false;
@@ -633,6 +687,7 @@ export class Game {
     this.lastResult = { floor: w.floor, kills: w.kills, time: w.runTime, embers, base: embers, gift, doubled: false, score, best, daily: this.daily, weekly: this.weekly };
     this.save.embers += embers + gift;
     this.save.bestFloor = Math.max(this.save.bestFloor, w.floor);
+    this.checkUnlocks();
     if (won) {
       this.save.wins = (this.save.wins ?? 0) + 1;
       // the hero who won wears the victor's colours from now on (they can take them off at the hero select)
@@ -653,6 +708,7 @@ export class Game {
     if (w.floorHits === 0) this.unlock("untouched");
     if (w.time < 90) this.unlock("swift");
     this.save.bestFloor = Math.max(this.save.bestFloor, w.floor);
+    this.checkUnlocks();
     // the first floor cleared opens the second hero (it can be bought before, too)
     if (w.floor === 1 && !this.daily && !this.save.unlocked.includes(FLOOR_ONE_HERO)) {
       this.save.unlocked.push(FLOOR_ONE_HERO);
@@ -662,9 +718,11 @@ export class Game {
     }
     this.persist();
     // after a location's boss, its portal leads straight on to the next location
-    if (bossOf(w.floor) >= 0) {
+    if (w.bossFloor()) {
+      const next = w.next();
+      if (!next) return;
       this.transition(() => {
-        w.startFloor(w.floor + 1, combine(this.path), "portal");
+        w.startFloor(next, combine(this.path), "portal");
         this.reached(w.floor);
         this.cardT = 0;
         this.setState("card");
@@ -687,7 +745,7 @@ export class Game {
       const w = this.world;
       this.path.push(mod);
       // the climb's own happenings count for the floor above only
-      w.startFloor(w.floor + 1, combine([...this.path, ...this.eventMods]), "stairs", mod);
+      w.startFloor(w.next() ?? w.stop, combine([...this.path, ...this.eventMods]), "stairs", mod);
       this.eventMods = [];
       this.reached(w.floor);
       this.cardT = 0;
@@ -815,6 +873,7 @@ export class Game {
   private statValue(key: string): number {
     const sv = this.save;
     if (key === "reactionsKnown") return sv.reactions.length;
+    if (key === "bestFloor") return sv.bestFloor;
     if (key === "heroesKnown") return sv.unlocked.length;
     if (key === "forgeLevels") return Object.values(sv.forge).reduce((a, b) => a + b, 0);
     if (key === "evosKnown") return Object.keys(sv.stats).filter((k) => k.startsWith("evo_")).length;
@@ -822,6 +881,23 @@ export class Game {
   }
   private checkAch(): void {
     for (const a of ACHIEVEMENTS) if (a.stat && !this.save.ach.includes(a.id) && this.statValue(a.stat) >= a.goal!) this.unlock(a.id);
+    this.checkUnlocks();
+  }
+  /**
+   * Open what the deeds done so far have earned: into the save, into this run's pools at once, and a plate saying so
+   * (`quiet`: no plate, at loading).
+   */
+  private checkUnlocks(quiet = false): void {
+    for (const u of UNLOCKS) {
+      if (this.save.opened.includes(u.key) || this.statValue(u.stat) < u.goal) continue;
+      this.save.opened.push(u.key);
+      this.world?.locked.delete(u.key);
+      if (!quiet) {
+        this.toasts.push({ id: u.key, t: 0, open: true });
+        this.audio.play("achieve");
+      }
+      this.persist();
+    }
   }
   /** An achievement is earned: its embers, a fanfare, a plate sliding in at the top right. */
   private unlock(id: string): void {
@@ -842,8 +918,20 @@ export class Game {
       this.toasts.shift();
       return;
     }
-    const a = ACHIEVEMENTS.find((q) => q.id === tst.id)!, ui = this.ui, W = this.r.w;
-    const k = Math.min(1, tst.t / 0.25, (3.4 - tst.t) / 0.25), e = 1 - (1 - Math.max(0, k)) ** 3;
+    const ui = this.ui, W = this.r.w, k = Math.min(1, tst.t / 0.25, (3.4 - tst.t) / 0.25), e = 1 - (1 - Math.max(0, k)) ** 3;
+    if (tst.open) {
+      // something opened for the runs: its badge, "opened", its name, and where it is to be found
+      const name = tx(arsenalName(tst.id)), w = Math.max(150, measure(name) + 44), x = Math.round(W - 4 - w * e), y = this.state === "play" ? 38 : 6;
+      frame(ui, x, y, w, 28, { edge: C.green });
+      slot(ui, x + 4, y + 4, 20, C.goldDim);
+      ui.image(icon("icons", arsenalIcon(tst.id)), x + 14, y + 14, 0.8, 0.8);
+      text(ui, t("openedNew"), x + 29, y + 5, { font: "mini", color: C.green });
+      text(ui, name, x + 29, y + 14, { color: C.goldLight, shadow: C.ink });
+      const gx = x + ((tst.t * 260) % (w + 40)) - 20;
+      if (tst.t < 1.2) ui.rect(Math.max(x + 2, gx), y + 2, 3, 24, rgba("#d8ffc4", 0.25));
+      return;
+    }
+    const a = ACHIEVEMENTS.find((q) => q.id === tst.id)!;
     const name = tx(a.name), w = Math.max(150, measure(name) + 44), x = Math.round(W - 4 - w * e), y = this.state === "play" ? 38 : 6;
     frame(ui, x, y, w, 28, { edge: C.gold });
     slot(ui, x + 4, y + 4, 20, C.goldDim);
@@ -865,6 +953,9 @@ export class Game {
   /** A new floor: the tasks that count how deep you got. */
   private reached(floor: number): void {
     this.bump("floor", floor, true);
+    // the places the player has been to stay known (the atlas, the ways opened from them)
+    const place = this.world.place.id;
+    if (!this.save.places.includes(place)) this.save.places.push(place);
     if (this.daily) this.bump("trial", floor, true);
     if (this.daily && floor >= 3) this.unlock("trial");
   }
@@ -885,7 +976,7 @@ export class Game {
     const slotsFree = w.relics.length < RELIC_SLOTS;
     for (const def of RELICS) {
       const lv = w.relicLevel(def.kind);
-      if (lv === 0 && slotsFree) out.push([{ type: "relic", kind: def.kind, level: 1 }, relicsOnly ? 10 : 6]);
+      if (lv === 0 && slotsFree && !w.locked.has(`relic:${def.kind}`)) out.push([{ type: "relic", kind: def.kind, level: 1 }, relicsOnly ? 10 : 6]);
       else if (lv > 0 && lv < RELIC_MAX) out.push([{ type: "relic", kind: def.kind, level: lv + 1 }, relicsOnly ? 12 : 8]);
     }
     if (!relicsOnly) {
@@ -894,6 +985,7 @@ export class Game {
         // deflecting bullets is a blade's trick: no use to a bow or a spellbook
         if (s.id === "parry" && WEAPONS[w.hero.weapon].ranged) continue;
         const lv = w.statLevels[s.id] ?? 0;
+        if (lv === 0 && w.locked.has(`stat:${s.id}`)) continue;
         if (lv === 0 ? artFree : lv < s.max) out.push([{ type: "stat", id: s.id }, lv ? s.weight * 1.3 : s.weight]);
       }
     }
@@ -1067,9 +1159,20 @@ export class Game {
     }
     if (this.state === "play" && !this.platformPaused && w.hero.arriveT > 0.9 && !this.wipe) this.nextSpin();
     // the music follows the biome, and turns to the boss's theme while one is here
-    this.audio.theme = w.cine || w.bossIndex() >= 0 ? 3 : w.biome.id === "garden" ? 1 : w.biome.id === "frost" ? 2 : 0;
+    this.audio.theme = w.cine || w.bossIndex() >= 0 ? 3 : w.place.music;
     if (this.state === "spin") this.updateSpin(dt);
     if (this.state === "pick") this.updatePick(dt);
+    // a gift won: a moment for the boss's fall, then its own screen
+    if (this.giftDue && this.state === "play" && !this.wipe && !w.cine && !this.platformPaused) {
+      this.giftDue.t -= dt;
+      if (this.giftDue.t <= 0) {
+        this.giftShow = { id: this.giftDue.id, t: 0 };
+        this.giftDue = null;
+        this.audio.play("achieve");
+        this.setState("gift");
+      }
+    }
+    if (this.state === "gift" && this.giftShow) this.giftShow.t += dt;
     if (this.state === "book" && this.card) {
       const c = this.card;
       c.t += dt * c.dir;
@@ -1153,7 +1256,7 @@ export class Game {
     // between floors the floor behind is gone: the stairwell down to the next one takes its place
     // between floors the floor behind is gone: the climb up to the next one takes its place
     const climbing = this.state === "stairs" || (this.state === "stats" && this.statsFrom[0] === "stairs");
-    const down = climbing ? ascent(s, W, H, this.now, w.biome, biomeOf(w.floor + 1), this.climbFrame()) : null;
+    const down = climbing ? ascent(s, W, H, this.now, w.place, (w.next() ?? w.stop).place, this.climbFrame()) : null;
     const cx = down ? 0 : demo ? this.demoCam[0] : this.camX + sx, cy = down ? 0 : demo ? this.demoCam[1] : this.camY + sy;
     if (!down) drawWorld(s, w, cx, cy, W, H, this.now);
 
@@ -1161,9 +1264,9 @@ export class Game {
     // a choice or a chest dims the floor smoothly, and a choice made lets it light up again as the game goes on
     const over = this.state === "pick" || this.state === "spin";
     const closing = this.pick && this.pick.chosen >= 0 ? Math.min(1, this.pick.t / 0.2) : 0;
-    const dimK = over ? 0.5 * Math.min(1, (this.now - this.menu.openedAt) / 0.16) * (1 - closing) : this.state === "stats" ? 0.78 : 0.55;
+    const dimK = over ? 0.5 * Math.min(1, (this.now - this.menu.openedAt) / 0.16) * (1 - closing) : this.state === "stats" || this.state === "gift" ? 0.8 : 0.55;
     const light: Lighting = {
-      ambient: down ? down.ambient : [w.ambient * w.biome.ambient[0], w.ambient * w.biome.ambient[1], w.ambient * w.biome.ambient[2]],
+      ambient: down ? down.ambient : [w.ambient * w.place.ambient[0], w.ambient * w.place.ambient[1], w.ambient * w.place.ambient[2]],
       steps: 7,
       vignette: down ? 0.8 : 0.35,
       tint: w.flash > 0 && this.save.flashes && !down ? [1, 0.95, 0.85] : [0.03, 0.025, 0.06],
@@ -1213,6 +1316,8 @@ export class Game {
       case "dead": this.drawDead(); break;
       case "won": this.drawWon(); break;
       case "stats": this.drawStats(); break;
+      case "gift": this.drawGift(); break;
+      case "arsenal": this.drawArsenal(); break;
     }
     if (this.state !== "heroes") this.menu.end(this.state === "stairs" || (this.state === "pick" && this.pickRow), this.state !== "settings");
     // a screen comes up out of the dark
@@ -1573,26 +1678,59 @@ export class Game {
     if (d.title && c.t > 1.25) text(ui, tx(d.title), W / 2, y + FONT_H * sc + 9, { align: "center", color: withAlpha(C.text, Math.min(1, (c.t - 1.25) * 3) * outK) });
   }
 
+  /**
+   * A gift won: its sign turning in a ring of light, its name, what it does in a fight and which gates it opens.
+   * The world waits behind, dimmed, until it is taken.
+   */
+  private drawGift(): void {
+    const g = this.giftShow;
+    if (!g) return;
+    const ui = this.ui, W = this.r.w, H = this.r.h, now = this.now, def = giftDef(g.id), col = rgba(def.color);
+    const a = Math.min(1, g.t * 2.5), short = H < 260, cx = Math.round(W / 2), cy = Math.round(H * (short ? 0.24 : 0.3)), R = short ? 18 : 24;
+    // the sign: a glow, a ring of motes turning, and the rune at the heart, three pixels to its one
+    glowUi(ui, cx, cy, R * 1.8 * a, R * 1.8 * a, col, 0.5 * a);
+    for (let q = 0; q < 28; q++) {
+      const an = (q / 28) * Math.PI * 2 + now * 0.7, p = 0.5 + 0.5 * Math.sin(now * 3 + q * 1.7), r = R * (0.8 + 0.2 * a);
+      ui.rect(Math.round(cx + Math.cos(an) * r), Math.round(cy + Math.sin(an) * r), q % 4 ? 1 : 2, q % 4 ? 1 : 2, withAlpha(col, a * (0.35 + 0.65 * p)));
+    }
+    const rune = GIFT_RUNES[g.id], px = short ? 3 : 4, rw = rune[0].length * px, rh = rune.length * px;
+    rune.forEach((row, j) => [...row].forEach((ch, i) => ch === "x" && ui.rect(cx - rw / 2 + i * px, cy - rh / 2 + j * px, px, px, withAlpha(j === 1 && i === 1 ? rgba("#ffffff") : col, a))));
+    // what it is
+    let y = cy + R + (short ? 8 : 14);
+    y += this.heading(t("giftNew"), y, short ? 1 : 2, C.gold, a);
+    text(ui, tx(def.name), cx, y + 4, { font: "title", align: "center", color: withAlpha(col, a), shadow: withAlpha(C.ink, a), outline: true });
+    y += 20;
+    const wid = Math.min(300, W - 24);
+    y += para(ui, tx(def.desc), Math.round(cx - wid / 2), y, wid, withAlpha(C.text, a), "center");
+    y += para(ui, t("giftOpens").replace("{gate}", tx(def.gateName)), Math.round(cx - wid / 2), y + 2, wid, withAlpha(C.goldLight, a), "center") + 4;
+    text(ui, t("giftForever"), cx, y + 2, { font: "mini", align: "center", color: withAlpha(C.dim, a) });
+    // taken: back to the fight (not by a stray press in the first moment)
+    if (button(ui, this.menu, now, cx - 60, Math.min(H - 26, y + 18), 120, 18, t("giftTake"), { primary: true }) && g.t > 0.8) {
+      this.giftShow = null;
+      this.setState("play");
+    }
+  }
+
   /** The floor's title card: its number, its biome, a line about it, and where it sits in the run. */
   private drawCard(): void {
-    const ui = this.ui, W = this.r.w, H = this.r.h, w = this.world, B = w.biome, a = Math.min(1, this.cardT * 3);
+    const ui = this.ui, W = this.r.w, H = this.r.h, w = this.world, B = w.place, a = Math.min(1, this.cardT * 3);
     this.drawCardBack();
     if (w.floor >= 3 && !this.r.laterReady && this.cardT > 1.9) text(ui, t("loading"), W / 2, H - 20, { font: "mini", align: "center", color: withAlpha(C.dim, 0.6 + 0.4 * Math.sin(this.now * 4)) });
     const cy = Math.round(H * 0.36);
     if (this.daily) text(ui, t(this.weekly ? "weekly" : "daily"), W / 2, cy - 44, { font: "mini", align: "center", color: withAlpha(rgba("#ff9a8a"), a) });
     const th = this.heading(`${t("floor")} ${w.floor}`, cy - 32, 2, C.gold, a);
     // the floor's own name, the place it belongs to (and which of its three floors), and its line
-    const info = floorInfo(w.floor), stage = stageOf(w.floor);
+    const info = floorText(w.stop), stage = w.stage;
     text(ui, tx(info.name), W / 2, cy - 32 + th + 4, { font: "title", align: "center", color: withAlpha(C.text, a), shadow: withAlpha(C.ink, a), outline: true });
-    text(ui, `${tx(B.name)} · ${stage}/3${stage === 1 && w.floor > 1 ? ` · ${t("newPlace")}` : ""}`, W / 2, cy - 32 + th + 19, { font: "mini", align: "center", color: withAlpha(stage === 3 ? rgba("#ff9a8a") : C.goldDim, a) });
+    text(ui, `${tx(B.name)} · ${stage}/${PLACE_FLOORS}${stage === 1 && w.floor > 1 ? ` · ${t("newPlace")}` : ""}`, W / 2, cy - 32 + th + 19, { font: "mini", align: "center", color: withAlpha(stage === PLACE_FLOORS ? rgba("#ff9a8a") : C.goldDim, a) });
     para(ui, tx(info.lore), Math.round(W / 2 - 150), cy - 32 + th + 30, 300, withAlpha(C.dim, a), "center");
-    // the road down: nine floors on a thread, the bosses' marked, those behind lit, ours ringed
-    const my = cy - 32 + th + 52, step = Math.min(18, Math.floor((W - 40) / FLOORS));
-    const x0 = Math.round(W / 2 - ((FLOORS - 1) / 2) * step);
-    ui.rect(x0, my, (FLOORS - 1) * step, 1, withAlpha(rgba("#2a2438"), a));
+    // the road down: the tower's floors on a thread, the bosses' marked, those behind lit, ours ringed
+    const my = cy - 32 + th + 52, step = Math.min(18, Math.floor((W - 40) / DEPTH));
+    const x0 = Math.round(W / 2 - ((DEPTH - 1) / 2) * step);
+    ui.rect(x0, my, (DEPTH - 1) * step, 1, withAlpha(rgba("#2a2438"), a));
     ui.rect(x0, my, Math.max(0, (w.floor - 1) * step), 1, withAlpha(C.goldDim, a));
-    for (let k = 1; k <= FLOORS; k++) {
-      const x = x0 + (k - 1) * step, boss = bossOf(k) >= 0, here = k === w.floor;
+    for (let k = 1; k <= DEPTH; k++) {
+      const x = x0 + (k - 1) * step, boss = k % PLACE_FLOORS === 0, here = k === w.floor;
       if (here) {
         const p = 0.6 + 0.4 * Math.sin(this.now * 5);
         ui.disc(x, my, 7, 7, withAlpha(C.gold, 0.15 * p * a));
@@ -1615,7 +1753,7 @@ export class Game {
    * either side of the name and throw their glow on the dark.
    */
   private drawCardBack(): void {
-    const ui = this.ui, W = this.r.w, H = this.r.h, B = this.world.biome, now = this.now, cy = Math.round(H * 0.38);
+    const ui = this.ui, W = this.r.w, H = this.r.h, B = this.world.place, now = this.now, cy = Math.round(H * 0.38);
     ui.rect(0, 0, W, H, rgba("#07060c"));
     // a faint glow of the biome's light from below
     const [ar, ag, ab] = B.ambient;
@@ -1848,6 +1986,59 @@ export class Game {
     text(ui, emb, W - 8, 8, { align: "right", color: flash > 0 ? rgbaf(1, 1, 0.7 + 0.3 * flash, 1) : C.gold, outline: true, scale: flash > 0.5 ? 2 : 1 });
     ui.image(icon("hud", "ember"), W - 14 - measure(emb, "big", flash > 0.5 ? 2 : 1), 11);
     if (button(ui, this.menu, now, Math.round(W / 2 - 50), H - 24, 100, 18, t("back"), { icon: icon("hud", "back") }) || this.input.pressed("back")) this.setState("title", this.titleSlot("tasks"));
+  }
+
+  /**
+   * The arsenal: every weapon, relic and artifact, the opened ones bright, the rest dark with a lock; the one picked
+   * says what it is, or what opens it and how far along that is. Side by side on a wide low screen.
+   */
+  private drawArsenal(): void {
+    const ui = this.ui, W = this.r.w, H = this.r.h, now = this.now, keys = ARSENAL(), sv = this.save;
+    const open = (k: string) => !unlockOf(k) || sv.opened.includes(k), count = keys.filter(open).length;
+    const th = this.heading(t("arsenal"), 6, H >= 320 ? 2 : 1, C.gold, 1, `${t("openedOf")} ${count}/${keys.length}`);
+    const wide = W > H * 1.6 && H < 280, S = 22, G = 3, dark = rgbaf(0.15, 0.13, 0.2, 1), gridW = wide ? Math.round(W * 0.56) : Math.min(W - 16, 15 * (S + G));
+    const per = Math.max(5, Math.floor((gridW + G) / (S + G))), x0 = wide ? 10 : Math.round(W / 2 - (per * (S + G) - G) / 2);
+    let y = 6 + th + 6;
+    const groups: [string, string[]][] = [[t("weapons"), keys.filter((k) => k.startsWith("weapon:"))], [t("relics"), keys.filter((k) => k.startsWith("relic:"))], [t("artifacts"), keys.filter((k) => k.startsWith("stat:"))]];
+    let idx = 0;
+    for (const [label, list] of groups) {
+      text(ui, label, x0, y, { font: "mini", color: C.goldDim });
+      y += 8;
+      list.forEach((k, j) => {
+        const x = x0 + (j % per) * (S + G), ty = y + Math.floor(j / per) * (S + G), my = idx++;
+        const it = this.menu.item(x, ty, S, S, now), on = open(k), sel = it.focused || (this.input.mode === "touch" && this.arsenalSel === my);
+        if (it.hit || it.focused) this.arsenalSel = my;
+        slot(ui, x, ty, S, sel ? C.gold : on ? C.goldDim : C.edge);
+        ui.image(icon("icons", arsenalIcon(k)), x + S / 2, ty + S / 2, 0.75, 0.75, 0, on ? 0xffffffff : dark);
+        if (!on) ui.image(icon("hud", "lock"), x + S - 5, ty + S - 5, 0.6, 0.6, 0, rgbaf(0.75, 0.7, 0.85, 0.9));
+      });
+      y += Math.ceil(list.length / per) * (S + G) + 3;
+    }
+    // what the picked tile is: its name, and what it does or what opens it
+    const k = keys[Math.min(keys.length - 1, this.arsenalSel)], u = unlockOf(k), on = open(k);
+    const px = wide ? x0 + per * (S + G) + 8 : Math.round(W / 2 - Math.min(300, W - 16) / 2), py = wide ? 6 + th + 6 : y + 2;
+    const pw = wide ? W - px - 10 : Math.min(300, W - 16), ph = Math.min(wide ? 96 : 74, Math.max(40, H - py - 30));
+    panel(ui, px, py, pw, ph, on ? C.goldDim : C.edge, C.panel);
+    ui.image(icon("icons", arsenalIcon(k)), px + 16, py + 16, 1, 1, 0, on ? 0xffffffff : dark);
+    if (!on) ui.image(icon("hud", "lock"), px + 16, py + 16, 1, 1, 0, rgbaf(0.8, 0.75, 0.9, 0.95));
+    let ly = py + 6;
+    ly += para(ui, tx(arsenalName(k)), px + 32, ly, pw - 38, on ? C.goldLight : C.dim);
+    const [kind, id] = k.split(":");
+    if (on) {
+      text(ui, u ? t("openedNew") : t("fromStart"), px + 32, ly, { font: "mini", color: C.green });
+      ly = Math.max(ly + 10, py + 32);
+      const desc = kind === "weapon" ? WEAPONS[id as WeaponId].desc : kind === "relic" ? RELICS[+id].desc : STATS.find((q) => q.id === id)!.desc;
+      para(ui, tx(desc), px + 8, ly, pw - 16, C.text, "left", 9, "mini");
+    } else if (u) {
+      ly = Math.max(ly + 2, py + 32);
+      ly += para(ui, tx(u.need), px + 8, ly, pw - 16, C.text, "left", 9, "mini");
+      // how far along
+      const have = Math.min(u.goal, this.statValue(u.stat)), bw = pw - 50;
+      ui.rect(px + 8, ly + 3, bw, 3, C.ink);
+      ui.rect(px + 8, ly + 3, Math.round(bw * (have / u.goal)), 3, rgba("#9ad4ff"));
+      text(ui, `${have}/${u.goal}`, px + pw - 8, ly + 1, { font: "mini", align: "right", color: C.dim });
+    }
+    if (button(ui, this.menu, now, Math.round(W / 2 - 50), H - 24, 100, 18, t("back"), { icon: icon("hud", "back") }) || this.input.pressed("back")) this.setState("title", this.titleSlot("arsenal"));
   }
 
   /** Records: the platform's leaderboards (best runs, today's trial) and the player's own. */
