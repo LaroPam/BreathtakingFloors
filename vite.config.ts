@@ -1,8 +1,10 @@
 import { defineConfig, type Plugin } from "vite";
 
-// One codebase, three targets. `vite build --mode yandex` and `--mode youtube` swap the platform layer
-// (src/platform) at compile time and put the right SDK <script> in index.html; everything else is shared.
-type Target = "local" | "yandex" | "youtube";
+// One codebase, several targets. `vite build --mode yandex | youtube | vk | pikabu` swap the platform layer
+// (src/platform) at compile time and put the right SDK <script> in index.html; everything else is shared. The
+// plain build (no mode) is the game's own site.
+type Target = "local" | "yandex" | "youtube" | "vk" | "pikabu";
+const TARGETS: Target[] = ["yandex", "youtube", "vk", "pikabu"];
 
 const SDK: Record<Target, string> = {
   local: "",
@@ -10,6 +12,9 @@ const SDK: Record<Target, string> = {
   yandex: `<script src="/sdk.js"></script>`,
   // The Playables SDK must load before any game code.
   youtube: `<script src="https://www.youtube.com/game_api/v1"></script>`,
+  // VK Bridge is bundled from its npm package; Pikabu's SDK is loaded by the platform layer, the documented dynamic way.
+  vk: "",
+  pikabu: "",
 };
 
 function platformHtml(target: Target): Plugin {
@@ -22,7 +27,7 @@ function platformHtml(target: Target): Plugin {
 }
 
 export default defineConfig(({ mode }) => {
-  const target: Target = mode === "yandex" || mode === "youtube" ? mode : "local";
+  const target: Target = (TARGETS as string[]).includes(mode) ? (mode as Target) : "local";
   // `--mode single`: a plain web page with every asset inlined, which tools/single.mjs folds into one HTML file
   const single = mode === "single";
   return {
