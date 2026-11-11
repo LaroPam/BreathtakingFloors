@@ -23,7 +23,8 @@ function platformHtml(target: Target): Plugin {
     transformIndexHtml(html) {
       // Pikabu asks for Russian on launch, whatever the browser's language: the loader too
       const out = html.replace("<!-- PLATFORM_SDK -->", SDK[target]);
-      return target === "pikabu" ? out.replace('<html lang="ru">', '<html lang="ru" data-ru="1">') : out;
+      // ...and takes no foreign words in a game's name: there it is called in Russian
+      return target === "pikabu" ? out.replace('<html lang="ru">', '<html lang="ru" data-ru="1">').replace("<title>Breathtaking Floors</title>", "<title>Этажи бездны</title>") : out;
     },
   };
 }

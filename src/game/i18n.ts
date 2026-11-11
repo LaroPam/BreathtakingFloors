@@ -3,7 +3,8 @@
 export type Lang = "ru" | "en";
 
 const RU = {
-  title: "BREATHTAKING FLOORS",
+  // Pikabu takes no foreign words in a game's name: there the game is called in Russian
+  title: __PLATFORM__ === "pikabu" ? "ЭТАЖИ БЕЗДНЫ" : "BREATHTAKING FLOORS",
   subtitle: "СПУСК В БАШНЮ БЕЗ СВЕТА",
   play: "ИГРАТЬ",
   forge: "КУЗНИЦА",
@@ -265,7 +266,7 @@ const RU = {
 type Strings = typeof RU;
 
 const EN: Strings = {
-  title: "BREATHTAKING FLOORS",
+  title: __PLATFORM__ === "pikabu" ? "FLOORS OF THE ABYSS" : "BREATHTAKING FLOORS",
   subtitle: "DOWN A TOWER WITHOUT LIGHT",
   play: "PLAY",
   forge: "FORGE",
