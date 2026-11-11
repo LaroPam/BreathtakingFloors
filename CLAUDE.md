@@ -18,7 +18,8 @@ The user writes in Russian; docs and in-game text are Russian-first (English is 
 ## Where things are
 
 - Content lives in `src/game/defs.ts` (elements, reactions, enemies, relics, stats, stair modifiers, forge).
-- Each floor is a tile map built by `src/game/map.ts` (rooms, halls, caves, isles; plans per floor in `MAP_PLANS`);
+- Each floor is a tile map built by `src/game/map.ts`: a way snaking through rows of chambers (`route`, in order) with side
+  rooms (`nooks`); each floor's shape and extras in `MAP_PLANS`;
   walls and drops are real, the horde walks the `Flow` distances round them. Three floors make a place (biome),
   joined by stairs; a portal after each boss leads to the next place.
 - The simulation is `src/game/world.ts` over the typed-array stores in `src/game/pools.ts`. Swap-remove means

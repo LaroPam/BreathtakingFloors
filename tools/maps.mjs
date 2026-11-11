@@ -46,7 +46,7 @@ cells.forEach(({ m }, n) => {
     for (let y = a.y * K; y < (a.y + a.h) * K; y++) (put(ox + a.x * K, oy + y, [230, 60, 60]), put(ox + (a.x + a.w) * K - 1, oy + y, [230, 60, 60]));
   }
   for (const [x, y] of m.columns) for (let q = 0; q < 2; q++) for (let p = 0; p < 2; p++) put(ox + Math.floor((x / 16) * K) + p, oy + Math.floor((y / 16) * K) + q, [255, 255, 255]);
-  console.log(`floor ${cells[n].f + 1} ${cells[n].plan.gen.padEnd(5)} ${m.cols}x${m.rows}  floor tiles ${floor}  areas ${m.areas.length}  columns ${m.columns.length}`);
+  console.log(`floor ${cells[n].f + 1} ${cells[n].plan.shape.padEnd(5)} ${m.cols}x${m.rows}  floor tiles ${floor}  areas ${m.areas.length}  columns ${m.columns.length}`);
 });
 const file = join(ROOT, "records", "maps", `maps-${seed0}.png`);
 mkdirSync(dirname(file), { recursive: true });
