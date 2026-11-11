@@ -305,6 +305,16 @@ export class Batch {
   image(r: Rect, x: number, y: number, sx = 1, sy = 1, rot = 0, color = 0xffffffff, flash = 0, key = y): void {
     this.push(x, y, r[5], r[6], r[3], r[4], r[1], r[2], sx, sy, rot, r[0], color, flash, key);
   }
+  /**
+   * An atlas image as image() draws it, with everything left of minX (in the image's own pixels, from its anchor,
+   * before scaling and turning) cut away: the texture is cut with it, so what stays is pixel for pixel the same.
+   * Used to let a shot slide out of something rather than appear inside it.
+   */
+  imageCropLeft(r: Rect, x: number, y: number, minX: number, sx = 1, sy = 1, rot = 0, color = 0xffffffff, flash = 0, key = y): void {
+    const cut = Math.max(0, Math.ceil(minX - r[5]));
+    if (cut >= r[3]) return;
+    this.push(x, y, r[5] + cut, r[6], r[3] - cut, r[4], r[1] + cut, r[2], sx, sy, rot, r[0], color, flash, key);
+  }
   /** A flat rectangle, top-left at (x, y). */
   rect(x: number, y: number, w: number, h: number, color: number, key = y): void {
     this.push(x, y, 0, 0, w, h, 0, 0, 1, 1, 0, SOLID, color, 0, key);

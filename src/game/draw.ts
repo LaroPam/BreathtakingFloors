@@ -892,6 +892,22 @@ export function drawWorld(s: Scene, w: World, camX: number, camY: number, viewW:
     const x = Bu.x[i], y = Bu.y[i];
     if (!inView(x, y, 20)) continue;
     const k = Bu.kind[i], a = banims[k], orb = k >= 2 && k <= 5;
+    // a lance from the frost orb slides out of it: the part still inside the orb is cut away, so its point comes
+    // out of the orb's surface and the rest follows, at full size, rather than the whole of it appearing inside
+    if (k === B_LANCE && fo && lance && Bu.t[i] < 0.4) {
+      const sp = Math.hypot(Bu.vx[i], Bu.vy[i]) || 1, ux = Bu.vx[i] / sp, uy = Bu.vy[i] / sp, dx = x - fo.x, dy = y - fo.y;
+      const along = dx * ux + dy * uy, off = Math.abs(dx * uy - dy * ux), R = lance.evo ? 8.5 : 7;
+      if (off < 4 && along > -4) {
+        const rot = Math.atan2(Bu.vy[i], Bu.vx[i]), minX = R - along, [c, l] = a.frames[frameAt(a, Bu.t[i])];
+        const fade = Math.min(1, Bu.t[i] / 0.05);
+        if (c) s.color.imageCropLeft(c, x, y, minX, 1, 1, rot, rgbaf(1, 1, 1, fade), 0, y + 14);
+        if (l) s.glow.imageCropLeft(l, x, y, minX, 1, 1, rot, rgbaf(1, 1, 1, 0.9 * fade));
+        // where it breaks through: a cold glint on the orb's surface while the lance passes it
+        if (minX > -12) s.glow.light(fo.x + ux * R, fo.y + uy * R, 7, 7, rgbaf(0.75, 0.95, 1, 0.8 * fade));
+        s.illum.light(x, y, 18, 14, rgbaf(0.45, 0.75, 1, 0.3));
+        continue;
+      }
+    }
     // the hero's shots grow out of the hand over their first instant; the enemies' are drawn big and ringed in
     // dark so they read against anything
     const grow = Bu.team[i] === TEAM_HERO ? Math.min(1, 0.3 + (Bu.t[i] / 0.09) * 0.7) : orb ? 1.5 : 1;
