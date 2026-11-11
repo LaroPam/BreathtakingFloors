@@ -34,6 +34,14 @@ const WALL = {
   frost: ["#0c121c", "#16202e", "#223044", "#2e4058", "#46607e"],
 };
 
+/**
+ * What the game needs only later in a run: the garden's and the frost's own art and the bosses. Their images go on
+ * pages of their own at the end of the atlas, which the game loads in the background once it has started (the menu,
+ * the heroes' gear, the crypt and every effect come first).
+ */
+const LATE = /garden|frost|_ice\b|_ice_|_moss|_spore|_bog|_void|treant|voideye|warden|crystal|mushroom|grass/;
+export const isLate = (name) => LATE.test(name);
+
 export const ANIMS = [
   // the blows' effects (the heroes themselves are drawn by the game, from src/generated/poses.json)
   ...weaponAnims({ thr: 6, k: 0.85 }).filter((e) => !e.rig),

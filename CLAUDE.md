@@ -25,7 +25,8 @@ The user writes in Russian; docs and in-game text are Russian-first (English is 
 - The simulation is `src/game/world.ts` over the typed-array stores in `src/game/pools.ts`. Swap-remove means
   grid indices can go stale mid-step; `Grid.query` skips indices past the live count, and loops over enemies run
   backwards.
-- Every sprite comes from the atlas. To show something new, add it to `tools/bake/manifest.mjs` and rebake.
+- Every sprite comes from the atlas. To show something new, add it to `tools/bake/manifest.mjs` and rebake. Art needed
+  only later in a run (a later place's, the bosses) goes on pages loaded in the background: `isLate` in the manifest.
   Use the pixelfx skill (`.claude/skills/pixelfx`) to make new effects in `art/fx`.
 - The heroes are the exception: each is a model of their own (`src/hero/looks.js` on the skeleton in
   `src/hero/rig.js`), drawn by the game as frames are needed (`src/game/heroSprites.ts`). `npm run hero -- <look>`
@@ -36,6 +37,7 @@ The user writes in Russian; docs and in-game text are Russian-first (English is 
 
 ## Checking a change
 
-Type-check, then drive the real game in headless Chromium (Playwright is preinstalled). Launch with
+Type-check, then drive the real game in headless Chromium (Playwright is preinstalled). Check phones too (Playwright's
+`devices["iPhone 13"]` and its landscape): the game shows bigger pixels there, so layouts get ~234x400 or ~450x206. Launch with
 `--use-gl=angle --use-angle=swiftshader --enable-unsafe-swiftshader` for WebGL2, then screenshot and look at it.
 `window.__game.world` lets a test grant relics, set HP, teleport the hero or start a floor.
