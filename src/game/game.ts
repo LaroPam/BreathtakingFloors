@@ -323,8 +323,9 @@ export class Game {
       case "play":
         this.audio.unlock();
         this.daily = this.weekly = false;
-        // with one hero to play, nothing to choose: straight into the run; a hero just opened is shown first
-        if (this.save.unlocked.length <= 1) {
+        // the very first run: straight into it, nothing to choose yet; from then on the hero select, where the
+        // heroes still to open stand with their price (it is where they are bought); a hero just opened is shown first
+        if (this.save.runs === 0) {
           this.heroIdx = 0;
           this.transition(() => this.startRun());
           return true;
