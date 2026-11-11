@@ -72,6 +72,12 @@ function animBox(a: Anim): { x0: number; x1: number; top: number } {
 
 
 const STEP = 1 / 60;
+/** A level reached: the world slows into the choice over this long rather than stopping dead. */
+const LVL_SLOW = 0.45;
+/** The first run's lessons, in order (the save's tutStep counts how many are done). */
+const TUTOR = ["move", "fight", "dash", "gems", "ult"] as const;
+/** How long a lesson just learnt shows its tick before the next one comes. */
+const TUT_DONE = 1.1;
 /** Height of the title font's capitals. */
 const FONT_H = FONTS.title.h;
 
@@ -84,6 +90,17 @@ export class Game {
   private menu: Menu;
   private now = 0;
   private camX = 0;
+  /** The camera's lean toward where the hero aims, eased, so a new nearest foe does not jerk the view. */
+  private leadX = 0;
+  private leadY = 0;
+  /** The slow-down into a level's choice (LVL_SLOW down to 0), and whether it has run for the level waiting. */
+  private lvlT = 0;
+  private lvlArmed = false;
+  /** The lessons: time on this one, its tick once done (-1 before), the ground walked, the charge last seen. */
+  private tutT = 0;
+  private tutDoneT = -1;
+  private tutMoved = 0;
+  private tutOd = 0;
   private camY = 0;
   private banner: { text: string; t: number; color: number; sub?: string } | null = null;
   private spin: Spin | null = null;
@@ -406,6 +423,12 @@ export class Game {
   }
 
   private startRun(): void {
+    this.lvlT = 0;
+    this.lvlArmed = false;
+    this.tutT = 0;
+    this.tutDoneT = -1;
+    this.tutMoved = 0;
+    this.tutOd = 0;
     // a daily trial plays from the day's seed; any other run from the clock
     if (!this.daily) this.weekly = false;
     const plan = this.dailyPlan(), wplan = this.weeklyPlan();
@@ -804,7 +827,16 @@ export class Game {
     const w = this.world;
     if (w.hero.dead || w.cine) return;
     if (this.startSpins > 0) this.startPick("start");
-    else if (w.pendingLevels > 0) this.startPick("level");
+    else if (w.pendingLevels > 0) {
+      if (!this.lvlArmed) {
+        this.lvlArmed = true;
+        this.lvlT = LVL_SLOW;
+        w.hero.invuln = Math.max(w.hero.invuln, LVL_SLOW + 0.3);
+      } else if (this.lvlT <= 0) {
+        this.lvlArmed = false;
+        this.startPick("level");
+      }
+    }
     else if (w.pendingChests > 0) this.startSpin("chest");
   }
 
@@ -911,8 +943,17 @@ export class Game {
         h.attacking = input.firing;
         // as many equal steps as this frame needs, none longer than 1/60 s: motion matches the display at 60, 120 or
         // 144 Hz with nothing to interpolate
-        const n = Math.max(1, Math.ceil(dt / STEP - 1e-6));
-        for (let k = 0; k < n; k++) w.step(dt / n);
+        // reaching a level the world slows to a near stop, then the choice opens
+        let sdt = dt;
+        if (this.lvlT > 0) {
+          this.lvlT = Math.max(0, this.lvlT - dt);
+          sdt = dt * (0.08 + 0.92 * (this.lvlT / LVL_SLOW) ** 2);
+        }
+        const n = Math.max(1, Math.ceil(sdt / STEP - 1e-6));
+        for (let k = 0; k < n; k++) w.step(sdt / n);
+        this.tutor(dt);
+        w.gentle = this.save.tutorial && !this.daily && !this.weekly;
+        w.holdSpawns = w.gentle && TUTOR[this.save.tutStep] === "move" && w.floor === 1;
         this.nextSpin();
       }
     }
@@ -926,7 +967,10 @@ export class Game {
     const lead = this.state === "play" ? 18 : 0;
     // during a boss's entrance the camera goes to it and holds, then comes back
     const look = c && c.t < CINE_DUR - 0.45;
-    let tx = look ? c.x - W / 2 : h.x + h.aimX * lead - W / 2, ty = look ? c.y - 30 - H / 2 : h.y - 20 + h.aimY * lead - H / 2;
+    const kl = 1 - Math.exp(-dt * 3);
+    this.leadX += (h.aimX * lead - this.leadX) * kl;
+    this.leadY += (h.aimY * lead - this.leadY) * kl;
+    let tx = look ? c.x - W / 2 : h.x + this.leadX - W / 2, ty = look ? c.y - 30 - H / 2 : h.y - 20 + this.leadY - H / 2;
     // with a boss up the view leans toward it, so the fight (and a floating eye) stays on screen; the hero stays well in
     const bi = c ? -1 : w.bossIndex();
     if (bi >= 0 && this.state === "play") {
@@ -953,7 +997,9 @@ export class Game {
     ui.clear();
     this.menu.begin();
     const shake = w.shake > 0 && this.state === "play" && this.save.shake ? w.shake * w.shake * 6 : 0;
-    const sx = shake ? (Math.random() - 0.5) * shake : 0, sy = shake ? (Math.random() - 0.5) * shake : 0;
+    // a tremor, not static: a few quick waves out of step, so at 144 Hz it shakes rather than smears
+    const n0 = this.now;
+    const sx = shake ? (Math.sin(n0 * 53) * 0.6 + Math.sin(n0 * 37 + 1.3) * 0.4) * shake * 0.5 : 0, sy = shake ? (Math.sin(n0 * 47 + 2.1) * 0.6 + Math.sin(n0 * 29 + 0.4) * 0.4) * shake * 0.5 : 0;
     // between floors the floor behind is gone: the stairwell down to the next one takes its place
     // between floors the floor behind is gone: the climb up to the next one takes its place
     const climbing = this.state === "stairs" || (this.state === "stats" && this.statsFrom[0] === "stairs");
@@ -1004,6 +1050,7 @@ export class Game {
         drawHud(ui, w, W, H, this.now, this.banner, this.touch, this.weekly ? "trophy" : this.daily ? "daily" : "");
         if (this.touch) drawTouch(ui, this.input, w, W, H, this.now);
         else this.input.zones = [];
+        this.drawLevelRing(cx, cy);
         this.drawTutorial();
         this.drawHint();
         // the reticle stands in for the pointer while aiming with the mouse
@@ -1038,27 +1085,95 @@ export class Game {
     if (a <= 0) return;
     const lines = wrap(hint.text, Math.min(W - 40, 360)), lw = Math.min(W - 16, Math.max(...lines.map((l) => measure(l))) + 20);
     // above the first floor's controls, if they are still showing
-    const tut = this.save.tutorial && this.world.floor === 1 && this.world.time <= 14, y = Math.round(H * (tut ? 0.56 : 0.68) + (1 - a) * 6);
+    const tut = this.tutorShown(), y = Math.round(H * (tut ? 0.56 : 0.68) + (1 - a) * 6);
     plate(ui, W / 2 - lw / 2, y - 5, lw, lines.length * 11 + 8, withAlpha(C.gold, a));
     lines.forEach((l, k) => text(ui, l, W / 2, y + k * 11, { align: "center", color: withAlpha(rgba("#ffe8b0"), a), shadow: withAlpha(C.ink, a) }));
   }
 
-  private drawTutorial(): void {
-    const w = this.world;
-    if (!this.save.tutorial || w.floor !== 1 || w.time > 14) return;
-    const ui = this.ui, W = this.r.w, H = this.r.h, a = Math.min(1, (14 - w.time) / 2);
-    const lines: [string, number][] = [
-      ...wrap(this.touch ? t("hintTouch") : t("hint"), W - 24, "mini").map((l): [string, number] => [l, rgbaf(0.9, 0.88, 0.95, a)]),
-      ...wrap(t("hintGraze"), W - 24, "mini").map((l): [string, number] => [l, rgbaf(0.95, 0.82, 0.48, a)]),
-      ...(w.spirit?.state === "offer" ? wrap(t("spiritHint"), W - 24, "mini").map((l): [string, number] => [l, rgbaf(0.6, 0.85, 1, a)]) : []),
-    ];
-    const lw = Math.min(W - 8, Math.max(...lines.map(([l]) => measure(l, "mini"))) + 16);
-    plate(ui, W / 2 - lw / 2, H - 18 - lines.length * 9, lw, lines.length * 9 + 8, withAlpha(C.goldDim, a));
-    lines.forEach(([l, col], k) => text(ui, l, W / 2, H - 14 - (lines.length - k) * 9, { font: "mini", align: "center", color: col }));
-    if (w.time > 13.5) {
-      this.save.tutorial = false;
-      this.persist();
+  /** The slow-down into a level: a ring of gold closing on the hero, the screen's edges warming. */
+  private drawLevelRing(cx: number, cy: number): void {
+    if (this.lvlT <= 0) return;
+    const ui = this.ui, h = this.world.hero, u = 1 - this.lvlT / LVL_SLOW, x = h.x - cx, y = h.y - 16 - cy, R = 70 * (1 - u) + 14;
+    const col = rgbaf(1, 0.85, 0.4, 0.9 * Math.min(1, u * 3));
+    for (let k = 0; k < 40; k++) {
+      const a = (k / 40) * Math.PI * 2 + u * 2;
+      ui.rect(Math.round(x + Math.cos(a) * R), Math.round(y + Math.sin(a) * R * 0.7), 2, 1, col);
     }
+    glowUi(ui, x, y, R, R * 0.7, rgbaf(1, 0.8, 0.35, 1), 0.25 * u);
+  }
+
+  /** The lesson on show now, if any: the ability's waits, unseen, until there is a charge to spend. */
+  private tutorShown(): boolean {
+    const sv = this.save, step = TUTOR[sv.tutStep];
+    if (!sv.tutorial || !step || this.daily || this.weekly || this.world.hero.dead) return false;
+    return this.tutDoneT >= 0 || step !== "ult" || this.world.hero.od >= 100;
+  }
+
+  /** The first run's lessons, one at a time, each learnt by doing it: walk, fight, dash, gather, unleash. */
+  private tutor(dt: number): void {
+    const sv = this.save, w = this.world, h = w.hero, step = TUTOR[sv.tutStep];
+    if (!sv.tutorial || this.daily || this.weekly) return;
+    if (!step) {
+      sv.tutorial = false;
+      this.persist();
+      return;
+    }
+    if (this.tutDoneT >= 0) {
+      this.tutDoneT += dt;
+      if (this.tutDoneT >= TUT_DONE) {
+        this.tutDoneT = -1;
+        this.tutT = 0;
+        sv.tutStep++;
+        if (sv.tutStep >= TUTOR.length) sv.tutorial = false;
+        this.persist();
+      }
+      return;
+    }
+    if (h.arriveT < 0.6 || h.dead) return;
+    this.tutT += dt;
+    let done = false;
+    if (step === "move") {
+      if (h.moving) this.tutMoved += Math.hypot(h.vx, h.vy) * dt;
+      done = this.tutMoved > 80 && this.tutT > 1;
+    } else if (step === "fight") done = w.kills >= 3;
+    else if (step === "dash") done = h.dashT > 0;
+    else if (step === "gems") done = h.level >= 2;
+    else {
+      done = this.tutOd >= 100 && h.od < 100;
+      this.tutOd = h.od;
+    }
+    if (done) {
+      this.tutDoneT = 0;
+      this.audio.play("pickup", 0.8);
+    }
+  }
+
+  private drawTutorial(): void {
+    if (!this.tutorShown()) return;
+    const ui = this.ui, W = this.r.w, H = this.r.h, w = this.world, sv = this.save, step = TUTOR[sv.tutStep];
+    const pad = this.input.mode === "pad" ? "P" : this.touch ? "T" : "K";
+    const key = step === "move" ? `tutMove${pad}` : step === "dash" ? `tutDash${pad}` : step === "ult" ? `tutUlt${pad}` : step === "fight" ? "tutFight" : "tutGems";
+    const done = this.tutDoneT >= 0, u = done ? this.tutDoneT : this.tutT;
+    // it rises in, and once done holds its tick, then sinks away
+    const a = done ? Math.min(1, (TUT_DONE - u) / 0.3) : Math.min(1, u / 0.35), rise = Math.round((1 - a) * 8);
+    if (a <= 0) return;
+    const lines = wrap(t(key as Parameters<typeof t>[0]), Math.min(W - 40, 300));
+    const head = `${t("tutStep")} ${sv.tutStep + 1}/${TUTOR.length}`, tag = done ? t("tutDone") : head;
+    const lw = Math.min(W - 16, Math.max(measure(tag, "mini"), ...lines.map((l) => measure(l))) + 24), lh = lines.length * 11 + 17;
+    const x = Math.round(W / 2 - lw / 2), y = Math.round(H - (this.touch ? 74 : 26) - lh + rise);
+    const green = rgbaf(0.55, 1, 0.6, 1), gold = rgba("#ffd84a");
+    // a step learnt: the plate flares green for an instant
+    if (done) glowUi(ui, W / 2, y + lh / 2, lw * 0.6, lh, green, 0.35 * Math.max(0, 1 - u / 0.5));
+    plate(ui, x, y, lw, lh, withAlpha(done ? green : C.gold, a));
+    text(ui, tag, W / 2, y + 4, { font: "mini", align: "center", color: withAlpha(done ? green : gold, a) });
+    lines.forEach((l, k) => text(ui, l, W / 2, y + 13 + k * 11, { align: "center", color: withAlpha(done ? rgbaf(0.8, 1, 0.82, 1) : rgba("#ffe8b0"), a), shadow: withAlpha(C.ink, a) }));
+    // the steps as pips under it: done ones lit
+    for (let k = 0; k < TUTOR.length; k++) {
+      const lit = k < sv.tutStep || (k === sv.tutStep && done);
+      ui.rect(Math.round(W / 2 - TUTOR.length * 4 + k * 8 + 1), y + lh - 3, 5, 1, withAlpha(lit ? green : rgba("#5a5068"), a));
+    }
+    // the forerunner's spirit, while it waits with a task
+    if (w.spirit?.state === "offer" && !done) text(ui, t("spiritHint"), W / 2, y - 10, { font: "mini", align: "center", color: rgbaf(0.6, 0.85, 1, a), shadow: withAlpha(C.ink, a) });
   }
 
   private drawTitle(): void {

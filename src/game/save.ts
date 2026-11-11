@@ -13,6 +13,8 @@ export interface SaveData {
   autofire: boolean;
   lang: "ru" | "en" | null;
   tutorial: boolean;
+  /** How far the first run's lessons have got (TUTOR in game.ts); all of them done ends the tutorial. */
+  tutStep: number;
   wins?: number;
   hero?: string;
   /** Heroes bought at the hero select (the knight is always there). */
@@ -58,6 +60,7 @@ export const defaultSave = (): SaveData => ({
   autofire: false,
   lang: null,
   tutorial: true,
+  tutStep: 0,
   unlocked: ["knight"],
   skins: [],
   skinOn: [],
@@ -122,6 +125,7 @@ export function sanitize(raw: unknown): SaveData {
     autofire: bool(r.autofire, d.autofire),
     lang,
     tutorial: bool(r.tutorial, d.tutorial),
+    tutStep: int(r.tutStep, 0, 9),
     hero: typeof r.hero === "string" ? r.hero : undefined,
     // saves from before heroes were bought keep the hero last played
     unlocked: [...new Set(["knight", ...(Array.isArray(r.unlocked) ? strs(r.unlocked) : typeof r.hero === "string" ? [r.hero] : [])])],

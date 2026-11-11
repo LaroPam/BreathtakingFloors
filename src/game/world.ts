@@ -540,6 +540,9 @@ export class World {
   time = 0;
   runTime = 0;
   kills = 0;
+  /** The first run's lessons are on (game.ts): the first floor's crowds come thinner, none at all while the first is learnt. */
+  gentle = false;
+  holdSpawns = false;
   pendingLevels = 0;
   pendingChests = 0;
   hitstop = 0;
@@ -4168,10 +4171,10 @@ export class World {
   }
 
   private director(dt: number): void {
-    if (this.hero.dead || this.cleared || this.won || this.hero.exitT >= 0) return;
+    if (this.hero.dead || this.cleared || this.won || this.hero.exitT >= 0 || this.holdSpawns) return;
     const E = this.enemies, f = this.floor, boss = this.bossIndex() >= 0;
     // the stairs' and the curse's "more enemies" count everywhere: in the waves, by the boss and between waves
-    const more = this.mod.spawn * (this.curse ? 1.25 : 1) * (this.mutator === "swarm" ? 1.5 : 1);
+    const more = this.mod.spawn * (this.curse ? 1.25 : 1) * (this.mutator === "swarm" ? 1.5 : 1) * (this.gentle && f === 1 ? 0.65 : 1);
     let target = 0, every = 99, far = true;
     if (boss) (target = Math.round((5 + f * 0.9) * more)), (every = 2.6), (far = false);
     else if (this.wave) {
