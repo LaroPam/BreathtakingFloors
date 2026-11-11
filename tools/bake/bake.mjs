@@ -79,7 +79,7 @@ function renderEffect(mod, meta, e, extraOpts = {}) {
     n = Math.max(1, Math.floor(T * fps + 1e-6) + 1);
     dt = 1 / fps;
   }
-  const frame = createFrame(W, H);
+  const frame = createFrame(W, H), front = e.body ? createFrame(W, H) : null;
   const inst = createFx(mod, { x: OX, y: OY, ...(e.opts ?? {}), ...extraOpts });
   const fade = !isScreen(meta), out = [];
   for (let i = 0; i < n; i++) {
@@ -88,7 +88,15 @@ function renderEffect(mod, meta, e, extraOpts = {}) {
     inst.draw(frame);
     if (fade) edgeFade(frame);
     const lightTest = shapeLight(frame.light, e.light ?? "full");
-    out.push({ color: trim(frame.color, W, H, OX, OY, hasColor), light: trim(frame.light, W, H, OX, OY, lightTest) });
+    const f = { color: trim(frame.color, W, H, OX, OY, hasColor), light: trim(frame.light, W, H, OX, OY, lightTest) };
+    // the hitbox is measured on the creature alone: its front layer, without what it leaves on the floor behind it
+    // (a slime's puddle, landed drips, shadows), which would pull the box down and back from the body
+    if (front) {
+      clearFrame(front);
+      inst.draw(front, "front");
+      f.bodyColor = trim(front.color, W, H, OX, OY, hasColor);
+    }
+    out.push(f);
   }
   // a one-shot ends empty: drop the empty tail so the game knows when it is over
   if (!meta.loop) while (out.length > 1 && !out[out.length - 1].color && !out[out.length - 1].light) out.pop();
@@ -189,7 +197,7 @@ for (const e of ANIMS) {
     px += (f.color ? f.color.w * f.color.h : 0) + (f.light ? f.light.w * f.light.h : 0);
     return [c, l];
   });
-  anims[e.name] = { fps: +r.fps.toFixed(4), loop: r.loop, cut: r.cut, frames, ...(r.keys ? { keys: r.keys } : {}), ...(e.hits ? { hits: e.hits } : {}), ...(e.body ? { body: r.frames.map((f) => bodyOf(f.color)) } : {}) };
+  anims[e.name] = { fps: +r.fps.toFixed(4), loop: r.loop, cut: r.cut, frames, ...(r.keys ? { keys: r.keys } : {}), ...(e.hits ? { hits: e.hits } : {}), ...(e.body ? { body: r.frames.map((f) => bodyOf(f.bodyColor ?? f.color)) } : {}) };
   stats.push([e.name, frames.length, px]);
 }
 

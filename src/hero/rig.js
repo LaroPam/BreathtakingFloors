@@ -392,18 +392,20 @@ function costumeApi(S) {
 // ---- what they hold: drawn along the handle from the fist, through the same depth buffer, in their own colours
 function along(H, axis, side, part) {
   const n = cross(axis, side);
-  const T = (i, k, c, lift = 0) => {
+  const T = (i, k, c, lift = 0, glow = false) => {
     const x = H[0] + axis[0] * i + side[0] * k + n[0] * lift, y = H[1] + axis[1] * i + side[1] * k + n[1] * lift, z = H[2] + axis[2] * i + side[2] * k + n[2] * lift;
     const wx = Math.round(x), wy = Math.round(y);
     if (clipWeapon && wy < 0) return;
     const i2 = idx(wx, wy);
     if (i2 < 0 || i2 >= N) return;
-    plot(i2, z + 0.05, 2, 0, part, -1, c);
+    plot(i2, z + 0.05, 2, glow ? -1 : 0, part, -1, c);
   };
   T.at = (i, k) => [H[0] + axis[0] * i + side[0] * k, H[1] + axis[1] * i + side[1] * k, H[2] + axis[2] * i + side[2] * k];
   return T;
 }
 const STEEL = Object.fromEntries(Object.entries({ hi: "#ffffff", a: "#e8edf6", b: "#a4afc6", d: "#68748f", gold: "#ffd84a", goldD: "#b8862a", grip: "#7a3a2a", gripD: "#4a2018", wood: "#8a5a32", woodD: "#5a3820", dark: "#3a3448", darkD: "#262033" }).map(([k, v]) => [k, hex(v)]));
+const BOOK = Object.fromEntries(Object.entries({ leather: "#5a2a6a", leatherD: "#341640", gold: "#ffd84a", page: "#f4ead0", pageE: "#d8c8a0", pageD: "#b8a47c", spine: "#4a2a1a", ink: "#7a6448", ribbon: "#c0302a" }).map(([k, v]) => [k, hex(v)]));
+const BOOK_RUNE = Object.fromEntries(Object.entries({ arcane: "#c890ff", fire: "#ffae35", frost: "#9bdcff", storm: "#ffe03c", hot: "#ffffff" }).map(([k, v]) => [k, hex(v)]));
 function blade(T, from, length, w) {
   for (let i = from; i <= from + length + 0.01; i += 0.4) {
     const r = i - from, wd = r > length - 5 ? Math.max(0, ((length - r) / 5) * w) : w;
@@ -485,6 +487,41 @@ const WEAPONS = {
       for (let i = 9; i <= 13; i += 0.4) for (let k = -(13 - i) * 0.45; k <= (13 - i) * 0.45; k += 0.4) T(i, k, STEEL.hi);
     }
   } },
+  // the Book of Elements, open in the off hand: a leather cover with gold corners, two pages (lines of text on one,
+  // a ring of runes on the other, glowing in the element it casts), a ribbon hanging from it; casting, a page turns
+  book: { draw(T0, q) {
+    // the pages face the viewer: what lifts off the cover comes toward us
+    const T = (i, k, c, lift = 0, glow = false) => T0(i, k, c, -lift, glow);
+    const glowC = BOOK_RUNE[q.rune] ?? BOOK_RUNE.arcane, hot = !!q.rune;
+    // the cover behind the pages, a darker edge, gold at the corners
+    for (let i = -0.8; i <= 8.8; i += 0.4)
+      for (let k = -6; k <= 6.01; k += 0.4) {
+        const edge = i < -0.4 || i > 8.4 || Math.abs(k) > 5.6;
+        T(i, k, edge ? BOOK.leatherD : BOOK.leather, -0.8);
+      }
+    for (const [ci, ck] of [[-0.8, -6], [-0.8, 5.2], [8, -6], [8, 5.2]]) for (let a = 0; a <= 0.81; a += 0.4) for (let b = 0; b <= 0.81; b += 0.4) T(ci + a, ck + b, BOOK.gold, -0.6);
+    // the pages: they rise from the spine and curve down to the edges
+    for (let i = 0; i <= 8.01; i += 0.4)
+      for (let k = -5.2; k <= 5.21; k += 0.4) {
+        if (Math.abs(k) < 0.3) { T(i, k, BOOK.spine, 0.1); continue; }
+        const d = Math.abs(k) / 5.2, lift = 0.9 * Math.sin(Math.PI * Math.min(1, d * 1.15)) + 0.15;
+        T(i, k, d < 0.16 ? BOOK.pageD : i < 0.4 || d > 0.94 ? BOOK.pageE : BOOK.page, lift);
+      }
+    // lines of writing on the left page
+    for (const i of [1.4, 2.8, 4.2, 5.6, 7]) for (let k = -4.4; k <= -1.2; k += 0.4) if (Math.sin(k * 3.7 + i * 2.3) > -0.5) T(i, k, BOOK.ink, 1.2);
+    // a ring of runes on the right page, glowing; brighter as it casts
+    for (let a = 0; a < Math.PI * 2; a += 0.22) T(4 + Math.sin(a) * 2.2, 2.7 + Math.cos(a) * 2.2, glowC, 1.3, true);
+    for (const [di, dk] of [[0, 0], [1.2, 0], [-1.2, 0], [0, 1.2], [0, -1.2]]) T(4 + di, 2.7 + dk, hot ? BOOK_RUNE.hot : glowC, 1.35, true);
+    // the ribbon marking the place, hanging out below
+    for (let i = -0.4; i >= -3.2; i -= 0.4) T(i, 1.2 + Math.sin(i * 1.5) * 0.4, BOOK.ribbon, 0.6);
+    // a page turning over, from right to left, as the spell goes off
+    const f = q.flip ?? 0;
+    if (f > 0.02 && f < 0.98) {
+      const th = Math.PI * f, back = th > Math.PI / 2;
+      for (let i = 0.4; i <= 7.61; i += 0.4)
+        for (let kk = 0.4; kk <= 5.01; kk += 0.4) T(i, kk * Math.cos(th), back ? BOOK.pageD : BOOK.page, 1.6 + kk * Math.sin(th));
+    }
+  } },
   handle: { draw(T) {
     haft(T, -2.6, 6, STEEL.grip, STEEL.gripD);
     for (let k = -1.6; k <= 1.6; k += 0.4) (T(-3, k, STEEL.gold), T(6.4, k, STEEL.gold));
@@ -520,6 +557,8 @@ function finish(S) {
     Col[i] = M.spec && t <= 1 && Spec[i] > M.specAt ? M.spec : M.ramp[t];
     if (M.glow) glow.set(i, Col[i]);
   }
+  // what a weapon draws as glowing (a spellbook's runes) lights up in its own colour
+  for (const i of touched) if (Mat[i] < 0 && Spec[i] < 0) glow.set(i, Col[i]);
   // where two parts meet: the farther one's darkest tone if they touch, ink if one stands well in front of the other
   const marks = new Map();
   for (const i of touched) {

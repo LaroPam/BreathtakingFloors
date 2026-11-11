@@ -75,6 +75,8 @@ const hash = (x: number, y: number) => {
 };
 
 const C_SHADOW = rgba("#000000", 0.38);
+/** The Book of Elements' rune light: fire, frost, storm (its three casts in turn), and its resting arcane violet. */
+const BOOK_RUNES: [number, number, number][] = [[1, 0.68, 0.21], [0.61, 0.86, 1], [1, 0.88, 0.24], [0.78, 0.56, 1]];
 /** The colour an enemy's tell glows in, by the look of its bullets. */
 const TELL = [0, 0, 0, 0, 0, 0].map((_, k) => {
   const c = ["#ff5a6a", "#ff5a6a", "#ff5a6a", "#c684ff", "#8ad83a", "#78ccf4"][k];
@@ -655,6 +657,31 @@ export function drawWorld(s: Scene, w: World, camX: number, camY: number, viewW:
       const c = rgba(EL_COLOR[el]), p = 0.75 + 0.25 * Math.sin(time * 8);
       s.glow.light(h.handX, h.handY, 5 * p, 5 * p, withAlpha(c, 0.45));
       s.illum.light(h.handX, h.handY, 34 * p, 28 * p, withAlpha(c, 0.3));
+    }
+    // the Book of Elements: runes circling the open book in the far hand, motes rising off its pages; on a cast
+    // they flare in the element being spoken (fire, ice, lightning in turn), brightest as the spell leaves
+    if (wid === "spell" && show && h.exitT < 0 && h.dashT <= 0) {
+      const bx = h.x + (hand[2] - 2) * h.face, by = h.y + hand[3] - 5;
+      const casting = h.atk >= 0, cf = casting ? h.atkT * 20 : 0, flare = casting ? Math.max(0, 1 - Math.abs(cf - 4) / 3) : 0;
+      const [cr, cg, cb] = casting ? BOOK_RUNES[h.atk % 3] : BOOK_RUNES[3];
+      const pulse = 0.7 + 0.3 * Math.sin(time * 5);
+      s.illum.light(bx, by, 26 + 20 * flare, 22 + 16 * flare, rgbaf(cr, cg, cb, 0.14 * pulse + 0.22 * flare));
+      s.glow.light(bx, by, 3 + 3 * flare, 2 + 2 * flare, rgbaf(cr, cg, cb, 0.08 + 0.3 * flare));
+      const n = 5, spin = time * (casting ? 4.5 : 1.6), rx = 9 + 3 * flare, ry = 4 + 1.5 * flare;
+      for (let q = 0; q < n; q++) {
+        const ang = spin + (q / n) * Math.PI * 2, x = Math.round(bx + Math.cos(ang) * rx), y = Math.round(by + Math.sin(ang) * ry);
+        const front = Math.sin(ang) > 0, k = 0.55 + 0.45 * Math.sin(time * 7 + q * 1.7);
+        s.glow.disc(x, y, 1, 1, rgbaf(cr, cg, cb, 0.3 * k + 0.3 * flare));
+        // a tiny rune: a bright pixel and its stroke, behind the book when on the far side
+        s.front.rect(x, y, 1, 1, rgbaf(Math.min(1, cr + 0.3), Math.min(1, cg + 0.3), Math.min(1, cb + 0.3), k), h.y + (front ? 0.6 : -0.6));
+        s.front.rect(x + (q % 2 ? 1 : -1), y + (q % 3 ? 0 : -1), 1, 1, rgbaf(cr, cg, cb, 0.7 * k), h.y + (front ? 0.6 : -0.6));
+      }
+      // motes leaving the pages, drifting up and fading
+      for (let q = 0; q < 4; q++) {
+        const u = (time * (0.8 + flare) + q / 4) % 1, x = Math.round(bx + Math.sin(q * 2.3 + time * 2) * 4), y = Math.round(by - 2 - u * 14);
+        s.glow.disc(x, y, 1, 1, rgbaf(cr, cg, cb, (1 - u) * (0.3 + 0.3 * flare)));
+        if (u < 0.6) s.front.rect(x, y, 1, 1, rgbaf(1, 1, 1, (0.6 - u) * 1.2), h.y + 0.7);
+      }
     }
     // the Knight's ward: a ring of light turning round him, fading as it ends
     if (w.ward > 0 && show) {
