@@ -1236,7 +1236,8 @@ export class Game {
     const ui = this.ui, W = this.r.w, H = this.r.h, now = this.now;
     const ty = Math.round(H * 0.12), glow = 0.08 + 0.03 * Math.sin(now * 1.3);
     glowUi(ui, W / 2, ty + 14, Math.min(W * 0.45, 260), 34, rgbaf(1, 0.7, 0.35, 1), glow * 2.2);
-    const th = this.heading(t("title"), ty, 3);
+    // (the Russian name is short and would swell to fill the width: it is held to a size that reads as a title)
+    const th = this.heading(t("title"), ty, __PLATFORM__ === "pikabu" ? 2 : 3);
     text(ui, t("subtitle"), W / 2, ty + th + 2, { align: "center", color: rgba("#c8b8a0"), shadow: C.ink });
     const bw = 160, bh = H >= 300 ? 20 : 17, gap = H >= 300 ? 6 : 4, bx = Math.round(W / 2 - bw / 2);
     const count = this.platform.shopAvailable() ? 7 : 6;
