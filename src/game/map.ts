@@ -536,23 +536,29 @@ export function buildMap(plan: MapPlan, R: Rnd): TileMap {
 }
 
 /**
- * The nine floors' maps: each location has three, built three different ways; the first is its plain self, the
- * second changed, the third at the height of the change (and the boss). Sizes grow as the tower goes down.
+ * Each place's three maps, built three different ways: the first its plain self, the second changed, the third at
+ * the height of the change (and the boss). Sizes grow as the tower goes down.
  */
-export const MAP_PLANS: MapPlan[] = [
+export const MAP_PLANS: Record<string, MapPlan[]> = {
   // the crypt: square halls joined straight, columns down them; the ossuary, longer, niches in its walls; the
   // catacombs' heart, rough hollows round a chasm, its arena at the end
-  { cols: 84, rows: 52, shape: "rect", lanes: 2, per: 3, link: "straight", wide: 5, columns: true },
-  { cols: 90, rows: 62, shape: "rect", lanes: 3, per: 3, link: "straight", wide: 5, columns: true, niches: true },
-  { cols: 96, rows: 60, shape: "cave", lanes: 2, per: 3, link: "straight", wide: 4, pit: true, veins: true, arena: true },
+  crypt: [
+    { cols: 84, rows: 52, shape: "rect", lanes: 2, per: 3, link: "straight", wide: 5, columns: true },
+    { cols: 90, rows: 62, shape: "rect", lanes: 3, per: 3, link: "straight", wide: 5, columns: true, niches: true },
+    { cols: 96, rows: 60, shape: "cave", lanes: 2, per: 3, link: "straight", wide: 4, pit: true, veins: true, arena: true },
+  ],
   // the garden: round clearings on winding walks, hedges about; the drowned garden, islands on bridges; its heart,
   // clearings round a pond, the arena at the end
-  { cols: 90, rows: 54, shape: "round", lanes: 2, per: 3, link: "winding", wide: 5, clumps: true },
-  { cols: 96, rows: 64, shape: "isle", lanes: 3, per: 3, link: "straight", wide: 4 },
-  { cols: 100, rows: 60, shape: "round", lanes: 2, per: 3, link: "winding", wide: 5, pit: true, clumps: true, arena: true },
+  garden: [
+    { cols: 90, rows: 54, shape: "round", lanes: 2, per: 3, link: "winding", wide: 5, clumps: true },
+    { cols: 96, rows: 64, shape: "isle", lanes: 3, per: 3, link: "straight", wide: 4 },
+    { cols: 100, rows: 60, shape: "round", lanes: 2, per: 3, link: "winding", wide: 5, pit: true, clumps: true, arena: true },
+  ],
   // the frost: faceted halls of rime; ice caves, a sheet to slide on in each; the throne of the void, islands over
   // nothing to the arena
-  { cols: 96, rows: 64, shape: "facet", lanes: 3, per: 3, link: "straight", wide: 5, columns: true },
-  { cols: 102, rows: 66, shape: "cave", lanes: 3, per: 3, link: "winding", wide: 5, ice: true, clumps: true },
-  { cols: 104, rows: 60, shape: "isle", lanes: 2, per: 3, link: "straight", wide: 4, arena: true },
-];
+  frost: [
+    { cols: 96, rows: 64, shape: "facet", lanes: 3, per: 3, link: "straight", wide: 5, columns: true },
+    { cols: 102, rows: 66, shape: "cave", lanes: 3, per: 3, link: "winding", wide: 5, ice: true, clumps: true },
+    { cols: 104, rows: 60, shape: "isle", lanes: 2, per: 3, link: "straight", wide: 4, arena: true },
+  ],
+};

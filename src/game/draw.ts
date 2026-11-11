@@ -6,7 +6,7 @@ import { heroSprites, lookId, type HeroAnim } from "./heroSprites";
 import { TEAM_HERO } from "./pools";
 import { Batch, rgba, rgbaf, SOFT, withAlpha } from "../engine/renderer";
 import { text } from "../engine/text";
-import { AI, EL_COLOR, ENEMIES, fullWeaponName, LEGENDS, questDef, RARITIES, RelicKind, stageOf, WEAPONS } from "./defs";
+import { AI, EL_COLOR, ENEMIES, fullWeaponName, LEGENDS, questDef, RARITIES, RelicKind, WEAPONS, type PlaceId } from "./defs";
 import { t as tr, tx } from "./i18n";
 import { FLOOR, LOOK_BRIDGE, LOOK_ICE, LOOK_VEIN, PIT, WALL } from "./map";
 import { BULLET_ANIMS, EYE_H, FLOOR_SQ, LUNGE_DASH, SPAWN_T, type BossBrain, poolSpread, HERO_HIT_Y, HERO_R, B_CRESCENT, B_FIREBALL, B_LANCE, CINE_DUR, D_CHEST, D_EMBER, D_GREEN, D_HEART, D_RED, SANCTUARY_R, STAR_EVERY, TILE, type World } from "./world";
@@ -117,7 +117,7 @@ const FX_LIGHT: Record<string, [number, string, number]> = {
   slam: [90, "#ffb060", 0.8],
 };
 // the walls' and the room's edges, per biome
-const EDGE = { crypt: ["#1a1724", "#3a3348"], garden: ["#141a13", "#33402f"], frost: ["#131b28", "#304460"] } as const;
+const EDGE: Record<PlaceId, readonly [string, string]> = { crypt: ["#1a1724", "#3a3348"], garden: ["#141a13", "#33402f"], frost: ["#131b28", "#304460"] };
 /** What a drop looks like in each biome: a chasm with embers far down, dark water, the starry void. */
 interface PitLook {
   fill: string;
@@ -126,7 +126,7 @@ interface PitLook {
   /** A bridge's planks: base, the gaps between them, the lit edge. */
   planks: [string, string, string];
 }
-const PIT_LOOK: Record<"crypt" | "garden" | "frost", PitLook> = {
+const PIT_LOOK: Record<PlaceId, PitLook> = {
   crypt: { fill: "#07060c", deep: "#2a0f0c", kind: "chasm", planks: ["#5a3a24", "#2a1a10", "#7c5634"] },
   garden: { fill: "#0a1c20", deep: "#14383a", kind: "water", planks: ["#5e4428", "#2c2012", "#80603a"] },
   frost: { fill: "#030309", deep: "#14102a", kind: "void", planks: ["#4a6078", "#1c2838", "#8aa6c4"] },
@@ -175,7 +175,7 @@ function drawBridge(s: Scene, P: PitLook, x: number, y: number, across: boolean,
  * each one, narrower with the depth) or, for the way up, rising towards the light. `open` 0 is shut under an iron
  * grate, 1 open with the next floor's light rising out of it.
  */
-function drawStairs(s: Scene, x: number, y: number, biome: "crypt" | "garden" | "frost", up: boolean, open: number, time: number): void {
+function drawStairs(s: Scene, x: number, y: number, biome: PlaceId, up: boolean, open: number, time: number): void {
   const S = STAIR_STONE[biome].map((c) => rgba(c)), x0 = Math.round(x - 22), y0 = Math.round(y - 18), w = 44, h = 36;
   // the frame: a kerb of cut stone, lit along its top
   s.back.rect(x0 - 3, y0 - 3, w + 6, h + 6, S[0]);
@@ -210,7 +210,7 @@ function drawStairs(s: Scene, x: number, y: number, biome: "crypt" | "garden" | 
     }
   } else s.illum.light(x, y0, 30, 22, rgbaf(1, 0.85, 0.6, 0.25));
 }
-const STAIR_STONE: Record<"crypt" | "garden" | "frost", string[]> = {
+const STAIR_STONE: Record<PlaceId, string[]> = {
   crypt: ["#221e2e", "#3a3550", "#5a5476", "#8a82a8"],
   garden: ["#1c241c", "#344232", "#526650", "#7a9470"],
   frost: ["#1a2434", "#2e4460", "#4a6a90", "#7aa0cc"],
@@ -224,11 +224,11 @@ function clipUp(b: Batch, r: Rect, x: number, y: number, h: number): void {
 const DECOR_LIGHT: Record<string, [number, string, number]> = { candle: [40, "#ffb060", 0.55], mushrooms: [34, "#3ad0c8", 0.4], crystal: [44, "#62c8f4", 0.45] };
 
 export function drawWorld(s: Scene, w: World, camX: number, camY: number, viewW: number, viewH: number, time: number): void {
-  const h = w.hero, B = w.biome, inView = (x: number, y: number, m = 40) => x > camX - m && x < camX + viewW + m && y > camY - m && y < camY + viewH + m * 2;
+  const h = w.hero, B = w.place, inView = (x: number, y: number, m = 40) => x > camX - m && x < camX + viewW + m && y > camY - m && y < camY + viewH + m * 2;
 
   // ---- the map in view: floor, drops, walls (a dark top, and a face where a wall meets the floor below it)
   // (the place's floor and walls as this stage of it has them: worn and changed deeper down)
-  const stage = stageOf(w.floor), m = w.map, ledge = anim("ledge"), [dark, lit] = EDGE[B.id];
+  const stage = w.stage, m = w.map, ledge = anim("ledge"), [dark, lit] = EDGE[B.id];
   const floor = anim(stage > 1 ? `${B.floor}_${stage}` : B.floor), wall = anim(stage > 1 ? `${B.wall}_${stage}` : B.wall);
   const pit = PIT_LOOK[B.id], cDark = rgba(dark), cLit = rgba(lit);
   const tx0 = Math.max(0, Math.floor(camX / TILE) - 1), tx1 = Math.min(m.cols - 1, Math.floor((camX + viewW) / TILE) + 1);
@@ -306,6 +306,26 @@ export function drawWorld(s: Scene, w: World, camX: number, camY: number, viewW:
       // gold glinting in the split, and a little warm light breathing out of it
       if (sa.frames[0][1]) s.glow.image(sa.frames[0][1]!, sc.x + jit, sc.y, 1, 1, 0, rgbaf(1, 1, 1, a * (0.75 + 0.25 * Math.sin(time * 3))));
       s.illum.light(cx, sc.y - 22, 30, 24, rgbaf(1, 0.8, 0.45, 0.45 * a * (0.85 + 0.15 * Math.sin(time * 2.3))));
+    }
+  }
+
+  // ---- the gate: closed, its runes burning (stirring as the hero comes); opening, the bars sink and the runes flare;
+  // open, an arch with a violet haze in it
+  const gt = w.gate;
+  if (gt && inView(gt.x + TILE, gt.y - 20, 60)) {
+    const ga = anim(`gate_${B.id}`), cx = gt.x + TILE, col = rgba("#b58cff");
+    if (gt.open >= 1) {
+      s.back.image(ga.frames[1][0]!, gt.x, gt.y);
+      if (ga.frames[1][1]) s.glow.image(ga.frames[1][1]!, gt.x, gt.y, 1, 1, 0, rgbaf(1, 1, 1, 0.6 + 0.2 * Math.sin(time * 1.5)));
+      s.illum.light(cx, gt.y - 18, 40, 34, rgbaf(0.7, 0.5, 1, 0.45));
+    } else {
+      const k = gt.open, jit = gt.opening ? Math.round(Math.sin(time * 70) * (1 - k)) : 0;
+      // the open arch under it, showing through as the lattice goes
+      if (k > 0) s.back.image(ga.frames[1][0]!, gt.x, gt.y, 1, 1, 0, rgbaf(1, 1, 1, k));
+      s.back.image(ga.frames[0][0]!, gt.x + jit, gt.y + Math.round(k * 10), 1, 1, 0, rgbaf(1, 1, 1, 1 - k * k));
+      const stir = 0.55 + 0.25 * Math.sin(time * 2.2) + 0.35 * gt.near + 1.2 * k;
+      if (ga.frames[0][1]) s.glow.image(ga.frames[0][1]!, gt.x + jit, gt.y + Math.round(k * 10), 1, 1, 0, rgbaf(1, 1, 1, Math.min(1.5, stir) * (1 - k * k)));
+      s.illum.light(cx, gt.y - 22, 34 + 16 * gt.near, 28 + 10 * gt.near, withAlpha(col, Math.min(1, 0.35 + 0.3 * gt.near + 0.6 * k)));
     }
   }
 

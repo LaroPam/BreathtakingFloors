@@ -156,14 +156,20 @@ export const EN = {
   eyeBoss: id("eye_boss"), frogKing: id("frog_king"), eyeVoid: id("eye_void"), warden: id("warden"), treant: id("treant"), mimic: id("mimic"),
 };
 
-// ------------------------------------------------------------------------------------------------ the run
+// ------------------------------------------------------------------------------------------------ the tower
 /**
- * Three biomes of three floors. Each floor brings its roster in by phases: before the first brazier is lit only the
- * first group comes, the second joins after the first brazier, the third after the second. So a floor starts
- * calm, a new enemy arrives one at a time, and the room is at its hardest just before the portal opens.
+ * The tower goes down in tiers; each tier has one place or two (the main one first, the others reached through gates),
+ * and each place has three floors: its first look, the same place changed, and the change at its height (with its
+ * boss). The depth (floor 1, 2, ...) runs on through the tiers whichever place a run takes: difficulty and records go
+ * by it.
+ *
+ * Each floor brings its roster in by phases: before the first brazier is lit only the first group comes, the second
+ * joins after the first brazier, the third after the second. So a floor starts calm, a new enemy arrives one at a
+ * time, and the room is at its hardest just before the portal opens.
  */
+export type PlaceId = "crypt" | "garden" | "frost";
 export interface Biome {
-  id: "crypt" | "garden" | "frost";
+  id: PlaceId;
   name: Text;
   /** A line under the floor's title card. */
   lore: Text;
@@ -177,51 +183,132 @@ export interface Biome {
   /** Floating motes: dust, fireflies and leaves, snow. */
   motes: "dust" | "fireflies" | "snow";
 }
-export const BIOMES: Biome[] = [
-  { id: "crypt", name: { ru: "СКЛЕП", en: "THE CRYPT" }, lore: { ru: "ЗДЕСЬ ЛЕЖАТ ТЕ, КТО НЁС СВЕТ ВНИЗ ДО ТЕБЯ", en: "HERE LIE THOSE WHO CARRIED LIGHT DOWN BEFORE YOU" }, floor: "floor_crypt", wall: "wall_crypt", pillar: "pillar_crypt", torch: "torch", ambient: [0.95, 0.88, 1.15], torchLight: "#ff9a40", motes: "dust" },
-  { id: "garden", name: { ru: "ЗАБЫТЫЙ САД", en: "THE LOST GARDEN" }, lore: { ru: "САД РОС БЕЗ СОЛНЦА И НАУЧИЛСЯ СВЕТИТЬСЯ САМ", en: "THE GARDEN GREW WITHOUT A SUN AND LEARNED TO GLOW" }, floor: "floor_garden", wall: "wall_garden", pillar: "pillar_garden", torch: "torch", ambient: [0.82, 1.08, 0.9], torchLight: "#ffb050", motes: "fireflies" },
-  { id: "frost", name: { ru: "ЛЕДЯНЫЕ ЗАЛЫ", en: "THE FROZEN HALLS" }, lore: { ru: "ХОЛОД ПОДНИМАЕТСЯ С САМОГО ДНА БАШНИ", en: "THE COLD RISES FROM THE TOWER'S VERY BOTTOM" }, floor: "floor_frost", wall: "wall_frost", pillar: "pillar_frost", torch: "torch_blue", ambient: [0.8, 0.95, 1.3], torchLight: "#6ab8ff", motes: "snow" },
+export interface PlaceDef extends Biome {
+  /** Its tier, 1 at the top: its floors are the depths (tier - 1) * 3 + 1..3. */
+  tier: number;
+  /** The boss at its end. */
+  boss: number;
+  /** Its music (Audio's themes; the bosses have their own). */
+  music: number;
+  /** The kinds of gate its floors may have, in their back walls. */
+  gates: GateKind[];
+  /** The gift its boss leaves the first time it falls. */
+  gift?: GiftId;
+  /** Each floor's own name and a line for its title card. */
+  floors: { name: Text; lore: Text }[];
+  /** Each floor's enemies, in three phases, as [enemy, weight]. */
+  roster: [number, number][][][];
+}
+export const PLACES: PlaceDef[] = [
+  {
+    id: "crypt", name: { ru: "СКЛЕП", en: "THE CRYPT" }, lore: { ru: "ЗДЕСЬ ЛЕЖАТ ТЕ, КТО НЁС СВЕТ ВНИЗ ДО ТЕБЯ", en: "HERE LIE THOSE WHO CARRIED LIGHT DOWN BEFORE YOU" }, floor: "floor_crypt", wall: "wall_crypt", pillar: "pillar_crypt", torch: "torch", ambient: [0.95, 0.88, 1.15], torchLight: "#ff9a40", motes: "dust",
+    tier: 1, boss: EN.warden, music: 0, gates: ["lattice"], gift: "shade",
+    floors: [
+      { name: { ru: "ВЕРХНИЕ ГАЛЕРЕИ", en: "THE UPPER GALLERIES" }, lore: { ru: "ЗДЕСЬ ЛЕЖАТ ТЕ, КТО НЁС СВЕТ ВНИЗ ДО ТЕБЯ", en: "HERE LIE THOSE WHO CARRIED LIGHT DOWN BEFORE YOU" } },
+      { name: { ru: "ОССУАРИЙ", en: "THE OSSUARY" }, lore: { ru: "КОСТИ СЛОЖЕНЫ РЯДАМИ. КТО-ТО ИХ СЧИТАЛ", en: "THE BONES ARE STACKED IN ROWS. SOMEONE COUNTED THEM" } },
+      { name: { ru: "СЕРДЦЕ КАТАКОМБ", en: "THE HEART OF THE CATACOMBS" }, lore: { ru: "ПОЛ ТРЕСНУЛ, И СНИЗУ ПОДНИМАЕТСЯ ЖАР", en: "THE FLOOR HAS SPLIT, AND HEAT RISES FROM BELOW" } },
+    ],
+    roster: [
+      [[[EN.slime, 10]], [[EN.bat, 6]], [[EN.skull, 3]]],
+      [[[EN.slime, 8], [EN.bat, 5]], [[EN.snake, 6]], [[EN.skull, 4], [EN.wisp, 3]]],
+      [[[EN.slime, 6], [EN.snake, 5], [EN.bat, 4]], [[EN.wisp, 4], [EN.skull, 4]], [[EN.ghost, 4], [EN.eye, 2]]],
+    ],
+  },
+  {
+    id: "garden", name: { ru: "ЗАБЫТЫЙ САД", en: "THE LOST GARDEN" }, lore: { ru: "САД РОС БЕЗ СОЛНЦА И НАУЧИЛСЯ СВЕТИТЬСЯ САМ", en: "THE GARDEN GREW WITHOUT A SUN AND LEARNED TO GLOW" }, floor: "floor_garden", wall: "wall_garden", pillar: "pillar_garden", torch: "torch", ambient: [0.82, 1.08, 0.9], torchLight: "#ffb050", motes: "fireflies",
+    tier: 2, boss: EN.treant, music: 1, gates: ["lattice"],
+    floors: [
+      { name: { ru: "ЗАРОСШИЕ АЛЛЕИ", en: "THE OVERGROWN WALKS" }, lore: { ru: "САД РОС БЕЗ СОЛНЦА И НАУЧИЛСЯ СВЕТИТЬСЯ САМ", en: "THE GARDEN GREW WITHOUT A SUN AND LEARNED TO GLOW" } },
+      { name: { ru: "ЗАТОПЛЕННЫЙ САД", en: "THE DROWNED GARDEN" }, lore: { ru: "ВОДА ПРИШЛА ТИХО И ОСТАЛАСЬ. ИДИ ПО МОСТАМ", en: "THE WATER CAME QUIETLY AND STAYED. KEEP TO THE BRIDGES" } },
+      { name: { ru: "СЕРДЦЕ САДА", en: "THE GARDEN'S HEART" }, lore: { ru: "КОРНИ ДЕРЖАТ БАШНЮ КРЕПЧЕ КАМНЯ", en: "THE ROOTS HOLD THE TOWER TIGHTER THAN STONE" } },
+    ],
+    roster: [
+      [[[EN.frog, 8], [EN.snakeMoss, 5]], [[EN.bird, 5], [EN.moth, 2]], [[EN.wispSpore, 3]]],
+      [[[EN.frog, 6], [EN.bird, 4], [EN.snakeMoss, 4]], [[EN.frogToxic, 4], [EN.moth, 2]], [[EN.jelly, 3], [EN.ghostBog, 3]]],
+      [[[EN.frogToxic, 5], [EN.bird, 5], [EN.snakeMoss, 5]], [[EN.jelly, 4], [EN.moth, 3], [EN.wispSpore, 3]], [[EN.ghostBog, 4], [EN.jelly, 2]]],
+    ],
+  },
+  {
+    id: "frost", name: { ru: "ЛЕДЯНЫЕ ЗАЛЫ", en: "THE FROZEN HALLS" }, lore: { ru: "ХОЛОД ПОДНИМАЕТСЯ С САМОГО ДНА БАШНИ", en: "THE COLD RISES FROM THE TOWER'S VERY BOTTOM" }, floor: "floor_frost", wall: "wall_frost", pillar: "pillar_frost", torch: "torch_blue", ambient: [0.8, 0.95, 1.3], torchLight: "#6ab8ff", motes: "snow",
+    tier: 3, boss: EN.eyeVoid, music: 2, gates: ["lattice"],
+    floors: [
+      { name: { ru: "ИНЕЙНЫЕ ГАЛЕРЕИ", en: "THE RIME GALLERIES" }, lore: { ru: "ХОЛОД ПОДНИМАЕТСЯ С САМОГО ДНА БАШНИ", en: "THE COLD RISES FROM THE TOWER'S VERY BOTTOM" } },
+      { name: { ru: "ЛЕДЯНЫЕ ПЕЩЕРЫ", en: "THE ICE CAVES" }, lore: { ru: "ЛЁД СКОЛЬЗКИЙ: ДЕРЖИСЬ КАМНЯ, КОГДА ЖАРКО", en: "THE ICE IS SLIPPERY: KEEP TO THE STONE WHEN IT GETS HOT" } },
+      { name: { ru: "ТРОН ПУСТОТЫ", en: "THE THRONE OF THE VOID" }, lore: { ru: "ПОД БАШНЕЙ НЕТ ДНА. ЕСТЬ ТОЛЬКО ТОТ, КТО СМОТРИТ", en: "THERE IS NO BOTTOM UNDER THE TOWER. ONLY THE ONE WHO WATCHES" } },
+    ],
+    roster: [
+      [[[EN.slimeIce, 8], [EN.snakeIce, 5]], [[EN.batIce, 5], [EN.mothFrost, 2]], [[EN.skullIce, 4]]],
+      [[[EN.slimeIce, 6], [EN.snakeIce, 6], [EN.batIce, 4]], [[EN.skullIce, 4], [EN.wispFrost, 3], [EN.mothFrost, 2]], [[EN.eyeFrost, 3], [EN.ghostIce, 3]]],
+      [[[EN.slimeIce, 6], [EN.snakeIce, 6], [EN.batIce, 4]], [[EN.skullIce, 4], [EN.wispFrost, 4], [EN.mothFrost, 2]], [[EN.eyeFrost, 3], [EN.ghostIce, 4], [EN.wispFrost, 3]]],
+    ],
+  },
 ];
-export const FLOORS = 9;
 /**
- * Each floor's own name and a line for its title card. A place keeps its name; its three floors are its first look,
- * the same place changed, and the change at its height (with the boss).
+ * The gifts: each won for good from a boss the first time it falls; each opens its own kind of gate in the tower's
+ * walls and changes the fight a little.
  */
-export const FLOOR_INFO: { name: Text; lore: Text }[] = [
-  { name: { ru: "ВЕРХНИЕ ГАЛЕРЕИ", en: "THE UPPER GALLERIES" }, lore: { ru: "ЗДЕСЬ ЛЕЖАТ ТЕ, КТО НЁС СВЕТ ВНИЗ ДО ТЕБЯ", en: "HERE LIE THOSE WHO CARRIED LIGHT DOWN BEFORE YOU" } },
-  { name: { ru: "ОССУАРИЙ", en: "THE OSSUARY" }, lore: { ru: "КОСТИ СЛОЖЕНЫ РЯДАМИ. КТО-ТО ИХ СЧИТАЛ", en: "THE BONES ARE STACKED IN ROWS. SOMEONE COUNTED THEM" } },
-  { name: { ru: "СЕРДЦЕ КАТАКОМБ", en: "THE HEART OF THE CATACOMBS" }, lore: { ru: "ПОЛ ТРЕСНУЛ, И СНИЗУ ПОДНИМАЕТСЯ ЖАР", en: "THE FLOOR HAS SPLIT, AND HEAT RISES FROM BELOW" } },
-  { name: { ru: "ЗАРОСШИЕ АЛЛЕИ", en: "THE OVERGROWN WALKS" }, lore: { ru: "САД РОС БЕЗ СОЛНЦА И НАУЧИЛСЯ СВЕТИТЬСЯ САМ", en: "THE GARDEN GREW WITHOUT A SUN AND LEARNED TO GLOW" } },
-  { name: { ru: "ЗАТОПЛЕННЫЙ САД", en: "THE DROWNED GARDEN" }, lore: { ru: "ВОДА ПРИШЛА ТИХО И ОСТАЛАСЬ. ИДИ ПО МОСТАМ", en: "THE WATER CAME QUIETLY AND STAYED. KEEP TO THE BRIDGES" } },
-  { name: { ru: "СЕРДЦЕ САДА", en: "THE GARDEN'S HEART" }, lore: { ru: "КОРНИ ДЕРЖАТ БАШНЮ КРЕПЧЕ КАМНЯ", en: "THE ROOTS HOLD THE TOWER TIGHTER THAN STONE" } },
-  { name: { ru: "ИНЕЙНЫЕ ГАЛЕРЕИ", en: "THE RIME GALLERIES" }, lore: { ru: "ХОЛОД ПОДНИМАЕТСЯ С САМОГО ДНА БАШНИ", en: "THE COLD RISES FROM THE TOWER'S VERY BOTTOM" } },
-  { name: { ru: "ЛЕДЯНЫЕ ПЕЩЕРЫ", en: "THE ICE CAVES" }, lore: { ru: "ЛЁД СКОЛЬЗКИЙ: ДЕРЖИСЬ КАМНЯ, КОГДА ЖАРКО", en: "THE ICE IS SLIPPERY: KEEP TO THE STONE WHEN IT GETS HOT" } },
-  { name: { ru: "ТРОН ПУСТОТЫ", en: "THE THRONE OF THE VOID" }, lore: { ru: "ПОД БАШНЕЙ НЕТ ДНА. ЕСТЬ ТОЛЬКО ТОТ, КТО СМОТРИТ", en: "THERE IS NO BOTTOM UNDER THE TOWER. ONLY THE ONE WHO WATCHES" } },
+export type GiftId = "shade";
+/** What a gate is: a runic lattice (more kinds come with more gifts). */
+export type GateKind = "lattice";
+export interface GiftDef {
+  id: GiftId;
+  /** The gate it opens. */
+  gate: GateKind;
+  name: Text;
+  /** What it does in a fight. */
+  desc: Text;
+  /** The gate's own name, and its colour (runes, light, banners). */
+  gateName: Text;
+  color: string;
+}
+export const GIFTS: GiftDef[] = [
+  {
+    id: "shade", gate: "lattice", color: "#b58cff",
+    name: { ru: "ШАГ СКВОЗЬ ТЕНЬ", en: "SHADOW STEP" },
+    desc: { ru: "РЫВОК СКВОЗЬ ВРАГА РАНИТ ЕГО", en: "DASHING THROUGH A FOE WOUNDS IT" },
+    gateName: { ru: "РУНИЧЕСКАЯ РЕШЁТКА", en: "RUNIC LATTICE" },
+  },
 ];
-export const floorInfo = (floor: number) => FLOOR_INFO[Math.max(0, Math.min(FLOOR_INFO.length - 1, floor - 1))];
-/** Where a floor stands in its place: 1 its first look, 2 changed, 3 the height of the change. */
-export const stageOf = (floor: number): number => ((Math.max(1, floor) - 1) % 3) + 1;
-export const biomeOf = (floor: number): Biome => BIOMES[Math.min(BIOMES.length - 1, Math.floor((floor - 1) / 3))];
-/** Each place's own boss at its end, each one stronger than the last, none met twice. */
-export const bossOf = (floor: number): number => (floor === 3 ? EN.warden : floor === 6 ? EN.treant : floor === 9 ? EN.eyeVoid : -1);
+export const giftDef = (id: GiftId): GiftDef => GIFTS.find((g) => g.id === id)!;
+/** The gift that opens a kind of gate. */
+export const giftFor = (gate: GateKind): GiftDef => GIFTS.find((g) => g.gate === gate)!;
+/** The place whose boss gives a gift (where to look for it). */
+export const giftFrom = (id: GiftId): PlaceDef | undefined => PLACES.find((p) => p.gift === id);
 
-/** The roster of a floor, in three phases, as [enemy, weight]. */
-export function roster(floor: number, phase: number): [number, number][] {
-  const P: [number, number][][][] = [
-    // the crypt
-    [[[EN.slime, 10]], [[EN.bat, 6]], [[EN.skull, 3]]],
-    [[[EN.slime, 8], [EN.bat, 5]], [[EN.snake, 6]], [[EN.skull, 4], [EN.wisp, 3]]],
-    [[[EN.slime, 6], [EN.snake, 5], [EN.bat, 4]], [[EN.wisp, 4], [EN.skull, 4]], [[EN.ghost, 4], [EN.eye, 2]]],
-    // the garden: its own toads, swifts, moths, jellies, adders, spore wisps and bog spirits
-    [[[EN.frog, 8], [EN.snakeMoss, 5]], [[EN.bird, 5], [EN.moth, 2]], [[EN.wispSpore, 3]]],
-    [[[EN.frog, 6], [EN.bird, 4], [EN.snakeMoss, 4]], [[EN.frogToxic, 4], [EN.moth, 2]], [[EN.jelly, 3], [EN.ghostBog, 3]]],
-    [[[EN.frogToxic, 5], [EN.bird, 5], [EN.snakeMoss, 5]], [[EN.jelly, 4], [EN.moth, 3], [EN.wispSpore, 3]], [[EN.ghostBog, 4], [EN.jelly, 2]]],
-    // the frost: everything of the cold
-    [[[EN.slimeIce, 8], [EN.snakeIce, 5]], [[EN.batIce, 5], [EN.mothFrost, 2]], [[EN.skullIce, 4]]],
-    [[[EN.slimeIce, 6], [EN.snakeIce, 6], [EN.batIce, 4]], [[EN.skullIce, 4], [EN.wispFrost, 3], [EN.mothFrost, 2]], [[EN.eyeFrost, 3], [EN.ghostIce, 3]]],
-    [[[EN.slimeIce, 6], [EN.snakeIce, 6], [EN.batIce, 4]], [[EN.skullIce, 4], [EN.wispFrost, 4], [EN.mothFrost, 2]], [[EN.eyeFrost, 3], [EN.ghostIce, 4], [EN.wispFrost, 3]]],
-  ];
-  const f = P[Math.min(P.length - 1, floor - 1)], out: [number, number][] = [];
+/** The tiers, top down: the places in each, the main one first. */
+export const TIERS: PlaceId[][] = [["crypt"], ["garden"], ["frost"]];
+/** Floors in a place. */
+export const PLACE_FLOORS = 3;
+/** The tower's depth: the last floor, its last boss. */
+export const DEPTH = TIERS.length * PLACE_FLOORS;
+export const placeDef = (id: PlaceId): PlaceDef => PLACES.find((p) => p.id === id)!;
+/** A floor of the tower: a place and how far into it (1..3). Its depth is where it stands in the whole tower. */
+export interface Stop {
+  place: PlaceDef;
+  stage: number;
+}
+export const depthOf = (s: Stop): number => (s.place.tier - 1) * PLACE_FLOORS + s.stage;
+/** The floor at a depth on the main way down (tests and the title backdrop start there). */
+export function mainStop(depth: number): Stop {
+  const d = Math.max(1, Math.min(DEPTH, Math.floor(depth))), tier = Math.ceil(d / PLACE_FLOORS);
+  return { place: placeDef(TIERS[tier - 1][0]), stage: d - (tier - 1) * PLACE_FLOORS };
+}
+/**
+ * Where the way goes on from a floor: down the stairs to the place's next floor; after its boss, through the portal
+ * to the next tier (into `branch` if the run opened the way there and it is in that tier, else the main place); after
+ * the last tier, nowhere.
+ */
+export function nextStop(s: Stop, branch?: PlaceId | null): Stop | null {
+  if (s.stage < PLACE_FLOORS) return { place: s.place, stage: s.stage + 1 };
+  const tier = TIERS[s.place.tier];
+  if (!tier) return null;
+  return { place: placeDef(branch && tier.includes(branch) ? branch : tier[0]), stage: 1 };
+}
+/** A floor's own name and title-card line. */
+export const floorText = (s: Stop) => s.place.floors[Math.max(0, Math.min(PLACE_FLOORS - 1, s.stage - 1))];
+/** A floor's enemies up to a phase. */
+export function roster(s: Stop, phase: number): [number, number][] {
+  const f = s.place.roster[Math.max(0, Math.min(PLACE_FLOORS - 1, s.stage - 1))], out: [number, number][] = [];
   for (let k = 0; k <= Math.min(2, phase); k++) out.push(...f[k]);
   return out;
 }
@@ -309,6 +396,47 @@ export const STATS: StatDef[] = [
   { id: "crit", name: { ru: "ЗОРКИЙ ГЛАЗ", en: "KEEN EYE" }, desc: { ru: "+8% ШАНС КРИТА (Х2)", en: "+8% CRIT CHANCE (X2)" }, max: 4, weight: 6 },
   { id: "lantern", name: { ru: "ЯРКИЙ ФОНАРЬ", en: "BRIGHT LANTERN" }, desc: { ru: "СВЕТ ШИРЕ: ПРИЗРАКИ УЯЗВИМЫ В НЁМ", en: "WIDER LIGHT: GHOSTS ARE VULNERABLE IN IT" }, max: 3, weight: 4 },
 ];
+
+// ------------------------------------------------------------------------------------------------ the arsenal
+/**
+ * What the player opens by playing: weapons, relics and artifacts beyond those there from the start, each by a deed
+ * counted over all the runs (a counter as achievements read it, and its goal). An opened one joins the runs' pools:
+ * the altars, the armouries, the level-ups and chests. A hero's own weapon is always theirs; the trials of the day
+ * and the week have everything (the same for everyone).
+ */
+export interface UnlockDef {
+  /** "weapon:<id>", "relic:<kind>" or "stat:<id>". */
+  key: string;
+  stat: string;
+  goal: number;
+  /** What to do to open it. */
+  need: Text;
+}
+export const UNLOCKS: UnlockDef[] = [
+  { key: "weapon:hammer", stat: "bestFloor", goal: 3, need: { ru: "ДОЙДИ ДО 3-ГО ЭТАЖА", en: "REACH FLOOR 3" } },
+  { key: "weapon:greatsword", stat: "boss", goal: 1, need: { ru: "ПОБЕДИ БОССА", en: "DEFEAT A BOSS" } },
+  { key: "weapon:whip", stat: "braziers", goal: 30, need: { ru: "ЗАЖГИ 30 ЖАРОВЕН", en: "LIGHT 30 BRAZIERS" } },
+  { key: "weapon:claws", stat: "secrets", goal: 3, need: { ru: "ОТКРОЙ 3 ТАЙНЫЕ КОМНАТЫ", en: "OPEN 3 SECRET ROOMS" } },
+  { key: "weapon:spell", stat: "reactionsKnown", goal: 3, need: { ru: "ОТКРОЙ 3 РЕАКЦИИ СТИХИЙ", en: "DISCOVER 3 REACTIONS" } },
+  { key: "weapon:scythe", stat: "kills", goal: 1500, need: { ru: "УБЕЙ 1500 ВРАГОВ", en: "SLAY 1500 FOES" } },
+  { key: `relic:${RelicKind.Coil}`, stat: "evolve", goal: 1, need: { ru: "СОБЕРИ ЭВОЛЮЦИЮ", en: "EVOLVE A RELIC" } },
+  { key: `relic:${RelicKind.Halo}`, stat: "spirits", goal: 5, need: { ru: "ВЫПОЛНИ 5 ЗАДАНИЙ ДУХОВ", en: "FULFIL 5 SPIRITS' TASKS" } },
+  { key: `relic:${RelicKind.Void}`, stat: "bestFloor", goal: 7, need: { ru: "ДОЙДИ ДО ЛЕДЯНЫХ ЗАЛОВ", en: "REACH THE FROZEN HALLS" } },
+  { key: "stat:parry", stat: "grazes", goal: 50, need: { ru: "ЗАДЕНЬ 50 СНАРЯДОВ", en: "GRAZE 50 BOLTS" } },
+  { key: "stat:overdrive", stat: "urns", goal: 40, need: { ru: "РАЗБЕЙ 40 УРН", en: "SMASH 40 URNS" } },
+  { key: "stat:wave", stat: "floorsCleared", goal: 10, need: { ru: "ПРОЙДИ 10 ЭТАЖЕЙ", en: "CLEAR 10 FLOORS" } },
+  { key: "stat:lantern", stat: "vaults", goal: 1, need: { ru: "НАЙДИ ЗАЛ ЗА ВОРОТАМИ", en: "FIND A VAULT BEHIND A GATE" } },
+];
+export const unlockOf = (key: string): UnlockDef | undefined => UNLOCKS.find((u) => u.key === key);
+/** Everything the arsenal shows, in its order: the weapons, the relics, the artifacts. */
+export const ARSENAL = (): string[] => [...WEAPON_IDS.map((id) => `weapon:${id}`), ...RELICS.map((r) => `relic:${r.kind}`), ...STATS.map((s) => `stat:${s.id}`)];
+/** An arsenal key's name. */
+export function arsenalName(key: string): Text {
+  const [kind, id] = key.split(":");
+  if (kind === "weapon") return WEAPONS[id as WeaponId].name;
+  if (kind === "relic") return RELICS[+id].name;
+  return STATS.find((s) => s.id === id)!.name;
+}
 
 // ------------------------------------------------------------------------------------------------ floor modifiers
 export interface Modifier {

@@ -161,6 +161,10 @@ export const ANIMS = [
   { name: "secret_crypt", art: "tiles/secret-wall", opts: { stone: WALL.crypt }, variants: { variant: [0, 1] } },
   { name: "secret_garden", art: "tiles/secret-wall", opts: { stone: WALL.garden }, variants: { variant: [0, 1] } },
   { name: "secret_frost", art: "tiles/secret-wall", opts: { stone: WALL.frost }, variants: { variant: [0, 1] } },
+  // the gates in the back wall: a runic lattice closed (its runes lit) and open, per place
+  { name: "gate_crypt", art: "tiles/gate", opts: { stone: WALL.crypt }, variants: { variant: [0, 1] } },
+  { name: "gate_garden", art: "tiles/gate", opts: { stone: WALL.garden }, variants: { variant: [0, 1] } },
+  { name: "gate_frost", art: "tiles/gate", opts: { stone: WALL.frost }, variants: { variant: [0, 1] } },
   { name: "mushrooms", art: "props/mushrooms", fps: 8 },
   { name: "grass", art: "props/grass", fps: 8 },
   { name: "crystal", fx: "ice/ice-crystal", fps: 8, light: { thr: 10, k: 0.8 }, opts: { height: 22 } },

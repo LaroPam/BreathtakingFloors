@@ -5,10 +5,16 @@
 //
 //   npm run check:play                      every hero, the whole tower
 //   npm run check:play -- --heroes=mage,ranger --floors=4 --seed=7
+//   npm run check:play -- --heroes=shadow --from=9         from a deeper floor (with the levels a run would have)
+//
+// Floors are counted by depth down the whole tower (whichever places the run goes through); a report names the
+// place and its floor too, and an ok line the places the run went through.
 //
 // The hero cannot die (the bot is checking the world, not its own skill); everything else plays as it does for a
 // player: it walks the way the guide arrow points, fights what comes, lights the braziers, picks upgrades at
-// random, opens chests, takes the stairs and the portals.
+// random, opens chests, takes the stairs and the portals. It starts with no gifts (`--gifts=shade` to hold some) and
+// wins them from the bosses as a player does; on a floor with a gate it can open, it goes to the gate and sees it
+// open onto its vault.
 
 import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
@@ -22,10 +28,10 @@ const DIST = join(ROOT, "dist");
 const args = Object.fromEntries(process.argv.slice(2).filter((a) => a.startsWith("--")).map((a) => a.slice(2).split("=")));
 const HEROES = ["knight", "ranger", "mage", "reaper", "berserker", "shadow"];
 const heroes = args.heroes ? args.heroes.split(",") : HEROES;
-const floors = +(args.floors ?? 9), seed = +(args.seed ?? 1);
+const floors = +(args.floors ?? 99), seed = +(args.seed ?? 1), gifts = args.gifts ? args.gifts.split(",") : [], from = Math.max(1, +(args.from ?? 1));
 /** Seconds of play a floor may take before the bot calls it stuck (a boss floor gets more). */
-const FLOOR_BUDGET = 420, BOSS_BUDGET = 600;
-/** A frame (the world's steps and the drawing, without the GPU) slower than this is reported. */
+const FLOOR_BUDGET = 420, BOSS_BUDGET = 900;
+/** A frame (the world's steps and the drawing, without the GPU, which here is a slow software one) slower than this is reported. */
 const SLOW_MS = 40;
 
 const require = createRequire(join(ROOT, "package.json"));
@@ -91,8 +97,8 @@ for (const hero of heroes) {
     continue;
   }
   const t0 = Date.now();
-  await page.evaluate(({ hero, seed }) => {
-    const G = window.__game, w = G.world, E = w.enemies;
+  await page.evaluate(({ hero, seed, gifts, from }) => {
+    const G = window.__game;
     // a seeded Math.random for the bot's own choices, so a run can be played again
     let s = seed * 9973 + hero.length * 131;
     const rnd = () => ((s = (Math.imul(s, 1664525) + 1013904223) >>> 0) / 4294967296);
@@ -100,6 +106,7 @@ for (const hero of heroes) {
     G.save.tutorial = false;
     G.save.runs = 9;
     G.save.unlocked = ["knight", "ranger", "mage", "reaper", "berserker", "shadow"];
+    G.save.gifts = [...gifts];
     G.heroIdx = ["knight", "ranger", "mage", "reaper", "berserker", "shadow"].indexOf(hero);
     // the drawing goes on (its code is checked) but the GPU draws only now and then
     const render = G.r.render.bind(G.r);
@@ -107,20 +114,24 @@ for (const hero of heroes) {
     // the bot's thumb: it walks where the guide points, or at the fight
     G.input.poll = () => {};
     G.input.pressed = (b) => b === "confirm" && B.press;
-    // invariants the pool and the world must keep
-    const remove = E.remove.bind(E);
-    E.remove = (i) => {
-      if (i < 0 || i >= E.n) B.log.push(`an enemy removed through a stale index ${i} (live ${E.n})`);
-      remove(i);
-    };
-    const kill = w.kill.bind(w);
-    w.kill = (i) => {
-      if (i >= 0 && i < E.n && w.bossUid && E.uid[i] === w.bossUid) B.bossKilled = true;
-      kill(i);
+    // invariants the pool and the world must keep, watched on every world the game makes (a run makes its own)
+    window.__hook = (w) => {
+      const E = w.enemies, remove = E.remove.bind(E), kill = w.kill.bind(w);
+      w.__bot = true;
+      E.remove = (i) => {
+        if (i < 0 || i >= E.n) B.log.push(`an enemy removed through a stale index ${i} (live ${E.n})`);
+        remove(i);
+      };
+      w.kill = (i) => {
+        if (i >= 0 && i < E.n && w.bossUid && E.uid[i] === w.bossUid) B.bossKilled = true;
+        kill(i);
+      };
     };
     window.__seedClock(seed * 7919 + hero.length);
     G.startRun();
-  }, { hero, seed });
+    // a deeper start: that floor at once, and the levels a hero would have reached by it to choose
+    if (from > 1) (G.world.startFloor(from, G.world.mod), (G.world.pendingLevels += Math.round((from - 1) * 2.5)));
+  }, { hero, seed, gifts, from });
 
   // play, a chunk of frames at a time (each evaluate stays short)
   for (let chunk = 0; ; chunk++) {
@@ -129,6 +140,7 @@ for (const hero of heroes) {
       for (let k = 0; k < 1200; k++) {
         // (taken afresh every frame: a new floor brings a new map, a new run a new world)
         const w = G.world, E = w.enemies, h = w.hero, map = w.map;
+        if (!w.__bot) window.__hook(w);
         B.frames++;
         B.press = B.frames % 20 === 0;
         h.hp = h.maxHp;
@@ -140,7 +152,26 @@ for (const hero of heroes) {
           G.descend(G.stairs[Math.floor(B.rnd() * G.stairs.length)]);
         }
         if (G.state === "stats" || G.state === "pause") G.setState("play");
-        if (G.state === "won") return { done: true, won: true, floor: w.floor, log: B.log };
+        // a gift won: taken (its button usually is, by the bot's presses; else here)
+        if (G.state === "gift" && G.giftShow && G.giftShow.t > 1.5) (G.giftShow = null), G.setState("play");
+        // a gate the hero can open: once a floor, straight to its foot, and it must open onto its vault in a few seconds
+        const gt = w.gate, OPENS = { lattice: "shade" };
+        if (G.state === "play" && gt && gt.open < 1 && w.gifts.has(OPENS[gt.kind]) && B.gateFloor !== w.floor && h.arriveT > 1.5 && !w.cine && w.bossIndex() < 0) {
+          B.gateFloor = w.floor;
+          B.gateT = 0;
+          h.x = gt.x + 16;
+          h.y = gt.y + 10;
+        }
+        if (B.gateT >= 0 && B.gateFloor === w.floor && gt) {
+          B.gateT += 1 / 60;
+          if (gt.open >= 1) {
+            const r = gt.room, mid = map.at(r.x + (r.w >> 1), r.y + (r.h >> 1)), way = map.at(gt.x / 16, gt.y / 16 - 2);
+            if (mid !== 0 || way !== 0) B.log.push(`floor ${w.floor}: the gate opened but its vault is not open (room ${mid}, passage ${way})`);
+            B.gates = (B.gates ?? 0) + 1;
+            B.gateT = -1;
+          } else if (B.gateT > 4) (B.log.push(`floor ${w.floor}: the hero at the gate with its gift, and it did not open`), (B.gateT = -1));
+        }
+        if (G.state === "won") return { done: true, won: true, floor: w.floor, trail: w.trail, log: B.log };
         if (G.state === "dead") return { done: true, won: false, floor: w.floor, log: [...B.log, "the hero died, though the bot keeps them alive"] };
         // the walk: the guide arrow while it points somewhere, else at the nearest foe (or the boss)
         let mx = 0, my = 0;
@@ -148,11 +179,13 @@ for (const hero of heroes) {
           const [gx, gy] = w.guide;
           if (gx || gy) (mx = gx), (my = gy);
           else {
-            let best = -1, bd = 1e9;
-            for (let i = 0; i < E.n; i++) {
-              const d = (E.x[i] - h.x) ** 2 + (E.y[i] - h.y) ** 2;
-              if (d < bd) (bd = d), (best = i);
-            }
+            // the boss first, as a player would; else the nearest foe
+            let best = w.bossIndex(), bd = best >= 0 ? (E.x[best] - h.x) ** 2 + (E.y[best] - h.y) ** 2 : 1e9;
+            if (best < 0)
+              for (let i = 0; i < E.n; i++) {
+                const d = (E.x[i] - h.x) ** 2 + (E.y[i] - h.y) ** 2;
+                if (d < bd) (bd = d), (best = i);
+              }
             if (best >= 0 && bd > 40 * 40) {
               const dx = E.x[best] - h.x, dy = E.y[best] - h.y, d = Math.hypot(dx, dy) || 1;
               (mx = dx / d), (my = dy / d);
@@ -175,41 +208,47 @@ for (const hero of heroes) {
         G.frame(1 / 60);
         if (G.state === "play" && map.wall(h.x, h.y) && !B.traced) (B.traced = true), B.log.push(`trail into the wall: ${B.trail.join(" ")}`);
         const ms = performance.now() - a;
-        if (ms > SLOW_MS && B.slow.length < 20) B.slow.push(`${ms.toFixed(0)} ms on floor ${w.floor} with ${E.n} enemies`);
+        // (only frames the GPU did not draw: the drawn ones go through a software GPU here, slow for its own reasons)
+        if (B.frames % 30 !== 0 && ms > SLOW_MS && B.slow.length < 20) B.slow.push(`${ms.toFixed(0)} ms on floor ${w.floor} (${G.state}) with ${E.n} enemies`);
         // the floor's clock, and a new floor
+        // (where a report says it happened: the depth, the place and its floor)
+        const at = `floor ${w.floor} (${w.place.id} ${w.stage})`;
         if (w.floor !== B.floor) (B.floor = w.floor), (B.floorT = 0), (B.descending = false), (B.bossKilled = false), (B.wasBoss = false), (B.vanished = false), (B.bossWallSaid = false);
         if (G.state === "play") B.floorT += 1 / 60;
         // a boss that is gone without its death
-        if (w.bossIndex() >= 0) B.wasBoss = true;
-        else if (B.wasBoss && !B.bossKilled && !B.vanished) (B.vanished = true), B.log.push(`floor ${w.floor}: the boss is gone without dying`);
+        if (w.bossIndex() >= 0) (B.wasBoss = true), (B.bossT = (B.bossT ?? 0) + 1 / 60);
+        // how long each boss took (a balance matter: its own line in the report)
+        if (B.wasBoss && w.bossIndex() < 0 && B.bossT) ((B.fights ??= []).push(`${w.place.id} ${Math.floor(B.bossT / 60)}:${String(Math.round(B.bossT % 60)).padStart(2, "0")}`), (B.bossT = 0));
+        else if (B.wasBoss && !B.bossKilled && !B.vanished) (B.vanished = true), B.log.push(`${at}: the boss is gone without dying`);
         // every 2 s: the world's numbers make sense
         if (B.frames % 120 === 0) {
           for (let i = 0; i < E.n; i++) {
             if (!Number.isFinite(E.x[i]) || !Number.isFinite(E.y[i]) || !Number.isFinite(E.hp[i])) {
-              B.log.push(`floor ${w.floor}: an enemy (type ${E.type[i]}) at NaN`);
+              B.log.push(`${at}: an enemy (type ${E.type[i]}) at NaN`);
               break;
             }
             if (E.x[i] < -64 || E.y[i] < -64 || E.x[i] > w.w + 64 || E.y[i] > w.h + 64) {
-              B.log.push(`floor ${w.floor}: an enemy (type ${E.type[i]}) off the map at ${E.x[i] | 0},${E.y[i] | 0}`);
+              B.log.push(`${at}: an enemy (type ${E.type[i]}) off the map at ${E.x[i] | 0},${E.y[i] | 0}`);
               break;
             }
           }
-          if (!Number.isFinite(h.x) || !Number.isFinite(h.y)) B.log.push(`floor ${w.floor}: the hero at NaN`);
+          if (!Number.isFinite(h.x) || !Number.isFinite(h.y)) B.log.push(`${at}: the hero at NaN`);
           if (G.state === "play" && map.wall(h.x, h.y)) {
             const c = Math.floor(h.x / 16), r = Math.floor(h.y / 16), around = [-1, 0, 1].map((dr) => [-1, 0, 1].map((dc) => map.at(c + dc, r + dr)).join("")).join("/");
-            B.log.push(`floor ${w.floor}: the hero inside a wall at ${h.x | 0},${h.y | 0} (tiles ${around}, exit ${h.exitT.toFixed(2)}, dash ${h.dashT.toFixed(2)}, arrive ${h.arriveT.toFixed(2)}, stairs ${w.stairs ? (w.stairs.x | 0) + "," + (w.stairs.y | 0) : "-"})`);
+            B.log.push(`${at}: the hero inside a wall at ${h.x | 0},${h.y | 0} (tiles ${around}, exit ${h.exitT.toFixed(2)}, dash ${h.dashT.toFixed(2)}, arrive ${h.arriveT.toFixed(2)}, stairs ${w.stairs ? (w.stairs.x | 0) + "," + (w.stairs.y | 0) : "-"})`);
           }
           // the boss inside rock for long (it must always be reachable)
           const bi = w.bossIndex();
           B.bossInWall = bi >= 0 && map.wall(E.x[bi], E.y[bi]) ? (B.bossInWall ?? 0) + 2 : 0;
-          if (B.bossInWall >= 8 && !B.bossWallSaid) (B.bossWallSaid = true), B.log.push(`floor ${w.floor}: the boss inside a wall for 8 s at ${E.x[bi] | 0},${E.y[bi] | 0}`);
+          if (B.bossInWall >= 8 && !B.bossWallSaid) (B.bossWallSaid = true), B.log.push(`${at}: the boss inside a wall for 8 s at ${E.x[bi] | 0},${E.y[bi] | 0}`);
         }
         const limit = w.map.arena ? BOSS_BUDGET : FLOOR_BUDGET;
         if (B.floorT > limit) {
           const o = w.objective();
-          return { done: true, won: false, floor: w.floor, log: [...B.log, `floor ${w.floor} not got through in ${limit} s: ${w.braziers.filter((q) => q.lit).length}/3 fires, the hero at ${h.x | 0},${h.y | 0}, the goal ${o ? o.map((v) => v | 0) : "none"}, state ${G.state}`] };
+          const bi = w.bossIndex(), boss = bi >= 0 ? `the boss ${E.hp[bi] | 0}/${E.maxHp[bi] | 0} hp at ${E.x[bi] | 0},${E.y[bi] | 0} over tile ${map.tileAt(E.x[bi], E.y[bi])}` : w.bossSpawned ? "the boss gone" : "no boss yet";
+          return { done: true, won: false, floor: w.floor, log: [...B.log, `${at} not got through in ${limit} s: ${w.braziers.filter((q) => q.lit).length}/3 fires, the hero at ${h.x | 0},${h.y | 0} (level ${h.level}), the goal ${o ? o.map((v) => v | 0) : "none"}, ${boss}, ${E.n} enemies, portal ${w.portal ? "open" : "none"}, state ${G.state}`] };
         }
-        if (w.floor > floors) return { done: true, won: true, floor: w.floor, log: B.log };
+        if (w.floor > floors) return { done: true, won: true, floor: w.floor - 1, trail: w.trail, log: B.log };
       }
       return { done: false, floor: G.world.floor, t: B.floorT | 0, log: B.log };
     }, { floors, FLOOR_BUDGET, BOSS_BUDGET, SLOW_MS });
@@ -222,7 +261,8 @@ for (const hero of heroes) {
       for (const e of [...new Set(errors)].slice(0, 5)) problem(hero, `page error: ${e}`);
       if (slow.length) console.log(`  slow  ${hero}: ${slow.slice(0, 3).join("; ")}${slow.length > 3 ? ` (+${slow.length - 3})` : ""}`);
       const played = await page.evaluate(() => (window.__bot.frames / 3600).toFixed(1));
-      if (st.won && !seen.length && !errors.length) console.log(`  ok    ${hero}: through floor ${Math.min(floors, st.floor)}, ${played} min of play (${mins} min to check)`);
+      const extra = await page.evaluate(() => `gifts ${window.__game.save.gifts.join(",") || "none"}, ${window.__bot.gates ?? 0} gate(s) opened, bosses ${(window.__bot.fights ?? []).join(", ") || "-"}`);
+      if (st.won && !seen.length && !errors.length) console.log(`  ok    ${hero}: through floor ${st.floor} (${st.trail.join(" > ")}), ${extra}, ${played} min of play (${mins} min to check)`);
       else console.log(`        ${hero}: ${played} min of play, seed ${seed}`);
       break;
     }

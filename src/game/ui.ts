@@ -11,7 +11,7 @@ import type { Audio } from "../engine/audio";
 import type { Input } from "../engine/input";
 import { Batch, rgba, rgbaf, withAlpha } from "../engine/renderer";
 import { fitScale, measure, text, wrap, type FontName } from "../engine/text";
-import { ARTIFACT_SLOTS, EL_COLOR, ENEMIES, evolutionOf, floorInfo, MUTATORS, questDef, RARITIES, RELIC_SLOTS, STATS } from "./defs";
+import { ARTIFACT_SLOTS, EL_COLOR, ENEMIES, evolutionOf, floorText, MUTATORS, questDef, RARITIES, RELIC_SLOTS, STATS } from "./defs";
 import { t, tx } from "./i18n";
 import type { World } from "./world";
 
@@ -513,13 +513,14 @@ export function drawHud(b: Batch, w: World, W: number, H: number, time: number, 
   // ---- where you are: the floor on a plate at the top centre, with what to do on it under the name
   // the floor's name on its plate for the first seconds; then the plate draws in to just the braziers (or the
   // boss, or the portal), leaving the top of the screen to the floor
-  const floorLine = `${t("floor")} ${w.floor}  ·  ${tx(floorInfo(w.floor).name)}`, bi = w.bossIndex();
+  // (a narrow screen, a phone upright: the plate stands in the room between the vitals and the timer, and says only
+  // the floor's number: its name was on the floor's card a moment ago, and would not fit there)
+  const narrow = W < 300, timerW = quiet ? 0 : Math.max(measure(fmtTime(w.time)), measure(String(w.kills))) + 26;
+  const floorLine = narrow ? `${t("floor")} ${w.floor}` : `${t("floor")} ${w.floor}  ·  ${tx(floorText(w.stop).name)}`, bi = w.bossIndex();
   const intro = Math.max(0, Math.min(1, (6.5 - w.time) / 0.5)), e = intro * intro * (3 - 2 * intro);
   const bossName = bi >= 0 ? tx(ENEMIES[w.enemies.type[bi]].name) : "";
   const small = Math.max(w.portal ? measure(t("portalOpen"), "mini") + 12 : bi >= 0 ? measure(bossName, "mini") + 22 : w.braziers.length * 14 + 10, 48);
-  // (a narrow screen, a phone upright: the plate stands in the room between the vitals and the pause button, the
-  // floor's line in small letters if it would not fit there)
-  const narrow = W < 300, cxF = narrow ? Math.round((100 + W - 26) / 2) : W / 2, roomF = narrow ? W - 126 : W;
+  const right = W - Math.max(26, timerW), cxF = narrow ? Math.round((100 + right) / 2) : W / 2, roomF = narrow ? right - 100 : W;
   const lineFont = measure(floorLine) + (seal ? 30 : 20) > roomF ? "mini" : undefined;
   const wide = Math.min(roomF, measure(floorLine, lineFont) + (seal ? 30 : 20)), fw = Math.round(small + (Math.max(wide, small) - small) * e), ph = Math.round(16 + 9 * e), ty = Math.round(6 + 3 * e);
   plate(b, cxF - fw / 2, ty, fw, ph);
