@@ -130,10 +130,12 @@ function renderModel(e) {
     }
     let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
     for (let i = 0; i < f.n; i++) (x0 = Math.min(x0, f.xs[i]), x1 = Math.max(x1, f.xs[i]), y0 = Math.min(y0, f.ys[i]), y1 = Math.max(y1, f.ys[i]));
-    const W = x1 - x0 + 1, H = y1 - y0 + 1, buf = new Uint32Array(W * H);
+    const W = x1 - x0 + 1, H = y1 - y0 + 1, buf = new Uint32Array(W * H), lit = f.light?.some((v) => v) ? new Uint32Array(W * H) : null;
     for (let i = 0; i < f.n; i++) buf[(f.ys[i] - y0) * W + (f.xs[i] - x0)] = f.color[i] >>> 0;
-    // anchor at the middle of the blade's box, so it turns in place
-    out.push({ color: trim(buf, W, H, Math.round(W / 2), Math.round(H / 2), hasColor), light: null });
+    if (lit) for (let i = 0; i < f.n; i++) lit[(f.ys[i] - y0) * W + (f.xs[i] - x0)] = f.light[i] >>> 0;
+    // anchor at the middle of the blade's box, so it turns in place; what glows (a book's runes) in its own layer
+    const cx = Math.round(W / 2), cy = Math.round(H / 2);
+    out.push({ color: trim(buf, W, H, cx, cy, hasColor), light: lit ? trim(lit, W, H, cx, cy, hasColor) : null });
   }
   return { fps: e.fps ?? 10, loop: true, frames: out, cut: false };
 }

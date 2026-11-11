@@ -25,6 +25,7 @@ import { act as CLAW } from "../../pixelfx/src/fx/melee/claw-swipe.js";
 import { act as UPPERCUT } from "../../pixelfx/src/fx/melee/uppercut.js";
 import { act as WHIP } from "../../pixelfx/src/fx/melee/whip-crack.js";
 import { posedParts } from "../../pixelfx/src/core/rig.js";
+import { weaponModel } from "../../src/hero/rig.js";
 
 /** The legs (and bob) of the run cycle at phase k of 8. */
 export function runLegs(k) {
@@ -133,6 +134,8 @@ function attackPoses(w, a, legs) {
     else if (w.guard.weapon && !p.weapon) p.weapon = w.guard.weapon;
     if (a.extra) Object.assign(p, a.extra);
     // the spellbook stays open in the off hand, its runes in the spell's element, a page turning as it goes off
+    // and it is the book that is thrust at the foe: the hands trade places, the free one drawing the spell back
+    if (w.book) [p.fx, p.fy, p.bx, p.by] = [p.bx ?? w.guard.bx, p.by ?? w.guard.by, p.fx ?? w.guard.fx, p.fy ?? w.guard.fy];
     if (w.book) Object.assign(p, { offWeapon: "book", sb: -1.25, rune: a.rune, flip: +Math.min(1, Math.max(0, (f - 1) / Math.max(1, hit))).toFixed(2) });
     delete p.ghost;
     // cloth (capes, scarves, hair) flares out on the blow and settles after it
@@ -187,11 +190,16 @@ export const DEATH = [
  * A weapon on its own, turning in 3D: the stock figure holds it upright and turns round (yaw), and only the weapon's
  * pixels are kept, recentred. The altars float these over their stone.
  */
-export const MODEL_WEAPONS = { sword: "sword", hammer: "hammer", spear: "spear", scythe: "scythe", daggers: "dagger", greatsword: "greatsword", claws: "claw", bow: "bow" };
+export const MODEL_WEAPONS = { sword: "sword", hammer: "hammer", spear: "spear", scythe: "scythe", daggers: "dagger", greatsword: "greatsword", claws: "claw", bow: "bow", spell: "rig:book" };
 export function weaponModelFrames(rigWeapon, n = 12) {
   const frames = [];
   for (let k = 0; k < n; k++) {
     const yaw = (k / n) * Math.PI * 2;
+    // one of the heroes' own weapons (src/hero/rig.js), drawn upright on its own: the Book of Elements, open
+    if (rigWeapon.startsWith("rig:")) {
+      frames.push(weaponModel(rigWeapon.slice(4), yaw, { rune: "arcane", flip: 0 }));
+      continue;
+    }
     const parts = posedParts({ ...READY, weapon: rigWeapon, fx: 8, fy: -20, sa: -Math.PI / 2 + 0.25, yaw, bx: 6, by: -16 });
     const wp = parts.find((p) => p.name === "weapon");
     frames.push(wp ? { xs: wp.xs, ys: wp.ys, color: wp.color, n: wp.n } : { xs: [], ys: [], color: [], n: 0 });

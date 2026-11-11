@@ -500,6 +500,12 @@ const WEAPONS = {
         T(i, k, edge ? BOOK.leatherD : BOOK.leather, -0.8);
       }
     for (const [ci, ck] of [[-0.8, -6], [-0.8, 5.2], [8, -6], [8, 5.2]]) for (let a = 0; a <= 0.81; a += 0.4) for (let b = 0; b <= 0.81; b += 0.4) T(ci + a, ck + b, BOOK.gold, -0.6);
+    // on the outside of the cover (seen when it turns away, on an altar): a gold diamond round a glowing eye
+    for (let a = 0; a < Math.PI * 2; a += 0.15) {
+      const r = 2.6 / (Math.abs(Math.cos(a)) + Math.abs(Math.sin(a)));
+      T(4 + Math.sin(a) * r, Math.cos(a) * r, BOOK.gold, -1.1);
+    }
+    for (const [di, dk] of [[0, 0], [0, 0.6], [0, -0.6], [0.5, 0], [-0.5, 0]]) T(4 + di, dk, glowC, -1.15, true);
     // the pages: they rise from the spine and curve down to the edges
     for (let i = 0; i <= 8.01; i += 0.4)
       for (let k = -5.2; k <= 5.21; k += 0.4) {
@@ -679,4 +685,18 @@ export function heroImage(L, pose) {
   // a pixel on the scratch grid's border may have been cut off (tools/check/clip.mjs looks for these)
   const edge = r.x0 <= -OX + 1 || r.y0 <= -OY + 1 || r.x1 >= BW - OX - 2 || r.y1 >= BH - OY - 2;
   return { w, h, ox: r.x0 + dx, oy: r.y0 + dy, color, light, hands, edge };
+}
+
+/**
+ * One of the rig's weapons on its own, upright and turned by yaw about the vertical (for an altar's turning model):
+ * { n, xs, ys, color, light }, y down, about the hand's point. q is passed to its draw (a book's rune, its pages).
+ */
+export function weaponModel(id, yaw, q = {}) {
+  LOOK = prepare({ id: "weapon", mats: {} });
+  const R = rotY(-yaw), out = (() => {
+    WEAPONS[id].draw(along([0, 0, 0], mv(R, [0, 1, 0]), mv(R, [1, 0, 0]), PART.weapon), q, [0, 0, 0]);
+    return finish(null);
+  })();
+  LOOK = null;
+  return out;
 }

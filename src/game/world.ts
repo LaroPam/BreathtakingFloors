@@ -1368,7 +1368,10 @@ export class World {
   private handPos(): [number, number] {
     const h = this.hero, hands = heroHands(lookId(h.def.id), h.weapon, `a${Math.max(0, h.atk)}`), f = Math.min(hands.length - 1, Math.floor(h.atkT * ATK_FPS));
     const hand = hands[f];
-    return hand ? [h.x + hand[0] * h.face, h.y + hand[1]] : [h.x + h.face * 10, h.y - 20];
+    if (!hand) return [h.x + h.face * 10, h.y - 20];
+    // the Book of Elements: spells leave from the open book in the far hand (as draw.ts places it)
+    if (h.weapon === "spell") return [h.x + (hand[2] - 2) * h.face, h.y + hand[3] - 5];
+    return [h.x + hand[0] * h.face, h.y + hand[1]];
   }
 
   /** A blow lands. Melee hits what is in its shape and cuts bullets; shots and spells leave the hand. */

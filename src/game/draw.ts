@@ -650,8 +650,9 @@ export function drawWorld(s: Scene, w: World, camX: number, camY: number, viewW:
     // the light: a lantern in the free hand or at the belt, swinging; or a wisp floating at the shoulder
     const hand = a.hands?.[fi] ?? [8, -20, 5, -15];
     // the weapon hand, for the world to throw an element's sparks from; the element glows there
-    h.handX = h.x + hand[0] * h.face;
-    h.handY = h.y + hand[1];
+    const book = wid === "spell";
+    h.handX = h.x + (book ? hand[2] - 2 : hand[0]) * h.face;
+    h.handY = h.y + (book ? hand[3] - 5 : hand[1]);
     const el = w.weaponEl;
     if (el && show) {
       const c = rgba(EL_COLOR[el]), p = 0.75 + 0.25 * Math.sin(time * 8);
@@ -661,7 +662,7 @@ export function drawWorld(s: Scene, w: World, camX: number, camY: number, viewW:
     // the Book of Elements: runes circling the open book in the far hand, motes rising off its pages; on a cast
     // they flare in the element being spoken (fire, ice, lightning in turn), brightest as the spell leaves
     if (wid === "spell" && show && h.exitT < 0 && h.dashT <= 0) {
-      const bx = h.x + (hand[2] - 2) * h.face, by = h.y + hand[3] - 5;
+      const bx = h.handX, by = h.handY;
       const casting = h.atk >= 0, cf = casting ? h.atkT * 20 : 0, flare = casting ? Math.max(0, 1 - Math.abs(cf - 4) / 3) : 0;
       const [cr, cg, cb] = casting ? BOOK_RUNES[h.atk % 3] : BOOK_RUNES[3];
       const pulse = 0.7 + 0.3 * Math.sin(time * 5);
@@ -739,9 +740,12 @@ export function drawWorld(s: Scene, w: World, camX: number, camY: number, viewW:
     drawAnim(s, rackA, time, r.x, r.y, { key: r.y, glow: 0.9 });
     const bob = Math.sin(time * 2.2) * 2, model = `model_${r.weapon}`, el = r.el || WEAPONS[r.weapon].el || 0;
     const col = el ? rgba(EL_COLOR[el]) : rgbaf(0.7, 0.5, 1, 1);
-    // the weapon itself turns slowly in the air over the stone (the book and the whip show their badge)
-    if (hasAnim(model)) drawAnim(s, anim(model), time * 0.8 + r.x * 0.01, r.x, r.y - 40 + bob, { key: r.y + 0.5, glow: 0 });
-    else s.color.image(icon("icons", `w_${r.weapon}`), r.x, r.y - 36 + bob, 1, 1, 0, 0xffffffff, 0, r.y + 0.5);
+    // the weapon itself turns slowly in the air over the stone; the whip, with no model, turns its badge like a coin
+    if (hasAnim(model)) drawAnim(s, anim(model), time * 0.8 + r.x * 0.01, r.x, r.y - 40 + bob, { key: r.y + 0.5, glow: 0.9 });
+    else {
+      const turn = Math.cos(time * 1.7 + r.x * 0.01), sx = Math.sign(turn || 1) * Math.max(0.12, Math.abs(turn));
+      s.color.image(icon("icons", `w_${r.weapon}`), r.x, r.y - 36 + bob, sx, 1, 0, 0xffffffff, 0, r.y + 0.5);
+    }
     s.glow.light(r.x, r.y - 40 + bob, 10, 16, withAlpha(col, el ? 0.35 : 0.18));
     s.illum.light(r.x, r.y - 28, 46, 36, withAlpha(col, 0.5));
     // its quality as a ring of light turning about it, and motes rising for the rarest
