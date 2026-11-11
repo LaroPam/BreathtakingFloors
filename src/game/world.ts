@@ -156,6 +156,8 @@ export const EYE_H = 66;
 export const SPAWN_T = 0.7;
 /** An elite's lunge: it stops and shivers (wind-up), then rushes along the line to the hero. */
 export const LUNGE_WIND = 0.42, LUNGE_DASH = 0.34;
+/** How long a dash pressed too soon waits for its chance (s). */
+const DASH_BUF = 0.18;
 /** How long the frost orb gathers before it looses its lances. */
 export const ORB_CHARGE = 0.5;
 /** The Black Star: the evolved Sphere of Void, one great star that wanders into the horde. */
@@ -434,6 +436,8 @@ export class Hero {
   level = 1;
   xp = 0;
   wantDash = false;
+  /** A dash asked for a moment too soon (still dashing, no charge yet): it goes as soon as it can, within DASH_BUF. */
+  dashBuf = 0;
   wantUlt = false;
   /** The player is asking for blows (a held button or an aiming stick); otherwise the sword swings by itself. */
   attacking = false;
@@ -677,7 +681,7 @@ export class World {
     this.wave = null;
     this.waitSaid = false;
     // what to do here, once the hero has arrived (the first floor says it in full)
-    this.hint = { text: tr(floor === 1 ? "hintFloor1" : "hintFloor"), t: -1.4, dur: floor === 1 ? 7 : 4.5 };
+    this.hint = { text: tr(floor === 1 && this.gentle ? "hintFloor1" : "hintFloor"), t: -1.4, dur: floor === 1 && this.gentle ? 7 : 4.5 };
     const h = this.hero;
     h.x = this.map.start[0] * TILE + 8;
     h.y = this.map.start[1] * TILE + 12;
@@ -1195,7 +1199,9 @@ export class World {
     if (Math.abs(h.aimX) > 0.05 && h.atk < 0) h.face = h.aimX < 0 ? -1 : 1;
 
     // dash: a burst of speed with invulnerability, leaving after-images; it cancels a blow
-    if (h.wantDash && h.dashCharge >= 1 && h.dashT <= 0.06) {
+    if (h.wantDash) (h.dashBuf = DASH_BUF), (h.wantDash = false);
+    if (h.dashBuf > 0 && h.dashCharge >= 1 && h.dashT <= 0.06) {
+      h.dashBuf = 0;
       let dx = h.vx, dy = h.vy;
       const d = Math.hypot(dx, dy);
       if (d < 1) (dx = h.aimX, dy = h.aimY);
@@ -1211,7 +1217,7 @@ export class World {
       this.audio.play("dash");
       this.dust(h.x, h.y, 8, 50);
     }
-    h.wantDash = false;
+    h.dashBuf = Math.max(0, h.dashBuf - dt);
     if (h.dashT > 0) {
       h.dashT -= dt;
       h.vx = h.dashDx * 330;
@@ -1923,6 +1929,11 @@ export class World {
     else this.dmgStat[row + (o.as ?? el)] += dealt;
     E.hp[i] -= dmg;
     E.flash[i] = 0.07;
+    // a critical blow of the hero's own lands heavier: a longer catch, a jolt
+    if (o.crit && (this.src === SRC_WEAPON || this.src === SRC_DASH)) {
+      this.hitstop = Math.max(this.hitstop, 0.035);
+      this.shake = Math.max(this.shake, 0.15);
+    }
     if (!o.quiet && (this.numbers || o.crit)) {
       this.body(i);
       const big = !!o.crit || dmg >= 60;
@@ -2089,6 +2100,11 @@ export class World {
       }
     }
     this.audio.play("kill", d.elite ? 0.6 : 1);
+    // an elite going down is an event: the world catches its breath, the floor jolts
+    if (d.elite && d.ai < AI.Boss) {
+      this.hitstop = Math.max(this.hitstop, 0.07);
+      this.shake = Math.max(this.shake, 0.35);
+    }
     // the Plague Cauldron: a poisoned foe bursts into a pool of its own
     if (E.poison[i] > 0 && this.pools.length < 28 && this.evolved(RelicKind.Flask)) {
       this.pools.push({ x, y, r: 16, life: 2.6, max: 2.6, power: 1 });

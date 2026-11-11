@@ -13,9 +13,10 @@ import { drawWorld, Scene } from "./draw";
 import { ascent } from "./ascent";
 import { getLang, langFor, setLang, t, tx, type Lang } from "./i18n";
 import { Rng } from "./rng";
+import { TEAM_FOE } from "./pools";
 import { defaultSave, sanitize, type SaveData } from "./save";
 import { button, slider, C, divider, glow as glowUi, drawHud, drawPointers, drawTouch, fmtTime, frame, header , Menu, panel, para, plate , slot } from "./ui";
-import { CINE_DUR, SRC_ABILITY, SRC_DASH, SRC_ELS, SRC_N, SRC_PARRY, SRC_REACT, SRC_RELIC, SRC_STATUS, SRC_WAVE, SRC_WEAPON, World } from "./world";
+import { CINE_DUR, LUNGE_DASH, SRC_ABILITY, SRC_DASH, SRC_ELS, SRC_N, SRC_PARRY, SRC_REACT, SRC_RELIC, SRC_STATUS, SRC_WAVE, SRC_WEAPON, World } from "./world";
 
 type StatRow = { ic: Rect; name: string; col: number; sum: number; segs: [number, number][] };
 type State = "title" | "heroes" | "forge" | "shop" | "daily" | "records" | "tasks" | "settings" | "card" | "play" | "spin" | "pick" | "pause" | "book" | "stairs" | "dead" | "won" | "stats";
@@ -78,6 +79,10 @@ const LVL_SLOW = 0.45;
 const TUTOR = ["move", "fight", "dash", "gems", "ult"] as const;
 /** How long a lesson just learnt shows its tick before the next one comes. */
 const TUT_DONE = 1.1;
+/** First sights worth a word, once in the player's life each, one at a time and never over another hint. */
+const SIGHTS = ["spirit", "altar", "bolts", "elite", "crack"] as const;
+/** The least time between two first-sight hints (s): never a stream of them. */
+const SIGHT_GAP = 10;
 /** Height of the title font's capitals. */
 const FONT_H = FONTS.title.h;
 
@@ -101,6 +106,8 @@ export class Game {
   private tutDoneT = -1;
   private tutMoved = 0;
   private tutOd = 0;
+  /** When the last first-sight hint was shown (this.now). */
+  private sightT = -99;
   private camY = 0;
   private banner: { text: string; t: number; color: number; sub?: string } | null = null;
   private spin: Spin | null = null;
@@ -478,6 +485,8 @@ export class Game {
     this.path = this.daily && !this.weekly ? [plan.mod] : [];
     this.eventMods = [];
     this.eventsSeen = [];
+    // the first run's lessons: a gentler first floor, and its long word about the braziers (veterans get the short one)
+    w.gentle = this.save.tutorial && !this.daily && !this.weekly;
     w.startFloor(1, combine(this.path), "portal", this.path[0]);
     this.reached(1);
     this.revived = false;
@@ -952,6 +961,7 @@ export class Game {
         const n = Math.max(1, Math.ceil(sdt / STEP - 1e-6));
         for (let k = 0; k < n; k++) w.step(sdt / n);
         this.tutor(dt);
+        this.firstSights();
         w.gentle = this.save.tutorial && !this.daily && !this.weekly;
         w.holdSpawns = w.gentle && TUTOR[this.save.tutStep] === "move" && w.floor === 1;
         this.nextSpin();
@@ -1102,6 +1112,36 @@ export class Game {
     glowUi(ui, x, y, R, R * 0.7, rgbaf(1, 0.8, 0.35, 1), 0.25 * u);
   }
 
+  /**
+   * The first time something needs a word (a spirit with a task, a weapon on an altar, enemy bolts, an elite winding
+   * up, cracks in a wall), the world's hint plate says it, once in the player's life. Never over another hint or a
+   * lesson, and never two within SIGHT_GAP: a quiet game first.
+   */
+  private firstSights(): void {
+    const w = this.world, h = w.hero, sv = this.save;
+    if (w.hint || h.dead || w.cine || this.tutorShown() || this.now - this.sightT < SIGHT_GAP) return;
+    const near = (x: number, y: number, r: number) => (x - h.x) ** 2 + (y - h.y) ** 2 < r * r;
+    for (const id of SIGHTS) {
+      if (sv.seen.includes(`sight:${id}`)) continue;
+      let now = false;
+      if (id === "spirit") now = w.spirit?.state === "offer" && near(w.spirit.x, w.spirit.y, 200);
+      else if (id === "altar") now = w.racks.some((r) => near(r.x, r.y, 90));
+      else if (id === "bolts") {
+        const B = w.bullets;
+        for (let i = 0; i < B.n && !now; i++) now = B.team[i] === TEAM_FOE && near(B.x[i], B.y[i], 110);
+      } else if (id === "elite") {
+        const E = w.enemies;
+        for (let i = 0; i < E.n && !now; i++) now = E.lunge[i] > LUNGE_DASH && near(E.x[i], E.y[i], 220);
+      } else now = !!w.secret?.found && w.secret.hp > 0;
+      if (!now) continue;
+      sv.seen.push(`sight:${id}`);
+      this.persist();
+      this.sightT = this.now;
+      w.say(t(id === "spirit" ? "spiritHint" : (`sight${id[0].toUpperCase()}${id.slice(1)}` as Parameters<typeof t>[0])), 4.5);
+      return;
+    }
+  }
+
   /** The lesson on show now, if any: the ability's waits, unseen, until there is a charge to spend. */
   private tutorShown(): boolean {
     const sv = this.save, step = TUTOR[sv.tutStep];
@@ -1150,7 +1190,7 @@ export class Game {
 
   private drawTutorial(): void {
     if (!this.tutorShown()) return;
-    const ui = this.ui, W = this.r.w, H = this.r.h, w = this.world, sv = this.save, step = TUTOR[sv.tutStep];
+    const ui = this.ui, W = this.r.w, H = this.r.h, sv = this.save, step = TUTOR[sv.tutStep];
     const pad = this.input.mode === "pad" ? "P" : this.touch ? "T" : "K";
     const key = step === "move" ? `tutMove${pad}` : step === "dash" ? `tutDash${pad}` : step === "ult" ? `tutUlt${pad}` : step === "fight" ? "tutFight" : "tutGems";
     const done = this.tutDoneT >= 0, u = done ? this.tutDoneT : this.tutT;
@@ -1172,8 +1212,6 @@ export class Game {
       const lit = k < sv.tutStep || (k === sv.tutStep && done);
       ui.rect(Math.round(W / 2 - TUTOR.length * 4 + k * 8 + 1), y + lh - 3, 5, 1, withAlpha(lit ? green : rgba("#5a5068"), a));
     }
-    // the forerunner's spirit, while it waits with a task
-    if (w.spirit?.state === "offer" && !done) text(ui, t("spiritHint"), W / 2, y - 10, { font: "mini", align: "center", color: rgbaf(0.6, 0.85, 1, a), shadow: withAlpha(C.ink, a) });
   }
 
   private drawTitle(): void {

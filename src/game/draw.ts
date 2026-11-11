@@ -489,7 +489,14 @@ export function drawWorld(s: Scene, w: World, camX: number, camY: number, viewW:
       tint = Math.sin(time * 30) > 0 ? rgbaf(1, 0.45, 0.4, 1) : tint;
     }
     const g2 = born < 1 ? 1 : grow;
-    drawAnim(s, anim(d.anim), E.t[i], x, y, { sx: E.face[i] * d.scale * (1 + 0.14 * hit + 0.06 * tk) * g2, sy: d.scale * (1 - 0.12 * hit + 0.06 * tk) * g2, tint, alpha, flash: born < 1 ? -Math.max(0.002, born) : Math.max(hit, tellFlash), key: y, glow: 0.55 * alpha * born * born });
+    // struck, it is knocked back a pixel or two from the hero for the beat of the flash: the blow has a direction
+    let yy = y;
+    if (hit && born >= 1) {
+      const dx = x - h.x, dy = y - h.y, dd = Math.hypot(dx, dy) || 1, k = 2 * Math.min(1, E.flash[i] / 0.07);
+      x += (dx / dd) * k;
+      yy += (dy / dd) * k * 0.6;
+    }
+    drawAnim(s, anim(d.anim), E.t[i], x, yy, { sx: E.face[i] * d.scale * (1 + 0.14 * hit + 0.06 * tk) * g2, sy: d.scale * (1 - 0.12 * hit + 0.06 * tk) * g2, tint, alpha, flash: born < 1 ? -Math.max(0.002, born) : Math.max(hit, tellFlash), key: y, glow: 0.55 * alpha * born * born });
     if (d.glow) s.illum.light(w.bx, w.by, 20 * d.scale, 16 * d.scale, withAlpha(rgba(d.glow), 0.22));
     if (winding) {
       // a red mark over its head, swelling as the rush comes
