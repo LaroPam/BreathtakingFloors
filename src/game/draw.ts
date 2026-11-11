@@ -77,6 +77,8 @@ const hash = (x: number, y: number) => {
 const C_SHADOW = rgba("#000000", 0.38);
 /** The Book of Elements' rune light: fire, frost, storm (its three casts in turn), and its resting arcane violet. */
 const BOOK_RUNES: [number, number, number][] = [[1, 0.68, 0.21], [0.61, 0.86, 1], [1, 0.88, 0.24], [0.78, 0.56, 1]];
+/** How far ahead of the book a spell is let go (world.ts) less the book's half-thickness: where a lance comes out of its pages. */
+const LANCE_OUT = 4;
 /** The colour an enemy's tell glows in, by the look of its bullets. */
 const TELL = [0, 0, 0, 0, 0, 0].map((_, k) => {
   const c = ["#ff5a6a", "#ff5a6a", "#ff5a6a", "#c684ff", "#8ad83a", "#78ccf4"][k];
@@ -667,7 +669,7 @@ export function drawWorld(s: Scene, w: World, camX: number, camY: number, viewW:
       const [cr, cg, cb] = casting ? BOOK_RUNES[h.atk % 3] : BOOK_RUNES[3];
       const pulse = 0.7 + 0.3 * Math.sin(time * 5);
       s.illum.light(bx, by, 26 + 20 * flare, 22 + 16 * flare, rgbaf(cr, cg, cb, 0.14 * pulse + 0.22 * flare));
-      s.glow.light(bx, by, 3 + 3 * flare, 2 + 2 * flare, rgbaf(cr, cg, cb, 0.08 + 0.3 * flare));
+      s.glow.light(bx, by, 3 + 2 * flare, 2 + 2 * flare, rgbaf(cr, cg, cb, 0.06 + 0.15 * flare));
       const n = 5, spin = time * (casting ? 4.5 : 1.6), rx = 9 + 3 * flare, ry = 4 + 1.5 * flare;
       for (let q = 0; q < n; q++) {
         const ang = spin + (q / n) * Math.PI * 2, x = Math.round(bx + Math.cos(ang) * rx), y = Math.round(by + Math.sin(ang) * ry);
@@ -938,6 +940,19 @@ export function drawWorld(s: Scene, w: World, camX: number, camY: number, viewW:
         s.illum.light(x, y, 18, 14, rgbaf(0.45, 0.75, 1, 0.3));
         continue;
       }
+    }
+    // a lance from the Book of Elements slides out of its pages the same way: the sprite hangs back from its point,
+    // so everything behind the book's face (where it left, LANCE_OUT short of its spawn) is cut away until it is clear
+    if (k === B_LANCE && Bu.team[i] === TEAM_HERO && Bu.t[i] < 0.45) {
+      const sp = Math.hypot(Bu.vx[i], Bu.vy[i]) || 1, ux = Bu.vx[i] / sp, uy = Bu.vy[i] / sp, minX = -(Bu.t[i] * sp + LANCE_OUT);
+      const rot = Math.atan2(Bu.vy[i], Bu.vx[i]), [c, l] = a.frames[frameAt(a, Bu.t[i])], fade = Math.min(1, 0.4 + Bu.t[i] / 0.06);
+      if (c) s.color.imageCropLeft(c, x, y, minX, 1, 1, rot, rgbaf(1, 1, 1, fade), 0, y + 14);
+      if (l) s.glow.imageCropLeft(l, x, y, minX, 1, 1, rot, rgbaf(1, 1, 1, 0.9 * fade));
+      // the pages flare cold where it breaks out, fading as its tail leaves them
+      const bx = x + ux * minX, by = y + uy * minX, out = Math.max(0, 1 - Bu.t[i] / 0.3);
+      if (out > 0) (s.glow.light(bx, by, 4, 4, rgbaf(0.75, 0.95, 1, 0.4 * out)), s.illum.light(bx, by, 20, 16, rgbaf(0.45, 0.75, 1, 0.18 * out)));
+      s.illum.light(x, y, 18, 14, rgbaf(0.45, 0.75, 1, 0.3));
+      continue;
     }
     // the hero's shots grow out of the hand over their first instant; the enemies' are drawn big and ringed in
     // dark so they read against anything

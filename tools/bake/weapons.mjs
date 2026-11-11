@@ -190,14 +190,14 @@ export const DEATH = [
  * A weapon on its own, turning in 3D: the stock figure holds it upright and turns round (yaw), and only the weapon's
  * pixels are kept, recentred. The altars float these over their stone.
  */
-export const MODEL_WEAPONS = { sword: "sword", hammer: "hammer", spear: "spear", scythe: "scythe", daggers: "dagger", greatsword: "greatsword", claws: "claw", bow: "bow", spell: "rig:book" };
+export const MODEL_WEAPONS = { sword: "sword", hammer: "hammer", spear: "spear", scythe: "scythe", daggers: "dagger", greatsword: "greatsword", claws: "rig:claw", bow: "bow", spell: "rig:book", whip: "rig:whip" };
 export function weaponModelFrames(rigWeapon, n = 12) {
   const frames = [];
   for (let k = 0; k < n; k++) {
     const yaw = (k / n) * Math.PI * 2;
     // one of the heroes' own weapons (src/hero/rig.js), drawn upright on its own: the Book of Elements, open
     if (rigWeapon.startsWith("rig:")) {
-      frames.push(weaponModel(rigWeapon.slice(4), yaw, { rune: "arcane", flip: 0 }));
+      frames.push(weaponModel(rigWeapon.slice(4), yaw, { rune: "arcane", flip: 0, scale: 1.6 }));
       continue;
     }
     const parts = posedParts({ ...READY, weapon: rigWeapon, fx: 8, fy: -20, sa: -Math.PI / 2 + 0.25, yaw, bx: 6, by: -16 });

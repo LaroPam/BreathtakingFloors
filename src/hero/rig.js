@@ -404,7 +404,8 @@ function along(H, axis, side, part) {
   return T;
 }
 const STEEL = Object.fromEntries(Object.entries({ hi: "#ffffff", a: "#e8edf6", b: "#a4afc6", d: "#68748f", gold: "#ffd84a", goldD: "#b8862a", grip: "#7a3a2a", gripD: "#4a2018", wood: "#8a5a32", woodD: "#5a3820", dark: "#3a3448", darkD: "#262033" }).map(([k, v]) => [k, hex(v)]));
-const BOOK = Object.fromEntries(Object.entries({ leather: "#5a2a6a", leatherD: "#341640", gold: "#ffd84a", page: "#f4ead0", pageE: "#d8c8a0", pageD: "#b8a47c", spine: "#4a2a1a", ink: "#7a6448", ribbon: "#c0302a" }).map(([k, v]) => [k, hex(v)]));
+const WHIP = Object.fromEntries(Object.entries({ grip: "#6a3a24", gripD: "#42200f", wrapD: "#2a140a", lash: "#8a5432", lashH: "#b07a4c", lashD: "#4e2a16", tuft: "#ece0c0" }).map(([k, v]) => [k, hex(v)]));
+const BOOK = Object.fromEntries(Object.entries({ leather: "#5a2a6a", leatherD: "#341640", gold: "#ffd84a", goldD: "#b8862a", page: "#f4ead0", pageE: "#d8c8a0", pageD: "#b8a47c", spine: "#4a2a1a", ink: "#7a6448", ribbon: "#c0302a" }).map(([k, v]) => [k, hex(v)]));
 const BOOK_RUNE = Object.fromEntries(Object.entries({ arcane: "#c890ff", fire: "#ffae35", frost: "#9bdcff", storm: "#ffe03c", hot: "#ffffff" }).map(([k, v]) => [k, hex(v)]));
 function blade(T, from, length, w) {
   for (let i = from; i <= from + length + 0.01; i += 0.4) {
@@ -457,12 +458,18 @@ const WEAPONS = {
       for (let k = -w; k <= w; k += 0.4) T(b + k, j + 0.8, k > w * 0.3 ? STEEL.hi : k < -w * 0.4 ? STEEL.d : STEEL.b);
     }
   } },
-  claw: { draw(T) {
-    for (const q0 of [-2.4, 0, 2.4])
-      for (let i = 2; i <= 9.5; i += 0.4) {
-        const u = (i - 2) / 7.5, k = q0 + u * u * 1.8;
-        T(i, k, u > 0.55 ? STEEL.hi : STEEL.a);
-        if (u < 0.6) T(i, k + 0.8, STEEL.d);
+  claw: { draw(T, q) {
+    // long hooked blades over the knuckles, each a thin steel sickle with a lit edge, on a riveted plate; on an
+    // altar (q.model) the gauntlet's cuff they are fixed to as well
+    for (let i = -0.6; i <= 1.8; i += 0.3) for (let k = -4.4; k <= 4.41; k += 0.3) T(i, k, i > 1.4 ? STEEL.d : Math.abs(k) > 4 ? STEEL.darkD : STEEL.dark, 0.6);
+    for (const k of [-3.2, 0, 3.2]) T(0.6, k, STEEL.gold, 1.1);
+    if (q.model)
+      for (let i = -6; i <= -0.6; i += 0.3)
+        for (let a = 0; a < Math.PI * 2; a += 0.25) T(i, Math.sin(a) * 3.4, i < -5.4 || (i > -3.4 && i < -2.8) ? STEEL.gold : a < Math.PI ? STEEL.grip : STEEL.gripD, Math.cos(a) * 2.2);
+    for (const q0 of [-3.2, 0, 3.2])
+      for (let i = 1.6; i <= 18; i += 0.25) {
+        const u = (i - 1.6) / 16.4, k = q0 * (1 + u * 0.15) + u * u * 3.6, w = 0.7 * (1 - u) + 0.1;
+        for (let o = -w; o <= w + 0.01; o += 0.25) T(i, k + o, o > w * 0.3 ? STEEL.hi : o < -w * 0.3 ? STEEL.d : u > 0.7 ? STEEL.hi : STEEL.a, 0.3 + q0 * 0.05 + u * u * 2.4);
       }
   } },
   bow: { across: true, draw(T, q, off) {
@@ -490,47 +497,88 @@ const WEAPONS = {
   // the Book of Elements, open in the off hand: a leather cover with gold corners, two pages (lines of text on one,
   // a ring of runes on the other, glowing in the element it casts), a ribbon hanging from it; casting, a page turns
   book: { draw(T0, q) {
-    // the pages face the viewer: what lifts off the cover comes toward us
-    const T = (i, k, c, lift = 0, glow = false) => T0(i, k, c, -lift, glow);
-    const glowC = BOOK_RUNE[q.rune] ?? BOOK_RUNE.arcane, hot = !!q.rune;
-    // the cover behind the pages, a darker edge, gold at the corners
-    for (let i = -0.8; i <= 8.8; i += 0.4)
-      for (let k = -6; k <= 6.01; k += 0.4) {
-        const edge = i < -0.4 || i > 8.4 || Math.abs(k) > 5.6;
-        T(i, k, edge ? BOOK.leatherD : BOOK.leather, -0.8);
+    // the pages face the viewer: what lifts off the cover comes toward us; q.scale draws it bigger (an altar's)
+    const z = q.scale ?? 1.2, T = (i, k, c, lift = 0, glow = false) => T0(i * z, k * z, c, -lift * z, glow);
+    const glowC = BOOK_RUNE[q.rune] ?? BOOK_RUNE.arcane, hot = !!q.rune && q.rune !== "arcane";
+    const d = 0.32;
+    // the boards: two layers of leather with the page block's thickness between, a dark rim, gold-shod corners
+    for (let i = -0.8; i <= 8.8; i += d)
+      for (let k = -6.2; k <= 6.21; k += d) {
+        const edge = i < -0.4 || i > 8.4 || Math.abs(k) > 5.8;
+        T(i, k, edge ? BOOK.leatherD : BOOK.leather, -0.6);
+        T(i, k, edge ? BOOK.leatherD : BOOK.leather, -1.5);
+        if (edge) for (let l = -1.4; l <= -0.6; l += d) T(i, k, BOOK.leatherD, l);
       }
-    for (const [ci, ck] of [[-0.8, -6], [-0.8, 5.2], [8, -6], [8, 5.2]]) for (let a = 0; a <= 0.81; a += 0.4) for (let b = 0; b <= 0.81; b += 0.4) T(ci + a, ck + b, BOOK.gold, -0.6);
-    // on the outside of the cover (seen when it turns away, on an altar): a gold diamond round a glowing eye
-    for (let a = 0; a < Math.PI * 2; a += 0.15) {
-      const r = 2.6 / (Math.abs(Math.cos(a)) + Math.abs(Math.sin(a)));
-      T(4 + Math.sin(a) * r, Math.cos(a) * r, BOOK.gold, -1.1);
-    }
-    for (const [di, dk] of [[0, 0], [0, 0.6], [0, -0.6], [0.5, 0], [-0.5, 0]]) T(4 + di, dk, glowC, -1.15, true);
-    // the pages: they rise from the spine and curve down to the edges
-    for (let i = 0; i <= 8.01; i += 0.4)
-      for (let k = -5.2; k <= 5.21; k += 0.4) {
+    for (const [ci, ck] of [[-0.8, -6.2], [-0.8, 5.2], [7.8, -6.2], [7.8, 5.2]])
+      for (let a = 0; a <= 1.01; a += d) for (let b = 0; b <= 1.01; b += d) for (const l of [-0.5, -1.6]) T(ci + a, ck + b, a + b < 0.7 ? BOOK.goldD : BOOK.gold, l);
+    // the spine down the middle, raised, banded in gold on the outside
+    for (let i = -1; i <= 9; i += d) for (let k = -0.9; k <= 0.91; k += d) T(i, k, Math.abs(k) > 0.6 ? BOOK.leatherD : BOOK.spine, -1.7 - 0.4 * Math.cos(k * 1.7));
+    for (const i of [0.6, 4, 7.4]) for (let k = -1; k <= 1.01; k += d) T(i, k, BOOK.gold, -2.2);
+    // the page block: each half a stack rising from the spine and curving down to its fore-edge
+    for (let i = 0; i <= 8.01; i += d)
+      for (let k = -5.4; k <= 5.41; k += d) {
         if (Math.abs(k) < 0.3) { T(i, k, BOOK.spine, 0.1); continue; }
-        const d = Math.abs(k) / 5.2, lift = 0.9 * Math.sin(Math.PI * Math.min(1, d * 1.15)) + 0.15;
-        T(i, k, d < 0.16 ? BOOK.pageD : i < 0.4 || d > 0.94 ? BOOK.pageE : BOOK.page, lift);
+        const u = Math.abs(k) / 5.4, lift = 0.9 * Math.sin(Math.PI * Math.min(1, u * 1.15)) + 0.2;
+        for (let l = -0.4; l < lift - 0.2; l += 0.4) T(i, k, BOOK.pageD, l);
+        T(i, k, u < 0.14 ? BOOK.pageD : i < 0.3 || i > 7.7 || u > 0.95 ? BOOK.pageE : BOOK.page, lift);
       }
-    // lines of writing on the left page
-    for (const i of [1.4, 2.8, 4.2, 5.6, 7]) for (let k = -4.4; k <= -1.2; k += 0.4) if (Math.sin(k * 3.7 + i * 2.3) > -0.5) T(i, k, BOOK.ink, 1.2);
-    // a ring of runes on the right page, glowing; brighter as it casts
-    for (let a = 0; a < Math.PI * 2; a += 0.22) T(4 + Math.sin(a) * 2.2, 2.7 + Math.cos(a) * 2.2, glowC, 1.3, true);
-    for (const [di, dk] of [[0, 0], [1.2, 0], [-1.2, 0], [0, 1.2], [0, -1.2]]) T(4 + di, 2.7 + dk, hot ? BOOK_RUNE.hot : glowC, 1.35, true);
+    // lines of writing on the left page, a drop capital in red
+    for (const i of [1.2, 2.4, 3.6, 4.8, 6, 7.1]) for (let k = -4.6; k <= -1.1; k += 0.4) if (Math.sin(k * 3.7 + i * 2.3) > -0.5 && !(i > 5.5 && k < -3.4)) T(i, k, BOOK.ink, 1.25);
+    for (let a = 0; a <= 0.9; a += d) for (let b = 0; b <= 0.9; b += d) T(6.2 + a, -4.6 + b, BOOK.ribbon, 1.3);
+    // a ring of runes on the right page, glowing; a cross at its heart, white-hot as it casts
+    for (let a = 0; a < Math.PI * 2; a += 0.18) T(4 + Math.sin(a) * 2.3, 2.8 + Math.cos(a) * 2.3, glowC, 1.35, true);
+    for (let a = 0; a < Math.PI * 2; a += Math.PI / 3) T(4 + Math.sin(a) * 3.1, 2.8 + Math.cos(a) * 3.1, glowC, 1.3, true);
+    for (const [di, dk] of [[0, 0], [0.8, 0], [-0.8, 0], [0, 0.8], [0, -0.8]]) T(4 + di, 2.8 + dk, hot ? BOOK_RUNE.hot : glowC, 1.4, true);
+    // the clasp: a strap from the back board with a gold buckle, hanging open off the right side
+    for (let k = 6.2; k <= 7.6; k += d) for (let i = 3.4; i <= 5; i += d) T(i - (k - 6.2) * 0.6, k, BOOK.leatherD, -1.2 + (k - 6.2) * 0.5);
+    for (let i = 2.4; i <= 4; i += d) for (let l = -0.6; l <= 0.21; l += d) T(i, 7.7, BOOK.gold, l);
     // the ribbon marking the place, hanging out below
-    for (let i = -0.4; i >= -3.2; i -= 0.4) T(i, 1.2 + Math.sin(i * 1.5) * 0.4, BOOK.ribbon, 0.6);
+    for (let i = -0.4; i >= -3.4; i -= 0.3) T(i, 1.2 + Math.sin(i * 1.5) * 0.4, i < -3 ? BOOK.gold : BOOK.ribbon, 0.6);
+    // on the outside of the back board (seen when it turns away, on an altar): a gold diamond round a glowing eye
+    for (const side of [-1, 1]) {
+      const c0 = side * 3.2;
+      for (let a = 0; a < Math.PI * 2; a += 0.12) {
+        const r = 2.2 / (Math.abs(Math.cos(a)) + Math.abs(Math.sin(a)));
+        T(4 + Math.sin(a) * r * 1.3, c0 + Math.cos(a) * r, BOOK.gold, -1.6);
+      }
+      for (const [di, dk] of [[0, 0], [0, 0.5], [0, -0.5], [0.5, 0], [-0.5, 0]]) T(4 + di, c0 + dk, glowC, -1.65, true);
+    }
     // a page turning over, from right to left, as the spell goes off
     const f = q.flip ?? 0;
     if (f > 0.02 && f < 0.98) {
       const th = Math.PI * f, back = th > Math.PI / 2;
-      for (let i = 0.4; i <= 7.61; i += 0.4)
-        for (let kk = 0.4; kk <= 5.01; kk += 0.4) T(i, kk * Math.cos(th), back ? BOOK.pageD : BOOK.page, 1.6 + kk * Math.sin(th));
+      for (let i = 0.4; i <= 7.61; i += d)
+        for (let kk = 0.4; kk <= 5.21; kk += d) T(i, kk * Math.cos(th), back ? BOOK.pageD : BOOK.page, 1.6 + kk * Math.sin(th));
     }
   } },
   handle: { draw(T) {
     haft(T, -2.6, 6, STEEL.grip, STEEL.gripD);
     for (let k = -1.6; k <= 1.6; k += 0.4) (T(-3, k, STEEL.gold), T(6.4, k, STEEL.gold));
+  } },
+  // the whip whole, for an altar: a bound grip with a gold pommel and collar, the lash coiled in loops round it,
+  // thinning loop by loop, its end hanging down to a pale cracker
+  whip: { draw(T) {
+    // the grip standing up out of the coils: bound in dark cord, a gold collar where the lash starts, a gold pommel
+    for (let i = 6; i <= 17; i += 0.3) for (let k = -0.9; k <= 0.91; k += 0.3) for (const l of [-0.6, 0, 0.6]) T(i, k, Math.sin(i * 2.6 + k) > 0.55 ? WHIP.wrapD : k > 0.2 ? WHIP.gripD : WHIP.grip, l);
+    for (let a = 0; a < Math.PI * 2; a += 0.3) for (let r = 0; r <= 1.6; r += 0.3) T(17.8 + Math.cos(a) * r * 0.5, Math.sin(a) * r, r > 1.2 ? STEEL.goldD : STEEL.gold, Math.cos(a) * 0.8);
+    for (let k = -1.3; k <= 1.31; k += 0.3) for (const i of [5.6, 6.2]) T(i, k, i < 6 ? STEEL.goldD : STEEL.gold, 0.8);
+    for (let k = -1.3; k <= 1.31; k += 0.3) T(12, k, STEEL.gold, 0.8);
+    // the coils: rings round the foot of the grip, each a little turned, the lash thinning as it goes
+    for (let n = 0; n < 3; n++) {
+      const R = 4.6 + n * 0.8, tilt = (n - 1) * 0.35, w = 0.75 - n * 0.15;
+      for (let a = 0; a < Math.PI * 2; a += 0.06) {
+        const ci = 3.6 + Math.cos(a) * R * 0.85, ck = Math.sin(a) * R, cl = Math.sin(a) * tilt * R * 0.5 + Math.cos(a) * 1.2;
+        for (let o = -w; o <= w + 0.01; o += 0.3) T(ci + o, ck, o > w * 0.3 ? WHIP.lashH : o < -w * 0.3 ? WHIP.lashD : WHIP.lash, cl);
+      }
+    }
+    // the free end: down from the last loop, a thong, then the cracker
+    const end = (u) => 5.8 + Math.sin(u * 4) * 1.2;
+    for (let i = -1; i >= -9; i -= 0.25) {
+      const u = (-1 - i) / 8;
+      T(i, end(u), u > 0.75 ? WHIP.lashD : WHIP.lash, 0);
+      if (u < 0.5) T(i, end(u) + 0.3, WHIP.lashD, 0);
+    }
+    for (let i = -9; i >= -11; i -= 0.3) for (let o = -0.5; o <= 0.51; o += 0.3) T(i, end(1) + o * (1 + (-9 - i) * 0.4), WHIP.tuft, 0.2);
   } },
 };
 void curWeaponMat;
@@ -692,6 +740,7 @@ export function heroImage(L, pose) {
  * { n, xs, ys, color, light }, y down, about the hand's point. q is passed to its draw (a book's rune, its pages).
  */
 export function weaponModel(id, yaw, q = {}) {
+  q = { ...q, model: true };
   LOOK = prepare({ id: "weapon", mats: {} });
   const R = rotY(-yaw), out = (() => {
     WEAPONS[id].draw(along([0, 0, 0], mv(R, [0, 1, 0]), mv(R, [1, 0, 0]), PART.weapon), q, [0, 0, 0]);
