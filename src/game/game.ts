@@ -79,6 +79,13 @@ const LVL_SLOW = 0.45;
 const TUTOR = ["move", "fight", "dash", "gems", "ult"] as const;
 /** How long a lesson just learnt shows its tick before the next one comes. */
 const TUT_DONE = 1.1;
+/**
+ * The house rules for ads between runs (each platform adds its own limits on top): none in the first minutes of a
+ * session, none before the second run of it, none for the first run's lessons, never two within AD_GAP, none for
+ * one who bought "no ads". Rewarded ones are only ever the player's own choice, from a button.
+ */
+const AD_GAP = 150;
+const AD_GRACE = 120;
 /** First sights worth a word, once in the player's life each, one at a time and never over another hint. */
 const SIGHTS = ["spirit", "altar", "bolts", "elite", "crack"] as const;
 /** The least time between two first-sight hints (s): never a stream of them. */
@@ -108,6 +115,9 @@ export class Game {
   private tutOd = 0;
   /** When the last first-sight hint was shown (this.now). */
   private sightT = -99;
+  /** Runs started this session, and when the last ad between runs was shown (this.now). */
+  private runsHere = 0;
+  private lastAdAt = 0;
   private camY = 0;
   private banner: { text: string; t: number; color: number; sub?: string } | null = null;
   private spin: Spin | null = null;
@@ -430,6 +440,7 @@ export class Game {
   }
 
   private startRun(): void {
+    this.runsHere++;
     this.lvlT = 0;
     this.lvlArmed = false;
     this.tutT = 0;
@@ -1140,6 +1151,13 @@ export class Game {
       w.say(t(id === "spirit" ? "spiritHint" : (`sight${id[0].toUpperCase()}${id.slice(1)}` as Parameters<typeof t>[0])), 4.5);
       return;
     }
+  }
+
+  /** An ad between runs, if the house rules (AD_GAP and the rest, above) allow one now. */
+  private async betweenRuns(): Promise<void> {
+    if (this.owns("no_ads") || this.save.tutorial || this.runsHere < 2 || this.now < AD_GRACE || (this.lastAdAt > 0 && this.now - this.lastAdAt < AD_GAP)) return;
+    this.lastAdAt = this.now;
+    await this.platform.showInterstitial();
   }
 
   /** The lesson on show now, if any: the ability's waits, unseen, until there is a charge to spend. */
@@ -2760,7 +2778,7 @@ export class Game {
     const bw = 190, bh = 20, bx = Math.round(L.cx - bw / 2);
     if (button(ui, this.menu, now, bx, y, bw, bh, t("again"), { primary: true, icon: icon("hud", "play") })) {
       this.newSkin = "";
-      void (this.owns("no_ads") ? Promise.resolve() : this.platform.showInterstitial()).then(() => this.startRun());
+      void this.betweenRuns().then(() => this.startRun());
       this.setState("title");
       return;
     }
@@ -2828,7 +2846,7 @@ export class Game {
       y += bh + 6;
     }
     if (button(ui, this.menu, now, bx, y, bw, bh, t("again"), { primary: true, icon: icon("hud", "play") })) {
-      void (this.owns("no_ads") ? Promise.resolve() : this.platform.showInterstitial()).then(() => this.startRun());
+      void this.betweenRuns().then(() => this.startRun());
       this.setState("title");
       return;
     }
