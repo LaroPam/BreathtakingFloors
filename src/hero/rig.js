@@ -466,10 +466,12 @@ const WEAPONS = {
     if (q.model)
       for (let i = -6; i <= -0.6; i += 0.3)
         for (let a = 0; a < Math.PI * 2; a += 0.25) T(i, Math.sin(a) * 3.4, i < -5.4 || (i > -3.4 && i < -2.8) ? STEEL.gold : a < Math.PI ? STEEL.grip : STEEL.gripD, Math.cos(a) * 2.2);
+    // in the hero's hands a little longer than a hand; on an altar, alone, drawn long so they read
+    const reach = q.model ? 16.4 : 10.5;
     for (const q0 of [-3.2, 0, 3.2])
-      for (let i = 1.6; i <= 18; i += 0.25) {
-        const u = (i - 1.6) / 16.4, k = q0 * (1 + u * 0.15) + u * u * 3.6, w = 0.7 * (1 - u) + 0.1;
-        for (let o = -w; o <= w + 0.01; o += 0.25) T(i, k + o, o > w * 0.3 ? STEEL.hi : o < -w * 0.3 ? STEEL.d : u > 0.7 ? STEEL.hi : STEEL.a, 0.3 + q0 * 0.05 + u * u * 2.4);
+      for (let i = 1.6; i <= 1.6 + reach; i += 0.25) {
+        const u = (i - 1.6) / reach, k = q0 * (1 + u * 0.15) + u * u * (q.model ? 3.6 : 2.6), w = 0.7 * (1 - u) + 0.1;
+        for (let o = -w; o <= w + 0.01; o += 0.25) T(i, k + o, o > w * 0.3 ? STEEL.hi : o < -w * 0.3 ? STEEL.d : u > 0.7 ? STEEL.hi : STEEL.a, 0.3 + q0 * 0.05 + u * u * (q.model ? 2.4 : 1.6));
       }
   } },
   bow: { across: true, draw(T, q, off) {
