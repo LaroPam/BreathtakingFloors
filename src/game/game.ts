@@ -160,7 +160,10 @@ export class Game {
   private revived = false;
   private platformPaused = false;
   private runRng = new Rng(Date.now() & 0xffffff);
-  private lastResult = { floor: 0, kills: 0, time: 0, embers: 0, score: 0, best: false, daily: false, weekly: false };
+  /** The run just ended: what it reached, the embers it earned (`base`, and `embers` shown: doubled for an ad), its score. */
+  private lastResult = { floor: 0, kills: 0, time: 0, embers: 0, base: 0, doubled: false, score: 0, best: false, daily: false, weekly: false };
+  /** A rewarded ad asked for and not yet answered: its button does nothing meanwhile. */
+  private adBusy = false;
   /** This run is a trial (the same seed, hero and first floor for everyone today, or this week). */
   private daily = false;
   /** The trial is the weekly one (daily stays true: a trial is a trial for the forge and the records). */
@@ -537,7 +540,7 @@ export class Game {
       this.save.bestScore = Math.max(this.save.bestScore, score);
       if (best) this.platform.submitScore(score, "score");
     }
-    this.lastResult = { floor: w.floor, kills: w.kills, time: w.runTime, embers, score, best, daily: this.daily, weekly: this.weekly };
+    this.lastResult = { floor: w.floor, kills: w.kills, time: w.runTime, embers, base: embers, doubled: false, score, best, daily: this.daily, weekly: this.weekly };
     this.save.embers += embers;
     this.save.bestFloor = Math.max(this.save.bestFloor, w.floor);
     if (won) {
@@ -549,7 +552,9 @@ export class Game {
     this.persist();
     this.boards = {};
     this.audio.stopMusic();
-    this.setState(won ? "won" : "dead");
+    // the focus on the way on ("again"), not on an ad's button above it: an ad only by the player's clear choice
+    const ads = this.platform.canShowRewarded() ? (embers > 0 ? 1 : 0) + (won || this.revived ? 0 : 1) : 0;
+    this.setState(won ? "won" : "dead", ads);
   }
 
   private onFloorCleared(): void {
@@ -626,14 +631,32 @@ export class Game {
     }, 2600);
   }
 
+  /** The run's embers twice over, for a rewarded ad the player chose to watch: once a run. */
+  private async doubleEmbers(): Promise<void> {
+    const res = this.lastResult;
+    if (res.doubled || res.base <= 0 || this.adBusy) return;
+    this.adBusy = true;
+    try {
+      if (!(await this.platform.showRewarded()) || res.doubled) return;
+      res.doubled = true;
+      res.embers = res.base * 2;
+      this.save.embers += res.base;
+      this.persist();
+      this.audio.play("coin");
+    } finally {
+      this.adBusy = false;
+    }
+  }
+
   private async revive(): Promise<void> {
     if (this.revived) return;
     const ok = await this.platform.showRewarded();
     if (!ok) return;
     this.revived = true;
     const w = this.world, h = w.hero;
-    // give back what the death screen took
-    this.save.embers -= this.lastResult.embers;
+    // give back what the death screen took (the run goes on and pays again at its end; an ad's doubling, already
+    // watched for, is the player's to keep)
+    this.save.embers -= this.lastResult.base;
     h.dead = false;
     h.hp = h.maxHp;
     h.invuln = 3;
@@ -2781,6 +2804,11 @@ export class Game {
     if (L.side >= 0) this.statsPanel(L.side, cy, L.sw, H - 22 - cy);
     let y = this.resultCard(cy, [["skull", t("kills"), String(res.kills), C.text], ["time", t("time"), fmtTime(res.time), C.text], ["ember", t("earned"), `+${res.embers}`, C.gold]], res.score, L.cx) + 10;
     const bw = 190, bh = 20, bx = Math.round(L.cx - bw / 2);
+    // the embers twice over, for an ad of the player's choosing
+    if (!res.doubled && res.base > 0 && this.platform.canShowRewarded()) {
+      if (button(ui, this.menu, now, bx, y, bw, bh, t("doubleEmbers"), { color: C.gold, icon: icon("hud", "ember") })) void this.doubleEmbers();
+      y += bh + 6;
+    }
     if (button(ui, this.menu, now, bx, y, bw, bh, t("again"), { primary: true, icon: icon("hud", "play") })) {
       this.newSkin = "";
       void this.betweenRuns().then(() => this.startRun());
@@ -2851,6 +2879,11 @@ export class Game {
     if (L.side >= 0) this.statsPanel(L.side, cy, L.sw, H - 22 - cy);
     let y = this.resultCard(cy, [["brazier", t("reached"), String(res.floor), C.gold], ["skull", t("kills"), String(res.kills), C.text], ["time", t("time"), fmtTime(res.time), C.text], ["ember", t("earned"), `+${res.embers}`, C.gold]], res.score, L.cx) + 10;
     const bw = 190, bh = 20, bx = Math.round(L.cx - bw / 2);
+    // the embers twice over, for an ad of the player's choosing
+    if (!res.doubled && res.base > 0 && this.platform.canShowRewarded()) {
+      if (button(ui, this.menu, now, bx, y, bw, bh, t("doubleEmbers"), { color: C.gold, icon: icon("hud", "ember") })) void this.doubleEmbers();
+      y += bh + 6;
+    }
     if (!this.revived && this.platform.canShowRewarded()) {
       if (button(ui, this.menu, now, bx, y, bw, bh, t("revive"), { color: C.green, icon: icon("hud", "heart") })) void this.revive();
       y += bh + 6;
