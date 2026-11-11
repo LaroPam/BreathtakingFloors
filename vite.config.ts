@@ -40,7 +40,8 @@ export default defineConfig(({ mode }) => {
     build: {
       outDir: single ? "dist-single-tmp" : target === "local" ? "dist" : `dist-${target}`,
       target: "es2022",
-      assetsInlineLimit: single ? 64 * 1024 * 1024 : 0,
+      // VK's hosting takes no audio files: there the music goes inside the code (a data URL the audio decodes as is)
+      assetsInlineLimit: single ? 64 * 1024 * 1024 : target === "vk" ? (file: string) => (file.endsWith(".ogg") ? true : undefined) : 0,
       chunkSizeWarningLimit: single ? 8192 : 600,
       reportCompressedSize: true,
     },

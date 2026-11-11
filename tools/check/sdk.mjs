@@ -6,7 +6,7 @@
 // Needs Playwright with Chromium (npm i -D playwright && npx playwright install chromium, if not installed already).
 
 import { createServer } from "node:http";
-import { readFile } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
 import { extname, join } from "node:path";
@@ -137,6 +137,7 @@ const VK_PARENT = `<!doctype html><meta charset="utf-8"><style>html,body{margin:
       case "VKWebAppStorageGet": return ok({ keys: p.keys.map((k) => ({ key: k, value: storage[k] || "" })) });
       case "VKWebAppCheckNativeAds": return ok({ result: true });
       case "VKWebAppShowNativeAds": return ok({ result: true });
+      case "VKWebAppShare": calls.push("share:" + (p.link || "")); return setTimeout(() => reply("VKWebAppShareResult", Object.assign([{ type: "message", users: [] }], { request_id: id })), 5);
       default: return setTimeout(() => reply(m.handler + "Failed", { error_type: "client_error", error_data: {}, request_id: id }), 5);
     }
   });
@@ -426,6 +427,11 @@ else {
   await page.waitForTimeout(500);
   ok(!(await still(200)), "and goes on after it");
   ok(await fe(() => window.__game.platform.showRewarded()), "a rewarded ad (ad_format reward) gives its reward");
+  ok((await fe(() => window.__game.platform.canShare())) && (await fe(() => window.__game.platform.share())) && (await calls()).includes("share:https://vk.com/app1"), "tell friends: VKWebAppShare with a link to the game");
+  {
+    const audio = (await readdir(join(vDir, "assets"))).filter((f) => /\.(ogg|mp3|wav|m4a|aac|mp4|webm)$/i.test(f));
+    ok(!audio.length, `no audio or video files in the build (VK's hosting takes none)${audio.length ? ": " + audio.join(", ") : ""}`);
+  }
   ok(!errors.length, `no errors on the page${errors.length ? ": " + errors.join("; ") : ""}`);
   await page.close();
   server.close();

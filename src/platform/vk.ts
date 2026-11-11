@@ -1,7 +1,8 @@
 // VK Games (a VK mini app): VK Bridge, the official package @vkontakte/vk-bridge (its typings are the reference for
 // every method used here). VKWebAppInit, the view hidden and restored, the launch language, saves in VK's per-user
-// storage, native interstitial and rewarded ads. In-app purchases (VKWebAppShowOrderBox, paid in votes) need the
-// game's own server to answer VK's payment callbacks, so the shop is off on VK until there is one.
+// storage, native interstitial and rewarded ads, VK's share dialog ("tell friends"). In-app purchases
+// (VKWebAppShowOrderBox, paid in votes) need the game's own server to answer VK's payment callbacks, so the shop is
+// off on VK until there is one. VK's hosting takes no audio files: the VK build carries its music inside the code.
 
 import bridge from "@vkontakte/vk-bridge";
 import type { SaveData } from "../game/save";
@@ -29,6 +30,8 @@ export class VKPlatform extends BasePlatform {
   private ok = false;
   private lang = "ru";
   private mobile: boolean | null = null;
+  /** The game's id in VK (from the launch parameters), for the link a share carries. */
+  private appId = 0;
   private adOpen = false;
   /** VK hid the mini app (the user left it): the game waits for it to come back. */
   private hidden = false;
@@ -51,6 +54,7 @@ export class VKPlatform extends BasePlatform {
       try {
         const p = await bridge.send("VKWebAppGetLaunchParams");
         if (p.vk_language) this.lang = String(p.vk_language);
+        this.appId = Number(p.vk_app_id) || 0;
         const pl = String(p.vk_platform ?? "");
         this.mobile = pl.startsWith("mobile") ? true : pl.startsWith("desktop") ? false : null;
       } catch {
@@ -152,6 +156,20 @@ export class VKPlatform extends BasePlatform {
     };
     this.cloudChain = this.cloudChain.then(run, run);
     return this.cloudChain;
+  }
+
+  // ---- telling friends: VK's share dialog with a link to the game
+  override canShare(): boolean {
+    return this.ok && this.appId > 0;
+  }
+  override async share(): Promise<boolean> {
+    if (!this.canShare()) return false;
+    try {
+      const res = await bridge.send("VKWebAppShare", { link: `https://vk.com/app${this.appId}` });
+      return Array.isArray(res) ? res.length > 0 : !!res;
+    } catch {
+      return false;
+    }
   }
 
   // ---- ads: native interstitial between runs, rewarded by the player's own choice; the game stands still meanwhile

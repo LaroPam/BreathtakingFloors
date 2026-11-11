@@ -73,6 +73,9 @@ export interface Platform {
   /** Whether the player could sign in to get on the boards (a guest on Yandex), and doing it. */
   canSignIn(): boolean;
   signIn(): Promise<boolean>;
+  /** Telling friends about the game (VK's share dialog), where the platform has it; true if it was shared. */
+  canShare(): boolean;
+  share(): Promise<boolean>;
   /** In-game purchases: whether there is a shop here, its catalog, buying, and consuming a delivered consumable. */
   shopAvailable(): boolean;
   catalog(): Promise<Product[]>;
@@ -192,6 +195,12 @@ export abstract class BasePlatform implements Platform {
     return false;
   }
   async signIn(): Promise<boolean> {
+    return false;
+  }
+  canShare(): boolean {
+    return false;
+  }
+  async share(): Promise<boolean> {
     return false;
   }
 }

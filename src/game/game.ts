@@ -85,6 +85,8 @@ const TUT_DONE = 1.1;
  * one who bought "no ads". Rewarded ones are only ever the player's own choice, from a button.
  */
 const AD_GAP = 150;
+/** The game's support (a community, a mail address), shown in the settings: set at build time with VITE_SUPPORT. */
+const SUPPORT = String(import.meta.env.VITE_SUPPORT ?? "").trim();
 const AD_GRACE = 120;
 /** First sights worth a word, once in the player's life each, one at a time and never over another hint. */
 const SIGHTS = ["spirit", "altar", "bolts", "elite", "crack"] as const;
@@ -1629,6 +1631,8 @@ export class Game {
       }
       y += rh;
     }
+    // the way to the game's support (the stores ask for one), as set for this build
+    if (SUPPORT) text(ui, `${t("support")}: ${SUPPORT}`, W / 2, H - 38, { font: "mini", align: "center", color: C.dim });
     if (button(ui, this.menu, now, Math.round(W / 2 - 50), H - 26, 100, 18, t("back"), { icon: icon("hud", "back") }) || this.input.pressed("back")) this.setState(this.settingsFrom, this.settingsFrom === "title" ? 5 + this.shopSlot : 4);
   }
 
@@ -2793,6 +2797,11 @@ export class Game {
       this.attract();
       this.setState("title");
     }
+    // where the platform can (VK), telling friends about the game: the player's own choice, from a button
+    if (this.platform.canShare()) {
+      y += bh + 6;
+      if (button(ui, this.menu, now, bx, y, bw, bh, t("share"), { color: C.green })) void this.platform.share();
+    }
     // a tall narrow screen has room for the damage under the buttons
     if (L.side < 0 && H - 40 - (y + bh + 8) >= 110) this.statsPanel(Math.round(W / 2 - Math.min(250, W - 24) / 2), y + bh + 8, Math.min(250, W - 24), H - 40 - (y + bh + 8));
     if (this.tasksReady()) text(ui, t("tasksReady"), W / 2, H - 12, { font: "mini", align: "center", color: C.green });
@@ -2859,6 +2868,11 @@ export class Game {
       this.newWorld();
       this.attract();
       this.setState("title");
+    }
+    // where the platform can (VK), telling friends about the game: the player's own choice, from a button
+    if (this.platform.canShare()) {
+      y += bh + 6;
+      if (button(ui, this.menu, now, bx, y, bw, bh, t("share"), { color: C.green })) void this.platform.share();
     }
     if (L.side < 0 && H - 28 - (y + bh + 8) >= 110) this.statsPanel(Math.round(W / 2 - Math.min(250, W - 24) / 2), y + bh + 8, Math.min(250, W - 24), H - 28 - (y + bh + 8));
     // a new best gleams under it all; a task reward waiting says so
