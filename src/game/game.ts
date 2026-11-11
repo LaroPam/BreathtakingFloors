@@ -1983,7 +1983,9 @@ export class Game {
         text(ui, tx(it.name), x + 50, y + 7, { color: C.gold, shadow: C.ink });
         para(ui, tx(it.desc), x + 50, y + 18, cw - 56, C.text, "left", 8, "mini");
         const label = owned ? t("owned") : p!.price;
-        if (button(ui, this.menu, now, x + 8, y + ch - 22, cw - 16, 16, label, { primary: !owned, disabled: owned || this.shopBusy })) void this.purchase(it);
+        // (a low card, on a short screen: the button beside the badge, not over it)
+        const bx = ch < 76 ? x + 50 : x + 8;
+        if (button(ui, this.menu, now, bx, y + ch - 22, x + cw - 8 - bx, 16, label, { primary: !owned, disabled: owned || this.shopBusy })) void this.purchase(it);
       });
       if (this.shopNote) text(ui, this.shopNote, W / 2, H - 40, { align: "center", color: this.shopNote === t("shopThanks") ? C.green : C.red, shadow: C.ink });
     }
