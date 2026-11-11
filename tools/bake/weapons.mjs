@@ -25,6 +25,7 @@ import { act as CLAW } from "../../pixelfx/src/fx/melee/claw-swipe.js";
 import { act as UPPERCUT } from "../../pixelfx/src/fx/melee/uppercut.js";
 import { act as WHIP } from "../../pixelfx/src/fx/melee/whip-crack.js";
 import { posedParts } from "../../pixelfx/src/core/rig.js";
+import { weaponModel } from "../../src/hero/rig.js";
 
 /** The legs (and bob) of the run cycle at phase k of 8. */
 export function runLegs(k) {
@@ -111,12 +112,14 @@ export const WEAPONS = {
     attacks: [{ act: ARROW, times: [-0.14, 0.02, 0.18, 0.36, 0.5, 0.56, 0.72, 1.0], hits: [5] }],
   },
   spell: {
-    guard: { ...READY, fx: 10, fy: -20, bx: 8, by: -21, turn: 0.35 },
+    // the Book of Elements open in the off hand; the casting hand works the spell
+    guard: { ...READY, offWeapon: "book", sb: -1.25, fx: 10, fy: -20, bx: 8, by: -21, turn: 0.35 },
     oneHand: false,
+    book: true,
     attacks: [
-      { act: FIREBALL, times: [0.5, 0.7, 0.85, 0.92, 0.95, 1.05, 1.25, 1.39], hits: [4] },
-      { act: ICELANCE, times: [0.4, 0.6, 0.7, 0.77, 0.8, 0.9, 1.1, 1.3], hits: [4] },
-      { act: LIGHTNING, times: [0.26, 0.5, 0.66, 0.72, 0.76, 0.86, 1.0, 1.3], hits: [4] },
+      { act: FIREBALL, times: [0.5, 0.7, 0.85, 0.92, 0.95, 1.05, 1.25, 1.39], hits: [4], rune: "fire" },
+      { act: ICELANCE, times: [0.4, 0.6, 0.7, 0.77, 0.8, 0.9, 1.1, 1.3], hits: [4], rune: "frost" },
+      { act: LIGHTNING, times: [0.26, 0.5, 0.66, 0.72, 0.76, 0.86, 1.0, 1.3], hits: [4], rune: "storm" },
     ],
   },
 };
@@ -130,6 +133,10 @@ function attackPoses(w, a, legs) {
     if (a.weapon) p.weapon = a.weapon;
     else if (w.guard.weapon && !p.weapon) p.weapon = w.guard.weapon;
     if (a.extra) Object.assign(p, a.extra);
+    // the spellbook stays open in the off hand, its runes in the spell's element, a page turning as it goes off
+    // and it is the book that is thrust at the foe: the hands trade places, the free one drawing the spell back
+    if (w.book) [p.fx, p.fy, p.bx, p.by] = [p.bx ?? w.guard.bx, p.by ?? w.guard.by, p.fx ?? w.guard.fx, p.fy ?? w.guard.fy];
+    if (w.book) Object.assign(p, { offWeapon: "book", sb: -1.25, rune: a.rune, flip: +Math.min(1, Math.max(0, (f - 1) / Math.max(1, hit))).toFixed(2) });
     delete p.ghost;
     // cloth (capes, scarves, hair) flares out on the blow and settles after it
     p.wind = +(0.1 + 0.55 * Math.exp(-((f - hit) ** 2) / 3)).toFixed(2);
@@ -183,11 +190,16 @@ export const DEATH = [
  * A weapon on its own, turning in 3D: the stock figure holds it upright and turns round (yaw), and only the weapon's
  * pixels are kept, recentred. The altars float these over their stone.
  */
-export const MODEL_WEAPONS = { sword: "sword", hammer: "hammer", spear: "spear", scythe: "scythe", daggers: "dagger", greatsword: "greatsword", claws: "claw", bow: "bow" };
+export const MODEL_WEAPONS = { sword: "sword", hammer: "hammer", spear: "spear", scythe: "scythe", daggers: "dagger", greatsword: "greatsword", claws: "rig:claw", bow: "bow", spell: "rig:book", whip: "rig:whip" };
 export function weaponModelFrames(rigWeapon, n = 12) {
   const frames = [];
   for (let k = 0; k < n; k++) {
     const yaw = (k / n) * Math.PI * 2;
+    // one of the heroes' own weapons (src/hero/rig.js), drawn upright on its own: the Book of Elements, open
+    if (rigWeapon.startsWith("rig:")) {
+      frames.push(weaponModel(rigWeapon.slice(4), yaw, { rune: "arcane", flip: 0, scale: 1.6 }));
+      continue;
+    }
     const parts = posedParts({ ...READY, weapon: rigWeapon, fx: 8, fy: -20, sa: -Math.PI / 2 + 0.25, yaw, bx: 6, by: -16 });
     const wp = parts.find((p) => p.name === "weapon");
     frames.push(wp ? { xs: wp.xs, ys: wp.ys, color: wp.color, n: wp.n } : { xs: [], ys: [], color: [], n: 0 });

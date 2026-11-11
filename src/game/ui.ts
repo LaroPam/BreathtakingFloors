@@ -227,8 +227,12 @@ export function header(b: Batch, W: number, y: number, title: string, o: { max?:
   divider(b, W / 2, y + used, Math.min(W - 40, Math.max(120, measure(title, "title", sc) + 40)), C.goldDim, a);
   used += 4;
   if (o.sub) {
-    text(b, o.sub, W / 2, y + used + 2, { font: "mini", align: "center", color: withAlpha(C.dim, a) });
-    used += 11;
+    // (wrapped on a narrow screen, a line under another)
+    for (const l of wrap(o.sub, W - 16, "mini")) {
+      text(b, l, W / 2, y + used + 2, { font: "mini", align: "center", color: withAlpha(C.dim, a) });
+      used += 8;
+    }
+    used += 3;
   }
   return used;
 }
@@ -391,7 +395,7 @@ const RELIC_ICON = ["orbit", "lance", "coil", "flask", "halo", "void"];
 let bossLag = 1;
 
 /** The heads-up display during a run, gathered into plates: who you are (left), where you are (centre), how long (right). */
-export function drawHud(b: Batch, w: World, W: number, H: number, time: number, banner: { text: string; t: number; color: number; sub?: string } | null, touch: boolean, seal: "" | "daily" | "trophy"): void {
+export function drawHud(b: Batch, w: World, W: number, H: number, time: number, banner: { text: string; t: number; color: number; sub?: string } | null, touch: boolean, seal: "" | "daily" | "trophy", quiet = false): void {
   const h = w.hero;
 
   // ---- experience: a framed bar across the top, the level on a badge at its left end
@@ -446,7 +450,8 @@ export function drawHud(b: Batch, w: World, W: number, H: number, time: number, 
     b.rect(20, hy + 17, 3, 5, C.ink), b.rect(19, hy + 18, 5, 3, C.ink);
     b.rect(21, hy + 18, 1, 3, ec), b.rect(20, hy + 19, 3, 1, ec);
   }
-  for (let k = 0; k < RELIC_SLOTS; k++) {
+  // (no relic yet, as in a newcomer's first minutes: no row of empty slots either; artifacts likewise)
+  for (let k = 0; k < (w.relics.length ? RELIC_SLOTS : 0); k++) {
     const r = w.relics[k], x = 30 + k * 22;
     slot(b, x, hy + 1, 21, r?.evo ? C.gold : undefined);
     if (!r) {
@@ -466,7 +471,7 @@ export function drawHud(b: Batch, w: World, W: number, H: number, time: number, 
   // ---- the artifacts under the relics, a slot each, their levels in pips; one that is a relic's key to its
   // evolution has a gold rim while that relic waits for it
   const ay = hy + 26, held = w.artifacts;
-  for (let k = 0; k < ARTIFACT_SLOTS; k++) {
+  for (let k = 0; k < (held.length ? ARTIFACT_SLOTS : 0); k++) {
     const id = held[k], x = 30 + k * 22;
     const key = !!id && w.relics.some((r) => !r.evo && evolutionOf(r.kind).stat === id);
     slot(b, x, ay, 21, key ? C.goldDim : undefined);
@@ -483,7 +488,7 @@ export function drawHud(b: Batch, w: World, W: number, H: number, time: number, 
   // ---- the spirit's quest: a plate under the hotbar with its name, the count, the clock
   const q = w.quest;
   if (q) {
-    const a = q.state === "active" ? 1 : Math.max(0, Math.min(1, (3 - q.endT) / 0.6)), qy = hy + 54, qw = 132;
+    const a = q.state === "active" ? 1 : Math.max(0, Math.min(1, (3 - q.endT) / 0.6)), qy = hy + (held.length ? 54 : 28), qw = 132;
     const accent = q.state === "failed" ? C.red : q.state === "done" ? C.green : C.sky;
     plate(b, 2, qy, qw, 24, withAlpha(accent, a));
     b.image(icon("hud", "scroll"), 11, qy + 8, 1, 1, 0, rgbaf(1, 1, 1, a));
@@ -512,44 +517,50 @@ export function drawHud(b: Batch, w: World, W: number, H: number, time: number, 
   const intro = Math.max(0, Math.min(1, (6.5 - w.time) / 0.5)), e = intro * intro * (3 - 2 * intro);
   const bossName = bi >= 0 ? tx(ENEMIES[w.enemies.type[bi]].name) : "";
   const small = Math.max(w.portal ? measure(t("portalOpen"), "mini") + 12 : bi >= 0 ? measure(bossName, "mini") + 22 : w.braziers.length * 14 + 10, 48);
-  const wide = measure(floorLine) + (seal ? 30 : 20), fw = Math.round(small + (Math.max(wide, small) - small) * e), ph = Math.round(16 + 9 * e), ty = Math.round(6 + 3 * e);
-  plate(b, W / 2 - fw / 2, ty, fw, ph);
-  if (e > 0.6) text(b, floorLine, W / 2 + (seal ? 5 : 0), 13, { align: "center", gradient: [rgba("#fff0b8"), rgba("#e0a84a")], shadow: C.ink });
+  // (a narrow screen, a phone upright: the plate stands in the room between the vitals and the pause button, the
+  // floor's line in small letters if it would not fit there)
+  const narrow = W < 300, cxF = narrow ? Math.round((100 + W - 26) / 2) : W / 2, roomF = narrow ? W - 126 : W;
+  const lineFont = measure(floorLine) + (seal ? 30 : 20) > roomF ? "mini" : undefined;
+  const wide = Math.min(roomF, measure(floorLine, lineFont) + (seal ? 30 : 20)), fw = Math.round(small + (Math.max(wide, small) - small) * e), ph = Math.round(16 + 9 * e), ty = Math.round(6 + 3 * e);
+  plate(b, cxF - fw / 2, ty, fw, ph);
+  if (e > 0.6) text(b, floorLine, cxF + (seal ? 5 : 0), lineFont ? 14 : 13, { align: "center", font: lineFont, gradient: [rgba("#fff0b8"), rgba("#e0a84a")], shadow: C.ink });
   // a trial wears its seal by the floor's name (the day's or the week's); a cursed floor its skull on the other side
-  if (seal && e > 0.6) b.image(icon("hud", seal), W / 2 - fw / 2 + 9, 16);
-  if (w.curse) b.image(icon("hud", "curse"), W / 2 + fw / 2 + 8, ty + ph / 2 + 1, 1, 1, 0, rgbaf(1, 0.7 + 0.3 * Math.sin(time * 6), 0.7, 1));
+  if (seal && e > 0.6) b.image(icon("hud", seal), cxF - fw / 2 + 9, 16);
+  if (w.curse) b.image(icon("hud", "curse"), cxF + fw / 2 + 8, ty + ph / 2 + 1, 1, 1, 0, rgbaf(1, 0.7 + 0.3 * Math.sin(time * 6), 0.7, 1));
   const row = Math.round(ty + ph - 7);
   // a wave burning: how long to hold out, a bar running down under the plate
   let under = ty + ph + 4;
   if (w.wave) {
     const wv = w.wave, left = Math.max(0, Math.ceil(wv.left)), k = wv.left / wv.total, urgent = wv.left < 5;
     const label = `${t("wave")} ${wv.n}  ·  ${t("hold")} ${fmtTime(left)}`, bw = Math.max(90, measure(label) + 16);
-    plate(b, W / 2 - bw / 2, under, bw, 18, rgba("#a8402e"));
-    text(b, label, W / 2, under + 4, { align: "center", color: urgent ? rgbaf(1, 0.8 + 0.2 * Math.sin(time * 10), 0.5, 1) : rgba("#ffd2b0"), shadow: C.ink });
-    b.rect(Math.round(W / 2 - bw / 2 + 4), under + 14, Math.round((bw - 8) * k), 2, rgba("#ff7a4a"));
+    plate(b, cxF - bw / 2, under, bw, 18, rgba("#a8402e"));
+    text(b, label, cxF, under + 4, { align: "center", color: urgent ? rgbaf(1, 0.8 + 0.2 * Math.sin(time * 10), 0.5, 1) : rgba("#ffd2b0"), shadow: C.ink });
+    b.rect(Math.round(cxF - bw / 2 + 4), under + 14, Math.round((bw - 8) * k), 2, rgba("#ff7a4a"));
     under += 22;
   }
   // the week's rule, under the plate, for the whole run
   const mut = w.mutator && MUTATORS.find((m) => m.id === w.mutator);
-  if (mut) text(b, tx(mut.name), W / 2, under, { font: "mini", align: "center", color: rgba("#ff9a8a"), shadow: C.ink });
-  if (w.portal) text(b, t("portalOpen"), W / 2, row - 3, { font: "mini", align: "center", color: rgba("#c684ff") });
+  if (mut) text(b, tx(mut.name), cxF, under, { font: "mini", align: "center", color: rgba("#ff9a8a"), shadow: C.ink });
+  if (w.portal) text(b, t("portalOpen"), cxF, row - 3, { font: "mini", align: "center", color: rgba("#c684ff") });
   else if (bi >= 0) {
-    b.image(icon("hud", "boss"), W / 2 - measure(bossName, "mini") / 2 - 8, row);
-    text(b, bossName, W / 2 + 2, row - 3, { font: "mini", align: "center", color: rgba(ENEMIES[w.enemies.type[bi]].glow || "#f53cd1") });
+    b.image(icon("hud", "boss"), cxF - measure(bossName, "mini") / 2 - 8, row);
+    text(b, bossName, cxF + 2, row - 3, { font: "mini", align: "center", color: rgba(ENEMIES[w.enemies.type[bi]].glow || "#f53cd1") });
   } else
     w.braziers.forEach((br, k) => {
-      const x = W / 2 + (k - (w.braziers.length - 1) / 2) * 14;
+      const x = cxF + (k - (w.braziers.length - 1) / 2) * 14;
       b.image(icon("hud", br.lit ? "brazier" : "brazier_cold"), x, row);
       if (!br.lit && br.progress > 0) b.rect(x - 4, row + 5, Math.round(8 * br.progress), 1, rgba("#ffc040"));
     });
 
-  // ---- how long, how many: a plate at the top right
-  const tm = fmtTime(w.time), kills = String(w.kills), rw = Math.max(measure(tm), measure(kills)) + 22;
-  plate(b, W - rw - 2, 9, rw, 25);
-  b.image(icon("hud", "time"), W - rw + 6, 16);
-  text(b, tm, W - 7, 12, { align: "right", color: C.text, shadow: C.ink });
-  b.image(icon("hud", "skull"), W - rw + 6, 27);
-  text(b, kills, W - 7, 23, { align: "right", color: C.dim, shadow: C.ink });
+  // ---- how long, how many: a plate at the top right (not while the first run's lessons are on: one thing at a time)
+  if (!quiet) {
+    const tm = fmtTime(w.time), kills = String(w.kills), rw = Math.max(measure(tm), measure(kills)) + 22;
+    plate(b, W - rw - 2, 9, rw, 25);
+    b.image(icon("hud", "time"), W - rw + 6, 16);
+    text(b, tm, W - 7, 12, { align: "right", color: C.text, shadow: C.ink });
+    b.image(icon("hud", "skull"), W - rw + 6, 27);
+    text(b, kills, W - 7, 23, { align: "right", color: C.dim, shadow: C.ink });
+  }
 
   // ---- the boss: its name in blackletter over a framed bar in quarters, the hit it just took fading pale
   if (bi >= 0) {

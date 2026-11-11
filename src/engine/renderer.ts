@@ -10,7 +10,7 @@
 // The light's dither cells are anchored to the world, so pools of light fall off in chunky pixel-art steps that
 // stay put on the floor while the camera moves. One texture array holds every atlas page: a pass is one draw call.
 
-import { PAGE_SIZE, PAGE_URLS, type Rect } from "./atlas";
+import { BOOT_PAGES, PAGE_SIZE, PAGE_URLS, type Rect } from "./atlas";
 
 /** Pages of the texture array kept for images made while the game runs. */
 export const DYNAMIC_PAGES = 3;
@@ -305,6 +305,16 @@ export class Batch {
   image(r: Rect, x: number, y: number, sx = 1, sy = 1, rot = 0, color = 0xffffffff, flash = 0, key = y): void {
     this.push(x, y, r[5], r[6], r[3], r[4], r[1], r[2], sx, sy, rot, r[0], color, flash, key);
   }
+  /**
+   * An atlas image as image() draws it, with everything left of minX (in the image's own pixels, from its anchor,
+   * before scaling and turning) cut away: the texture is cut with it, so what stays is pixel for pixel the same.
+   * Used to let a shot slide out of something rather than appear inside it.
+   */
+  imageCropLeft(r: Rect, x: number, y: number, minX: number, sx = 1, sy = 1, rot = 0, color = 0xffffffff, flash = 0, key = y): void {
+    const cut = Math.max(0, Math.ceil(minX - r[5]));
+    if (cut >= r[3]) return;
+    this.push(x, y, r[5] + cut, r[6], r[3] - cut, r[4], r[1] + cut, r[2], sx, sy, rot, r[0], color, flash, key);
+  }
   /** A flat rectangle, top-left at (x, y). */
   rect(x: number, y: number, w: number, h: number, color: number, key = y): void {
     this.push(x, y, 0, 0, w, h, 0, 0, 1, 1, 0, SOLID, color, 0, key);
@@ -465,20 +475,42 @@ export class Renderer {
   }
 
   /** Load the atlas pages into the texture array. onProgress gets 0..1. */
+  /** The atlas pages needed later in a run (a later place's art, the bosses), loading in the background. */
+  laterPages: Promise<void> = Promise.resolve();
+  /** Whether those have all come. */
+  laterReady = false;
+
+  /**
+   * Load the atlas: the pages the game needs to start (the menu, the heroes' gear, the first place, the effects),
+   * reporting progress; then the rest in the background, after (`laterPages`), so they do not slow the start.
+   */
   async loadAtlas(onProgress: (k: number) => void): Promise<void> {
     const gl = this.gl;
+    const put = async (i: number) => {
+      const img = await decodePage(PAGE_URLS[i]);
+      gl.bindTexture(gl.TEXTURE_2D_ARRAY, this.texArray);
+      gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+      gl.pixelStorei(gl.UNPACK_COLORSPACE_CONVERSION_WEBGL, gl.NONE);
+      gl.texSubImage3D(gl.TEXTURE_2D_ARRAY, 0, 0, 0, i, PAGE_SIZE, PAGE_SIZE, 1, gl.RGBA, gl.UNSIGNED_BYTE, img);
+      if ("close" in img) img.close();
+    };
     let done = 0;
-    await Promise.all(
-      PAGE_URLS.map(async (url, i) => {
-        const img = await decodePage(url);
-        gl.bindTexture(gl.TEXTURE_2D_ARRAY, this.texArray);
-        gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
-        gl.pixelStorei(gl.UNPACK_COLORSPACE_CONVERSION_WEBGL, gl.NONE);
-        gl.texSubImage3D(gl.TEXTURE_2D_ARRAY, 0, 0, 0, i, PAGE_SIZE, PAGE_SIZE, 1, gl.RGBA, gl.UNSIGNED_BYTE, img);
-        if ("close" in img) img.close();
-        onProgress(++done / PAGE_URLS.length);
-      }),
-    );
+    const boot = Array.from({ length: BOOT_PAGES }, (_, i) => i), later = Array.from({ length: PAGE_URLS.length - BOOT_PAGES }, (_, k) => BOOT_PAGES + k);
+    await Promise.all(boot.map(async (i) => (await put(i), onProgress(++done / boot.length))));
+    // (one after another, so they take what bandwidth the game leaves; tried again a little later if one fails)
+    this.laterPages = (async () => {
+      for (const i of later)
+        for (let tries = 0; ; tries++)
+          try {
+            await put(i);
+            break;
+          } catch (e) {
+            if (tries >= 4) throw e;
+            await new Promise((r) => setTimeout(r, 2000 * (tries + 1)));
+          }
+      this.laterReady = true;
+    })();
+    this.laterPages.catch((e) => console.warn("atlas pages failed to load", e));
   }
 
   private target(old?: Target): Target {
@@ -501,8 +533,10 @@ export class Renderer {
   }
 
   /**
-   * Fit the game to the canvas: one game pixel becomes `scale` screen pixels, chosen so the short side shows about
-   * 340 game pixels (a phone in landscape, a laptop and a 4K screen all see roughly the same amount of the floor).
+   * Fit the game to the canvas: one game pixel becomes `scale` screen pixels. A big screen shows about 340 game
+   * pixels across its short side (a laptop and a 4K screen see the same amount of the floor); a small one, measured
+   * in the page's own (CSS) pixels, shows fewer and bigger, down to about 220 on a phone, so that text and buttons
+   * keep a size a thumb and an eye can use there.
    */
   resize(): boolean {
     // the screen's own pixels, but at most ~4 MP (a 4K monitor renders a little under its full resolution)
@@ -510,7 +544,8 @@ export class Renderer {
     const css = this.canvas.clientWidth * this.canvas.clientHeight;
     if (css * dpr * dpr > 4.2e6) dpr = Math.sqrt(4.2e6 / Math.max(1, css));
     const cw = Math.max(1, Math.floor(this.canvas.clientWidth * dpr)), ch = Math.max(1, Math.floor(this.canvas.clientHeight * dpr));
-    const scale = Math.max(1, Math.round(Math.min(cw, ch) / 340));
+    const shortCss = Math.min(this.canvas.clientWidth, this.canvas.clientHeight), span = 220 + 120 * Math.max(0, Math.min(1, (shortCss - 420) / 380));
+    const scale = Math.max(1, Math.round(Math.min(cw, ch) / span));
     if (this.canvas.width === cw && this.canvas.height === ch && scale === this.scale && this.color) return false;
     this.canvas.width = cw;
     this.canvas.height = ch;

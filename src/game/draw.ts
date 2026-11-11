@@ -75,6 +75,10 @@ const hash = (x: number, y: number) => {
 };
 
 const C_SHADOW = rgba("#000000", 0.38);
+/** The Book of Elements' rune light: fire, frost, storm (its three casts in turn), and its resting arcane violet. */
+const BOOK_RUNES: [number, number, number][] = [[1, 0.68, 0.21], [0.61, 0.86, 1], [1, 0.88, 0.24], [0.78, 0.56, 1]];
+/** How far ahead of the book a spell is let go (world.ts) less the book's half-thickness: where a lance comes out of its pages. */
+const LANCE_OUT = 4;
 /** The colour an enemy's tell glows in, by the look of its bullets. */
 const TELL = [0, 0, 0, 0, 0, 0].map((_, k) => {
   const c = ["#ff5a6a", "#ff5a6a", "#ff5a6a", "#c684ff", "#8ad83a", "#78ccf4"][k];
@@ -485,7 +489,14 @@ export function drawWorld(s: Scene, w: World, camX: number, camY: number, viewW:
       tint = Math.sin(time * 30) > 0 ? rgbaf(1, 0.45, 0.4, 1) : tint;
     }
     const g2 = born < 1 ? 1 : grow;
-    drawAnim(s, anim(d.anim), E.t[i], x, y, { sx: E.face[i] * d.scale * (1 + 0.14 * hit + 0.06 * tk) * g2, sy: d.scale * (1 - 0.12 * hit + 0.06 * tk) * g2, tint, alpha, flash: born < 1 ? -Math.max(0.002, born) : Math.max(hit, tellFlash), key: y, glow: 0.55 * alpha * born * born });
+    // struck, it is knocked back a pixel or two from the hero for the beat of the flash: the blow has a direction
+    let yy = y;
+    if (hit && born >= 1) {
+      const dx = x - h.x, dy = y - h.y, dd = Math.hypot(dx, dy) || 1, k = 2 * Math.min(1, E.flash[i] / 0.07);
+      x += (dx / dd) * k;
+      yy += (dy / dd) * k * 0.6;
+    }
+    drawAnim(s, anim(d.anim), E.t[i], x, yy, { sx: E.face[i] * d.scale * (1 + 0.14 * hit + 0.06 * tk) * g2, sy: d.scale * (1 - 0.12 * hit + 0.06 * tk) * g2, tint, alpha, flash: born < 1 ? -Math.max(0.002, born) : Math.max(hit, tellFlash), key: y, glow: 0.55 * alpha * born * born });
     if (d.glow) s.illum.light(w.bx, w.by, 20 * d.scale, 16 * d.scale, withAlpha(rgba(d.glow), 0.22));
     if (winding) {
       // a red mark over its head, swelling as the rush comes
@@ -648,13 +659,39 @@ export function drawWorld(s: Scene, w: World, camX: number, camY: number, viewW:
     // the light: a lantern in the free hand or at the belt, swinging; or a wisp floating at the shoulder
     const hand = a.hands?.[fi] ?? [8, -20, 5, -15];
     // the weapon hand, for the world to throw an element's sparks from; the element glows there
-    h.handX = h.x + hand[0] * h.face;
-    h.handY = h.y + hand[1];
+    const book = wid === "spell";
+    h.handX = h.x + (book ? hand[2] - 2 : hand[0]) * h.face;
+    h.handY = h.y + (book ? hand[3] - 5 : hand[1]);
     const el = w.weaponEl;
     if (el && show) {
       const c = rgba(EL_COLOR[el]), p = 0.75 + 0.25 * Math.sin(time * 8);
       s.glow.light(h.handX, h.handY, 5 * p, 5 * p, withAlpha(c, 0.45));
       s.illum.light(h.handX, h.handY, 34 * p, 28 * p, withAlpha(c, 0.3));
+    }
+    // the Book of Elements: runes circling the open book in the far hand, motes rising off its pages; on a cast
+    // they flare in the element being spoken (fire, ice, lightning in turn), brightest as the spell leaves
+    if (wid === "spell" && show && h.exitT < 0 && h.dashT <= 0) {
+      const bx = h.handX, by = h.handY;
+      const casting = h.atk >= 0, cf = casting ? h.atkT * 20 : 0, flare = casting ? Math.max(0, 1 - Math.abs(cf - 4) / 3) : 0;
+      const [cr, cg, cb] = casting ? BOOK_RUNES[h.atk % 3] : BOOK_RUNES[3];
+      const pulse = 0.7 + 0.3 * Math.sin(time * 5);
+      s.illum.light(bx, by, 26 + 20 * flare, 22 + 16 * flare, rgbaf(cr, cg, cb, 0.14 * pulse + 0.22 * flare));
+      s.glow.light(bx, by, 3 + 2 * flare, 2 + 2 * flare, rgbaf(cr, cg, cb, 0.06 + 0.15 * flare));
+      const n = 5, spin = time * (casting ? 4.5 : 1.6), rx = 9 + 3 * flare, ry = 4 + 1.5 * flare;
+      for (let q = 0; q < n; q++) {
+        const ang = spin + (q / n) * Math.PI * 2, x = Math.round(bx + Math.cos(ang) * rx), y = Math.round(by + Math.sin(ang) * ry);
+        const front = Math.sin(ang) > 0, k = 0.55 + 0.45 * Math.sin(time * 7 + q * 1.7);
+        s.glow.disc(x, y, 1, 1, rgbaf(cr, cg, cb, 0.3 * k + 0.3 * flare));
+        // a tiny rune: a bright pixel and its stroke, behind the book when on the far side
+        s.front.rect(x, y, 1, 1, rgbaf(Math.min(1, cr + 0.3), Math.min(1, cg + 0.3), Math.min(1, cb + 0.3), k), h.y + (front ? 0.6 : -0.6));
+        s.front.rect(x + (q % 2 ? 1 : -1), y + (q % 3 ? 0 : -1), 1, 1, rgbaf(cr, cg, cb, 0.7 * k), h.y + (front ? 0.6 : -0.6));
+      }
+      // motes leaving the pages, drifting up and fading
+      for (let q = 0; q < 4; q++) {
+        const u = (time * (0.8 + flare) + q / 4) % 1, x = Math.round(bx + Math.sin(q * 2.3 + time * 2) * 4), y = Math.round(by - 2 - u * 14);
+        s.glow.disc(x, y, 1, 1, rgbaf(cr, cg, cb, (1 - u) * (0.3 + 0.3 * flare)));
+        if (u < 0.6) s.front.rect(x, y, 1, 1, rgbaf(1, 1, 1, (0.6 - u) * 1.2), h.y + 0.7);
+      }
     }
     // the Knight's ward: a ring of light turning round him, fading as it ends
     if (w.ward > 0 && show) {
@@ -712,9 +749,12 @@ export function drawWorld(s: Scene, w: World, camX: number, camY: number, viewW:
     drawAnim(s, rackA, time, r.x, r.y, { key: r.y, glow: 0.9 });
     const bob = Math.sin(time * 2.2) * 2, model = `model_${r.weapon}`, el = r.el || WEAPONS[r.weapon].el || 0;
     const col = el ? rgba(EL_COLOR[el]) : rgbaf(0.7, 0.5, 1, 1);
-    // the weapon itself turns slowly in the air over the stone (the book and the whip show their badge)
-    if (hasAnim(model)) drawAnim(s, anim(model), time * 0.8 + r.x * 0.01, r.x, r.y - 40 + bob, { key: r.y + 0.5, glow: 0 });
-    else s.color.image(icon("icons", `w_${r.weapon}`), r.x, r.y - 36 + bob, 1, 1, 0, 0xffffffff, 0, r.y + 0.5);
+    // the weapon itself turns slowly in the air over the stone; the whip, with no model, turns its badge like a coin
+    if (hasAnim(model)) drawAnim(s, anim(model), time * 0.8 + r.x * 0.01, r.x, r.y - 40 + bob, { key: r.y + 0.5, glow: 0.9 });
+    else {
+      const turn = Math.cos(time * 1.7 + r.x * 0.01), sx = Math.sign(turn || 1) * Math.max(0.12, Math.abs(turn));
+      s.color.image(icon("icons", `w_${r.weapon}`), r.x, r.y - 36 + bob, sx, 1, 0, 0xffffffff, 0, r.y + 0.5);
+    }
     s.glow.light(r.x, r.y - 40 + bob, 10, 16, withAlpha(col, el ? 0.35 : 0.18));
     s.illum.light(r.x, r.y - 28, 46, 36, withAlpha(col, 0.5));
     // its quality as a ring of light turning about it, and motes rising for the rarest
@@ -892,6 +932,35 @@ export function drawWorld(s: Scene, w: World, camX: number, camY: number, viewW:
     const x = Bu.x[i], y = Bu.y[i];
     if (!inView(x, y, 20)) continue;
     const k = Bu.kind[i], a = banims[k], orb = k >= 2 && k <= 5;
+    // a lance from the frost orb slides out of it: the part still inside the orb is cut away, so its point comes
+    // out of the orb's surface and the rest follows, at full size, rather than the whole of it appearing inside
+    if (k === B_LANCE && fo && lance && Bu.t[i] < 0.4) {
+      const sp = Math.hypot(Bu.vx[i], Bu.vy[i]) || 1, ux = Bu.vx[i] / sp, uy = Bu.vy[i] / sp, dx = x - fo.x, dy = y - fo.y;
+      const along = dx * ux + dy * uy, off = Math.abs(dx * uy - dy * ux), R = lance.evo ? 8.5 : 7;
+      if (off < 4 && along > -4) {
+        const rot = Math.atan2(Bu.vy[i], Bu.vx[i]), minX = R - along, [c, l] = a.frames[frameAt(a, Bu.t[i])];
+        const fade = Math.min(1, Bu.t[i] / 0.05);
+        if (c) s.color.imageCropLeft(c, x, y, minX, 1, 1, rot, rgbaf(1, 1, 1, fade), 0, y + 14);
+        if (l) s.glow.imageCropLeft(l, x, y, minX, 1, 1, rot, rgbaf(1, 1, 1, 0.9 * fade));
+        // where it breaks through: a cold glint on the orb's surface while the lance passes it
+        if (minX > -12) s.glow.light(fo.x + ux * R, fo.y + uy * R, 7, 7, rgbaf(0.75, 0.95, 1, 0.8 * fade));
+        s.illum.light(x, y, 18, 14, rgbaf(0.45, 0.75, 1, 0.3));
+        continue;
+      }
+    }
+    // a lance from the Book of Elements slides out of its pages the same way: the sprite hangs back from its point,
+    // so everything behind the book's face (where it left, LANCE_OUT short of its spawn) is cut away until it is clear
+    if (k === B_LANCE && Bu.team[i] === TEAM_HERO && Bu.t[i] < 0.45) {
+      const sp = Math.hypot(Bu.vx[i], Bu.vy[i]) || 1, ux = Bu.vx[i] / sp, uy = Bu.vy[i] / sp, minX = -(Bu.t[i] * sp + LANCE_OUT);
+      const rot = Math.atan2(Bu.vy[i], Bu.vx[i]), [c, l] = a.frames[frameAt(a, Bu.t[i])], fade = Math.min(1, 0.4 + Bu.t[i] / 0.06);
+      if (c) s.color.imageCropLeft(c, x, y, minX, 1, 1, rot, rgbaf(1, 1, 1, fade), 0, y + 14);
+      if (l) s.glow.imageCropLeft(l, x, y, minX, 1, 1, rot, rgbaf(1, 1, 1, 0.9 * fade));
+      // the pages flare cold where it breaks out, fading as its tail leaves them
+      const bx = x + ux * minX, by = y + uy * minX, out = Math.max(0, 1 - Bu.t[i] / 0.3);
+      if (out > 0) (s.glow.light(bx, by, 4, 4, rgbaf(0.75, 0.95, 1, 0.4 * out)), s.illum.light(bx, by, 20, 16, rgbaf(0.45, 0.75, 1, 0.18 * out)));
+      s.illum.light(x, y, 18, 14, rgbaf(0.45, 0.75, 1, 0.3));
+      continue;
+    }
     // the hero's shots grow out of the hand over their first instant; the enemies' are drawn big and ringed in
     // dark so they read against anything
     const grow = Bu.team[i] === TEAM_HERO ? Math.min(1, 0.3 + (Bu.t[i] / 0.09) * 0.7) : orb ? 1.5 : 1;

@@ -35,7 +35,7 @@
         var pal = { k: "#0b0a12", m: "#4a4458", M: "#8a82a8", g: "#ffc95a", f: "#fff6c4", o: "#ff8a2a" }, svg = "";
         rows.forEach(function (r, y) { for (var x = 0; x < r.length; x++) { var c = r[x]; if (pal[c]) svg += '<rect x="' + x + '" y="' + y + '" width="1" height="1" fill="' + pal[c] + '"' + (c === "f" || c === "o" ? ' class="fl"' : "") + "/>"; } });
         document.getElementById("lantern").innerHTML = svg;
-        var ru = /^(ru|be|uk|kk|uz|ky|tg|hy|az)/i.test(navigator.language || "");
+        var ru = document.documentElement.getAttribute("data-ru") === "1" || /^(ru|be|uk|kk|uz|ky|tg|hy|az)/i.test(navigator.language || "");
         var tips = ru
           ? ["Призраков можно ранить только в свете.", "Рывок сквозь снаряды копит Выброс.", "Огонь и гроза вместе — взрыв.", "Дух на этаже ждёт с заданием.", "Реликвия 5 уровня может эволюционировать."]
           : ["Ghosts can only be hurt in the light.", "Dashing through bolts charges Overdrive.", "Fire and storm together explode.", "A spirit on the floor waits with a task.", "A level 5 relic can evolve."];

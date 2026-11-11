@@ -1,0 +1,8 @@
+{
+  "static_path": "dist-vk",
+  "endpoints": {
+    "mobile": "index.html",
+    "web": "index.html",
+    "mvk": "index.html"
+  }
+}

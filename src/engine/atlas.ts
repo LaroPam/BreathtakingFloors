@@ -38,6 +38,8 @@ export interface Font {
 interface AtlasFile {
   page: number;
   pages: number;
+  /** How many of the first pages the game needs before it starts (the rest load in the background). */
+  boot?: number;
   /** The stock dummy's colours, by role (the hero palettes swap these). */
   dummy: Record<string, string>;
   anims: Record<string, Omit<Anim, "name" | "dur">>;
@@ -48,6 +50,7 @@ const file = atlasJson as unknown as AtlasFile;
 
 export const PAGE_SIZE = file.page;
 export const PAGE_COUNT = file.pages;
+export const BOOT_PAGES = Math.min(file.pages, file.boot ?? file.pages);
 export const FONTS = file.fonts as Record<"title" | "big" | "mini", Font>;
 /** The dummy's colour for each palette role: k ink, A-D plates lit to dark, E-G cloth, J seams, m the chest mark. */
 export const DUMMY = file.dummy;

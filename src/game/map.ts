@@ -7,20 +7,31 @@ export const FLOOR = 0, WALL = 1, PIT = 2;
 /** What a floor tile looks like beyond its stone: planks of a bridge, a sheet of ice, a glowing crack. */
 export const LOOK_PLAIN = 0, LOOK_BRIDGE = 1, LOOK_ICE = 2, LOOK_VEIN = 3;
 
-export type Gen = "rooms" | "halls" | "caves" | "isles";
+/** How a floor's chambers are cut: square halls, halls with their corners cut, round clearings, rough hollows, islands. */
+export type Shape = "rect" | "facet" | "round" | "cave" | "isle";
 export interface MapPlan {
-  gen: Gen;
   cols: number;
   rows: number;
-  /** Caves: a chasm or a pond across the middle (crossed by bridges where it cuts the way). */
+  shape: Shape;
+  /** Rows of chambers the way snakes through, and chambers in each row. */
+  lanes: number;
+  per: number;
+  /** The passages: straight (square-on, with a dogleg where they must), winding (a garden walk), and how wide. */
+  link: "straight" | "winding";
+  wide: number;
+  /** The middle chamber has a chasm (or a pond) in it, crossed by a bridge. */
   pit?: boolean;
-  /** Caves: patches of ice to slide on. */
+  /** A sheet of ice in each chamber. */
   ice?: boolean;
   /** Glowing cracks wandering across the floor. */
   veins?: boolean;
-  /** Clumps of wall (roots, rubble) standing in the open. */
+  /** Hedges or boulders in mirrored pairs in the open chambers. */
   clumps?: boolean;
-  /** A boss's floor: a great open arena, where the last brazier stands and the boss comes. */
+  /** Columns in pairs down the big halls. */
+  columns?: boolean;
+  /** Recesses along the halls' back walls (the ossuary). */
+  niches?: boolean;
+  /** A boss's floor: the way ends in a great hall, where the last brazier stands and the boss comes. */
   arena?: boolean;
 }
 
@@ -48,8 +59,12 @@ export class TileMap {
   open: Uint8Array;
   /** Where the hero comes in (a tile). */
   start: [number, number] = [0, 0];
-  /** The rooms or galleries a builder made (tiles). */
+  /** Every chamber and side room (tiles). */
   areas: Area[] = [];
+  /** The chambers in the order the way goes through them, from the way in to the way out. */
+  route: Area[] = [];
+  /** Side rooms off the way. */
+  nooks: Area[] = [];
   /** The boss's arena (tiles), on a boss's floor. */
   arena: Area | null = null;
   /** Where the builder wants columns (tile centres, in px). */
@@ -277,236 +292,159 @@ export class Flow {
 function carve(m: TileMap, x: number, y: number, w: number, h: number, v = FLOOR, look = LOOK_PLAIN): void {
   for (let r = y; r < y + h; r++) for (let c = x; c < x + w; c++) if (c >= 2 && r >= 4 && c < m.cols - 2 && r < m.rows - 2) m.set(c, r, v, look);
 }
-/** An L of width `wd` from one point to another (tiles), the first leg along x or along y. */
-function corridor(m: TileMap, ax: number, ay: number, bx: number, by: number, wd: number, xFirst: boolean, v = FLOOR, look = LOOK_PLAIN, over = WALL): void {
-  const h0 = Math.floor((wd - 1) / 2), lay = (c: number, r: number) => {
-    for (let k = 0; k < wd; k++)
-      for (let q = 0; q < wd; q++) {
-        const cc = c - h0 + q, rr = r - h0 + k;
-        if (cc >= 2 && rr >= 4 && cc < m.cols - 2 && rr < m.rows - 2 && m.at(cc, rr) === over) m.set(cc, rr, v, look);
-      }
-  };
-  const step = (a: number, b: number) => (b > a ? 1 : -1);
-  if (xFirst) {
-    for (let c = ax; c !== bx; c += step(ax, bx)) lay(c, ay);
-    for (let r = ay; r !== by + step(ay, by); r += step(ay, by)) lay(bx, r);
-  } else {
-    for (let r = ay; r !== by; r += step(ay, by)) lay(ax, r);
-    for (let c = ax; c !== bx + step(ax, bx); c += step(ax, bx)) lay(c, by);
-  }
-}
-/** Join points (tile centres) with a minimum spanning tree, and a few more links for loops. */
-function links(points: [number, number][], R: Rnd, extra: number): [number, number][] {
-  const n = points.length, inTree = [0], out: [number, number][] = [], d = (a: number, b: number) => Math.hypot(points[a][0] - points[b][0], (points[a][1] - points[b][1]) * 1.3);
-  while (inTree.length < n) {
-    let best = Infinity, ba = 0, bb = 0;
-    for (const a of inTree)
-      for (let b = 0; b < n; b++) {
-        if (inTree.includes(b)) continue;
-        const v = d(a, b);
-        if (v < best) (best = v), (ba = a), (bb = b);
-      }
-    inTree.push(bb);
-    out.push([ba, bb]);
-  }
-  // loops: the shortest links not yet taken
-  const rest: [number, number, number][] = [];
-  for (let a = 0; a < n; a++) for (let b = a + 1; b < n; b++) if (!out.some(([p, q]) => (p === a && q === b) || (p === b && q === a))) rest.push([a, b, d(a, b)]);
-  rest.sort((p, q) => p[2] - q[2]);
-  for (let k = 0; k < extra && k < rest.length; k++) if (R.chance(0.7)) out.push([rest[k][0], rest[k][1]]);
-  return out;
+/** A chamber's middle (tiles). */
+const mid = (a: Area): [number, number] => [Math.floor(a.x + a.w / 2), Math.floor(a.y + a.h / 2)];
+
+/** Is every tile of a box (and a tile round it) still solid (wall, or the drop on an island floor)? */
+function solid(m: TileMap, a: Area, fill: number): boolean {
+  for (let r = a.y - 1; r <= a.y + a.h; r++) for (let c = a.x - 1; c <= a.x + a.w; c++) if (r < 4 || c < 2 || r >= m.rows - 2 || c >= m.cols - 2 || m.at(c, r) !== fill) return false;
+  return true;
 }
 
-/** Rooms of many sizes, apart by thick walls, joined by corridors five wide; columns in the big ones. */
-function rooms(m: TileMap, R: Rnd, plan: MapPlan): void {
-  const want = Math.round((m.cols * m.rows) / 430), list: Area[] = [];
-  // a boss's floor: a great hall first, about the middle
-  if (plan.arena) {
-    const w = 26, h = 17, x = Math.round(m.cols / 2 - w / 2 + R.range(-6, 6)), y = Math.round(m.rows / 2 - h / 2 + R.range(-3, 3));
-    list.push({ x, y, w, h });
-    m.arena = { x, y, w, h };
+/** Cut a chamber in the floor's own manner: square, its corners cut, round, a rough hollow, an island. */
+function chamber(m: TileMap, a: Area, shape: Shape, R: Rnd): void {
+  const cx = a.x + (a.w - 1) / 2, cy = a.y + (a.h - 1) / 2, ph = R.range(0, 6.3);
+  if (shape === "rect") return carve(m, a.x, a.y, a.w, a.h);
+  if (shape === "facet") {
+    const cut = Math.max(2, Math.min(4, Math.floor(Math.min(a.w, a.h) / 4)));
+    for (let r = a.y; r < a.y + a.h; r++)
+      for (let c = a.x; c < a.x + a.w; c++) if (Math.min(c - a.x, a.x + a.w - 1 - c) + Math.min(r - a.y, a.y + a.h - 1 - r) >= cut) carve(m, c, r, 1, 1);
+    return;
   }
-  for (let tries = 0; tries < 900 && list.length < want; tries++) {
-    const w = R.int(11, 20), h = R.int(9, 14), x = R.int(3, m.cols - w - 3), y = R.int(5, m.rows - h - 3);
-    if (list.some((o) => x < o.x + o.w + 4 && x + w + 4 > o.x && y < o.y + o.h + 4 && y + h + 4 > o.y)) continue;
-    list.push({ x, y, w, h });
-  }
-  for (const a of list) carve(m, a.x, a.y, a.w, a.h);
-  const mid = list.map((a): [number, number] => [Math.floor(a.x + a.w / 2), Math.floor(a.y + a.h / 2)]);
-  for (const [a, b] of links(mid, R, Math.ceil(list.length / 4))) corridor(m, mid[a][0], mid[a][1], mid[b][0], mid[b][1], 5, R.chance(0.5));
-  for (const a of list)
-    if (a.w >= 14 && a.h >= 11 && a !== list[0] && R.chance(0.7))
-      for (const [cx, cy] of [[a.x + 3, a.y + 3], [a.x + a.w - 4, a.y + 3], [a.x + 3, a.y + a.h - 3], [a.x + a.w - 4, a.y + a.h - 3]]) m.columns.push([cx * 16 + 8, cy * 16 + 8]);
-  m.areas = list;
+  // round things: a clearing is nearly an ellipse, a hollow and an island wobble more
+  const wob = shape === "round" ? [0.05, 0.03] : [0.13, 0.07];
+  for (let r = a.y - 1; r <= a.y + a.h; r++)
+    for (let c = a.x - 1; c <= a.x + a.w; c++) {
+      const t = Math.atan2(r - cy, c - cx), k = 1 + wob[0] * Math.sin(t * 3 + ph) + wob[1] * Math.sin(t * 5 + ph * 2);
+      if (Math.hypot((c - cx) / (a.w / 2), (r - cy) / (a.h / 2)) < k) m.set(c, r, FLOOR);
+    }
 }
 
-/** A lattice of long galleries crossing at right angles, side chambers cut into the blocks between, columns along them. */
-function halls(m: TileMap, R: Rnd, plan: MapPlan): void {
-  const nh = 3, nv = m.cols >= 82 ? 5 : 4;
-  const hy: [number, number][] = [], vx: [number, number][] = [];
-  for (let k = 0; k < nh; k++) {
-    const h = R.int(6, 9), y = Math.round(5 + ((m.rows - 8 - h - 5) * k) / (nh - 1) + (k > 0 && k < nh - 1 ? R.range(-2, 2) : 0));
-    hy.push([y, h]);
-  }
-  for (let k = 0; k < nv; k++) {
-    const w = R.int(6, 9), x = Math.round(3 + ((m.cols - 6 - w - 3) * k) / (nv - 1) + (k > 0 && k < nv - 1 ? R.range(-2, 2) : 0));
-    vx.push([x, w]);
-  }
-  const left = vx[0][0], right = vx[nv - 1][0] + vx[nv - 1][1], top = hy[0][0], bottom = hy[nh - 1][0] + hy[nh - 1][1];
-  const areas: Area[] = [];
-  // the galleries, each cut into lengths between crossings; a few lengths left solid, so the lattice is not a grid
-  hy.forEach(([y, h], k) => {
-    for (let s = 0; s < nv - 1; s++) {
-      if (R.chance(0.16) && k > 0 && k < nh - 1) continue;
-      const x0 = vx[s][0], x1 = vx[s + 1][0] + vx[s + 1][1];
-      carve(m, x0, y, x1 - x0, h);
-      areas.push({ x: x0, y, w: x1 - x0, h });
-      // columns down both sides of the length
-      if (h >= 8) for (let c = x0 + vx[s][1] + 3; c < x1 - vx[s + 1][1] - 2; c += 6) (m.columns.push([c * 16 + 8, (y + 1) * 16 + 8]), m.columns.push([c * 16 + 8, (y + h - 2) * 16 + 8]));
+/** Lay a passage `wd` wide along a polyline of tile points, square-on, onto tiles of kind `over` only. */
+function lane(m: TileMap, pts: [number, number][], wd: number, look: number, over: number): void {
+  const h0 = Math.floor((wd - 1) / 2);
+  for (let k = 1; k < pts.length; k++) {
+    const [ax, ay] = pts[k - 1], [bx, by] = pts[k], n = Math.max(Math.abs(bx - ax), Math.abs(by - ay));
+    for (let s = 0; s <= n; s++) {
+      const x = Math.round(ax + ((bx - ax) * s) / Math.max(1, n)), y = Math.round(ay + ((by - ay) * s) / Math.max(1, n));
+      for (let q = 0; q < wd; q++)
+        for (let p = 0; p < wd; p++) {
+          const c = x - h0 + p, r = y - h0 + q;
+          if (c >= 2 && r >= 4 && c < m.cols - 2 && r < m.rows - 2 && m.at(c, r) === over) m.set(c, r, FLOOR, look);
+        }
     }
-  });
-  vx.forEach(([x, w], k) => {
-    for (let s = 0; s < nh - 1; s++) {
-      if (R.chance(0.16) && k > 0 && k < nv - 1) continue;
-      const y0 = hy[s][0], y1 = hy[s + 1][0] + hy[s + 1][1];
-      carve(m, x, y0, w, y1 - y0);
-      areas.push({ x, y: y0, w, h: y1 - y0 });
-    }
-  });
-  // the ends of the outer galleries are carved through to the frame, so every crossing is reached
-  carve(m, left, top, right - left, hy[0][1]);
-  carve(m, left, bottom - hy[nh - 1][1], right - left, hy[nh - 1][1]);
-  // chambers in the blocks: a room inside, opened to the gallery above or below by a door three wide
-  for (let a = 0; a < nh - 1; a++)
-    for (let b = 0; b < nv - 1; b++) {
-      const bx = vx[b][0] + vx[b][1], bw = vx[b + 1][0] - bx, by = hy[a][0] + hy[a][1], bh = hy[a + 1][0] - by;
-      if (bw < 9 || bh < 8 || !R.chance(0.8)) continue;
-      const cw = Math.max(3, bw - 6 - R.int(0, 2)), ch = Math.max(2, bh - 6), cx = bx + 3 + R.int(0, bw - 6 - cw), cy = by + 3;
-      carve(m, cx, cy, cw, ch);
-      areas.push({ x: cx, y: cy, w: cw, h: ch });
-      const door = cx + Math.floor(cw / 2) - 2;
-      if (R.chance(0.5)) carve(m, door, by, 5, 3);
-      else carve(m, door, cy + ch, 5, by + bh - (cy + ch));
-    }
-  // a boss's floor: the blocks about the middle crossing knocked through into one great hall
-  if (plan.arena) {
-    const b = Math.floor((nv - 1) / 2), x0 = vx[b][0], x1 = vx[b + 1][0] + vx[b + 1][1], y0 = hy[0][0] + 2, y1 = hy[1][0] + hy[1][1];
-    carve(m, x0, y0, x1 - x0, y1 - y0);
-    m.arena = { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
-    m.columns = m.columns.filter(([x, y]) => !(x / 16 >= x0 - 1 && x / 16 <= x1 + 1 && y / 16 >= y0 - 1 && y / 16 <= y1 + 1));
   }
-  m.areas = areas;
+}
+/** A path that winds gently from one point to another (a garden walk): round brushes along an S. */
+function wind(m: TileMap, a: [number, number], b: [number, number], wd: number, R: Rnd): void {
+  const n = Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1]) * 1.5), amp = R.range(1.5, 3) * (R.chance(0.5) ? 1 : -1), rad = wd / 2;
+  const dx = b[0] - a[0], dy = b[1] - a[1], len = Math.hypot(dx, dy) || 1, nx = -dy / len, ny = dx / len;
+  for (let s = 0; s <= n; s++) {
+    const u = s / n, bend = Math.sin(u * Math.PI * 2) * amp * Math.sin(u * Math.PI), x = a[0] + dx * u + nx * bend, y = a[1] + dy * u + ny * bend;
+    for (let r = Math.floor(y - rad); r <= y + rad; r++) for (let c = Math.floor(x - rad); c <= x + rad; c++) if (Math.hypot(c + 0.5 - x - 0.5, r + 0.5 - y - 0.5) <= rad && c >= 2 && r >= 4 && c < m.cols - 2 && r < m.rows - 2 && m.at(c, r) === WALL) m.set(c, r, FLOOR);
+  }
 }
 
 /**
- * Caves: hollows of many sizes joined by winding tunnels three or four wide, roughened so nothing is straight; a
- * chasm or a pond in the biggest hollow, ice, clumps, as the plan asks.
+ * The way through a floor: chambers in two or three rows across the map, the way snaking through them (along the
+ * first row, down at its end, back along the next), each joined only to the one before and the one after; small
+ * side rooms off some of them for what is worth a detour. One way on, nowhere to get lost: the floor is a journey.
  */
-function caves(m: TileMap, R: Rnd, plan: MapPlan): void {
-  const { cols, rows } = m, hollows: [number, number, number, number][] = [];
-  const want = Math.round((cols * rows) / 470);
-  for (let tries = 0; tries < 600 && hollows.length < want; tries++) {
-    const rx = R.range(6, 11), ry = R.range(4.5, 8), cx = R.range(3 + rx, cols - 3 - rx), cy = R.range(6 + ry, rows - 3 - ry);
-    if (hollows.some(([x, y, a, b]) => Math.hypot((x - cx) / (a + rx + 4), (y - cy) / (b + ry + 3)) < 1)) continue;
-    hollows.push([cx, cy, rx, ry]);
+function journey(m: TileMap, R: Rnd, plan: MapPlan): void {
+  const { cols, rows } = m, isle = plan.shape === "isle", fill = isle ? PIT : WALL;
+  if (isle) for (let r = 4; r < rows - 2; r++) for (let c = 2; c < cols - 2; c++) m.set(c, r, PIT);
+  const lanes = plan.lanes, gap = isle ? 7 : 10, top = 6, bottom = rows - 4;
+  const laneH = Math.floor((bottom - top - gap * (lanes - 1)) / lanes), slot = (cols - 8) / plan.per;
+  const fromLeft = R.chance(0.5), chain: Area[] = [], laneOf: number[] = [];
+  for (let L = 0; L < lanes; L++) {
+    const y0 = top + L * (laneH + gap), row: Area[] = [];
+    for (let k = 0; k < plan.per; k++) {
+      const w = Math.max(10, Math.round(slot * R.range(0.5, 0.7))), h = Math.max(8, Math.min(laneH, Math.round(laneH * R.range(0.65, 0.95))));
+      const cx = 4 + slot * (k + 0.5) + R.range(-slot * 0.07, slot * 0.07);
+      row.push({ x: Math.round(cx - w / 2), y: Math.round(y0 + (laneH - h) * R.range(0.25, 0.75)), w, h });
+    }
+    // every other row runs back the other way
+    if ((L % 2 === 0) !== fromLeft) row.reverse();
+    for (const a of row) (chain.push(a), laneOf.push(L));
   }
-  // the biggest hollow in the middle, for what the plan puts there
-  if (plan.pit) hollows[0] = [cols / 2 + R.range(-3, 3), rows / 2 + R.range(-2, 2), cols * 0.17, rows * 0.17];
-  // a boss's floor: a great hollow of its own, to one side (the chasm keeps the middle)
-  if (plan.arena && hollows.length > 1) {
-    const left = R.chance(0.5), ax = left ? cols * 0.24 : cols * 0.76, ay = rows * R.range(0.4, 0.6);
-    hollows.splice(1, 0, [ax, ay, 13, 9]);
-    // hollows that would run into it go
-    for (let k = hollows.length - 1; k >= 2; k--) if (Math.hypot((hollows[k][0] - ax) / (13 + hollows[k][2]), (hollows[k][1] - ay) / (9 + hollows[k][3])) < 1) hollows.splice(k, 1);
-    m.arena = { x: Math.round(ax - 12), y: Math.round(ay - 8), w: 24, h: 16 };
+  // a boss's floor ends in its arena: the last chamber, grown to a great hall as tall as its row allows
+  if (plan.arena) {
+    const a = chain[chain.length - 1], L = laneOf[chain.length - 1], y0 = top + L * (laneH + gap), [cx] = mid(a);
+    const w = Math.min(28, Math.round(slot * 0.95)), h = Math.min(18, laneH);
+    Object.assign(a, { x: Math.max(3, Math.min(cols - 3 - w, Math.round(cx - w / 2))), y: Math.round(y0 + (laneH - h) / 2), w, h });
+    m.arena = { ...a };
   }
-  for (const [cx, cy, rx, ry] of hollows) {
-    const ph = R.range(0, 6.3);
-    for (let r = Math.floor(cy - ry - 2); r <= cy + ry + 2; r++)
-      for (let c = Math.floor(cx - rx - 2); c <= cx + rx + 2; c++) {
-        const a = Math.atan2(r - cy, c - cx), wob = 1 + 0.2 * Math.sin(a * 3 + ph) + 0.12 * Math.sin(a * 5 + ph * 2);
-        if (Math.hypot((c - cx) / rx, (r - cy) / ry) < wob) carve(m, c, r, 1, 1);
-      }
+  // the chasm (or pond) chamber: the middle one, grown, a drop in it crossed by the way
+  const deep = plan.pit ? Math.floor(chain.length / 2) - (chain.length % 2 === 0 ? 1 : 0) : -1;
+  if (deep >= 0) {
+    const a = chain[deep], L = laneOf[deep], y0 = top + L * (laneH + gap), [cx] = mid(a), w = Math.min(Math.round(slot * 0.9), 26);
+    Object.assign(a, { x: Math.round(cx - w / 2), y: y0, w, h: laneH });
   }
-  // tunnels: a worm from one hollow to the next, heading for it with a wander
-  const mids = hollows.map(([x, y]): [number, number] => [x, y]);
-  for (const [a, b] of links(mids, R, Math.ceil(hollows.length / 3))) {
-    let [x, y] = mids[a];
-    const [tx, ty] = mids[b], wd = R.range(2.2, 3);
-    let ang = Math.atan2(ty - y, tx - x);
-    for (let step = 0; step < 400 && Math.hypot(tx - x, ty - y) > 2; step++) {
-      const want2 = Math.atan2(ty - y, tx - x);
-      let d = want2 - ang;
-      while (d > Math.PI) d -= Math.PI * 2;
-      while (d < -Math.PI) d += Math.PI * 2;
-      ang += d * 0.35 + R.range(-0.6, 0.6);
-      x += Math.cos(ang);
-      y += Math.sin(ang) * 0.8;
-      for (let r = Math.floor(y - wd); r <= y + wd; r++) for (let c = Math.floor(x - wd); c <= x + wd; c++) if (Math.hypot(c - x, r - y) <= wd) carve(m, c, r, 1, 1);
+  for (const a of chain) chamber(m, a, plan.shape, R);
+  // the way: each chamber to the next, across a row or down between rows
+  for (let k = 1; k < chain.length; k++) {
+    const A = mid(chain[k - 1]), B = mid(chain[k]), turn = laneOf[k] !== laneOf[k - 1];
+    if (plan.link === "winding") wind(m, A, B, plan.wide, R);
+    else {
+      const mx = Math.round((A[0] + B[0]) / 2), my = Math.round((A[1] + B[1]) / 2);
+      const pts: [number, number][] = turn ? [A, [A[0], my], [B[0], my], B] : Math.abs(A[1] - B[1]) < 2 ? [A, [B[0], A[1]]] : [A, [mx, A[1]], [mx, B[1]], B];
+      lane(m, pts, plan.wide, isle ? LOOK_BRIDGE : LOOK_PLAIN, fill);
     }
   }
-  // roughen: two passes of the cave rule, which bites the corners and fills the specks
-  for (let it = 0; it < 2; it++) {
-    const next = new Uint8Array(m.t);
-    for (let r = 4; r < rows - 2; r++)
-      for (let c = 2; c < cols - 2; c++) {
-        let n = 0;
-        for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) if ((dr || dc) && m.at(c + dc, r + dr) === WALL) n++;
-        const v = m.at(c, r);
-        next[r * cols + c] = v === WALL ? (n <= 3 ? FLOOR : WALL) : n >= 6 || (n === 5 && R.chance(0.5)) ? WALL : FLOOR;
-      }
-    m.t.set(next);
-  }
-  if (plan.clumps)
-    for (let k = Math.round((cols * rows) / 520); k > 0; k--) {
-      const cx = R.int(6, cols - 7), cy = R.int(8, rows - 6), rad = R.range(1.1, 2.2);
-      for (let r = -3; r <= 3; r++) for (let c = -3; c <= 3; c++) if (Math.hypot(c, r * 1.2) < rad && m.at(cx + c, cy + r) === FLOOR) m.set(cx + c, cy + r, WALL);
-    }
-  // specks go; bigger stretches the roughening cut off are joined up again later
-  dropSmall(m, 24);
-  if (plan.pit) {
-    // in the big middle hollow, a drop with a rim of floor all round
+  // the drop in the chasm chamber, a rim of floor round it, and the way across it on a bridge
+  if (deep >= 0) {
+    const a = chain[deep], [cx, cy] = mid(a), rx = a.w * 0.3, ry = a.h * 0.32, ph = R.range(0, 6.3);
     m.measure();
-    const [cx, cy, rx0, ry0] = hollows[0], rx = rx0 * 0.62, ry = ry0 * 0.6, ph = R.range(0, 6.3);
-    for (let r = 4; r < rows - 2; r++)
-      for (let c = 2; c < cols - 2; c++) {
-        const a = Math.atan2(r - cy, c - cx), wob = 1 + 0.18 * Math.sin(a * 3 + ph) + 0.1 * Math.sin(a * 7 + ph * 2);
-        if (Math.hypot((c - cx) / rx, (r - cy) / ry) < wob && m.at(c, r) === FLOOR && m.open[r * cols + c] >= 2) m.set(c, r, PIT);
+    for (let r = a.y; r < a.y + a.h; r++)
+      for (let c = a.x; c < a.x + a.w; c++) {
+        const t = Math.atan2(r - cy, c - cx), k = 1 + 0.12 * Math.sin(t * 3 + ph) + 0.06 * Math.sin(t * 7 + ph);
+        if (Math.hypot((c - cx) / rx, (r - cy) / ry) < k && m.at(c, r) === FLOOR && m.open[r * cols + c] >= 2) m.set(c, r, PIT);
       }
-    // a little island in it, now and then, for the bridges to cross by
-    if (R.chance(0.6)) carve(m, Math.round(cx + R.range(-2, 2)), Math.round(cy + R.range(-1, 1)), 3, 2);
+    const P = mid(chain[deep - 1] ?? a), N = mid(chain[deep + 1] ?? a), C: [number, number] = [cx, cy];
+    lane(m, [P, C, N], 4, LOOK_BRIDGE, PIT);
   }
+  // side rooms: into the rock below a chamber (never past the next row's), joined by a short door
+  const nooks: Area[] = [];
+  for (let k = 1; k < chain.length; k++) {
+    const a = chain[k], L = laneOf[k];
+    if (L >= lanes - 1 || a === m.arena || k === deep || !R.chance(0.55)) continue;
+    const w = R.int(6, 8), h = isle ? 5 : 4, x = Math.round(a.x + a.w / 2 - w / 2 + R.range(-a.w * 0.2, a.w * 0.2)), y = a.y + a.h + 2;
+    const box = { x, y, w, h };
+    if (!solid(m, box, fill)) continue;
+    chamber(m, box, isle ? "isle" : plan.shape === "facet" ? "rect" : plan.shape, R);
+    const door = Math.round(x + w / 2);
+    lane(m, [[door, a.y + a.h - 2], [door, y + 1]], 3, isle ? LOOK_BRIDGE : LOOK_PLAIN, fill);
+    nooks.push(box);
+  }
+  // columns in pairs down the long sides of the big square halls
+  if (plan.columns)
+    for (const a of chain) {
+      if (a === m.arena || a.w < 13 || a.h < 10) continue;
+      for (let c = a.x + 3; c <= a.x + a.w - 4; c += Math.max(4, Math.floor((a.w - 7) / 2))) (m.columns.push([c * 16 + 8, (a.y + 2) * 16 + 8]), m.columns.push([c * 16 + 8, (a.y + a.h - 3) * 16 + 8]));
+    }
+  // the ossuary's niches: a recess every few steps along each hall's back wall
+  if (plan.niches) for (const a of chain) for (let c = a.x + 2; c < a.x + a.w - 2; c += 4) if (m.at(c, a.y - 1) === WALL && m.at(c, a.y - 2) === WALL) m.set(c, a.y - 1, FLOOR);
+  // hedges or boulders in the open chambers, set in mirrored pairs about the middle, the way through kept clear
+  if (plan.clumps)
+    for (const a of chain) {
+      if (a === m.arena || chain.indexOf(a) === deep || a.w < 12 || a.h < 9) continue;
+      const [cx, cy] = mid(a), dx = Math.round(a.w * 0.27), dy = Math.round(a.h * 0.25), rad = R.range(1.5, 2.1);
+      for (const [sx, sy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+        if (!R.chance(0.75)) continue;
+        for (let r = -2; r <= 2; r++) for (let c = -2; c <= 2; c++) if (Math.hypot(c, r * 1.2) < rad && m.at(cx + sx * dx + c, cy + sy * dy + r) === FLOOR) m.set(cx + sx * dx + c, cy + sy * dy + r, WALL);
+      }
+    }
+  // ice: one sheet in the middle of each chamber after the first, to slide across on the way
   if (plan.ice)
-    for (let k = Math.round((cols * rows) / 500), tries = 0; k > 0 && tries < 500; tries++) {
-      const cx = R.int(4, cols - 5), cy = R.int(6, rows - 4), rx = R.range(2.5, 6), ry = R.range(2, 4);
-      if (m.at(cx, cy) !== FLOOR) continue;
-      k--;
-      for (let r = -5; r <= 5; r++) for (let c = -7; c <= 7; c++) if (Math.hypot(c / rx, r / ry) < 1 && m.at(cx + c, cy + r) === FLOOR) m.set(cx + c, cy + r, FLOOR, LOOK_ICE);
+    for (const a of chain.slice(1)) {
+      if (a === m.arena) continue;
+      const [cx, cy] = mid(a), rx = a.w * R.range(0.22, 0.32), ry = a.h * R.range(0.2, 0.3);
+      for (let r = a.y; r < a.y + a.h; r++) for (let c = a.x; c < a.x + a.w; c++) if (Math.hypot((c - cx) / rx, (r - cy) / ry) < 1 && m.at(c, r) === FLOOR) m.set(c, r, FLOOR, LOOK_ICE);
     }
-  m.areas = hollows.map(([x, y, rx, ry]) => ({ x: Math.round(x - rx), y: Math.round(y - ry), w: Math.round(rx * 2), h: Math.round(ry * 2) }));
-}
-
-/** Islands over a drop, on a loose grid, joined by bridges three wide; on a boss's floor a great one in the middle. */
-function isles(m: TileMap, R: Rnd, plan: MapPlan): void {
-  const { cols, rows } = m, gx = cols >= 86 ? 5 : 4, gy = rows >= 60 ? 4 : 3, centres: [number, number][] = [];
-  for (let r = 4; r < rows - 2; r++) for (let c = 2; c < cols - 2; c++) m.set(c, r, PIT);
-  for (let j = 0; j < gy; j++)
-    for (let i = 0; i < gx; i++) {
-      if (R.chance(0.12) && centres.length > 3) continue;
-      const cw = (cols - 8) / gx, ch = (rows - 10) / gy;
-      const cx = Math.round(4 + cw * (i + 0.5) + R.range(-cw * 0.15, cw * 0.15)), cy = Math.round(6 + ch * (j + 0.5) + R.range(-ch * 0.15, ch * 0.15));
-      const mid = plan.arena && i === Math.floor(gx / 2) && j === Math.floor(gy / 2);
-      const rx = mid ? 13 : R.range(cw * 0.34, cw * 0.44), ry = mid ? 9 : R.range(ch * 0.34, ch * 0.44), ph = R.range(0, 6.3);
-      if (mid) m.arena = { x: cx - 11, y: cy - 7, w: 22, h: 14 };
-      for (let r = -Math.ceil(ry) - 2; r <= Math.ceil(ry) + 2; r++)
-        for (let c = -Math.ceil(rx) - 2; c <= Math.ceil(rx) + 2; c++) {
-          const a = Math.atan2(r, c), wob = 1 + 0.15 * Math.sin(a * 3 + ph) + 0.08 * Math.sin(a * 5 + ph * 1.7);
-          if (Math.hypot(c / rx, r / ry) < wob) m.set(cx + c, cy + r, FLOOR);
-        }
-      centres.push([cx, cy]);
-      m.areas.push({ x: Math.round(cx - rx), y: Math.round(cy - ry), w: Math.round(rx * 2), h: Math.round(ry * 2) });
-    }
-  for (const [a, b] of links(centres, R, 2)) corridor(m, centres[a][0], centres[a][1], centres[b][0], centres[b][1], 3, R.chance(0.5), FLOOR, LOOK_BRIDGE, PIT);
+  m.route = chain;
+  m.nooks = nooks;
+  m.areas = [...chain, ...nooks];
+  m.start = mid(chain[0]);
 }
 
 /** Flood the floor from a tile; returns the region's tiles. */
@@ -523,14 +461,6 @@ function region(m: TileMap, s: number, seen: Uint8Array, through = (v: number) =
     }
   }
   return out;
-}
-/** Stretches of floor smaller than `n` tiles become wall. */
-function dropSmall(m: TileMap, n: number): void {
-  const seen = new Uint8Array(m.t.length);
-  for (let i = 0; i < m.t.length; i++) if (m.t[i] === FLOOR && !seen[i]) {
-    const reg = region(m, i, seen);
-    if (reg.length < n) for (const j of reg) m.t[j] = WALL;
-  }
 }
 /** Keep the biggest stretch of floor; the rest becomes `fill`. */
 function keepLargest(m: TileMap, fill: number): void {
@@ -563,7 +493,8 @@ function joinUp(m: TileMap, R: Rnd): void {
     const ac = pa % m.cols, ar = (pa - ac) / m.cols, bc = pb % m.cols, br = (pb - bc) / m.cols;
     // over drops a bridge; through walls a passage
     const over = (v: number) => v;
-    for (const kind of [PIT, WALL]) corridor(m, ac, ar, bc, br, 3, R.chance(0.5), FLOOR, kind === PIT ? LOOK_BRIDGE : LOOK_PLAIN, over(kind));
+    const pts: [number, number][] = R.chance(0.5) ? [[ac, ar], [bc, ar], [bc, br]] : [[ac, ar], [ac, br], [bc, br]];
+    for (const kind of [PIT, WALL]) lane(m, pts, 3, kind === PIT ? LOOK_BRIDGE : LOOK_PLAIN, over(kind));
   }
 }
 
@@ -582,27 +513,21 @@ function veins(m: TileMap, R: Rnd): void {
 /** Make the floor's map. The frame (four rows of wall on top, two around) is always there. */
 export function buildMap(plan: MapPlan, R: Rnd): TileMap {
   const m = new TileMap(plan.cols, plan.rows);
-  if (plan.gen === "rooms") rooms(m, R, plan);
-  else if (plan.gen === "halls") halls(m, R, plan);
-  else if (plan.gen === "caves") caves(m, R, plan);
-  else isles(m, R, plan);
+  journey(m, R, plan);
   m.measure();
-  // the way in: an open tile towards one side, in the left third or the right third
-  const fromLeft = R.chance(0.5);
-  let best = -1, bs = -Infinity;
+  // the way in: the open tile nearest the first chamber's middle
+  let best = -1, bd = Infinity;
   for (let r = 0; r < m.rows; r++)
     for (let c = 0; c < m.cols; c++) {
       const i = r * m.cols + c;
-      if (m.t[i] !== FLOOR || m.open[i] < 2 || m.look[i] === LOOK_BRIDGE) continue;
-      // (on a boss's floor, as far from the arena as can be)
-      const A = m.arena, away = A ? Math.hypot(c - (A.x + A.w / 2), (r - (A.y + A.h / 2)) * 1.3) : 0;
-      const side = A ? away * 1.6 : fromLeft ? m.cols - c : c, score = Math.min(m.open[i], 4) * 6 + side * 0.8 - Math.abs(r - m.rows / 2) * 0.6 + R.range(0, 6);
-      if (score > bs) (bs = score), (best = i);
+      if (m.t[i] !== FLOOR || m.open[i] < 2 || m.look[i] !== LOOK_PLAIN) continue;
+      const d = Math.hypot(c - m.start[0], r - m.start[1]);
+      if (d < bd) (bd = d), (best = i);
     }
   if (best < 0) best = m.t.findIndex((v) => v === FLOOR);
   m.start = [best % m.cols, Math.floor(best / m.cols)];
   joinUp(m, R);
-  if (plan.gen !== "isles" && plan.gen !== "caves") keepLargest(m, WALL);
+  if (plan.shape !== "isle") keepLargest(m, WALL);
   if (plan.veins) veins(m, R);
   // columns only where they leave the way open
   m.measure();
@@ -615,17 +540,19 @@ export function buildMap(plan: MapPlan, R: Rnd): TileMap {
  * second changed, the third at the height of the change (and the boss). Sizes grow as the tower goes down.
  */
 export const MAP_PLANS: MapPlan[] = [
-  // the crypt: galleries of rooms; the ossuary's lattice of halls; the catacombs' heart, a cave round a chasm
-  { gen: "rooms", cols: 84, rows: 60 },
-  { gen: "halls", cols: 90, rows: 64 },
-  { gen: "caves", cols: 96, rows: 66, pit: true, veins: true, arena: true },
-  // the garden: walled walks; the drowned garden, islands in water; its heart, a cave of roots round a pond
-  { gen: "rooms", cols: 90, rows: 64 },
-  { gen: "isles", cols: 96, rows: 68 },
-  { gen: "caves", cols: 100, rows: 70, pit: true, clumps: true, arena: true },
-  // the frost: galleries of rime; ice caves to slide in; the throne of the void, islands over nothing
-  { gen: "halls", cols: 96, rows: 68 },
-  { gen: "caves", cols: 102, rows: 70, ice: true, clumps: true },
-  { gen: "isles", cols: 104, rows: 72, arena: true },
+  // the crypt: square halls joined straight, columns down them; the ossuary, longer, niches in its walls; the
+  // catacombs' heart, rough hollows round a chasm, its arena at the end
+  { cols: 84, rows: 52, shape: "rect", lanes: 2, per: 3, link: "straight", wide: 5, columns: true },
+  { cols: 90, rows: 62, shape: "rect", lanes: 3, per: 3, link: "straight", wide: 5, columns: true, niches: true },
+  { cols: 96, rows: 60, shape: "cave", lanes: 2, per: 3, link: "straight", wide: 4, pit: true, veins: true, arena: true },
+  // the garden: round clearings on winding walks, hedges about; the drowned garden, islands on bridges; its heart,
+  // clearings round a pond, the arena at the end
+  { cols: 90, rows: 54, shape: "round", lanes: 2, per: 3, link: "winding", wide: 5, clumps: true },
+  { cols: 96, rows: 64, shape: "isle", lanes: 3, per: 3, link: "straight", wide: 4 },
+  { cols: 100, rows: 60, shape: "round", lanes: 2, per: 3, link: "winding", wide: 5, pit: true, clumps: true, arena: true },
+  // the frost: faceted halls of rime; ice caves, a sheet to slide on in each; the throne of the void, islands over
+  // nothing to the arena
+  { cols: 96, rows: 64, shape: "facet", lanes: 3, per: 3, link: "straight", wide: 5, columns: true },
+  { cols: 102, rows: 66, shape: "cave", lanes: 3, per: 3, link: "winding", wide: 5, ice: true, clumps: true },
+  { cols: 104, rows: 60, shape: "isle", lanes: 2, per: 3, link: "straight", wide: 4, arena: true },
 ];
-

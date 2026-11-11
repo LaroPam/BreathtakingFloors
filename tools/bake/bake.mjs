@@ -17,7 +17,7 @@ import { createFrame, clearFrame, createFx, hex } from "../../pixelfx/src/core/i
 import { DUMMY_PAL } from "../../pixelfx/src/core/actor.js";
 import { loadEffect, edgeFade, isScreen } from "../../pixelfx/tools/lib/fxlib.mjs";
 import { encodePNG } from "../../pixelfx/tools/lib/png.mjs";
-import { ANIMS } from "./manifest.mjs";
+import { ANIMS, isLate } from "./manifest.mjs";
 import { fontGlyphs } from "./font.mjs";
 import { weaponModelFrames, heroPoses } from "./weapons.mjs";
 import { FX_PAD } from "./canvas.mjs";
@@ -79,7 +79,7 @@ function renderEffect(mod, meta, e, extraOpts = {}) {
     n = Math.max(1, Math.floor(T * fps + 1e-6) + 1);
     dt = 1 / fps;
   }
-  const frame = createFrame(W, H);
+  const frame = createFrame(W, H), front = e.body ? createFrame(W, H) : null;
   const inst = createFx(mod, { x: OX, y: OY, ...(e.opts ?? {}), ...extraOpts });
   const fade = !isScreen(meta), out = [];
   for (let i = 0; i < n; i++) {
@@ -88,7 +88,15 @@ function renderEffect(mod, meta, e, extraOpts = {}) {
     inst.draw(frame);
     if (fade) edgeFade(frame);
     const lightTest = shapeLight(frame.light, e.light ?? "full");
-    out.push({ color: trim(frame.color, W, H, OX, OY, hasColor), light: trim(frame.light, W, H, OX, OY, lightTest) });
+    const f = { color: trim(frame.color, W, H, OX, OY, hasColor), light: trim(frame.light, W, H, OX, OY, lightTest) };
+    // the hitbox is measured on the creature alone: its front layer, without what it leaves on the floor behind it
+    // (a slime's puddle, landed drips, shadows), which would pull the box down and back from the body
+    if (front) {
+      clearFrame(front);
+      inst.draw(front, "front");
+      f.bodyColor = trim(front.color, W, H, OX, OY, hasColor);
+    }
+    out.push(f);
   }
   // a one-shot ends empty: drop the empty tail so the game knows when it is over
   if (!meta.loop) while (out.length > 1 && !out[out.length - 1].color && !out[out.length - 1].light) out.pop();
@@ -122,10 +130,12 @@ function renderModel(e) {
     }
     let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
     for (let i = 0; i < f.n; i++) (x0 = Math.min(x0, f.xs[i]), x1 = Math.max(x1, f.xs[i]), y0 = Math.min(y0, f.ys[i]), y1 = Math.max(y1, f.ys[i]));
-    const W = x1 - x0 + 1, H = y1 - y0 + 1, buf = new Uint32Array(W * H);
+    const W = x1 - x0 + 1, H = y1 - y0 + 1, buf = new Uint32Array(W * H), lit = f.light?.some((v) => v) ? new Uint32Array(W * H) : null;
     for (let i = 0; i < f.n; i++) buf[(f.ys[i] - y0) * W + (f.xs[i] - x0)] = f.color[i] >>> 0;
-    // anchor at the middle of the blade's box, so it turns in place
-    out.push({ color: trim(buf, W, H, Math.round(W / 2), Math.round(H / 2), hasColor), light: null });
+    if (lit) for (let i = 0; i < f.n; i++) lit[(f.ys[i] - y0) * W + (f.xs[i] - x0)] = f.light[i] >>> 0;
+    // anchor at the middle of the blade's box, so it turns in place; what glows (a book's runes) in its own layer
+    const cx = Math.round(W / 2), cy = Math.round(H / 2);
+    out.push({ color: trim(buf, W, H, cx, cy, hasColor), light: lit ? trim(lit, W, H, cx, cy, hasColor) : null });
   }
   return { fps: e.fps ?? 10, loop: true, frames: out, cut: false };
 }
@@ -133,28 +143,41 @@ function renderModel(e) {
 // ---------------------------------------------------------------------------------------------------- packing
 const images = [], byHash = new Map();
 /** Register an image for packing, sharing identical ones. Returns its index. */
-function addImage(img) {
+function addImage(img, late = false) {
   let h = 2166136261 ^ img.w ^ (img.h << 16);
   for (let i = 0; i < img.data.length; i++) h = Math.imul(h ^ img.data[i], 16777619);
   const key = `${h >>> 0}:${img.w}x${img.h}`, list = byHash.get(key) ?? [];
   for (const j of list) {
     const o = images[j];
-    if (o.data.length === img.data.length && o.data.every((v, i) => v === img.data[i])) return j;
+    // (shared with something needed from the start: it is needed from the start)
+    if (o.data.length === img.data.length && o.data.every((v, i) => v === img.data[i])) return (o.late = o.late && late), j;
   }
+  img.late = late;
   images.push(img);
   list.push(images.length - 1);
   byHash.set(key, list);
   return images.length - 1;
 }
 
-/** Shelf-pack images, tallest first, into PAGE x PAGE pages. Sets img.page, img.x, img.y. */
+/**
+ * Shelf-pack images, tallest first, into PAGE x PAGE pages. Sets img.page, img.x, img.y. What is needed from the
+ * start fills the first pages; what is needed later (isLate) starts on a page of its own after them, so the game can
+ * begin before those load. Sets `bootPages`, the number of the first.
+ */
+let bootPages = 0;
 function pack() {
-  const order = images.map((_, i) => i).sort((a, b) => images[b].h - images[a].h || images[b].w - images[a].w);
+  const bySize = (a, b) => images[b].h - images[a].h || images[b].w - images[a].w, all = images.map((_, i) => i);
+  const early = all.filter((i) => !images[i].late).sort(bySize), late = all.filter((i) => images[i].late).sort(bySize);
   const pages = [];
   let page = -1, x = 0, y = 0, shelf = 0;
   const newPage = () => { pages.push(new Uint32Array(PAGE * PAGE)); page++; x = 0; y = 0; shelf = 0; };
   newPage();
-  for (const i of order) {
+  for (const i of [...early, -1, ...late]) {
+    if (i < 0) {
+      bootPages = pages.length;
+      if (late.length) newPage();
+      continue;
+    }
     const img = images[i], w = img.w + PAD, h = img.h + PAD;
     if (w > PAGE || h > PAGE) throw new Error(`image ${img.w}x${img.h} is bigger than a page`);
     if (x + w > PAGE) { x = 0; y += shelf; shelf = 0; }
@@ -185,11 +208,11 @@ for (const e of ANIMS) {
   const r = parts[0];
   let px = 0;
   const frames = r.frames.map((f) => {
-    const c = f.color ? addImage(f.color) : -1, l = f.light ? addImage(f.light) : -1;
+    const late = isLate(e.name), c = f.color ? addImage(f.color, late) : -1, l = f.light ? addImage(f.light, late) : -1;
     px += (f.color ? f.color.w * f.color.h : 0) + (f.light ? f.light.w * f.light.h : 0);
     return [c, l];
   });
-  anims[e.name] = { fps: +r.fps.toFixed(4), loop: r.loop, cut: r.cut, frames, ...(r.keys ? { keys: r.keys } : {}), ...(e.hits ? { hits: e.hits } : {}), ...(e.body ? { body: r.frames.map((f) => bodyOf(f.color)) } : {}) };
+  anims[e.name] = { fps: +r.fps.toFixed(4), loop: r.loop, cut: r.cut, frames, ...(r.keys ? { keys: r.keys } : {}), ...(e.hits ? { hits: e.hits } : {}), ...(e.body ? { body: r.frames.map((f) => bodyOf(f.bodyColor ?? f.color)) } : {}) };
   stats.push([e.name, frames.length, px]);
 }
 
@@ -228,13 +251,13 @@ pages.forEach((P, i) => {
     writeFileSync(join(ROOT, "records", `atlas-preview-${i}.png`), encodePNG(PAGE, PAGE, v));
   }
 });
-const json = { version: 1, page: PAGE, pages: pages.length, anims, fonts, dummy: DUMMY_PAL };
+const json = { version: 1, page: PAGE, pages: pages.length, boot: bootPages, anims, fonts, dummy: DUMMY_PAL };
 writeFileSync(join(OUT, "atlas.json"), JSON.stringify(json));
 // the heroes' poses: the game draws them itself (src/game/heroSprites.ts)
 writeFileSync(join(OUT, "poses.json"), JSON.stringify(heroPoses()));
 
 stats.sort((a, b) => b[2] - a[2]);
 const used = images.reduce((s, i) => s + (i.w + PAD) * (i.h + PAD), 0);
-console.log(`baked ${Object.keys(anims).length} animations, ${images.length} images into ${pages.length} page(s), ` +
+console.log(`baked ${Object.keys(anims).length} animations, ${images.length} images into ${pages.length} page(s) (${bootPages} to start), ` +
   `${(used / (pages.length * PAGE * PAGE) * 100).toFixed(0)}% full, ${(bytes / 1024).toFixed(0)} KiB of PNG, ${((performance.now() - t0) / 1000).toFixed(1)} s`);
 console.log("largest: " + stats.slice(0, 8).map(([n, f, p]) => `${n} ${f}f ${(p / 1000).toFixed(0)}k px`).join(", "));

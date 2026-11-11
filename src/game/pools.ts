@@ -49,6 +49,8 @@ export class Enemies {
   }
 
   remove(i: number): void {
+    // (an index past the live ones is already gone: removing it would drop the last live enemy instead)
+    if (i < 0 || i >= this.n) return;
     const j = --this.n;
     if (i === j) return;
     const all = [this.x, this.y, this.vx, this.vy, this.kx, this.ky, this.hp, this.maxHp, this.type, this.t, this.flash, this.cd, this.fuse, this.uid, this.phase, this.speedMul,
@@ -89,6 +91,7 @@ export class Bullets {
   }
 
   remove(i: number): void {
+    if (i < 0 || i >= this.n) return;
     const j = --this.n;
     if (i === j) return;
     for (const a of [this.x, this.y, this.vx, this.vy, this.life, this.dmg, this.r, this.team, this.kind, this.el, this.pierce, this.grazed, this.t, this.src]) a[i] = a[j];
@@ -114,6 +117,7 @@ export class Drops {
     return i;
   }
   remove(i: number): void {
+    if (i < 0 || i >= this.n) return;
     const j = --this.n;
     if (i === j) return;
     for (const a of [this.x, this.y, this.vx, this.vy, this.value, this.kind, this.t, this.pulled]) a[i] = a[j];

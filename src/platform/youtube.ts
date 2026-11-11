@@ -50,14 +50,16 @@ export class YouTubePlatform extends BasePlatform {
       return null;
     }
   }
-  override async save(data: SaveData, _now = false): Promise<void> {
+  override async save(data: SaveData, _now = false): Promise<boolean> {
     if (!this.yt) return super.save(data);
-    if (!this.loaded) return; // saving before a successful load is rejected by the platform
+    if (!this.loaded) return false; // saving before a successful load is rejected by the platform
     try {
       await this.yt.game.saveData(JSON.stringify(data));
+      return true;
     } catch (e) {
       this.yt.health?.logWarning?.();
       console.warn("saveData failed", e);
+      return false;
     }
   }
   override canShowRewarded(): boolean {

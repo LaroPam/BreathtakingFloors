@@ -37,7 +37,7 @@ export interface Purchase {
 }
 
 export interface Platform {
-  readonly name: "local" | "yandex" | "youtube";
+  readonly name: "local" | "yandex" | "youtube" | "vk" | "pikabu";
   /** Connect to the platform's SDK. Never throws: a missing SDK degrades to local behaviour. */
   init(): Promise<void>;
   /** The player's language as a two-letter code. */
@@ -51,8 +51,11 @@ export interface Platform {
   gameplayStart(): void;
   gameplayStop(): void;
   load(): Promise<SaveData | null>;
-  /** Keep the save. `now`: it must reach the platform's storage at once (a purchase was just delivered). */
-  save(data: SaveData, now?: boolean): Promise<void>;
+  /**
+   * Keep the save. `now`: it must reach the platform's storage at once (a purchase was just delivered). Resolves
+   * true once it is safely kept (with `now`, in the platform's own storage), false if that failed.
+   */
+  save(data: SaveData, now?: boolean): Promise<boolean>;
   /** The platform pauses and resumes the game (ads, a hidden tab, the YouTube app going to the background). */
   onPause(cb: () => void): void;
   onResume(cb: () => void): void;
@@ -70,6 +73,9 @@ export interface Platform {
   /** Whether the player could sign in to get on the boards (a guest on Yandex), and doing it. */
   canSignIn(): boolean;
   signIn(): Promise<boolean>;
+  /** Telling friends about the game (VK's share dialog), where the platform has it; true if it was shared. */
+  canShare(): boolean;
+  share(): Promise<boolean>;
   /** In-game purchases: whether there is a shop here, its catalog, buying, and consuming a delivered consumable. */
   shopAvailable(): boolean;
   catalog(): Promise<Product[]>;
@@ -77,12 +83,13 @@ export interface Platform {
   buy(id: string): Promise<Purchase | null>;
   /** Purchases not yet delivered (a consumable whose delivery was cut short) and every lasting one. */
   purchases(): Promise<Purchase[]>;
-  consume(token: string): Promise<void>;
+  /** Mark a delivered consumable as done; true if the platform took it. */
+  consume(token: string): Promise<boolean>;
 }
 
 /** Shared by all builds: pause on a hidden tab, mobile detection, and browser storage as a fallback. */
 export abstract class BasePlatform implements Platform {
-  abstract readonly name: "local" | "yandex" | "youtube";
+  abstract readonly name: "local" | "yandex" | "youtube" | "vk" | "pikabu";
   protected pauseCbs: (() => void)[] = [];
   protected resumeCbs: (() => void)[] = [];
   protected audioCbs: ((on: boolean) => void)[] = [];
@@ -137,11 +144,13 @@ export abstract class BasePlatform implements Platform {
       return null;
     }
   }
-  async save(data: SaveData, _now = false): Promise<void> {
+  async save(data: SaveData, _now = false): Promise<boolean> {
     try {
       localStorage.setItem("bf-save", JSON.stringify(data));
+      return true;
     } catch {
       /* private mode or storage full: the run still counts this session */
+      return false;
     }
   }
   onPause(cb: () => void): void {
@@ -168,7 +177,9 @@ export abstract class BasePlatform implements Platform {
   async purchases(): Promise<Purchase[]> {
     return [];
   }
-  async consume(_token: string): Promise<void> {}
+  async consume(_token: string): Promise<boolean> {
+    return true;
+  }
   canShowRewarded(): boolean {
     return false;
   }
@@ -184,6 +195,12 @@ export abstract class BasePlatform implements Platform {
     return false;
   }
   async signIn(): Promise<boolean> {
+    return false;
+  }
+  canShare(): boolean {
+    return false;
+  }
+  async share(): Promise<boolean> {
     return false;
   }
 }

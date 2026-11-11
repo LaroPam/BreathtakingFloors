@@ -18,6 +18,8 @@ declare const YaGames: { init(): Promise<YSDK> } | undefined;
 
 /** Cloud writes: at most one every few seconds (player.setData allows 100 requests in 5 minutes). */
 const CLOUD_EVERY = 4000;
+/** After a failed cloud write, the next try comes this much later (unless a newer save comes first). */
+const CLOUD_RETRY = 15_000;
 /** A leaderboard is asked again only after this long (getEntries allows 20 requests in 5 minutes). */
 const BOARD_TTL = 60_000;
 
@@ -40,6 +42,10 @@ export class YandexPlatform extends BasePlatform {
   private cloudNext: Stored | null = null;
   private cloudTimer = 0;
   private cloudLast = 0;
+  /** The cloud writes, one after another in order (a slow old write never lands after a newer one). */
+  private cloudChain: Promise<boolean> = Promise.resolve(true);
+  /** A write waiting in the chain must go out at once (a purchase): the SDK's flush flag. */
+  private cloudFlush = false;
   private boardCache = new Map<BoardName, { at: number; board: Board }>();
 
   override async init(): Promise<void> {
@@ -50,7 +56,7 @@ export class YandexPlatform extends BasePlatform {
       // the platform pauses the game for its ads (the one it shows at the start too), purchases and hidden tabs
       this.sdk.on("game_api_pause", () => {
         this.sdkPaused = true;
-        this.flushCloud();
+        void this.flushCloud();
         this.pauseCbs.forEach((f) => f());
       });
       this.sdk.on("game_api_resume", () => {
@@ -76,7 +82,7 @@ export class YandexPlatform extends BasePlatform {
       console.warn("Yandex SDK unavailable, running without it", e);
     }
     // the cloud write still waiting goes out before the page is left
-    addEventListener("pagehide", () => this.flushCloud());
+    addEventListener("pagehide", () => void this.flushCloud());
   }
   /** A pause that came before the game was listening (the ad at the start) still reaches it. */
   override onPause(cb: () => void): void {
@@ -128,31 +134,50 @@ export class YandexPlatform extends BasePlatform {
     // the first time on Yandex with this version: the old device save, if any
     return local?.save ?? (await super.load());
   }
-  override async save(data: SaveData, now = false): Promise<void> {
-    const stored: Stored = { at: Date.now(), save: data };
+  override async save(data: SaveData, now = false): Promise<boolean> {
+    // a copy that changes no more (the game keeps changing its own save object)
+    const stored: Stored = { at: Date.now(), save: JSON.parse(JSON.stringify(data)) as SaveData };
+    let local = true;
     try {
       localStorage.setItem(this.localKey, JSON.stringify(stored));
     } catch {
       /* private mode: the cloud copy is the only one */
+      local = false;
     }
-    if (!this.player) return;
+    if (!this.player) return local;
     this.cloudNext = stored;
     if (now) return this.flushCloud(true);
-    if (!this.cloudTimer) this.cloudTimer = window.setTimeout(() => this.flushCloud(), Math.max(0, this.cloudLast + CLOUD_EVERY - Date.now()));
+    if (!this.cloudTimer) this.cloudTimer = window.setTimeout(() => void this.flushCloud(), Math.max(0, this.cloudLast + CLOUD_EVERY - Date.now()));
+    return local;
   }
-  /** Send the waiting save to the cloud (flush: at once, not queued by the SDK). */
-  private async flushCloud(flush = false): Promise<void> {
+  /**
+   * Send the waiting save to the cloud (flush: at once, not queued by the SDK). Writes go one at a time, in order;
+   * a failed one is tried again a little later unless a newer save has taken its place. Resolves true once the
+   * latest save is in the cloud.
+   */
+  private flushCloud(flush = false): Promise<boolean> {
     clearTimeout(this.cloudTimer);
     this.cloudTimer = 0;
-    const next = this.cloudNext;
-    if (!next || !this.player) return;
-    this.cloudNext = null;
-    this.cloudLast = Date.now();
-    try {
-      await this.player.setData({ save: next.save, at: next.at }, flush);
-    } catch {
-      /* kept on the device; the next save tries again */
-    }
+    this.cloudFlush = this.cloudFlush || flush;
+    const run = async (): Promise<boolean> => {
+      const next = this.cloudNext, fl = this.cloudFlush;
+      if (!next || !this.player) return true;
+      this.cloudNext = null;
+      this.cloudFlush = false;
+      this.cloudLast = Date.now();
+      try {
+        await this.player.setData({ save: next.save, at: next.at }, fl);
+        return true;
+      } catch {
+        // kept on the device; the cloud gets it on the retry, or with the next save
+        if (!this.cloudNext) this.cloudNext = next;
+        this.cloudFlush = this.cloudFlush || fl;
+        if (!this.cloudTimer) this.cloudTimer = window.setTimeout(() => void this.flushCloud(), CLOUD_RETRY);
+        return false;
+      }
+    };
+    this.cloudChain = this.cloudChain.then(run, run);
+    return this.cloudChain;
   }
   override submitScore(score: number, board: BoardName = "score"): void {
     if (!this.sdk || !this.authorized()) return; // only signed-in players have a place on the boards
@@ -236,11 +261,13 @@ export class YandexPlatform extends BasePlatform {
       return [];
     }
   }
-  override async consume(token: string): Promise<void> {
+  override async consume(token: string): Promise<boolean> {
     try {
       await this.pay?.consumePurchase(token);
+      return !!this.pay;
     } catch {
-      /* consumed next time the game starts (it is delivered again then: see Game.deliverPending) */
+      /* consumed next time the game starts (see Game.deliverPending: it is not given twice) */
+      return false;
     }
   }
   override canShowRewarded(): boolean {

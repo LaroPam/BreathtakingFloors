@@ -11,7 +11,7 @@ const bar = document.getElementById("bootbar") as HTMLElement | null;
 const bootEl = document.getElementById("boot");
 
 async function boot(): Promise<void> {
-  const platform = createPlatform();
+  const platform = await createPlatform();
   await platform.init();
   platform.firstFrame();
 
