@@ -168,31 +168,51 @@ export class Game {
   private catalog: Product[] | null = null;
   private shopNote = "";
   private shopBusy = false;
-  /** Give the player what a purchase bought: embers, every hero, or a lasting boon recorded in the save. */
-  private deliver(id: string): void {
+  /**
+   * Give the player what a purchase bought: embers, every hero, or a lasting boon recorded in the save. A consumable
+   * is given once per purchase token: the token stays in the save until the platform has taken the purchase back,
+   * so a purchase seen again (the consume failed, the game closed) is not given twice.
+   */
+  private deliver(id: string, token?: string): void {
     const item = SHOP.find((q) => q.id === id);
     if (!item) return;
+    if (token && !item.lasting) {
+      if (this.save.delivered.includes(token)) return;
+      this.save.delivered.push(token);
+    }
     if (item.embers) this.save.embers += item.embers;
     if (item.lasting && !this.save.purchases.includes(id)) this.save.purchases.push(id);
     if (id === "heroes_all") for (const hd of HEROES) if (!this.save.unlocked.includes(hd.id)) this.save.unlocked.push(hd.id);
     this.persist();
     this.checkAch();
   }
-  /** Consumables bought but not delivered are delivered and consumed; lasting ones are restored. */
+  /**
+   * A consumable delivered: only once the save holding it is safely kept is the purchase marked done (the platform
+   * forgets it then, for good). If the save or the consume fails, both are tried again at the next start.
+   */
+  private async settle(token: string): Promise<void> {
+    if (!(await this.platform.save(this.save, true))) return;
+    if (!(await this.platform.consume(token))) return;
+    this.save.delivered = this.save.delivered.filter((q) => q !== token);
+    this.persist();
+  }
+  /** Consumables bought but not yet done are delivered (once) and settled; lasting ones are restored. */
   private async deliverPending(): Promise<void> {
     if (!this.platform.shopAvailable()) return;
-    for (const p of await this.platform.purchases()) {
+    const list = await this.platform.purchases();
+    for (const p of list) {
       const item = SHOP.find((q) => q.id === p.id);
       if (!item) continue;
       if (item.lasting) {
         if (!this.save.purchases.includes(item.id)) this.deliver(item.id);
       } else {
-        // the save first, in the cloud, then the purchase is marked delivered (it cannot be restored after that)
-        this.deliver(item.id);
-        await this.platform.save(this.save, true);
-        await this.platform.consume(p.token);
+        this.deliver(item.id, p.token);
+        await this.settle(p.token);
       }
     }
+    // tokens of purchases the platform no longer has were consumed (only their removal did not get saved)
+    const live = new Set(list.map((p) => p.token)), keep = this.save.delivered.filter((q) => live.has(q));
+    if (keep.length !== this.save.delivered.length) (this.save.delivered = keep), this.persist();
   }
   private async purchase(item: ShopItem): Promise<void> {
     if (this.shopBusy) return;
@@ -203,9 +223,9 @@ export class Game {
       this.shopNote = t("shopFail");
       return;
     }
-    this.deliver(item.id);
-    await this.platform.save(this.save, true);
-    if (!item.lasting) await this.platform.consume(p.token);
+    this.deliver(item.id, item.lasting ? undefined : p.token);
+    if (item.lasting) await this.platform.save(this.save, true);
+    else await this.settle(p.token);
     this.shopNote = t("shopThanks");
     this.audio.play("chest");
     this.audio.play("levelup", 1.2);

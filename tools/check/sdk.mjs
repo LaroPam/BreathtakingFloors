@@ -44,7 +44,7 @@ const YANDEX = `(function () {
         getUniqueID: () => (authorized ? "me" : "guest"),
         getName: () => (authorized ? "Me" : ""),
         getData: async (keys) => (log("getData"), keys ? Object.fromEntries(keys.filter((k) => k in cloud).map((k) => [k, cloud[k]])) : { ...cloud }),
-        setData: async (d, flush) => (log("setData:" + (flush ? "flush" : "queue") + ":" + (d.save ? d.save.embers : "")), (cloud = { ...cloud, ...d })),
+        setData: async (d, flush) => { if (window.__failCloud) { log("setData:fail"); throw new Error("offline"); } log("setData:" + (flush ? "flush" : "queue") + ":" + (d.save ? d.save.embers : "")); cloud = { ...cloud, ...d }; },
       }),
       auth: { openAuthDialog: async () => (log("openAuthDialog"), (authorized = true)) },
       leaderboards: {
@@ -57,7 +57,7 @@ const YANDEX = `(function () {
       },
       getPayments: async () => ({
         getCatalog: async () => [{ id: "embers_500", title: "500", description: "", imageURI: "", price: "29 YAN", priceValue: "29", priceCurrencyCode: "YAN", getPriceCurrencyImage: () => "" }],
-        purchase: async ({ id }) => (log("purchase:" + id), { productID: id, purchaseToken: "t-" + id }),
+        purchase: async ({ id }) => { log("purchase:" + id); const p = { productID: id, purchaseToken: "t-" + id + "-" + calls.length }; pending.push(p); return p; },
         getPurchases: async () => (log("getPurchases"), pending.slice()),
         consumePurchase: async (t) => (log("consume:" + t), (pending = pending.filter((p) => p.purchaseToken !== t))),
       }),
@@ -183,8 +183,20 @@ else {
   {
     const before = (await g.calls()).length;
     await g.ev(() => window.__game.purchase({ id: "embers_500", embers: 500 }));
-    const c = (await g.calls()).slice(before), bought = c.indexOf("purchase:embers_500"), saved = c.findIndex((x, k) => k > bought && x.startsWith("setData:flush")), used = c.indexOf("consume:t-embers_500");
+    const c = (await g.calls()).slice(before), bought = c.indexOf("purchase:embers_500"), saved = c.findIndex((x, k) => k > bought && x.startsWith("setData:flush")), used = c.findIndex((x) => x.startsWith("consume:t-embers_500"));
     ok(bought >= 0 && saved > bought && used > saved, "a purchase: delivered, saved to the cloud at once, then consumed");
+  }
+  {
+    // the cloud is down as the player buys: nothing is consumed; back up, the next start settles it, giving nothing twice
+    await g.ev(() => (window.__failCloud = true));
+    const e0 = await g.ev(() => window.__game.save.embers), before = (await g.calls()).length;
+    await g.ev(() => window.__game.purchase({ id: "embers_1500", embers: 1500 }));
+    let c = (await g.calls()).slice(before);
+    ok(!c.some((x) => x.startsWith("consume:t-embers_1500")) && (await g.ev(() => window.__game.save.embers)) === e0 + 1500, "the cloud fails during a purchase: the embers are given, the purchase is not consumed");
+    await g.ev(() => (window.__failCloud = false));
+    await g.ev(() => window.__game.deliverPending());
+    c = (await g.calls()).slice(before);
+    ok(c.some((x) => x.startsWith("consume:t-embers_1500")) && (await g.ev(() => window.__game.save.embers)) === e0 + 1500 && (await g.ev(() => window.__game.save.delivered.length)) === 0, "the next start settles it: saved, consumed, and not given twice");
   }
   {
     const before = (await g.calls()).filter((x) => x.startsWith("setData")).length;

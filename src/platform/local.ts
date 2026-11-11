@@ -24,8 +24,9 @@ export class LocalPlatform extends BasePlatform {
   override async purchases(): Promise<Purchase[]> {
     return [];
   }
-  override async consume(token: string): Promise<void> {
+  override async consume(token: string): Promise<boolean> {
     this.bought = this.bought.filter((p) => p.token !== token);
+    return true;
   }
   override canShowRewarded(): boolean {
     return !new URLSearchParams(location.search).has("noads");
