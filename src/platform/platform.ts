@@ -37,7 +37,7 @@ export interface Purchase {
 }
 
 export interface Platform {
-  readonly name: "local" | "yandex" | "youtube";
+  readonly name: "local" | "yandex" | "youtube" | "vk" | "pikabu";
   /** Connect to the platform's SDK. Never throws: a missing SDK degrades to local behaviour. */
   init(): Promise<void>;
   /** The player's language as a two-letter code. */
@@ -86,7 +86,7 @@ export interface Platform {
 
 /** Shared by all builds: pause on a hidden tab, mobile detection, and browser storage as a fallback. */
 export abstract class BasePlatform implements Platform {
-  abstract readonly name: "local" | "yandex" | "youtube";
+  abstract readonly name: "local" | "yandex" | "youtube" | "vk" | "pikabu";
   protected pauseCbs: (() => void)[] = [];
   protected resumeCbs: (() => void)[] = [];
   protected audioCbs: ((on: boolean) => void)[] = [];

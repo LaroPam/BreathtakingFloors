@@ -14,6 +14,9 @@
     "build": "npm run bake && tsc --noEmit && vite build",
     "build:yandex": "npm run bake && tsc --noEmit && vite build --mode yandex && node tools/zip.mjs dist-yandex",
     "build:youtube": "npm run bake && tsc --noEmit && vite build --mode youtube && node tools/zip.mjs dist-youtube",
+    "build:vk": "npm run bake && tsc --noEmit && vite build --mode vk && node tools/zip.mjs dist-vk",
+    "build:pikabu": "npm run bake && tsc --noEmit && vite build --mode pikabu && node tools/zip.mjs dist-pikabu",
+    "build:web": "npm run bake && tsc --noEmit && vite build && node tools/zip.mjs dist",
     "build:single": "npm run bake && tsc --noEmit && vite build --mode single && node tools/single.mjs",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
@@ -29,5 +32,8 @@
   "devDependencies": {
     "typescript": "6.0.3",
     "vite": "8.3.4"
+  },
+  "dependencies": {
+    "@vkontakte/vk-bridge": "3.0.2"
   }
 }
