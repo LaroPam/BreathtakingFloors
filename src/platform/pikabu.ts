@@ -58,16 +58,25 @@ const SDK_URL = "https://games.pikabu.ru/sdk/sdk.js";
 /** Explicit flushes: at most 100 in 5 minutes; the SDK also saves by itself shortly after each change. */
 const FLUSH_EVERY = 4000;
 
-/** Load the SDK's script (its documented dynamic way); resolves false if it does not come (outside the platform). */
+/** How long to wait for the SDK's script, and for PkbSDK.init(), before the game goes on without them (ms). */
+const SCRIPT_WAIT = 10_000;
+const INIT_WAIT = 15_000;
+
+/** Load the SDK's script (its documented dynamic way); resolves false if it does not come (an ad blocker, no network). */
 function loadScript(): Promise<boolean> {
   return new Promise((done) => {
     const s = document.createElement("script");
+    const timer = setTimeout(() => done(false), SCRIPT_WAIT);
     s.src = SDK_URL;
     s.async = true;
-    s.onload = () => done(true);
-    s.onerror = () => done(false);
+    s.onload = () => (clearTimeout(timer), done(true));
+    s.onerror = () => (clearTimeout(timer), done(false));
     document.head.append(s);
   });
+}
+/** A promise, or null if it has not settled within `ms`. */
+function within<T>(p: Promise<T>, ms: number): Promise<T | null> {
+  return Promise.race([p, new Promise<null>((done) => setTimeout(() => done(null), ms))]);
 }
 
 export class PikabuPlatform extends BasePlatform {
@@ -81,8 +90,15 @@ export class PikabuPlatform extends BasePlatform {
   override async init(): Promise<void> {
     this.watchFocus();
     try {
+      // the SDK works only inside the platform's page (or its Studio test page), always in a frame: opened on its
+      // own, from the site that hosts it, the game runs as a plain web page rather than wait for an answer
+      if (window.top === window.self) return;
       if (!(await loadScript()) || typeof PkbSDK === "undefined") return;
-      this.sdk = await PkbSDK.init();
+      this.sdk = await within(PkbSDK.init(), INIT_WAIT);
+      if (!this.sdk) {
+        console.warn("Pikabu SDK did not answer, running without it");
+        return;
+      }
       this.sdk.on("storageSaveError", ((reason: StorageSaveFailureReason) => {
         // another device or tab changed the save: saving stops until a reload, which brings the newer progress
         if (reason === "REVISION_CONFLICT") location.reload();

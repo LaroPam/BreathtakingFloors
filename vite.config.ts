@@ -21,7 +21,9 @@ function platformHtml(target: Target): Plugin {
   return {
     name: "platform-html",
     transformIndexHtml(html) {
-      return html.replace("<!-- PLATFORM_SDK -->", SDK[target]);
+      // Pikabu asks for Russian on launch, whatever the browser's language: the loader too
+      const out = html.replace("<!-- PLATFORM_SDK -->", SDK[target]);
+      return target === "pikabu" ? out.replace('<html lang="ru">', '<html lang="ru" data-ru="1">') : out;
     },
   };
 }

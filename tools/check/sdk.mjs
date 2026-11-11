@@ -142,6 +142,9 @@ const VK_PARENT = `<!doctype html><meta charset="utf-8"><style>html,body{margin:
   });
 </script>`;
 
+// A platform's page with the game in a frame (Pikabu shows games this way; its SDK answers only there).
+const FRAME_PARENT = `<!doctype html><meta charset="utf-8"><style>html,body{margin:0;height:100%;background:#000}iframe{border:0;width:100%;height:100%}</style><iframe id="g" src="/"></iframe>`;
+
 // ------------------------------------------------------------------------------------------ helpers
 const TYPES = { ".html": "text/html", ".js": "text/javascript", ".png": "image/png", ".json": "application/json", ".css": "text/css" };
 function serve(dir, sdk) {
@@ -149,6 +152,7 @@ function serve(dir, sdk) {
     const u = decodeURIComponent((req.url ?? "/").split("?")[0]);
     if (u === "/sdk.js") return res.writeHead(200, { "content-type": "text/javascript" }).end(sdk);
     if (u === "/__vk.html") return res.writeHead(200, { "content-type": "text/html" }).end(VK_PARENT);
+    if (u === "/__frame.html") return res.writeHead(200, { "content-type": "text/html" }).end(FRAME_PARENT);
     try {
       const f = join(dir, u === "/" ? "index.html" : u);
       res.writeHead(200, { "content-type": TYPES[extname(f)] ?? "application/octet-stream" }).end(await readFile(f));
@@ -159,15 +163,24 @@ function serve(dir, sdk) {
   return new Promise((done) => server.listen(0, () => done(server)));
 }
 
-async function open(browser, dir, sdk, route, viewport) {
+async function open(browser, dir, sdk, route, viewport, framed = false) {
   const server = await serve(dir, sdk), page = await browser.newPage({ viewport, locale: "ru-RU" }), errors = [];
   page.on("pageerror", (e) => errors.push(e.message));
   if (route) await page.route(route, (r) => r.fulfill({ contentType: "text/javascript", body: sdk }));
-  await page.goto(`http://localhost:${server.address().port}/`);
-  await page.waitForFunction(() => window.__game && window.__game.now > 0.5, null, { timeout: 30000 });
-  const ev = (f, a) => page.evaluate(f, a);
+  await page.goto(`http://localhost:${server.address().port}/${framed ? "__frame.html" : ""}`);
+  // (framed: everything is asked of the game's frame)
+  const target = () => (framed ? page.frames().find((f) => f !== page.mainFrame()) : page);
+  const ready = async () => {
+    for (let k = 0; k < 300; k++) {
+      if (await target()?.evaluate(() => !!window.__game && window.__game.now > 0.5).catch(() => false)) return;
+      await page.waitForTimeout(100);
+    }
+    throw new Error("the game did not start");
+  };
+  await ready();
+  const ev = (f, a) => target().evaluate(f, a);
   const g = {
-    page, errors, ev,
+    page, errors, ev, ready,
     state: () => ev(() => window.__game.state),
     now: () => ev(() => window.__game.now),
     calls: () => ev(() => window.__sdk.slice()),
@@ -324,7 +337,13 @@ const pDir = join(ROOT, "dist-pikabu");
 console.log("\npikabu");
 if (!existsSync(pDir)) ok(false, "not built: run npm run build:pikabu");
 else {
-  const g = await open(browser, pDir, PIKABU, "https://games.pikabu.ru/sdk/sdk.js", { width: 960, height: 540 });
+  {
+    // opened on its own (straight from the site that hosts it): no SDK to wait for, the game starts as a web page
+    const t0 = Date.now(), g0 = await open(browser, pDir, PIKABU, "https://games.pikabu.ru/sdk/sdk.js", { width: 960, height: 540 });
+    ok(Date.now() - t0 < 20000 && !(await g0.ev(() => (window.__sdk ?? []).includes("init"))), "opened on its own, not in the platform's frame: starts at once without the SDK");
+    await g0.close();
+  }
+  const g = await open(browser, pDir, PIKABU, "https://games.pikabu.ru/sdk/sdk.js", { width: 960, height: 540 }, true);
   let c = await g.calls();
   ok(c[0] === "init" && c.filter((x) => x === "init").length === 1, "PkbSDK.init() once");
   ok(c.includes("gameStarted"), "sdk.gameStarted() once the first screen is ready");
@@ -359,7 +378,7 @@ else {
   ok((await g.calls()).includes("storage.set:save"), "progress goes to sdk.storage");
   const embers = await g.ev(() => window.__game.save.embers);
   await g.page.reload();
-  await g.page.waitForFunction(() => window.__game && window.__game.now > 0.5, null, { timeout: 30000 });
+  await g.ready();
   ok((await g.ev(() => window.__game.save.embers)) === embers, `after a reload the progress comes back from the storage (${embers} embers)`);
   ok(!g.errors.length, `no errors on the page${g.errors.length ? ": " + g.errors.join("; ") : ""}`);
   await g.close();
