@@ -1929,7 +1929,10 @@ export class World {
   // ============================================================================================ damage & elements
   /** Hurt enemy i. Returns true if it died. */
   damage(i: number, amount: number, el: El, o: { crit?: boolean; force?: boolean; quiet?: boolean; react?: boolean; as?: El } = {}): boolean {
-    const E = this.enemies, d = ENEMIES[E.type[i]];
+    const E = this.enemies;
+    // (an index from before an enemy died this step can be past the live ones: nothing there to hurt)
+    if (i < 0 || i >= E.n) return false;
+    const d = ENEMIES[E.type[i]], uid = E.uid[i];
     if (d.ai === AI.Phantom && !o.force && !this.inLight(E.x[i], E.y[i])) {
       if (this.rng.chance(0.3)) this.popup(E.x[i], E.y[i] - 30, "~", rgba("#8090c0"));
       return false;
@@ -1965,6 +1968,12 @@ export class World {
       this.popup(this.bx, this.by - this.bry - 6, String(Math.round(dmg)), o.crit ? rgba("#ffe03c") : el ? rgba(EL_COLOR[el]) : rgba("#ffffff"), big);
     }
     if (el !== El.None && o.react !== false) this.applyEl(i, el);
+    // a reaction may have killed others (or this one) and so moved the enemies about: find this one again by its
+    // uid, never by where it stood (that slot may now hold another, the boss, or be past the live ones)
+    if (i >= E.n || E.uid[i] !== uid) {
+      i = this.indexOf(uid);
+      if (i < 0) return true;
+    }
     if (E.hp[i] <= 0) {
       this.kill(i);
       return true;
@@ -2096,6 +2105,8 @@ export class World {
   }
 
   private kill(i: number): void {
+    // (only ever a live one: a stale index would take the last live enemy with it)
+    if (i < 0 || i >= this.enemies.n) return;
     const E = this.enemies, type = E.type[i], d = ENEMIES[type], x = E.x[i], y = E.y[i], h0 = this.hero;
     this.body(i);
     const cx = this.bx, cy = this.by;
