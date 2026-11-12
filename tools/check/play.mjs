@@ -167,7 +167,8 @@ for (const hero of heroes) {
           h.y = gt.y + 10;
         }
         if (B.gateT >= 0 && B.gateFloor === w.floor && gt) {
-          B.gateT += 1 / 60;
+          // (the world stands still on the gift screen and in a cut-scene: only its own time counts)
+          if (G.state === "play" && !w.cine) B.gateT += 1 / 60;
           if (gt.open >= 1) {
             const r = gt.room, mid = map.at(r.x + (r.w >> 1), r.y + (r.h >> 1)), way = map.at(gt.x / 16, gt.y / 16 - 2);
             if (mid !== 0 || way !== 0) B.log.push(`floor ${w.floor}: the gate opened but its vault is not open (room ${mid}, passage ${way})`);

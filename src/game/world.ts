@@ -183,9 +183,10 @@ const MINI_ORB: Partial<Record<PlaceId, number>> = { crypt: 3, garden: 4, frost:
  * LANCE_EASE seconds they slide out of what made them, slow at first, then are loosed. `lanceTravel(t)` is how far one
  * has gone by then, in seconds at full speed (the drawing crops them by it).
  */
-export const LANCE_EASE = 0.16;
-const lanceRamp = (t: number): number => (t >= LANCE_EASE ? 1 : 0.15 + 0.85 * (t / LANCE_EASE) ** 2);
-export const lanceTravel = (t: number): number => (t >= LANCE_EASE ? LANCE_EASE * (0.15 + 0.85 / 3) + (t - LANCE_EASE) : 0.15 * t + (0.85 * t ** 3) / (3 * LANCE_EASE ** 2));
+export const LANCE_EASE = 0.22;
+const LANCE_V0 = 0.12;
+const lanceRamp = (t: number): number => (t >= LANCE_EASE ? 1 : LANCE_V0 + (1 - LANCE_V0) * (t / LANCE_EASE) ** 2);
+export const lanceTravel = (t: number): number => (t >= LANCE_EASE ? LANCE_EASE * (LANCE_V0 + (1 - LANCE_V0) / 3) + (t - LANCE_EASE) : LANCE_V0 * t + ((1 - LANCE_V0) * t ** 3) / (3 * LANCE_EASE ** 2));
 /** An elite's lunge: it stops and shivers (wind-up), then rushes along the line to the hero. */
 export const LUNGE_WIND = 0.42, LUNGE_DASH = 0.34;
 /** How long a dash pressed too soon waits for its chance (s). */
@@ -3033,7 +3034,7 @@ export class World {
             const base = this.rng.range(0, Math.PI * 2), skip = new Set<number>();
             for (let k = 0; k < 10; k++) {
               const a = base + (k * Math.PI * 2) / 10;
-              this.bullets.add(TEAM_HERO, B_LANCE, ox + Math.cos(a) * 6, oy + Math.sin(a) * 5, Math.cos(a) * 250, Math.sin(a) * 250, 1.1, 18 * m, 4, El.Frost, 3);
+              this.bullets.add(TEAM_HERO, B_LANCE, ox + Math.cos(a) * 2, oy + Math.sin(a) * 2, Math.cos(a) * 250, Math.sin(a) * 250, 1.1, 18 * m, 4, El.Frost, 3);
             }
             for (let k = 0; k < 3; k++) {
               const j = this.nearestEnemy(ox, oy, 290, skip);
@@ -3057,7 +3058,7 @@ export class World {
               this.body(j);
               a = Math.atan2(this.by - oy, this.bx - ox);
             } else a = Math.atan2(h.aimY, h.aimX) + (k - (n - 1) / 2) * 0.3;
-            this.bullets.add(TEAM_HERO, B_LANCE, ox + Math.cos(a) * 4, oy + Math.sin(a) * 4, Math.cos(a) * 280, Math.sin(a) * 280, 1.0, 16 * (L >= 5 ? 1.4 : 1) * m, 4, El.Frost, L >= 4 ? 3 : 2);
+            this.bullets.add(TEAM_HERO, B_LANCE, ox, oy, Math.cos(a) * 280, Math.sin(a) * 280, 1.0, 16 * (L >= 5 ? 1.4 : 1) * m, 4, El.Frost, L >= 4 ? 3 : 2);
           }
           this.audio.play("freeze", 0.7);
           break;
