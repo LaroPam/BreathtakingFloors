@@ -21,11 +21,15 @@ export const BULLET_ANIMS = ["crescent", "ice_lance", "orb_red", "orb_violet", "
 // drop kinds
 export const D_BLUE = 0, D_GREEN = 1, D_RED = 2, D_HEART = 3, D_CHEST = 4, D_EMBER = 5;
 export const B_ARROW = 6, B_FIREBALL = 7;
+/** A crossbow's bolt (drawn as a heavier arrow), a chakram (drawn by draw.ts, turning). */
+export const B_BOLT = 8, B_CHAKRAM = 9;
+/** How long a chakram flies out before it turns for home (s). */
+const CHAKRAM_OUT = 0.45;
 /** The hero's hitbox against enemy shots: a small circle at the chest, the same for every hero (draw.ts shows it). */
 export const HERO_R = 4.5, HERO_HIT_Y = 13;
 /** An enemy shot's hit radius. */
 const FOE_SHOT_R = 5;
-BULLET_ANIMS.push("arrow", "fireball");
+BULLET_ANIMS.push("arrow", "fireball", "arrow", "crescent");
 const ATK_FPS = 20;
 const ELEMENTS = [El.Fire, El.Frost, El.Storm, El.Venom, El.Holy, El.Void];
 /** What the floor kicks up under the feet, per biome. */
@@ -600,6 +604,8 @@ export class World {
   stats: Stats = { edge: 1, haste: 1, reach: 1, wave: 0, parry: 0, speed: 1, magnet: 44, dashCd: 3.5, odGain: 1, crit: 0.05, lantern: 1, might: 1 };
   statLevels: Partial<Record<StatId, number>> = {};
   frostOrb: FrostOrb | null = null;
+  /** The bell's peals: rings of sound spreading from where it was rung (draw.ts), `r` growing to `R` over `t`. */
+  soundRings: { x: number; y: number; r: number; R: number; t: number }[] = [];
   warns: Warn[] = [];
   beams: Beam[] = [];
   erupts: Erupt[] = [];
@@ -775,6 +781,7 @@ export class World {
     this.miniCalled = false;
     this.pulls = [];
     this.wayStone = null;
+    this.soundRings = [];
     this.rimeTrail = [];
     this.toHero = new Flow(this.map, false);
     this.toHeroFly = new Flow(this.map, true);
@@ -1303,6 +1310,9 @@ export class World {
     });
     for (const a of this.arcs) a.life -= dt;
     this.arcs = this.arcs.filter((a) => a.life > 0);
+    // the bell's peals spread and fade
+    for (const r of this.soundRings) (r.t += dt), r.t > 0 && (r.r += (r.R - r.r) * Math.min(1, dt * 9));
+    if (this.soundRings.length) this.soundRings = this.soundRings.filter((r) => r.t < 0.45);
     for (const p of this.popups) {
       p.t += dt;
       p.y -= dt * (p.big ? 18 : 26) * Math.max(0, 1 - p.t * 1.5);
@@ -1628,6 +1638,50 @@ export class World {
       }
       return;
     }
+    if (B.kind === "bolt" || B.kind === "chakram") {
+      // a crossbow's bolt, heavy and straight through; a chakram thrown out to come back
+      const [hx, hy] = this.handPos(), bolt = B.kind === "bolt", n = 1 + s.wave + (h.legend && !bolt ? 1 : 0), spread = bolt ? 0.08 : 0.35;
+      const goal = this.autoAim ? (this.target.r > 0 ? this.target : null) : this.aimTarget;
+      const base = goal && Math.hypot(goal.x - hx, goal.y - hy) > 10 ? Math.atan2(goal.y - hy, goal.x - hx) : dir, speed = bolt ? 430 : 320;
+      for (let q = 0; q < n; q++) {
+        const a = base + (q - (n - 1) / 2) * spread;
+        this.bullets.add(TEAM_HERO, bolt ? B_BOLT : B_CHAKRAM, hx + Math.cos(a) * 7, hy + Math.sin(a) * 7, Math.cos(a) * speed, Math.sin(a) * speed, bolt ? 1 : 3, dmg, bolt ? 4 : 6.5, wel, bolt ? 4 + (h.legend ? 2 : 0) : 99);
+      }
+      this.audio.play(bolt ? "shoot" : "dash", bolt ? 0.45 : 1.6);
+      this.addFx("hit_spark", hx + Math.cos(dir) * 4, hy + Math.sin(dir) * 4 + 8, { rot: dir + Math.PI, sx: 0.45, sy: 0.45, glow: 0.9, key: 4, tint: wel ? rgba(EL_COLOR[wel]) : 0xffffffff });
+      if (bolt) this.shake = Math.max(this.shake, 0.12);
+      return;
+    }
+    if (B.kind === "chain") {
+      // lightning out of the staff's head to the foe it points at, leaping on from each to the nearest not yet struck
+      const [hx, hy] = this.handPos(), tx0 = hx + Math.cos(dir) * 12, ty0 = hy + Math.sin(dir) * 12, el = wel || El.Storm;
+      const hit = new Set<number>(), jumps = 3 + s.wave + (h.legend ? 2 : 0);
+      let px = tx0, py = ty0, d = dmg, j = this.target.r > 0 ? this.nearestEnemy(this.target.x, this.target.y, 40) : this.nearestEnemy(h.x, cy, W.range);
+      const jag = (x0: number, y0: number, x1: number, y1: number): number[] => {
+        const pts = [x0, y0];
+        for (let q = 1; q < 4; q++) {
+          const u = q / 4, nx = -(y1 - y0), ny = x1 - x0, L = Math.hypot(nx, ny) || 1;
+          const o = this.rng.range(-7, 7);
+          pts.push(x0 + (x1 - x0) * u + (nx / L) * o, y0 + (y1 - y0) * u + (ny / L) * o);
+        }
+        pts.push(x1, y1);
+        return pts;
+      };
+      if (j < 0) this.arcs.push({ pts: jag(tx0, ty0, tx0 + Math.cos(dir) * 40, ty0 + Math.sin(dir) * 40), life: 0.1, color: rgba(EL_COLOR[el]) });
+      for (let q = 0; q <= jumps && j >= 0; q++) {
+        const E2 = this.enemies, uid = E2.uid[j];
+        hit.add(uid);
+        this.body(j);
+        const ex = this.bx, ey = this.by;
+        this.arcs.push({ pts: jag(px, py, ex, ey), life: 0.14, color: q === 0 ? rgba("#ffffff") : rgba(EL_COLOR[el]) });
+        this.addFx("hit_spark", ex, ey + 10, { sx: 0.5, sy: 0.5, glow: 0.9, key: 2, tint: rgba(EL_COLOR[el]) });
+        this.damage(j, d * (this.rng.chance(s.crit) ? 2 : 1), el);
+        (px = ex), (py = ey), (d *= 0.85);
+        j = this.nearestEnemy(ex, ey, B.reach, hit);
+      }
+      this.audio.play("zap", 0.9);
+      return;
+    }
     if (B.kind === "storm") {
       // lightning out of the sky onto the foe nearest where the hero aims
       const ax = h.x + Math.cos(dir) * 90, ay = cy + Math.sin(dir) * 90;
@@ -1690,6 +1744,12 @@ export class World {
       }
       hits++;
     });
+    // the bell's peal: a ring of sound out to the blow's reach (two for its great toll)
+    if (h.weapon === "bell" && hit === 0) {
+      this.soundRings.push({ x: h.x, y: h.y - 8, r: 6, R, t: 0 });
+      if (k === 1) this.soundRings.push({ x: h.x, y: h.y - 8, r: 0, R: R * 0.7, t: -0.08 });
+      this.audio.play("holy", k === 1 ? 0.7 : 1);
+    }
     // urns in the blow's reach break
     if (B.kind === "front") this.smashUrns(fx, fy, R);
     else this.smashUrns(cx, cy, R, dir, B.kind === "around" ? Math.PI : arc);
@@ -2410,6 +2470,7 @@ export class World {
     // a miniboss pays like a hoard: a chest, a heart, embers and red crystals
     if (d.ai === AI.Mini) {
       this.mini = null;
+      this.ev.count("minis");
       this.drops.add(D_CHEST, x, y, 1, 0, -30);
       this.drops.add(D_HEART, x + this.rng.range(-20, 20), y, 1, 0, -20);
       for (let q = 0; q < 8; q++) this.drops.add(D_EMBER, x, y - 4, 1, this.rng.range(-70, 70), this.rng.range(-80, -10));
@@ -4498,6 +4559,22 @@ export class World {
       B.t[i] += dt;
       B.life[i] -= dt;
       // (a lance of the hero's eases out of the orb or the book before it flies)
+      // a chakram slows as it flies out, then turns for the hero's hand and is caught there (cutting again on the way)
+      if (B.kind[i] === B_CHAKRAM && B.team[i] === TEAM_HERO) {
+        if (!B.grazed[i] && B.t[i] >= CHAKRAM_OUT) (B.grazed[i] = 1), B.hits.fill(0, i * 4, i * 4 + 4);
+        if (B.grazed[i]) {
+          const dx = h.x - B.x[i], dy = h.y - 18 - B.y[i], d = Math.hypot(dx, dy) || 1, k = Math.min(1, dt * 9);
+          B.vx[i] += ((dx / d) * 360 - B.vx[i]) * k;
+          B.vy[i] += ((dy / d) * 360 - B.vy[i]) * k;
+          if (d < 12 || B.t[i] > 2.6) {
+            B.remove(i);
+            continue;
+          }
+        } else {
+          B.vx[i] *= 1 - dt * 1.8;
+          B.vy[i] *= 1 - dt * 1.8;
+        }
+      }
       const ease = B.kind[i] === B_LANCE && B.team[i] === TEAM_HERO ? lanceRamp(B.t[i]) : 1;
       B.x[i] += B.vx[i] * dt * ease;
       B.y[i] += B.vy[i] * dt * ease;
@@ -4516,7 +4593,10 @@ export class World {
         }
       } else if (this.parts.n < 1500 && R.chance(dt * 2.5)) this.parts.add(x, y, 0, 0, 0.3, rgba(ORB_TRAIL[kind] || "#ff5a6a", 0.7), 1, 0, 1);
       // columns stop enemy bullets (and the hero's lances), not his crescents
-      if (this.map.wall(x, y + 14) || (B.kind[i] !== B_CRESCENT && this.pillars.some((p) => (x - p.x) ** 2 + (y + 14 - p.y) ** 2 < (p.r + 2) ** 2))) {
+      if (B.kind[i] === B_CHAKRAM && B.team[i] === TEAM_HERO) {
+        // (a wall only turns a chakram home; coming home it passes over everything)
+        if (!B.grazed[i] && this.map.wall(x, y + 14)) (B.grazed[i] = 1), B.hits.fill(0, i * 4, i * 4 + 4), this.burst(x, y, 4, rgba("#e8edf6"), 40, 0.2);
+      } else if (this.map.wall(x, y + 14) || (B.kind[i] !== B_CRESCENT && this.pillars.some((p) => (x - p.x) ** 2 + (y + 14 - p.y) ** 2 < (p.r + 2) ** 2))) {
         this.burst(x, y, 4, B.team[i] === TEAM_FOE ? rgba("#ff8a9a") : rgba("#c4ecff"), 40, 0.25);
         B.remove(i);
         continue;
@@ -4530,15 +4610,16 @@ export class World {
           if (!this.touches(x, y, B.r[i])) return;
           const uid = E.uid[j], base = i * 4;
           for (let k = 0; k < 4; k++) if (B.hits[base + k] === uid) return;
-          for (let k = 0; k < 4; k++)
-            if (!B.hits[base + k]) {
-              B.hits[base + k] = uid;
-              break;
-            }
+          // (it remembers four it struck; with no room left to remember one more, it strikes no more on this pass)
+          let slot = -1;
+          for (let k = 0; k < 4 && slot < 0; k++) if (!B.hits[base + k]) slot = k;
+          if (slot < 0) return;
+          B.hits[base + slot] = uid;
           const sp = Math.hypot(B.vx[i], B.vy[i]) || 1, crit = this.rng.chance(this.stats.crit);
           if (ENEMIES[E.type[j]].ai < AI.Boss) {
-            E.kx[j] += (B.vx[i] / sp) * 40;
-            E.ky[j] += (B.vy[i] / sp) * 40;
+            const push = B.kind[i] === B_BOLT ? 120 : 40;
+            E.kx[j] += (B.vx[i] / sp) * push;
+            E.ky[j] += (B.vy[i] / sp) * push;
           }
           const ex = this.bx, ey = this.by;
           if (B.kind[i] === B_FIREBALL) {
@@ -4551,11 +4632,11 @@ export class World {
           }
           const dead = this.damage(j, B.dmg[i] * (crit ? 2 : 1), B.el[i] as El, { crit });
           // the Skybow's arrow splits in two on its first hit
-          if (B.kind[i] === B_ARROW && this.hero.legend && !B.grazed[i]) {
+          if ((B.kind[i] === B_ARROW || B.kind[i] === B_BOLT) && this.hero.legend && !B.grazed[i]) {
             B.grazed[i] = 1;
             const a = Math.atan2(B.vy[i], B.vx[i]), sp = Math.hypot(B.vx[i], B.vy[i]);
             for (const da of [-0.35, 0.35]) {
-              const q = this.bullets.add(TEAM_HERO, B_ARROW, x, y, Math.cos(a + da) * sp, Math.sin(a + da) * sp, 0.45, B.dmg[i] * 0.6, 3.5, B.el[i], 0);
+              const q = this.bullets.add(TEAM_HERO, B.kind[i], x, y, Math.cos(a + da) * sp, Math.sin(a + da) * sp, 0.45, B.dmg[i] * 0.6, 3.5, B.el[i], 0);
               if (q >= 0) this.bullets.grazed[q] = 1;
             }
           }

@@ -11,6 +11,7 @@ export const IDS = [
   "edge", "haste", "reach", "wave", "parry", "speed", "maxhp", "magnet", "dashcd", "overdrive", "crit", "lantern",
   // weapons
   "w_sword", "w_hammer", "w_spear", "w_scythe", "w_daggers", "w_bow", "w_spell", "w_greatsword", "w_claws", "w_whip",
+  "w_flail", "w_glaive", "w_crossbow", "w_staff", "w_chakram", "w_bell",
 ];
 
 export const meta = {
@@ -41,7 +42,7 @@ const KIND = {
   edge: "gold", haste: "gold", reach: "gold", wave: "gold", parry: "steel", speed: "steel", maxhp: "life",
   magnet: "steel", dashcd: "steel", overdrive: "holy", crit: "gold", lantern: "holy",
   w_sword: "arms", w_hammer: "arms", w_spear: "arms", w_scythe: "arms", w_daggers: "arms", w_bow: "arms", w_spell: "arms",
-  w_greatsword: "arms", w_claws: "arms", w_whip: "arms",
+  w_greatsword: "arms", w_claws: "arms", w_whip: "arms", w_flail: "arms", w_glaive: "arms", w_crossbow: "arms", w_staff: "arms", w_chakram: "arms", w_bell: "arms",
 };
 
 function badge(p, [dark, mid, rim]) {
@@ -271,6 +272,48 @@ Object.assign(SYMBOLS, {
       p.line(4, 4, 8, 6, pick(ink, "#b47c40"));
     });
     p.px(8, 6, H("#ffe26b")); p.px(9, 7, H("#ff8a2a")); p.px(-8, 8, H("#ffd84a"));
+  },
+  w_flail(p) {
+    outlined(p, (ink) => {
+      p.line(-7, 7, -3, 3, pick(ink, "#a8683a"));
+      p.line(-2, 2, 1, -1, pick(ink, "#7a7890"));
+      p.circle(4, -4, 3, pick(ink, "#7a7890"));
+    });
+    p.px(3, -5, H("#c4c4d4")); p.px(7, -7, H("#e8edf6")); p.px(1, -7, H("#e8edf6")); p.px(7, -1, H("#e8edf6"));
+  },
+  w_glaive(p) {
+    outlined(p, (ink) => {
+      p.line(-8, 8, 2, -2, pick(ink, "#5a3a2a"));
+      p.poly([[2, -2], [5, -2], [8, -6], [8, -9], [4, -6]], pick(ink, "#c4d4ec"));
+    });
+    p.px(1, -1, H("#ffd84a")); p.px(8, -9, H("#ffffff"));
+  },
+  w_crossbow(p) {
+    outlined(p, (ink) => {
+      p.line(-7, 7, 4, -4, pick(ink, "#a8683a"));
+      p.arc(1, -1, 6, () => 1.4, -Math.PI / 4 - 1.1, -Math.PI / 4 + 1.1, () => pick(ink, "#a4afc6"));
+    });
+    p.line(0, -6, -2, 2, H("#e8e4f0")); p.line(6, 0, -2, 2, H("#e8e4f0")); p.px(5, -5, H("#ffffff"));
+  },
+  w_staff(p) {
+    outlined(p, (ink) => {
+      p.line(-8, 8, 3, -3, pick(ink, "#5a3a2a"));
+      p.circle(5, -5, 2.5, pick(ink, "#ffe03c"));
+    });
+    p.px(4, -6, H("#ffffff")); p.px(8, -8, H("#fff08a")); p.px(8, -3, H("#ffe03c"));
+  },
+  w_chakram(p) {
+    outlined(p, (ink) => {
+      p.ring(0, 0, 7, 2.4, pick(ink, "#a4afc6"));
+    });
+    p.px(-4, -5, H("#ffffff")); p.px(5, -5, H("#e8edf6")); p.px(-6, 3, H("#e8edf6")); p.px(3, 6, H("#ffd84a"));
+  },
+  w_bell(p) {
+    outlined(p, (ink) => {
+      p.line(-7, 7, -3, 3, pick(ink, "#a8683a"));
+      p.poly([[-4, 1], [-1, 4], [6, 2], [8, -1], [1, -7], [-2, -5]], pick(ink, "#d89a3a"));
+    });
+    p.line(6, 2, 1, -7, H("#f8d070")); p.px(3, -2, H("#5a5c6a"));
   },
   w_sword: SYMBOLS.edge,
   w_hammer(p) {

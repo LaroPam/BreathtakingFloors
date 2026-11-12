@@ -33,7 +33,8 @@ export function runLegs(k) {
   return { crouch: 1 + 1.5 * Math.abs(c), ffx: 1 + 6 * c, ffy: -4 - Math.max(0, -s) * 5, fbx: 1 - 6 * c, fby: -4 - Math.max(0, s) * 5, bob: 1.5 * Math.abs(c), c, wind: +(0.55 + 0.12 * Math.abs(c)).toFixed(2), sway: +s.toFixed(2) };
 }
 
-// warm light for blades, cold for the spear's steel, sickly green for the scythe
+// warm light for blades, cold for the spear's steel, sickly green for the scythe; iron for the flail
+const IRON = ["#16141c", "#2e2c38", "#4e4c5c", "#7e7c8e", "#b4b2c4", "#e4e2ee", "#ffffff"];
 const BLADE = ["#3a1a0a", "#8a3a12", "#d8701c", "#ffb43a", "#ffe08a", "#fff6d0", "#ffffff"];
 const STEEL = ["#1a2030", "#34405a", "#5a6a8a", "#8aa0c4", "#c4d4ec", "#eef4ff", "#ffffff"];
 const SOUL = ["#0c1e14", "#14402a", "#1f6a3e", "#3aa060", "#7ee88a", "#c8ffc4", "#ffffff"];
@@ -104,6 +105,48 @@ export const WEAPONS = {
     oneHand: true,
     attacks: [
       { act: WHIP, times: [-0.22, -0.08, 0.02, 0.06, 0.12, 0.17, 0.21, 0.26, 0.44, 0.7], hits: [6], fx: "melee/whip-crack", maxT: 0.55, opts: { length: 64 } },
+    ],
+  },
+  // the new arms (the tower's update): a flail swung round and brought down, a glaive's long sweeps, a crossbow's
+  // heavy bolts, the storm staff's chained lightning, a chakram thrown and caught, a bell rung in rings of sound
+  flail: {
+    guard: { ...READY, weapon: "flail", fx: 12, fy: -21, bx: 5, by: -15, sa: -0.9, turn: 0.35 },
+    oneHand: true,
+    attacks: [
+      { act: SPIN, times: [-0.2, -0.08, 0.0, 0.05, 0.09, 0.13, 0.17, 0.4], hits: [6], fx: "melee/spin-slash", maxT: 0.45, opts: { palette: IRON }, weapon: "flail" },
+      { act: HAMMER, times: [-0.44, -0.3, -0.18, -0.06, 0.06, 0.15, 0.4, 0.7], hits: [5], fx: "melee/hammer-smash", maxT: 0.7, weapon: "flail" },
+    ],
+  },
+  glaive: {
+    guard: { ...READY, weapon: "glaive", fx: 11, fy: -22, bx: 7, by: -16, sa: -1.5, turn: 0.3 },
+    oneHand: false,
+    attacks: [
+      { act: SWEEP, times: [-0.34, -0.2, -0.08, 0.02, 0.06, 0.1, 0.35, 0.62], hits: [5], fx: "melee/spear-sweep", maxT: 0.5, opts: { palette: STEEL }, weapon: "glaive" },
+      { act: CLEAVE, times: [-0.3, -0.12, 0.05, 0.2, 0.28, 0.335, 0.6, 0.9], hits: [5], fx: "melee/heavy-cleave", maxT: 0.6, opts: { palette: STEEL }, weapon: "glaive" },
+    ],
+  },
+  crossbow: {
+    guard: { ...READY, weapon: "crossbow", fx: 12, fy: -20, bx: 9, by: -19, sa: -0.12, turn: 0.3 },
+    oneHand: false,
+    attacks: [{ act: THRUST, times: [-0.24, -0.12, -0.04, 0, 0.07, 0.3, 0.55], hits: [3], weapon: "crossbow", extra: { sa: -0.12 } }],
+  },
+  staff: {
+    guard: { ...READY, weapon: "staff", fx: 11, fy: -22, bx: 7, by: -16, sa: -1.3, turn: 0.3 },
+    oneHand: false,
+    attacks: [{ act: THRUST, times: [-0.24, -0.12, -0.04, 0, 0.07, 0.3, 0.55], hits: [3], weapon: "staff" }],
+  },
+  chakram: {
+    guard: { ...READY, weapon: "chakram", fx: 12, fy: -21, bx: 5, by: -15, sa: -0.4, turn: 0.35 },
+    oneHand: true,
+    attacks: [{ act: FIREBALL, times: [0.5, 0.7, 0.85, 0.92, 0.95, 1.05, 1.25, 1.39], hits: [4], weapon: "chakram" }],
+  },
+  bell: {
+    guard: { ...READY, weapon: "bell", fx: 12, fy: -22, bx: 5, by: -15, sa: -1.1, turn: 0.35 },
+    oneHand: true,
+    attacks: [
+      // (its rings of sound are drawn by the game, spreading from the hero)
+      { act: SLASH, times: [-0.3, -0.16, -0.06, 0, 0.06, 0.22, 0.45], hits: [3], weapon: "bell" },
+      { act: HAMMER, times: [-0.44, -0.3, -0.18, -0.06, 0.06, 0.15, 0.4, 0.7], hits: [5], weapon: "bell" },
     ],
   },
   bow: {
@@ -190,7 +233,7 @@ export const DEATH = [
  * A weapon on its own, turning in 3D: the stock figure holds it upright and turns round (yaw), and only the weapon's
  * pixels are kept, recentred. The altars float these over their stone.
  */
-export const MODEL_WEAPONS = { sword: "sword", hammer: "hammer", spear: "spear", scythe: "scythe", daggers: "dagger", greatsword: "greatsword", claws: "rig:claw", bow: "bow", spell: "rig:book", whip: "rig:whip" };
+export const MODEL_WEAPONS = { sword: "sword", hammer: "hammer", spear: "spear", scythe: "scythe", daggers: "dagger", greatsword: "greatsword", claws: "rig:claw", bow: "bow", spell: "rig:book", whip: "rig:whip", flail: "rig:flail", glaive: "rig:glaive", crossbow: "rig:crossbow", staff: "rig:staff", chakram: "rig:chakram", bell: "rig:bell" };
 export function weaponModelFrames(rigWeapon, n = 12) {
   const frames = [];
   for (let k = 0; k < n; k++) {

@@ -17,6 +17,7 @@ export const IDS = [
   "edge", "haste", "reach", "wave", "parry", "speed", "maxhp", "magnet", "dashcd", "overdrive", "crit", "lantern",
   // weapons
   "w_sword", "w_hammer", "w_spear", "w_scythe", "w_daggers", "w_bow", "w_spell", "w_greatsword", "w_claws", "w_whip",
+  "w_flail", "w_glaive", "w_crossbow", "w_staff", "w_chakram", "w_bell",
   // the forge's own
   "wisdom", "greed", "reroll", "start", "revive",
   // the shop's
@@ -1029,6 +1030,94 @@ SYM.w_whip = (p) => {
   a.draw(p);
   glint(p, 16, 11, 2, "#ffe26b");
   specks(p, [[14, 13, "#ff8a2a"], [18, 8, "#ffc840"]]);
+};
+
+SYM.w_flail = (p) => {
+  const a = new Art();
+  // a short haft bound in iron, a chain of links swinging out, a spiked ball on its end
+  a.add(S.seg(-16, 16, -6, 6, 3.4), "wood", T.cyl(-16, 16, -6, 6, 1.7));
+  a.add(S.seg(-7, 7, -5, 5, 4.4), "iron", T.cyl(-7, 7, -5, 5, 2.2));
+  for (let k = 0; k < 4; k++) {
+    const x = -3 + k * 3.2, y = 3 - k * 3.8;
+    a.add(S.oring(x, y, 2, 1.5, 0.9, k % 2 ? 0.9 : -0.6), "iron", 0.75);
+  }
+  for (let k = 0; k < 8; k++) {
+    const an = (k / 8) * Math.PI * 2;
+    a.add(S.poly([[10 + Math.cos(an - 0.3) * 6, -11 + Math.sin(an - 0.3) * 6], [10 + Math.cos(an) * 10.5, -11 + Math.sin(an) * 10.5], [10 + Math.cos(an + 0.3) * 6, -11 + Math.sin(an + 0.3) * 6]]), "steel", 0.85);
+  }
+  a.add(S.disc(10, -11, 6.5), "iron", T.sph(8, -13, 7.5));
+  a.add(S.disc(-16, 16, 2), "iron", 0.6);
+  a.draw(p);
+  glint(p, 7, -15, 1);
+};
+
+SYM.w_glaive = (p) => {
+  const a = new Art();
+  // a long haft, a gold collar, a broad blade curving back like a crescent, a hook on its spine
+  a.add(S.seg(-17, 17, 2, -2, 2.4), "wood", T.cyl(-17, 17, 2, -2, 1.2));
+  a.add(S.seg(0.5, -0.5, 3.5, -3.5, 3.4), "gold", T.cyl(0.5, -0.5, 3.5, -3.5, 1.7));
+  a.add(S.poly([[3, -3], [6, -2], [12, -6], [17, -14], [16, -18], [11, -13], [5, -8]]), "steel", (x, y) => ((x - 3) * 0.7 + (y + 3) * 0.7 > 4 ? 0.95 : 0.55));
+  a.add(S.poly([[5, -8], [3, -11], [2, -8]]), "steel", 0.4);
+  a.add(S.disc(-17, 17, 1.8), "gold", 0.7);
+  a.draw(p);
+  glint(p, 16, -16, 1);
+};
+
+SYM.w_crossbow = (p) => {
+  const a = new Art();
+  // a wooden stock, a short steel prod across its head, the string drawn back to the nut, a bolt laid in
+  a.add(S.seg(-15, 15, 8, -8, 4.2), "wood", T.cyl(-15, 15, 8, -8, 2.1));
+  a.add(S.arc(2, -2, 11, 2.6, -Math.PI / 4 - 1.05, -Math.PI / 4 + 1.05), "steel", (x, y) => (x - y < 18 ? 0.95 : 0.55));
+  const ea = [-Math.PI / 4 - 1.05, -Math.PI / 4 + 1.05].map((an) => [2 + Math.cos(an) * 10, -2 + Math.sin(an) * 10]);
+  for (const [x, y] of ea) a.add(S.seg(x, y, -3, 3, 0.8), "paper", 0.9);
+  a.add(S.seg(-3, 3, 13, -13, 1.4), "steel", 0.75);
+  a.add(S.poly([[12, -15], [15, -15], [15, -12]]), "steel", 1);
+  a.add(S.seg(-12, 12, -9, 9, 4.8), "iron", 0.55);
+  a.add(S.seg(8, -8, 10, -10, 4.4), "iron", 0.6);
+  a.draw(p);
+  glint(p, 14, -14, 1);
+};
+
+SYM.w_staff = (p) => {
+  halo(p, 9, -9, 11, "#ffe03c", 0.4);
+  const a = new Art();
+  // a dark haft banded in silver, three prongs at its head clasping a stone full of lightning
+  a.add(S.seg(-17, 17, 5, -5, 2.6), "wood", T.cyl(-17, 17, 5, -5, 1.3));
+  for (const t of [0.15, 0.55]) {
+    const x = lerp(-17, 5, t), y = lerp(17, -5, t);
+    a.add(S.seg(x - 1, y + 1, x + 1, y - 1, 3.4), "steel", 0.8);
+  }
+  for (const [dx, dy] of [[-5, -1], [1, 5], [-2, 2]]) a.add(S.seg(4, -4, 9 + dx, -9 + dy - 4 + (dx === -2 ? -3 : 0), 1.4), "steel", 0.8);
+  a.add(S.disc(10, -10, 5), "storm", T.core(9, -11, 5, 0.6, 1.1), { flat: true, rim: 0.5 });
+  a.draw(p);
+  glint(p, 9, -12, 2, "#ffffff");
+  specks(p, [[16, -16, "#fff08a"], [3, -16, "#ffe03c"], [17, -5, "#ffe03c"]]);
+};
+
+SYM.w_chakram = (p) => {
+  const a = new Art();
+  // a ring of steel, its outer edge ground sharp with six teeth, a band of gold in its middle
+  for (let k = 0; k < 6; k++) {
+    const an = (k / 6) * Math.PI * 2 + 0.3;
+    a.add(S.poly([[Math.cos(an - 0.22) * 12, Math.sin(an - 0.22) * 12], [Math.cos(an) * 16.5, Math.sin(an) * 16.5], [Math.cos(an + 0.22) * 12, Math.sin(an + 0.22) * 12]]), "steel", 0.9);
+  }
+  a.add(S.oring(0, 0, 13, 13, 5.5), "steel", (x, y) => (Math.hypot(x, y) > 11 ? (x + y < 0 ? 1 : 0.6) : x + y < 0 ? 0.7 : 0.35));
+  a.add(S.oring(0, 0, 10, 10, 1.4), "gold", 0.8, { onto: true });
+  a.draw(p);
+  glint(p, -9, -10, 1);
+};
+
+SYM.w_bell = (p) => {
+  const a = new Art();
+  // a bronze bell on a short haft, its mouth flared, the clapper hanging in it, rings of sound out of it
+  a.add(S.seg(-16, 16, -8, 8, 3), "wood", T.cyl(-16, 16, -8, 8, 1.5));
+  a.add(S.poly([[-8, 6], [-6, 8], [9, -3], [3, -9]]), "copper", 0.5);
+  a.add(S.poly([[-9, 3], [-3, 9], [12, 4], [16, -2], [2, -16], [-4, -12]]), "gold", (x, y) => 0.4 + 0.5 * Math.max(0, 1 - Math.hypot(x + 2, y + 4) / 14));
+  a.add(S.seg(12, 4, 2, -16, 2.6), "gold", 1);
+  a.add(S.disc(10, -9, 2.4), "iron", 0.5);
+  a.draw(p);
+  for (const r of [5, 9]) for (let q = -3; q <= 3; q++) p.px(Math.round(12 + Math.cos(-0.8 + q * 0.18) * r), Math.round(-12 + Math.sin(-0.8 + q * 0.18) * r), hex("#fff0b8"));
+  glint(p, 4, -12, 1);
 };
 
 // ---- the forge's

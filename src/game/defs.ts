@@ -605,6 +605,12 @@ export const UNLOCKS: UnlockDef[] = [
   { key: "weapon:claws", stat: "secrets", goal: 3, need: { ru: "ОТКРОЙ 3 ТАЙНЫЕ КОМНАТЫ", en: "OPEN 3 SECRET ROOMS" } },
   { key: "weapon:spell", stat: "reactionsKnown", goal: 3, need: { ru: "ОТКРОЙ 3 РЕАКЦИИ СТИХИЙ", en: "DISCOVER 3 REACTIONS" } },
   { key: "weapon:scythe", stat: "kills", goal: 1500, need: { ru: "УБЕЙ 1500 ВРАГОВ", en: "SLAY 1500 FOES" } },
+  { key: "weapon:flail", stat: "minis", goal: 3, need: { ru: "ПОБЕДИ 3 МИНИ-БОССОВ", en: "DEFEAT 3 MINIBOSSES" } },
+  { key: "weapon:glaive", stat: "boss", goal: 3, need: { ru: "ПОБЕДИ 3 БОССОВ", en: "DEFEAT 3 BOSSES" } },
+  { key: "weapon:crossbow", stat: "secrets", goal: 8, need: { ru: "ОТКРОЙ 8 ТАЙНЫХ КОМНАТ", en: "OPEN 8 SECRET ROOMS" } },
+  { key: "weapon:staff", stat: "reactionsKnown", goal: 6, need: { ru: "ОТКРОЙ 6 РЕАКЦИЙ СТИХИЙ", en: "DISCOVER 6 REACTIONS" } },
+  { key: "weapon:chakram", stat: "grazes", goal: 300, need: { ru: "ЗАДЕНЬ 300 СНАРЯДОВ", en: "GRAZE 300 BOLTS" } },
+  { key: "weapon:bell", stat: "spirits", goal: 12, need: { ru: "ВЫПОЛНИ 12 ЗАДАНИЙ ДУХОВ", en: "FULFIL 12 SPIRITS' TASKS" } },
   { key: `relic:${RelicKind.Coil}`, stat: "evolve", goal: 1, need: { ru: "СОБЕРИ ЭВОЛЮЦИЮ", en: "EVOLVE A RELIC" } },
   { key: `relic:${RelicKind.Halo}`, stat: "spirits", goal: 5, need: { ru: "ВЫПОЛНИ 5 ЗАДАНИЙ ДУХОВ", en: "FULFIL 5 SPIRITS' TASKS" } },
   { key: `relic:${RelicKind.Void}`, stat: "bestFloor", goal: 7, need: { ru: "ДОЙДИ ДО ЛЕДЯНЫХ ЗАЛОВ", en: "REACH THE FROZEN HALLS" } },
@@ -888,7 +894,7 @@ export const QUESTS: QuestDef[] = [
 export const questDef = (kind: QuestKind): QuestDef => QUESTS.find((q) => q.kind === kind)!;
 
 /** Daily tasks: three a day, the same for everyone, progress carried over the day's runs, embers for each. */
-export type TaskId = "kills" | "braziers" | "floor" | "boss" | "reactions" | "evolve" | "spirits" | "chests" | "grazes" | "trial" | "urns" | "mimic" | "curse" | "secrets";
+export type TaskId = "kills" | "braziers" | "floor" | "boss" | "reactions" | "evolve" | "spirits" | "chests" | "grazes" | "trial" | "urns" | "mimic" | "curse" | "secrets" | "minis";
 export interface TaskDef {
   id: TaskId;
   /** {n} is the goal. */
@@ -972,7 +978,7 @@ export const ACHIEVEMENTS: AchDef[] = [
 ];
 
 // ------------------------------------------------------------------------------------------------ weapons
-export type WeaponId = "sword" | "hammer" | "spear" | "scythe" | "daggers" | "greatsword" | "claws" | "whip" | "bow" | "spell";
+export type WeaponId = "sword" | "hammer" | "spear" | "scythe" | "daggers" | "greatsword" | "claws" | "whip" | "bow" | "spell" | "flail" | "glaive" | "crossbow" | "staff" | "chakram" | "bell";
 /**
  * One blow of a weapon's combo. Its animation is `${weapon}_a${index}` in the atlas, which also says on which frames
  * it lands (tools/bake/weapons.mjs). What landing does depends on its kind:
@@ -981,9 +987,12 @@ export type WeaponId = "sword" | "hammer" | "spear" | "scythe" | "daggers" | "gr
  *   front   everything in a circle at a point in front (ground smashes)
  *   arrow / fire / frost   a projectile from the hand
  *   storm   lightning out of the sky onto the enemy nearest the aim
+ *   bolt    a heavy crossbow bolt: slower to come, straight through everything in its way, hard pushed
+ *   chain   lightning from the weapon's tip to the nearest foe, leaping on to the next ones near it (`reach` apart)
+ *   chakram a ring thrown out (`reach` far), cutting all it passes, then flying back to the hand, cutting again
  */
 export interface Blow {
-  kind: "arc" | "around" | "front" | "arrow" | "fire" | "frost" | "storm";
+  kind: "arc" | "around" | "front" | "arrow" | "fire" | "frost" | "storm" | "bolt" | "chain" | "chakram";
   dmg: number;
   reach: number;
   /** Half-angle of an arc, or how far in front a smash lands. */
@@ -1084,6 +1093,46 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
       { kind: "storm", dmg: 18, reach: 24, arc: 0, push: 30 },
     ],
   },
+  // the arms the tower's update brought (each opened by a deed: UNLOCKS)
+  flail: {
+    id: "flail", name: { ru: "ЦЕП", en: "FLAIL" }, g: "m", desc: { ru: "РАЗМАХ ПО КРУГУ И ТЯЖЁЛЫЙ УДАР ОБ ЗЕМЛЮ", en: "A SWING ALL ROUND AND A HEAVY BLOW TO THE GROUND" },
+    speed: 0.9, oneHand: true, ranged: false, range: 60,
+    blows: [
+      { kind: "around", dmg: 15, reach: 58, arc: 0, push: 120, fxMode: "flip" },
+      { kind: "front", dmg: 32, reach: 34, arc: 32, push: 190, stun: 0.5, fxMode: "flip" },
+    ],
+  },
+  glaive: {
+    id: "glaive", name: { ru: "ГЛЕФА", en: "GLAIVE" }, g: "f", desc: { ru: "ДЛИННЫЕ РЕЖУЩИЕ ДУГИ", en: "LONG CUTTING ARCS" },
+    speed: 0.9, oneHand: false, ranged: false, range: 80,
+    blows: [
+      { kind: "arc", dmg: 17, reach: 76, arc: 1.5, push: 100, fxMode: "rotate" },
+      { kind: "arc", dmg: 24, reach: 80, arc: 1.2, push: 150, stun: 0.2, fxMode: "rotate" },
+    ],
+  },
+  crossbow: {
+    id: "crossbow", name: { ru: "АРБАЛЕТ", en: "CROSSBOW" }, g: "m", desc: { ru: "ТЯЖЁЛЫЕ БОЛТЫ ПРОБИВАЮТ ВСЕХ НА ПУТИ", en: "HEAVY BOLTS THROUGH ALL IN THEIR WAY" },
+    speed: 0.7, oneHand: false, ranged: true, range: 260,
+    blows: [{ kind: "bolt", dmg: 34, reach: 0, arc: 0, push: 140 }],
+  },
+  staff: {
+    id: "staff", name: { ru: "ПОСОХ ГРОЗЫ", en: "STORM STAFF" }, g: "m", desc: { ru: "МОЛНИЯ ПЕРЕСКАКИВАЕТ С ВРАГА НА ВРАГА", en: "LIGHTNING LEAPS FROM FOE TO FOE" },
+    speed: 0.85, oneHand: false, ranged: true, range: 200,
+    blows: [{ kind: "chain", dmg: 15, reach: 80, arc: 0, push: 30 }],
+  },
+  chakram: {
+    id: "chakram", name: { ru: "ЧАКРА", en: "CHAKRAM" }, g: "f", desc: { ru: "ЛЕТИТ, РЕЖЕТ ВСЕХ НА ПУТИ И ВОЗВРАЩАЕТСЯ", en: "FLIES OUT, CUTS ALL IN ITS WAY, COMES BACK" },
+    speed: 0.95, oneHand: true, ranged: true, range: 170,
+    blows: [{ kind: "chakram", dmg: 13, reach: 150, arc: 0, push: 50 }],
+  },
+  bell: {
+    id: "bell", name: { ru: "КОЛОКОЛ", en: "BELL" }, g: "m", desc: { ru: "ЗВОН РАСХОДИТСЯ КРУГАМИ И ОГЛУШАЕТ", en: "ITS PEAL SPREADS IN RINGS AND STUNS" },
+    speed: 0.85, oneHand: true, ranged: false, range: 66,
+    blows: [
+      { kind: "around", dmg: 11, reach: 64, arc: 0, push: 90, stun: 0.5, fxMode: "flip" },
+      { kind: "around", dmg: 18, reach: 88, arc: 0, push: 140, stun: 0.9, fxMode: "flip" },
+    ],
+  },
 };
 export const WEAPON_IDS = Object.keys(WEAPONS) as WeaponId[];
 
@@ -1103,6 +1152,12 @@ export const LEGENDS: Record<WeaponId, Text> = {
   whip: { ru: "ПЛЕТЬ ВУЛКАНА", en: "VOLCANO LASH" },
   bow: { ru: "НЕБЕСНЫЙ ЛУК", en: "SKYBOW" },
   spell: { ru: "КНИГА БУРЬ", en: "TOME OF TEMPESTS" },
+  flail: { ru: "ЦЕП ПРЕИСПОДНЕЙ", en: "INFERNAL FLAIL" },
+  glaive: { ru: "ЛУННАЯ ГЛЕФА", en: "MOON GLAIVE" },
+  crossbow: { ru: "ОСАДНЫЙ АРБАЛЕТ", en: "SIEGE CROSSBOW" },
+  staff: { ru: "ПОСОХ БУРИ", en: "TEMPEST STAFF" },
+  chakram: { ru: "КОЛЕСО СОЛНЦА", en: "SUN WHEEL" },
+  bell: { ru: "НАБАТ", en: "THE TOCSIN" },
 };
 export const legendDesc = (id: WeaponId): Text =>
   id === "bow"
@@ -1176,6 +1231,12 @@ export const UNIQUES: Record<WeaponId, UniqueWeapon> = {
   whip: { name: { ru: "ПЛЕТЬ ПРЕИСПОДНЕЙ", en: "HELL'S LASH" }, el: El.None, perk: "vamp" },
   bow: { name: { ru: "ЗАКАТНЫЙ ЛУК", en: "SUNSET BOW" }, el: El.Fire, perk: "crit" },
   spell: { name: { ru: "КНИГА ПЕПЛА", en: "BOOK OF ASHES" }, el: El.None, perk: "reach" },
+  flail: { name: { ru: "ЖЕРНОВ БУРИ", en: "STORM MILLSTONE" }, el: El.Storm, perk: "reach" },
+  glaive: { name: { ru: "СЕРП ЛУНЫ", en: "MOON SICKLE" }, el: El.Frost, perk: "crit" },
+  crossbow: { name: { ru: "ЖАЛО ВИВЕРНЫ", en: "WYVERN'S STING" }, el: El.Venom, perk: "crit" },
+  staff: { name: { ru: "ЖЕЗЛ ЗАРНИЦЫ", en: "SHEET LIGHTNING ROD" }, el: El.Holy, perk: "haste" },
+  chakram: { name: { ru: "КОЛЬЦО ЗАТМЕНИЯ", en: "ECLIPSE RING" }, el: El.Void, perk: "haste" },
+  bell: { name: { ru: "ПОГРЕБАЛЬНЫЙ ЗВОН", en: "DEATH KNELL" }, el: El.Void, perk: "vamp" },
 };
 /** A weapon's name with its quality: "РЕДКИЙ ЛЕДЯНОЙ МЕЧ", or a mythic one's own name. */
 export function fullWeaponName(id: WeaponId, el: El, rarity: number): Text {

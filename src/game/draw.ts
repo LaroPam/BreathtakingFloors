@@ -9,7 +9,7 @@ import { text } from "../engine/text";
 import { AI, DOORS, giftFor, placeDef, EL_COLOR, ENEMIES, fullWeaponName, LEGENDS, questDef, RARITIES, RelicKind, WEAPONS, type GateKind, type PlaceId } from "./defs";
 import { t as tr, tx } from "./i18n";
 import { FLOOR, LOOK_BRIDGE, LOOK_ICE, LOOK_VEIN, PIT, WALL } from "./map";
-import { lanceTravel, BULLET_ANIMS, EYE_H, FLOOR_SQ, LUNGE_DASH, SPAWN_T, type BossBrain, poolSpread, HERO_HIT_Y, HERO_R, B_CRESCENT, B_FIREBALL, B_LANCE, CINE_DUR, D_CHEST, D_EMBER, D_GREEN, D_HEART, D_RED, SANCTUARY_R, STAR_EVERY, TILE, type World } from "./world";
+import { lanceTravel, B_BOLT, B_CHAKRAM, BULLET_ANIMS, EYE_H, FLOOR_SQ, LUNGE_DASH, SPAWN_T, type BossBrain, poolSpread, HERO_HIT_Y, HERO_R, B_CRESCENT, B_FIREBALL, B_LANCE, CINE_DUR, D_CHEST, D_EMBER, D_GREEN, D_HEART, D_RED, SANCTUARY_R, STAR_EVERY, TILE, type World } from "./world";
 
 export class Scene {
   back = new Batch();
@@ -352,6 +352,18 @@ export function drawWorld(s: Scene, w: World, camX: number, camY: number, viewW:
       if (ga.frames[0][1] && seen > 0.01) s.glow.image(ga.frames[0][1]!, gt.x + jit, gt.y + sink, 1, 1, 0, rgbaf(1, 1, 1, Math.min(1.5, stir) * (1 - k * k) * seen));
       if (seen > 0.01) s.illum.light(cx, gt.y - 22, 34 + 16 * gt.near, 28 + 10 * gt.near, withAlpha(col, Math.min(1, 0.35 + 0.3 * gt.near + 0.6 * k) * seen));
     }
+  }
+
+  // ---- the bell's peals: rings of bronze light spreading over the floor, thinning as they go
+  for (const r of w.soundRings) {
+    if (r.t < 0 || !inView(r.x, r.y, r.R + 10)) continue;
+    const k = 1 - r.t / 0.45, n = Math.max(16, Math.round(r.r * 0.9));
+    for (let q = 0; q < n; q++) {
+      const a = (q / n) * Math.PI * 2, px = Math.round(r.x + Math.cos(a) * r.r), py = Math.round(r.y + 8 + Math.sin(a) * r.r * FLOOR_SQ);
+      s.glow.rect(px, py, 1, 1, rgbaf(1, 0.82, 0.45, 0.85 * k));
+      if (q % 3 === 0) s.back.rect(px, py, 1, 1, rgbaf(1, 0.9, 0.6, 0.5 * k));
+    }
+    s.illum.light(r.x, r.y + 8, r.r + 8, (r.r + 8) * FLOOR_SQ, rgbaf(1, 0.8, 0.45, 0.18 * k));
   }
 
   // ---- the Rime Path's trail: pale ice on the floor, glinting, melting away
@@ -1088,9 +1100,21 @@ export function drawWorld(s: Scene, w: World, camX: number, camY: number, viewW:
       s.illum.light(x, y, 18, 14, rgbaf(0.45, 0.75, 1, 0.3));
       continue;
     }
+    // a chakram: a ring of steel turning fast, its teeth catching the light, its element's glow on its edge
+    if (k === B_CHAKRAM) {
+      const spin = Bu.t[i] * 22, el = Bu.el[i], ec = el ? rgba(EL_COLOR[el as keyof typeof EL_COLOR]) : 0;
+      s.back.disc(x, y + 14, 4, 1.5, rgba("#000000", 0.25));
+      for (let q = 0; q < 14; q++) {
+        const an = spin + (q / 14) * Math.PI * 2, tooth = q % 2 === 0, r = tooth ? 6 : 5, px = Math.round(x + Math.cos(an) * r), py = Math.round(y + Math.sin(an) * r * 0.8);
+        s.color.rect(px, py, 1, 1, rgba(Math.sin(an) < -0.2 ? "#ffffff" : tooth ? "#c4cce0" : "#7a849c"), y + 14);
+        if (el && tooth) s.glow.rect(px, py, 1, 1, withAlpha(ec, 0.7));
+      }
+      s.glow.light(x, y, 5, 5, el ? withAlpha(ec, 0.5) : rgbaf(0.9, 0.95, 1, 0.35));
+      continue;
+    }
     // the hero's shots grow out of the hand over their first instant; the enemies' are drawn big and ringed in
     // dark so they read against anything
-    const grow = Bu.team[i] === TEAM_HERO ? Math.min(1, 0.3 + (Bu.t[i] / 0.09) * 0.7) : orb ? 1.5 : 1;
+    const grow = (Bu.team[i] === TEAM_HERO ? Math.min(1, 0.3 + (Bu.t[i] / 0.09) * 0.7) : orb ? 1.5 : 1) * (k === B_BOLT ? 1.4 : 1);
     if (orb) s.color.disc(x, y, 6, 6, rgba("#0b0a12", 0.55), y + 13);
     drawAnim(s, a, Bu.t[i], x, y, { rot: orb ? 0 : Math.atan2(Bu.vy[i], Bu.vx[i]), sx: grow, sy: grow, key: y + 14, glow: 0.9, alpha: k === B_CRESCENT ? Math.min(1, Bu.life[i] * 5) : 1 });
     if (orb) {

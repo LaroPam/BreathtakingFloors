@@ -405,6 +405,8 @@ function along(H, axis, side, part) {
 }
 const STEEL = Object.fromEntries(Object.entries({ hi: "#ffffff", a: "#e8edf6", b: "#a4afc6", d: "#68748f", gold: "#ffd84a", goldD: "#b8862a", grip: "#7a3a2a", gripD: "#4a2018", wood: "#8a5a32", woodD: "#5a3820", dark: "#3a3448", darkD: "#262033" }).map(([k, v]) => [k, hex(v)]));
 const WHIP = Object.fromEntries(Object.entries({ grip: "#6a3a24", gripD: "#42200f", wrapD: "#2a140a", lash: "#8a5432", lashH: "#b07a4c", lashD: "#4e2a16", tuft: "#ece0c0" }).map(([k, v]) => [k, hex(v)]));
+// the new arms' own colours: iron and bronze, the storm's light
+const ARMS = Object.fromEntries(Object.entries({ iron: "#5a5c6a", ironH: "#9a9cac", ironD: "#2e2e3a", bronze: "#c08a3a", bronzeH: "#f0c870", bronzeD: "#7a5020", storm: "#fff08a", stormD: "#c8a020", stormH: "#ffffff", haft: "#3a2a22", haftD: "#22180f" }).map(([k, v]) => [k, hex(v)]));
 const BOOK = Object.fromEntries(Object.entries({ leather: "#5a2a6a", leatherD: "#341640", gold: "#ffd84a", goldD: "#b8862a", page: "#f4ead0", pageE: "#d8c8a0", pageD: "#b8a47c", spine: "#4a2a1a", ink: "#7a6448", ribbon: "#c0302a" }).map(([k, v]) => [k, hex(v)]));
 // the gifts' own colours: shadow glass and silver, gold and ember, ice, lantern light, iron and fire
 const GIFT = Object.fromEntries(Object.entries({
@@ -677,6 +679,90 @@ const WEAPONS = {
     for (let k = 3.4; k <= 7.4; k += 0.3) { const r = 1.6 * (1 - (k - 3.4) / 4.4) + 0.2; for (let a = 0; a < Math.PI * 2; a += 0.4) T(-1.3 + Math.sin(a) * r, k, giftLit(a, q.yaw) > 0.5 ? GIFT.ironH : GIFT.iron, Math.cos(a) * r); }
     // sparks over it
     for (const [i, k] of [[2.4, -1], [3.6, 1.2], [4.8, -0.2]]) T(i, k, GIFT.fireH, 0, true);
+  } },
+  // a flail: a short haft, an iron collar, a chain of links, a spiked iron ball on its end
+  flail: { draw(T) {
+    haft(T, -3, 8, STEEL.wood, STEEL.woodD, 0.9);
+    for (let k = -1.4; k <= 1.41; k += 0.4) (T(-3.4, k, STEEL.goldD), T(8.4, k, ARMS.iron));
+    for (let n = 0; n < 4; n++) {
+      const c = 10 + n * 2.6, flat = n % 2 === 0;
+      for (let a = 0; a < Math.PI * 2; a += 0.35) T(c + Math.cos(a) * 1.2, flat ? Math.sin(a) * 0.9 : 0, a < Math.PI ? ARMS.ironH : ARMS.iron, flat ? 0 : Math.sin(a) * 0.9);
+    }
+    const bc = 22.5, R = 3.6;
+    for (let i = -R; i <= R; i += 0.35)
+      for (let k = -R; k <= R; k += 0.35) {
+        const d = i * i + k * k;
+        if (d > R * R) continue;
+        const lit = (-i * 0.4 - k * 0.6) / R;
+        T(bc + i, k, lit > 0.35 ? ARMS.ironH : lit > -0.3 ? ARMS.iron : ARMS.ironD, Math.sqrt(R * R - d) * 0.6);
+      }
+    for (let a = 0; a < Math.PI * 2; a += Math.PI / 3) for (let r = R; r <= R + 2.4; r += 0.35) T(bc + Math.cos(a) * r, Math.sin(a) * r, r > R + 1.6 ? STEEL.hi : STEEL.b, 0);
+    for (const l of [-1, 1]) for (let r = R; r <= R + 2; r += 0.35) T(bc, 0, STEEL.b, l * r);
+  } },
+  // a glaive: a long dark haft, a gold collar, a broad single-edged blade curving back, a hook on its spine
+  glaive: { two: -10, draw(T) {
+    haft(T, -14, 30, ARMS.haft, ARMS.haftD, 0.55);
+    for (let k = -1.6; k <= 1.61; k += 0.4) (T(30, k, STEEL.gold), T(30.4, k, STEEL.goldD), T(-14.4, k, STEEL.goldD));
+    for (let i = 30.8; i <= 46; i += 0.35) {
+      const u = (i - 30.8) / 15.2, edge = 4.2 * Math.sin(Math.min(1, u * 1.25) * Math.PI * 0.62) * (1 - u * 0.25), back = -1 + u * u * 2.2;
+      for (let k = back; k <= edge + 0.01; k += 0.35) T(i, k, k > edge - 0.6 ? STEEL.hi : k < back + 0.6 ? STEEL.d : u > 0.8 ? STEEL.a : STEEL.b);
+    }
+    for (let j = 0; j <= 3; j += 0.35) T(33 + j * 0.4, -1.2 - j, STEEL.b);
+  } },
+  // a crossbow: a wooden stock along the arm, a steel prod across its end, the string drawn back, a bolt on it
+  crossbow: { draw(T, q) {
+    for (let i = -4; i <= 16; i += 0.35) for (let k = -1; k <= 1.01; k += 0.35) T(i, k, k > 0.3 ? STEEL.woodD : STEEL.wood, i < 2 ? -0.6 : 0);
+    for (let i = 13.6; i <= 15; i += 0.35) for (let k = -1.4; k <= 1.41; k += 0.35) T(i, k, ARMS.iron, 0.3);
+    for (let u = -1; u <= 1.001; u += 0.03) {
+      const k = u * 11, i = 15 - 2.4 * u * u;
+      T(i, k, Math.abs(u) > 0.85 ? ARMS.ironD : ARMS.ironH, 0.4);
+      T(i - 0.5, k, ARMS.iron, 0.4);
+    }
+    const tipA = T.at(12.6, -11), tipB = T.at(12.6, 11), nock = T.at(q.loaded === false ? 12 : 5, 0);
+    const line = (A, B2) => {
+      const n = Math.max(2, Math.ceil(len(sub(B2, A)) / 0.4));
+      for (let k = 0; k <= n; k++) {
+        const P = lerp3(A, B2, k / n);
+        plot(idx(Math.round(P[0]), Math.round(P[1])), P[2] + 0.05, 2, 0, PART.weapon, -1, STEEL.a);
+      }
+    };
+    line(tipA, nock);
+    line(tipB, nock);
+    for (let i = 5; i <= 19; i += 0.35) T(i, 0, i > 17.6 ? STEEL.hi : i < 6.4 ? STEEL.gold : STEEL.b, 1.1);
+  } },
+  // the storm staff: a dark haft banded in silver, three prongs at its head holding a stone full of lightning
+  staff: { two: -9, draw(T) {
+    haft(T, -14, 27, ARMS.haft, ARMS.haftD, 0.6);
+    for (const b of [-12, 6, 22]) for (let k = -1; k <= 1.01; k += 0.35) (T(b, k, STEEL.a), T(b + 0.4, k, STEEL.b));
+    for (const s of [-1, 0, 1]) for (let j = 0; j <= 7; j += 0.3) T(27 + j, s * (2.6 * Math.sin((j / 7) * Math.PI) + (s ? 0.4 : 0)), j > 6 ? STEEL.hi : STEEL.b, s ? 0 : 1.6 * Math.sin((j / 7) * Math.PI));
+    const c = 31, R = 2.4;
+    for (let i = -R; i <= R; i += 0.3) for (let k = -R; k <= R; k += 0.3) if (i * i + k * k <= R * R) T(c + i, k, i * i + k * k < 1 ? ARMS.stormH : (i + k) < 0 ? ARMS.storm : ARMS.stormD, 0.6, true);
+  } },
+  // a chakram: a ring of steel with a sharpened outer edge and six teeth, held by its inner rim
+  chakram: { draw(T, q) {
+    const c = q.model ? 0 : 6.5, R = 6, w = 1.4;
+    for (let a = 0; a < Math.PI * 2; a += 0.05) {
+      const tooth = Math.max(0, Math.cos(a * 6)) ** 6 * 1.6;
+      for (let r = R - w; r <= R + tooth + 0.01; r += 0.35) {
+        const lit = -Math.cos(a) * 0.5 - Math.sin(a) * 0.7;
+        T(c + Math.cos(a) * r, Math.sin(a) * r, r > R - 0.2 ? (lit > 0 ? STEEL.hi : STEEL.a) : lit > 0.2 ? STEEL.b : STEEL.d, 0);
+      }
+      if (Math.abs(Math.sin(a * 3)) < 0.12) T(c + Math.cos(a) * (R - w - 0.4), Math.sin(a) * (R - w - 0.4), STEEL.gold, 0.2);
+    }
+  } },
+  // a bell: a short haft, a flared bronze bell on it opening forward, its lip bright, the clapper inside
+  bell: { draw(T) {
+    haft(T, -2.6, 6, STEEL.wood, STEEL.woodD, 0.8);
+    for (let k = -1.2; k <= 1.21; k += 0.4) T(-3, k, ARMS.bronze);
+    for (let i = 6; i <= 16.5; i += 0.3) {
+      const u = (i - 6) / 10.5, r = 1.6 + 5.2 * u ** 1.6;
+      for (let a = 0; a < Math.PI * 2; a += 0.22) {
+        const lit = -Math.sin(a), col = i > 15.8 ? ARMS.bronzeH : lit > 0.5 ? ARMS.bronzeH : lit > -0.3 ? ARMS.bronze : ARMS.bronzeD;
+        T(i, Math.sin(a) * r, col, Math.cos(a) * r);
+      }
+    }
+    for (let i = 13; i <= 17.5; i += 0.3) T(i, 0, ARMS.ironD, 0);
+    for (let a = 0; a < Math.PI * 2; a += 0.4) T(17.6 + Math.cos(a) * 0.9, Math.sin(a) * 0.9, ARMS.iron, 0);
   } },
   handle: { draw(T) {
     haft(T, -2.6, 6, STEEL.grip, STEEL.gripD);
