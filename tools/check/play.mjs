@@ -6,6 +6,8 @@
 //   npm run check:play                      every hero, the whole tower
 //   npm run check:play -- --heroes=mage,ranger --floors=4 --seed=7
 //   npm run check:play -- --heroes=shadow --from=9         from a deeper floor (with the levels a run would have)
+//   npm run check:play -- --branch=ashen                   every hero turns off the main way there (cistern, ashen,
+//                                                          no; by default the heroes take turns: none, cistern, ashen)
 //
 // Floors are counted by depth down the whole tower (whichever places the run goes through); a report names the
 // place and its floor too, and an ok line the places the run went through.
@@ -14,7 +16,7 @@
 // player: it walks the way the guide arrow points, fights what comes, lights the braziers, picks upgrades at
 // random, opens chests, takes the stairs and the portals. It starts with no gifts (`--gifts=shade` to hold some) and
 // wins them from the bosses as a player does; on a floor with a gate it can open, it goes to the gate and sees it
-// open onto its vault.
+// open onto its vault. Every weapon, relic and artifact is open to it (a player opens them over many runs).
 
 import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
@@ -97,7 +99,8 @@ for (const hero of heroes) {
     continue;
   }
   const t0 = Date.now();
-  await page.evaluate(({ hero, seed, gifts, from }) => {
+  const takeWay = args.branch ? (args.branch === "no" ? [] : args.branch.split(",")) : [[], ["cistern"], ["ashen"]][HEROES.indexOf(hero) % 3];
+  await page.evaluate(({ hero, seed, gifts, from, takeWay }) => {
     const G = window.__game;
     // a seeded Math.random for the bot's own choices, so a run can be played again
     let s = seed * 9973 + hero.length * 131;
@@ -129,9 +132,12 @@ for (const hero of heroes) {
     };
     window.__seedClock(seed * 7919 + hero.length);
     G.startRun();
+    // everything the arsenal holds is open to the bot (what a player opens over many runs gets played too)
+    G.world.locked.clear();
     // a deeper start: that floor at once, and the levels a hero would have reached by it to choose
-    if (from > 1) (G.world.startFloor(from, G.world.mod), (G.world.pendingLevels += Math.round((from - 1) * 2.5)));
-  }, { hero, seed, gifts, from });
+    if (from > 1) (G.world.startFloor(from, G.world.mod), (G.world.pendingLevels += Math.round((from - 1) * 2.5)), (G.world.hero.level += Math.round((from - 1) * 2.5)));
+    window.__bot.takeWay = takeWay;
+  }, { hero, seed, gifts, from, takeWay });
 
   // play, a chunk of frames at a time (each evaluate stays short)
   for (let chunk = 0; ; chunk++) {
@@ -155,7 +161,7 @@ for (const hero of heroes) {
         // a gift won: taken (its button usually is, by the bot's presses; else here)
         if (G.state === "gift" && G.giftShow && G.giftShow.t > 1.5) (G.giftShow = null), G.setState("play");
         // a gate the hero can open: once a floor, straight to its foot, and it must open onto its vault in a few seconds
-        const gt = w.gate, OPENS = { lattice: "shade" };
+        const gt = w.gate, OPENS = { lattice: "shade", water: "rime", roots: "ember", hidden: "beacon", heavy: "forge" };
         if (G.state === "play" && gt && gt.open < 1 && w.gifts.has(OPENS[gt.kind]) && B.gateFloor !== w.floor && h.arriveT > 1.5 && !w.cine && w.bossIndex() < 0) {
           B.gateFloor = w.floor;
           B.gateT = 0;
@@ -163,19 +169,29 @@ for (const hero of heroes) {
           h.y = gt.y + 10;
         }
         if (B.gateT >= 0 && B.gateFloor === w.floor && gt) {
-          B.gateT += 1 / 60;
+          // (the world stands still on the gift screen and in a cut-scene: only its own time counts)
+          if (G.state === "play" && !w.cine) B.gateT += 1 / 60;
           if (gt.open >= 1) {
             const r = gt.room, mid = map.at(r.x + (r.w >> 1), r.y + (r.h >> 1)), way = map.at(gt.x / 16, gt.y / 16 - 2);
             if (mid !== 0 || way !== 0) B.log.push(`floor ${w.floor}: the gate opened but its vault is not open (room ${mid}, passage ${way})`);
             B.gates = (B.gates ?? 0) + 1;
             B.gateT = -1;
-          } else if (B.gateT > 4) (B.log.push(`floor ${w.floor}: the hero at the gate with its gift, and it did not open`), (B.gateT = -1));
+            // a way stone behind it: the heroes take turns at the roads (each gets played)
+            if (w.wayStone && !w.wayStone.taken && B.takeWay.includes(w.wayStone.to)) (h.x = w.wayStone.x), (h.y = w.wayStone.y + 4);
+          } else if (B.gateT > 6) (B.log.push(`floor ${w.floor}: the hero at the gate with its gift, and it did not open (${gt.kind}, seen ${gt.seen.toFixed(2)}, opening ${gt.opening}, open ${gt.open.toFixed(2)}, hero ${Math.round(h.x - gt.x - 16)},${Math.round(h.y - gt.y)} from its foot)`), (B.gateT = -1));
         }
         if (G.state === "won") return { done: true, won: true, floor: w.floor, trail: w.trail, log: B.log };
         if (G.state === "dead") return { done: true, won: false, floor: w.floor, log: [...B.log, "the hero died, though the bot keeps them alive"] };
         // the walk: the guide arrow while it points somewhere, else at the nearest foe (or the boss)
         let mx = 0, my = 0;
-        if (G.state === "play" && w.hero.arriveT > 0.6) {
+        // (at a gate it is opening: it opens while the hero stands by it, so the bot waits there)
+        const atGate = B.gateT >= 0 && B.gateFloor === w.floor && !!gt && gt.open < 1;
+        // (knocked away from it by a blow, it walks back to the gate's foot, as a player would)
+        if (atGate && G.state === "play") {
+          const dx = gt.x + 16 - h.x, dy = gt.y + 10 - h.y, d = Math.hypot(dx, dy);
+          if (d > 8) (mx = dx / d), (my = dy / d);
+        }
+        if (G.state === "play" && w.hero.arriveT > 0.6 && !atGate) {
           const [gx, gy] = w.guide;
           if (gx || gy) (mx = gx), (my = gy);
           else {
@@ -210,16 +226,38 @@ for (const hero of heroes) {
         const ms = performance.now() - a;
         // (only frames the GPU did not draw: the drawn ones go through a software GPU here, slow for its own reasons)
         if (B.frames % 30 !== 0 && ms > SLOW_MS && B.slow.length < 20) B.slow.push(`${ms.toFixed(0)} ms on floor ${w.floor} (${G.state}) with ${E.n} enemies`);
-        // the floor's clock, and a new floor
+        // the floor's clock, and a new floor (by its place too: the hall beyond stands at the last boss's depth)
         // (where a report says it happened: the depth, the place and its floor)
         const at = `floor ${w.floor} (${w.place.id} ${w.stage})`;
-        if (w.floor !== B.floor) (B.floor = w.floor), (B.floorT = 0), (B.descending = false), (B.bossKilled = false), (B.wasBoss = false), (B.vanished = false), (B.bossWallSaid = false);
+        const here = `${w.floor} ${w.place.id} ${w.stage}`;
+        // the measures of balance: each floor's time, the hero's level at its end, the hits he took, the damage done
+        if (B.frames % 30 === 0 || here !== B.floor) {
+          let dmg = 0;
+          for (let q = 0; q < w.dmgStat.length; q++) dmg += w.dmgStat[q];
+          if (here !== B.floor && B.floor && B.floorT > 1) {
+            const done = B.last ?? { dmg: 0, hits: 0, level: h.level, tier: w.place.tier };
+            (B.tiers ??= []).push({ tier: B.lastTier, stage: B.lastStage, t: B.floorT, level: done.level, hits: done.hits, dmg: Math.max(0, done.dmg - (B.dmg0 ?? 0)) });
+            B.dmg0 = dmg < (B.last?.dmg ?? 0) ? 0 : done.dmg;
+          }
+          B.last = { dmg, hits: w.floorHits, level: h.level };
+          B.lastTier = w.place.tier;
+          B.lastStage = w.stage;
+        }
+        // a way off the main road the bot was to take, left behind: say why (the gate, its gift, the stone)
+        if (G.state === "play" && w.place.branch && w.bossFloor() && B.takeWay.includes(w.place.branch))
+          B.want = { at, to: w.place.branch, gate: w.gate ? `${w.gate.kind} ${w.gate.open.toFixed(2)}` : "none", gifts: [...w.gifts].join(","), stone: w.wayStone ? (w.wayStone.taken ? "taken" : "there") : "none", boss: w.bossIndex() };
+        if (here !== B.floor && B.want && w.place.tier > 1) {
+          const q = B.want;
+          if (w.place.id !== q.to) B.log.push(`${q.at}: the way to ${q.to} not taken (gate ${q.gate}, gifts ${q.gifts || "-"}, stone ${q.stone}, boss ${q.boss})`);
+          B.want = null;
+        }
+        if (here !== B.floor) (B.floor = here), (B.floorT = 0), (B.descending = false), (B.bossKilled = false), (B.wasBoss = false), (B.vanished = false), (B.bossWallSaid = false);
         if (G.state === "play") B.floorT += 1 / 60;
         // a boss that is gone without its death
         if (w.bossIndex() >= 0) (B.wasBoss = true), (B.bossT = (B.bossT ?? 0) + 1 / 60);
+        else if (B.wasBoss && !B.bossKilled && !B.vanished) (B.vanished = true), B.log.push(`${at}: the boss is gone without dying`);
         // how long each boss took (a balance matter: its own line in the report)
         if (B.wasBoss && w.bossIndex() < 0 && B.bossT) ((B.fights ??= []).push(`${w.place.id} ${Math.floor(B.bossT / 60)}:${String(Math.round(B.bossT % 60)).padStart(2, "0")}`), (B.bossT = 0));
-        else if (B.wasBoss && !B.bossKilled && !B.vanished) (B.vanished = true), B.log.push(`${at}: the boss is gone without dying`);
         // every 2 s: the world's numbers make sense
         if (B.frames % 120 === 0) {
           for (let i = 0; i < E.n; i++) {
@@ -262,6 +300,20 @@ for (const hero of heroes) {
       if (slow.length) console.log(`  slow  ${hero}: ${slow.slice(0, 3).join("; ")}${slow.length > 3 ? ` (+${slow.length - 3})` : ""}`);
       const played = await page.evaluate(() => (window.__bot.frames / 3600).toFixed(1));
       const extra = await page.evaluate(() => `gifts ${window.__game.save.gifts.join(",") || "none"}, ${window.__bot.gates ?? 0} gate(s) opened, bosses ${(window.__bot.fights ?? []).join(", ") || "-"}`);
+      // per tier: its floors' mean time, the hero's level at its end, the hits taken a floor, damage a second
+      const tiers = await page.evaluate(() => {
+        const R = ["", "I", "II", "III", "IV", "✦"], by = new Map();
+        // (the time is the ordinary floors' only: a boss's floor has its fight, in the bosses' own line)
+        for (const f of window.__bot.tiers ?? []) {
+          const a = by.get(f.tier) ?? { n: 0, t: 0, nt: 0, all: 0, level: 0, hits: 0, dmg: 0 };
+          (a.n += 1), (a.all += f.t), (a.level = Math.max(a.level, f.level)), (a.hits += f.hits), (a.dmg += f.dmg);
+          if (f.stage < 3) (a.t += f.t), (a.nt += 1);
+          by.set(f.tier, a);
+        }
+        const mmss = (s) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, "0")}`;
+        return [...by.entries()].sort((a, b) => a[0] - b[0]).map(([k, a]) => `${R[k] ?? k} ${mmss(a.nt ? a.t / a.nt : a.all / a.n)} L${a.level} ${(a.hits / a.n).toFixed(1)} hits ${Math.round(a.dmg / a.all)} dps`).join(" | ");
+      });
+      if (tiers) console.log(`  tiers ${hero}: ${tiers}`);
       if (st.won && !seen.length && !errors.length) console.log(`  ok    ${hero}: through floor ${st.floor} (${st.trail.join(" > ")}), ${extra}, ${played} min of play (${mins} min to check)`);
       else console.log(`        ${hero}: ${played} min of play, seed ${seed}`);
       break;

@@ -21,6 +21,12 @@ const THEMES: { bpm: number; prog: number[][]; arp: OscillatorType; bass: Oscill
   { bpm: 84, prog: [[52, 55, 59], [53, 57, 60], [50, 53, 57], [52, 55, 59]], arp: "sine", bass: "triangle", bright: 1.6 },
   // a boss: C minor, fast and driving
   { bpm: 118, prog: [[48, 51, 55], [44, 48, 51], [46, 50, 53], [43, 47, 50]], arp: "square", bass: "sawtooth", bright: 1.1 },
+  // the tower's heart: B major turning to its bright neighbours, solemn, ringing
+  { bpm: 96, prog: [[59, 63, 66], [61, 65, 68], [56, 59, 63], [57, 61, 64]], arp: "triangle", bass: "square", bright: 1.4 },
+  // the drowned catacombs: D minor sinking a step at a time, slow, soft as water
+  { bpm: 80, prog: [[50, 53, 57], [48, 52, 55], [46, 50, 53], [45, 49, 52]], arp: "sine", bass: "triangle", bright: 1.3 },
+  // the ashen forge: G minor in a hammer's beat, heavy, the bass driving like bellows
+  { bpm: 108, prog: [[43, 46, 50], [44, 48, 51], [41, 45, 48], [42, 46, 50]], arp: "square", bass: "sawtooth", bright: 0.9 },
 ];
 
 // the boss fight's own track (a seamless loop; see art/music/README.md); the synthesized boss theme plays if it cannot

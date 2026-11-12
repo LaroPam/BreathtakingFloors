@@ -27,6 +27,8 @@ interface Stored {
 
 export class VKPlatform extends BasePlatform {
   readonly name = "vk" as const;
+  /** VK earns by ads alone (no purchases yet), and its rules allow an interstitial while a location loads. */
+  override readonly adsBetweenPlaces = true;
   private ok = false;
   private lang = "ru";
   private mobile: boolean | null = null;

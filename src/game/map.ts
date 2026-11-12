@@ -353,7 +353,8 @@ function wind(m: TileMap, a: [number, number], b: [number, number], wd: number, 
 function journey(m: TileMap, R: Rnd, plan: MapPlan): void {
   const { cols, rows } = m, isle = plan.shape === "isle", fill = isle ? PIT : WALL;
   if (isle) for (let r = 4; r < rows - 2; r++) for (let c = 2; c < cols - 2; c++) m.set(c, r, PIT);
-  const lanes = plan.lanes, gap = isle ? 7 : 10, top = 6, bottom = rows - 4;
+  // (islands start lower: the rock behind the first row of them needs the height for a vault or a secret room)
+  const lanes = plan.lanes, gap = isle ? 7 : 10, top = isle ? 11 : 6, bottom = rows - 4;
   const laneH = Math.floor((bottom - top - gap * (lanes - 1)) / lanes), slot = (cols - 8) / plan.per;
   const fromLeft = R.chance(0.5), chain: Area[] = [], laneOf: number[] = [];
   for (let L = 0; L < lanes; L++) {
@@ -391,6 +392,14 @@ function journey(m: TileMap, R: Rnd, plan: MapPlan): void {
       lane(m, pts, plan.wide, isle ? LOOK_BRIDGE : LOOK_PLAIN, fill);
     }
   }
+  // islands: the first row stands against the rock, a cliff from the top of the map down to each island's edge (it
+  // gives their back walls, and stone behind them for a gate's vault or a cracked wall's room)
+  if (isle)
+    for (let k = 0; k < chain.length; k++) {
+      if (laneOf[k] !== 0) continue;
+      const a = chain[k];
+      for (let c = a.x - 1; c <= a.x + a.w; c++) for (let r = 4; r < a.y + a.h / 2 && m.at(c, r) === PIT; r++) m.set(c, r, WALL);
+    }
   // the drop in the chasm chamber, a rim of floor round it, and the way across it on a bridge
   if (deep >= 0) {
     const a = chain[deep], [cx, cy] = mid(a), rx = a.w * 0.3, ry = a.h * 0.32, ph = R.range(0, 6.3);
@@ -536,6 +545,30 @@ export function buildMap(plan: MapPlan, R: Rnd): TileMap {
 }
 
 /**
+ * The hall beyond the light: one room, nothing in it to fight. Its back wall (the face over row `BEYOND_TOP`) holds
+ * three sealed doors at `BEYOND_DOORS`; in the middle of its floor, `BEYOND_PIT`, a pit (a thing on the floor, not a
+ * drop: one can step into it). Columns down its sides; the way in at the bottom.
+ */
+export const BEYOND_TOP = 8, BEYOND_DOORS = [12, 21, 30], BEYOND_PIT: [number, number] = [22, 18];
+export function buildBeyond(): TileMap {
+  const cols = 44, rows = 34, m = new TileMap(cols, rows), x0 = 4, x1 = 40, y0 = BEYOND_TOP, y1 = 30;
+  for (let r = y0; r < y1; r++)
+    for (let c = x0; c < x1; c++) {
+      // the lower corners cut, the upper square (the back wall runs straight for its doors)
+      const cut = r > y1 - 4 && Math.min(c - x0, x1 - 1 - c) + (y1 - 1 - r) < 3;
+      if (!cut) m.set(c, r, FLOOR);
+    }
+  const hall = { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+  m.areas = [hall];
+  m.route = [hall];
+  m.nooks = [];
+  m.start = [22, 27];
+  for (const r of [12, 18, 24]) for (const c of [8, 36]) m.columns.push([c * 16 + 8, r * 16 + 8]);
+  m.measure();
+  return m;
+}
+
+/**
  * Each place's three maps, built three different ways: the first its plain self, the second changed, the third at
  * the height of the change (and the boss). Sizes grow as the tower goes down.
  */
@@ -551,14 +584,35 @@ export const MAP_PLANS: Record<string, MapPlan[]> = {
   // clearings round a pond, the arena at the end
   garden: [
     { cols: 90, rows: 54, shape: "round", lanes: 2, per: 3, link: "winding", wide: 5, clumps: true },
-    { cols: 96, rows: 64, shape: "isle", lanes: 3, per: 3, link: "straight", wide: 4 },
+    { cols: 96, rows: 69, shape: "isle", lanes: 3, per: 3, link: "straight", wide: 4 },
     { cols: 100, rows: 60, shape: "round", lanes: 2, per: 3, link: "winding", wide: 5, pit: true, clumps: true, arena: true },
+  ],
+  // the tower's heart: tall halls of mirrors, columns down them; the foundry, rough and veined with molten light;
+  // the crucible, faceted halls round a chasm of light to the arena
+  heart: [
+    { cols: 100, rows: 64, shape: "rect", lanes: 3, per: 3, link: "straight", wide: 5, columns: true },
+    { cols: 104, rows: 66, shape: "cave", lanes: 3, per: 3, link: "winding", wide: 5, veins: true, clumps: true },
+    { cols: 108, rows: 62, shape: "facet", lanes: 2, per: 3, link: "straight", wide: 5, pit: true, veins: true, arena: true },
+  ],
+  // the drowned catacombs: halls whose middles have gone under, crossed on planks; cisterns, islands of stone in
+  // black water; the old well's hall, rough, a pool in its middle and the arena at the end
+  cistern: [
+    { cols: 92, rows: 58, shape: "rect", lanes: 2, per: 3, link: "straight", wide: 5, pit: true, columns: true },
+    { cols: 98, rows: 69, shape: "isle", lanes: 3, per: 3, link: "straight", wide: 4 },
+    { cols: 100, rows: 60, shape: "cave", lanes: 2, per: 3, link: "winding", wide: 5, pit: true, arena: true },
+  ],
+  // the ashen forge: smelting halls in rows, iron columns, the floor veined with fire; the slag rivers, islands of
+  // stone in the melt joined by iron walks; the great hearth, rough, pools of melt in it, the arena at the end
+  ashen: [
+    { cols: 96, rows: 62, shape: "rect", lanes: 3, per: 3, link: "straight", wide: 5, columns: true, veins: true },
+    { cols: 100, rows: 71, shape: "isle", lanes: 3, per: 3, link: "straight", wide: 4, veins: true },
+    { cols: 104, rows: 60, shape: "cave", lanes: 2, per: 3, link: "winding", wide: 5, pit: true, veins: true, arena: true },
   ],
   // the frost: faceted halls of rime; ice caves, a sheet to slide on in each; the throne of the void, islands over
   // nothing to the arena
   frost: [
     { cols: 96, rows: 64, shape: "facet", lanes: 3, per: 3, link: "straight", wide: 5, columns: true },
     { cols: 102, rows: 66, shape: "cave", lanes: 3, per: 3, link: "winding", wide: 5, ice: true, clumps: true },
-    { cols: 104, rows: 60, shape: "isle", lanes: 2, per: 3, link: "straight", wide: 4, arena: true },
+    { cols: 104, rows: 65, shape: "isle", lanes: 2, per: 3, link: "straight", wide: 4, arena: true },
   ],
 };

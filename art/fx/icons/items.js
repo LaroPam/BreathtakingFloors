@@ -13,10 +13,13 @@ export const IDS = [
   // relics and their evolutions
   "orbit", "lance", "coil", "flask", "halo", "void",
   "e_orbit", "e_lance", "e_coil", "e_flask", "e_halo", "e_void",
+  "roots", "mirror", "brazier", "crown", "e_roots", "e_mirror", "e_brazier", "e_crown",
   // artifacts: the sword, the body, the light
   "edge", "haste", "reach", "wave", "parry", "speed", "maxhp", "magnet", "dashcd", "overdrive", "crit", "lantern",
+  "pact", "compass", "crucible", "echo", "candle", "tread",
   // weapons
   "w_sword", "w_hammer", "w_spear", "w_scythe", "w_daggers", "w_bow", "w_spell", "w_greatsword", "w_claws", "w_whip",
+  "w_flail", "w_glaive", "w_crossbow", "w_staff", "w_chakram", "w_bell",
   // the forge's own
   "wisdom", "greed", "reroll", "start", "revive",
   // the shop's
@@ -396,6 +399,8 @@ const ELEMENT = { fire: "fire", frost: "ice", storm: "storm", venom: "venom", ho
 
 const KIND = {
   orbit: "fire", lance: "frost", coil: "storm", flask: "venom", halo: "holy", void: "void",
+  roots: "venom", mirror: "holy", brazier: "fire", crown: "frost",
+  pact: "life", compass: "gold", crucible: "ember", echo: "steel", candle: "holy", tread: "steel",
   edge: "gold", haste: "gold", reach: "gold", wave: "gold", parry: "steel", speed: "steel", maxhp: "life",
   magnet: "steel", dashcd: "steel", overdrive: "holy", crit: "gold", lantern: "holy",
   wisdom: "wisdom", greed: "ember", reroll: "arms", start: "gold", revive: "fire",
@@ -1029,6 +1034,275 @@ SYM.w_whip = (p) => {
   a.draw(p);
   glint(p, 16, 11, 2, "#ffe26b");
   specks(p, [[14, 13, "#ff8a2a"], [18, 8, "#ffc840"]]);
+};
+
+SYM.w_flail = (p) => {
+  const a = new Art();
+  // a short haft bound in iron, a chain of links swinging out, a spiked ball on its end
+  a.add(S.seg(-16, 16, -6, 6, 3.4), "wood", T.cyl(-16, 16, -6, 6, 1.7));
+  a.add(S.seg(-7, 7, -5, 5, 4.4), "iron", T.cyl(-7, 7, -5, 5, 2.2));
+  for (let k = 0; k < 4; k++) {
+    const x = -3 + k * 3.2, y = 3 - k * 3.8;
+    a.add(S.oring(x, y, 2, 1.5, 0.9, k % 2 ? 0.9 : -0.6), "iron", 0.75);
+  }
+  for (let k = 0; k < 8; k++) {
+    const an = (k / 8) * Math.PI * 2;
+    a.add(S.poly([[10 + Math.cos(an - 0.3) * 6, -11 + Math.sin(an - 0.3) * 6], [10 + Math.cos(an) * 10.5, -11 + Math.sin(an) * 10.5], [10 + Math.cos(an + 0.3) * 6, -11 + Math.sin(an + 0.3) * 6]]), "steel", 0.85);
+  }
+  a.add(S.disc(10, -11, 6.5), "iron", T.sph(8, -13, 7.5));
+  a.add(S.disc(-16, 16, 2), "iron", 0.6);
+  a.draw(p);
+  glint(p, 7, -15, 1);
+};
+
+SYM.w_glaive = (p) => {
+  const a = new Art();
+  // a long haft, a gold collar, a broad blade curving back like a crescent, a hook on its spine
+  a.add(S.seg(-17, 17, 2, -2, 2.4), "wood", T.cyl(-17, 17, 2, -2, 1.2));
+  a.add(S.seg(0.5, -0.5, 3.5, -3.5, 3.4), "gold", T.cyl(0.5, -0.5, 3.5, -3.5, 1.7));
+  a.add(S.poly([[3, -3], [6, -2], [12, -6], [17, -14], [16, -18], [11, -13], [5, -8]]), "steel", (x, y) => ((x - 3) * 0.7 + (y + 3) * 0.7 > 4 ? 0.95 : 0.55));
+  a.add(S.poly([[5, -8], [3, -11], [2, -8]]), "steel", 0.4);
+  a.add(S.disc(-17, 17, 1.8), "gold", 0.7);
+  a.draw(p);
+  glint(p, 16, -16, 1);
+};
+
+SYM.w_crossbow = (p) => {
+  const a = new Art();
+  // seen from above, as a crossbow is known: a wooden stock from its butt to its head, a broad steel prod bent across
+  // the head (its tips swept back), the string drawn back to the nut in a V, a bolt laid along the groove, the iron
+  // lever under it and the stirrup at the front
+  const R = 17, cx = -5, cy = 5, C = [cx + R * Math.SQRT1_2, cy - R * Math.SQRT1_2];
+  a.add(S.poly([[-17, 13], [-13, 17], [-7, 11], [-11, 7]]), "wood", 0.6);
+  a.add(S.seg(-11, 11, 12, -12, 4.4, 3.4), "wood", T.cyl(-11, 11, 12, -12, 2.2));
+  a.add(S.seg(-7, 9, -4, 12, 1.6), "iron", 0.6);
+  a.add(S.oring(13.5, -13.5, 2.6, 2.6, 1.3), "iron", 0.8);
+  const tips = [-0.82, 0.82].map((d) => [cx + Math.cos(-Math.PI / 4 + d) * R, cy + Math.sin(-Math.PI / 4 + d) * R]);
+  for (const [x, y] of tips) a.add(S.seg(x, y, -3, 3, 0.9), "paper", 0.85);
+  a.add(S.arc(cx, cy, R, (u) => 1.2 + 2.2 * Math.sin(u * Math.PI), -Math.PI / 4 - 0.86, -Math.PI / 4 + 0.86), "steel", (x, y) => (Math.hypot(x - cx, y - cy) > R ? 0.95 : 0.55));
+  a.add(S.seg(-3, 3, C[0] + 5, C[1] - 5, 1.2), "wood", 0.95);
+  a.add(S.poly([[C[0] + 4, C[1] - 7], [C[0] + 8, C[1] - 8], [C[0] + 7, C[1] - 4]]), "steel", 1);
+  a.add(S.disc(C[0], C[1], 2.2), "gold", 0.75);
+  a.add(S.disc(-3, 3, 1.6), "iron", 0.85);
+  a.draw(p);
+  glint(p, tips[0][0], tips[0][1], 1);
+};
+
+SYM.w_staff = (p) => {
+  halo(p, 9, -9, 11, "#ffe03c", 0.4);
+  const a = new Art();
+  // a dark haft banded in silver, three prongs at its head clasping a stone full of lightning
+  a.add(S.seg(-17, 17, 5, -5, 2.6), "wood", T.cyl(-17, 17, 5, -5, 1.3));
+  for (const t of [0.15, 0.55]) {
+    const x = lerp(-17, 5, t), y = lerp(17, -5, t);
+    a.add(S.seg(x - 1, y + 1, x + 1, y - 1, 3.4), "steel", 0.8);
+  }
+  for (const [dx, dy] of [[-5, -1], [1, 5], [-2, 2]]) a.add(S.seg(4, -4, 9 + dx, -9 + dy - 4 + (dx === -2 ? -3 : 0), 1.4), "steel", 0.8);
+  a.add(S.disc(10, -10, 5), "storm", T.core(9, -11, 5, 0.6, 1.1), { flat: true, rim: 0.5 });
+  a.draw(p);
+  glint(p, 9, -12, 2, "#ffffff");
+  specks(p, [[16, -16, "#fff08a"], [3, -16, "#ffe03c"], [17, -5, "#ffe03c"]]);
+};
+
+SYM.w_chakram = (p) => {
+  const a = new Art();
+  // a ring of steel, its outer edge ground sharp with six teeth, a band of gold in its middle
+  for (let k = 0; k < 6; k++) {
+    const an = (k / 6) * Math.PI * 2 + 0.3;
+    a.add(S.poly([[Math.cos(an - 0.22) * 12, Math.sin(an - 0.22) * 12], [Math.cos(an) * 16.5, Math.sin(an) * 16.5], [Math.cos(an + 0.22) * 12, Math.sin(an + 0.22) * 12]]), "steel", 0.9);
+  }
+  a.add(S.oring(0, 0, 13, 13, 5.5), "steel", (x, y) => (Math.hypot(x, y) > 11 ? (x + y < 0 ? 1 : 0.6) : x + y < 0 ? 0.7 : 0.35));
+  a.add(S.oring(0, 0, 10, 10, 1.4), "gold", 0.8, { onto: true });
+  a.draw(p);
+  glint(p, -9, -10, 1);
+};
+
+SYM.w_bell = (p) => {
+  const a = new Art();
+  // a bronze bell on a short haft, its mouth flared, the clapper hanging in it, rings of sound out of it
+  a.add(S.seg(-16, 16, -8, 8, 3), "wood", T.cyl(-16, 16, -8, 8, 1.5));
+  a.add(S.poly([[-8, 6], [-6, 8], [9, -3], [3, -9]]), "copper", 0.5);
+  a.add(S.poly([[-9, 3], [-3, 9], [12, 4], [16, -2], [2, -16], [-4, -12]]), "gold", (x, y) => 0.4 + 0.5 * Math.max(0, 1 - Math.hypot(x + 2, y + 4) / 14));
+  a.add(S.seg(12, 4, 2, -16, 2.6), "gold", 1);
+  a.add(S.disc(10, -9, 2.4), "iron", 0.5);
+  a.draw(p);
+  for (const r of [5, 9]) for (let q = -3; q <= 3; q++) p.px(Math.round(12 + Math.cos(-0.8 + q * 0.18) * r), Math.round(-12 + Math.sin(-0.8 + q * 0.18) * r), hex("#fff0b8"));
+  glint(p, 4, -12, 1);
+};
+
+// ---- the tower's update: four relics and what they evolve into, six artifacts
+SYM.roots = (p) => {
+  halo(p, 0, 4, 13, "#6cd02a", 0.3);
+  const a = new Art();
+  // a carved totem post, a face in it, roots spreading from its foot, thorns on them
+  for (const [x1, y1, w] of [[-15, 15, 3], [-9, 17, 2.4], [14, 16, 3], [8, 17, 2.4], [-16, 8, 2]]) a.add(S.seg(0, 11, x1, y1, 4, w), "wood", T.lin(0, 11, x1, y1, 0.8, 0.35));
+  a.add(S.rect(-6, -14, 12, 26), "wood", T.cyl(-6, 0, 6, 0, 6, 0.2, 1));
+  a.add(S.poly([[-8, -14], [8, -14], [5, -18], [-5, -18]]), "wood", 0.9);
+  for (const s2 of [-1, 1]) a.add(S.ell(s2 * 2.6, -6, 1.6, 1.2), "venom", 1.1, { onto: true, flat: true });
+  a.add(S.rect(-3, -1, 6, 2), "wood", 0.1, { onto: true });
+  for (const y of [5, 9]) a.add(S.rect(-6, y, 12, 1), "wood", 0.15, { onto: true });
+  for (const [x, y] of [[-11, 14], [10, 14], [-13, 9]]) a.add(S.poly([[x, y], [x + 1, y - 3], [x + 2, y]]), "bone", 0.9);
+  a.draw(p);
+  specks(p, [[-3, -6, "#e0ff8a"], [3, -6, "#e0ff8a"], [12, 10, "#8cdc42"]]);
+};
+SYM.e_roots = (p) => {
+  halo(p, 0, 0, 16, "#6cd02a", 0.4);
+  const a = new Art();
+  // a tree of strangling roots, twisted into a knot, a dark green light in its heart
+  for (const [x0, y0, x1, y1, w] of [[-14, 16, 0, -4, 4], [14, 16, 0, -4, 4], [0, 16, 0, -6, 4.4], [0, -4, -12, -14, 3], [0, -4, 12, -14, 3], [0, -6, 0, -17, 3]])
+    a.add(S.seg(x0, y0, x1, y1, w, w * 0.6), "wood", T.lin(x0, y0, x1, y1, 0.4, 0.9));
+  a.add(S.disc(0, -4, 4), "venom", T.core(0, -4, 4, 0.5, 1.15), { flat: true, rim: 0.4 });
+  for (const [x, y] of [[-10, -12], [10, -12], [0, -16], [-8, 8], [8, 8]]) a.add(S.disc(x, y, 1.6), "green", 0.9);
+  a.draw(p);
+  specks(p, [[-2, -5, "#ffffff"], [-14, -4, "#8cdc42"], [14, -2, "#8cdc42"]]);
+};
+SYM.mirror = (p) => {
+  halo(p, 0, 0, 13, "#fff09a", 0.3);
+  const a = new Art();
+  // a round shield faced with a mirror, a gold rim, a sun reflected in it
+  a.add(S.disc(0, 0, 14), "gold", T.sph(-4, -4, 15, 0.25, 1));
+  a.add(S.disc(0, 0, 11), "glass", (x, y) => 0.5 + 0.35 * Math.max(0, 1 - Math.hypot(x + 4, y + 4) / 10), { onto: true });
+  a.add(S.disc(3, 3, 3), "holy", 1.1, { onto: true, flat: true });
+  a.add(S.seg(-7, -3, -3, -7, 1.4), "glass", 1.15, { onto: true });
+  for (let k = 0; k < 8; k++) {
+    const an = (k / 8) * Math.PI * 2;
+    a.add(S.disc(Math.cos(an) * 12.5, Math.sin(an) * 12.5, 1), "gold", 1, { onto: true });
+  }
+  a.draw(p);
+  glint(p, -6, -6, 1, "#ffffff");
+};
+SYM.e_mirror = (p) => {
+  halo(p, 0, 0, 18, "#fff09a", 0.45);
+  const a = new Art();
+  // two mirrors face to face, a bolt of light caught between them, turned back
+  for (const s2 of [-1, 1]) {
+    a.add(S.ell(s2 * 9, 0, 6, 13), "gold", T.sph(s2 * 9 - 2, -4, 13, 0.3, 1));
+    a.add(S.ell(s2 * 9, 0, 4, 10.5), "glass", 0.75, { onto: true });
+  }
+  a.add(S.seg(-5, -6, 5, 6, 2), "holy", 1.15, { flat: true });
+  a.add(S.seg(5, -6, -5, 6, 2), "holy", 1.15, { flat: true });
+  a.add(S.disc(0, 0, 2.6), "holy", 1.2, { flat: true });
+  a.draw(p);
+  specks(p, [[0, -12, "#fffbe6"], [0, 12, "#fffbe6"], [-12, -12, "#fff09a"]]);
+};
+SYM.brazier = (p) => {
+  halo(p, 0, -4, 14, "#ff8a2a", 0.4);
+  const a = new Art();
+  // an iron bowl on three legs, coals in it, flames out of it, ash falling off
+  for (const x of [-9, 0, 9]) a.add(S.seg(x * 0.6, 8, x, 16, 2.2), "iron", 0.4);
+  a.add(S.and(S.ell(0, 2, 13, 8), S.half(0, 2, 0, 1)), "iron", T.sph(-3, 1, 13, 0.15, 0.95));
+  a.add(S.ell(0, 2, 12, 3), "coal", 0.35);
+  for (const [x, w, h] of [[-5, 4, 12], [1, 5, 16], [6, 3.6, 10]]) flame(a, x, 2, w, h, { lean: x * 0.2 });
+  a.add(S.oring(0, 2, 13, 3.6, 1.6), "iron", T.lin(-12, 0, 12, 4, 0.95, 0.35));
+  a.draw(p);
+  specks(p, [[-12, -10, "#a39cab"], [11, -14, "#7b7484"], [9, -6, "#ffc840"]]);
+};
+SYM.e_brazier = (p) => {
+  halo(p, 0, 0, 18, "#ff8a2a", 0.45);
+  const a = new Art();
+  // a boot striding through a trail of flame
+  for (const [x, h] of [[-13, 8], [-8, 11], [-3, 14]]) flame(a, x, 12, 3, h, { lean: -3 });
+  a.add(S.poly([[0, -12], [7, -12], [8, 4], [15, 8], [15, 13], [0, 13]]), "leather", T.lin(0, -12, 15, 13, 0.85, 0.35));
+  a.add(S.rect(0, 11, 15, 2.4), "iron", 0.5);
+  a.add(S.rect(0, -12, 7.5, 2.4), "gold", 0.8);
+  a.draw(p);
+  specks(p, [[-15, -2, "#ffc840"], [-10, -6, "#ff8a2a"], [-4, -4, "#ffe27a"]]);
+};
+SYM.crown = (p) => {
+  halo(p, 0, 0, 13, "#9bdcff", 0.35);
+  const a = new Art();
+  // a crown of ice: five points of clear blue, a band of frost, a pale stone in front
+  for (let k = -2; k <= 2; k++) {
+    const x = k * 5.4, h = 14 - Math.abs(k) * 3;
+    a.add(S.poly([[x - 3, 4], [x + 3, 4], [x, 4 - h]]), "ice", T.lin(x - 3, 4 - h, x + 3, 4, 1.05, 0.4));
+  }
+  a.add(S.rect(-14, 3, 28, 6), "ice", T.lin(-14, 3, 14, 9, 0.95, 0.35));
+  a.add(S.disc(0, 6, 2.4), "glass", 1.1, { onto: true });
+  a.draw(p);
+  specks(p, [[-8, -6, "#ffffff"], [8, -4, "#d8f4ff"], [0, -11, "#ffffff"]]);
+};
+SYM.e_crown = (p) => {
+  halo(p, 0, 0, 18, "#9bdcff", 0.5);
+  const a = new Art();
+  // a figure sealed in a block of ice, the ice cracking open, shards flying
+  a.add(S.poly([[-11, -15], [11, -15], [13, 15], [-13, 15]]), "ice", (x, y) => 0.45 + 0.4 * Math.max(0, 1 - Math.hypot(x + 4, y + 6) / 16));
+  a.add(S.disc(0, -6, 3.6), "stone", 0.35, { onto: true });
+  a.add(S.poly([[-4, -2], [4, -2], [5, 12], [-5, 12]]), "stone", 0.3, { onto: true });
+  for (const [x0, y0, x1, y1] of [[-11, -4, 2, 2], [2, 2, 12, -8], [2, 2, 6, 15]]) a.add(S.seg(x0, y0, x1, y1, 1), "glass", 1.15, { onto: true });
+  for (const [x, y] of [[-16, -12], [16, -14], [-17, 8], [17, 6]]) a.add(S.poly([[x, y], [x + 2, y - 3], [x + 3, y + 1]]), "ice", 1);
+  a.draw(p);
+  glint(p, -6, -10, 1, "#ffffff");
+};
+SYM.pact = (p) => {
+  halo(p, 0, 0, 13, "#ff5a6a", 0.35);
+  const a = new Art();
+  // a scroll sealed in blood: parchment, a red wax seal, a drop running from it
+  a.add(S.rect(-11, -13, 22, 24), "paper", T.lin(-11, -13, 11, 11, 0.95, 0.5));
+  for (const y of [-12, 10]) a.add(S.ell(0, y, 13, 2.6), "paper", T.cyl(-13, y, 13, y, 2.6, 0.4, 1));
+  for (const y of [-6, -2, 2]) a.add(S.rect(-7, y, 14, 1), "paper", 0.25, { onto: true });
+  a.add(S.disc(0, 6, 5), "red", T.sph(-1, 5, 5, 0.3, 1.05));
+  a.add(S.seg(2, 10, 3, 16, 2, 1.2), "red", 0.8);
+  a.draw(p);
+  glint(p, -1, 4, 1, "#ffd0d4");
+};
+SYM.compass = (p) => {
+  const a = new Art();
+  // a brass compass, its glass, a needle pointing up-right, the cardinal marks
+  a.add(S.disc(0, 0, 14), "gold", T.sph(-4, -4, 15, 0.25, 1));
+  a.add(S.disc(0, 0, 11), "paper", 0.8, { onto: true });
+  for (let k = 0; k < 4; k++) {
+    const an = (k / 4) * Math.PI * 2;
+    a.add(S.disc(Math.cos(an) * 9, Math.sin(an) * 9, 1), "iron", 0.4, { onto: true });
+  }
+  a.add(S.poly([[0, 0], [7, -7], [2, 1]]), "red", 0.85, { onto: true });
+  a.add(S.poly([[0, 0], [-7, 7], [-2, -1]]), "iron", 0.55, { onto: true });
+  a.add(S.disc(0, 0, 1.4), "gold", 1, { onto: true });
+  a.add(S.rect(-2, -17, 4, 4), "gold", 0.8);
+  a.draw(p);
+  glint(p, -6, -6, 1);
+};
+SYM.crucible = (p) => {
+  halo(p, 0, 2, 13, "#ff8a2a", 0.35);
+  const a = new Art();
+  // a clay crucible glowing with molten metal, held in iron tongs
+  a.add(S.poly([[-10, -6], [10, -6], [7, 12], [-7, 12]]), "copper", T.cyl(-10, 3, 10, 3, 10, 0.2, 1));
+  a.add(S.ell(0, -6, 10, 3), "fire", T.core(0, -6, 10, 0.5, 1.15), { flat: true, rim: 0.4 });
+  a.add(S.oring(0, -6, 10.5, 3.4, 1.4), "copper", 0.9);
+  for (const s2 of [-1, 1]) a.add(S.seg(s2 * 11, -2, s2 * 14, -15, 1.6), "iron", 0.55);
+  a.draw(p);
+  specks(p, [[-3, -12, "#ffc840"], [3, -14, "#ff8a2a"], [0, -17, "#ffe27a"]]);
+};
+SYM.echo = (p) => {
+  const a = new Art();
+  // a blade and two pale ghosts of it behind, the cut echoing
+  for (const [dx, tone, mat] of [[-8, 0.35, "cloud"], [-4, 0.55, "cloud"], [0, 0.9, "steel"]]) {
+    a.add(S.poly([[-12 + dx, 14 + dx * 0.2], [10 + dx, -12], [13 + dx, -14], [11 + dx, -10], [-10 + dx, 16 + dx * 0.2]]), mat, tone);
+  }
+  a.add(S.seg(-13, 15, -9, 11, 3.6), "gold", 0.8);
+  a.draw(p);
+  glint(p, 11, -12, 1);
+};
+SYM.candle = (p) => {
+  halo(p, 0, -8, 12, "#fff09a", 0.45);
+  const a = new Art();
+  // a short candle on a brass dish, its wax running, a steady flame, a scroll's corner beside it
+  a.add(S.ell(0, 12, 12, 3.6), "gold", T.sph(-3, 11, 12, 0.3, 1));
+  a.add(S.rect(-4.5, -2, 9, 14), "paper", T.cyl(-4.5, 5, 4.5, 5, 4.5, 0.3, 1));
+  a.add(S.seg(3, -2, 4, 5, 2, 1.2), "paper", 0.95);
+  flame(a, 0, -3, 3, 11);
+  a.draw(p);
+  specks(p, [[0, -8, "#ffffff"], [-7, -12, "#fff09a"], [7, -14, "#fff09a"]]);
+};
+SYM.tread = (p) => {
+  const a = new Art();
+  // an iron-shod boot stamping down, the floor cracking, dust thrown out
+  a.add(S.poly([[-12, 12], [12, 12], [10, 15], [-12, 15]]), "stone", 0.35);
+  for (const [x0, x1] of [[-2, -10], [2, 9], [0, 1]]) a.add(S.seg(x0, 12, x1, 15, 1), "stone", 0.05, { onto: true });
+  a.add(S.poly([[-6, -14], [3, -14], [4, 2], [12, 5], [12, 10], [-6, 10]]), "leather", T.lin(-6, -14, 12, 10, 0.85, 0.35));
+  a.add(S.rect(-6, 8, 18, 3), "iron", 0.6);
+  for (const x of [-4, 1, 6]) a.add(S.disc(x, 9.5, 0.8), "iron", 1, { onto: true });
+  a.draw(p);
+  specks(p, [[-15, 8, "#b89f78"], [15, 7, "#b89f78"], [-14, 4, "#dcc8a2"], [15, 2, "#dcc8a2"]]);
 };
 
 // ---- the forge's

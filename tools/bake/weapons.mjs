@@ -33,10 +33,23 @@ export function runLegs(k) {
   return { crouch: 1 + 1.5 * Math.abs(c), ffx: 1 + 6 * c, ffy: -4 - Math.max(0, -s) * 5, fbx: 1 - 6 * c, fby: -4 - Math.max(0, s) * 5, bob: 1.5 * Math.abs(c), c, wind: +(0.55 + 0.12 * Math.abs(c)).toFixed(2), sway: +s.toFixed(2) };
 }
 
-// warm light for blades, cold for the spear's steel, sickly green for the scythe
+// warm light for blades, cold for the spear's steel, sickly green for the scythe; iron for the flail
+const IRON = ["#16141c", "#2e2c38", "#4e4c5c", "#7e7c8e", "#b4b2c4", "#e4e2ee", "#ffffff"];
 const BLADE = ["#3a1a0a", "#8a3a12", "#d8701c", "#ffb43a", "#ffe08a", "#fff6d0", "#ffffff"];
 const STEEL = ["#1a2030", "#34405a", "#5a6a8a", "#8aa0c4", "#c4d4ec", "#eef4ff", "#ffffff"];
 const SOUL = ["#0c1e14", "#14402a", "#1f6a3e", "#3aa060", "#7ee88a", "#c8ffc4", "#ffffff"];
+
+// the crossbow: aimed level at the shoulder in both hands; loosed, it kicks up and back, then settles
+const XB_AIM = { ...READY, weapon: "crossbow", two: true, fx: 9, fy: -22, sa: 0.02, turn: 0.3, crouch: 3, lean: 1 };
+const XBOW = {
+  poses: [
+    [-0.3, XB_AIM],
+    [-0.06, { ...XB_AIM, crouch: 4, lean: 2, fy: -21.5 }],
+    [0, { ...XB_AIM, fx: 6.5, fy: -23, sa: -0.24, lean: -2, crouch: 3 }, "snap"],
+    [0.12, { ...XB_AIM, fx: 7.5, fy: -22.5, sa: -0.12, lean: -1 }],
+    [0.42, XB_AIM],
+  ],
+};
 
 /**
  * Each weapon: its stance (`guard`, what the hands hold), whether the far hand is free for a lantern, and its blows.
@@ -106,6 +119,49 @@ export const WEAPONS = {
       { act: WHIP, times: [-0.22, -0.08, 0.02, 0.06, 0.12, 0.17, 0.21, 0.26, 0.44, 0.7], hits: [6], fx: "melee/whip-crack", maxT: 0.55, opts: { length: 64 } },
     ],
   },
+  // the new arms (the tower's update): a flail swung round and brought down, a glaive's long sweeps, a crossbow's
+  // heavy bolts, the storm staff's chained lightning, a chakram thrown and caught, a bell rung in rings of sound
+  flail: {
+    guard: { ...READY, weapon: "flail", fx: 12, fy: -21, bx: 5, by: -15, sa: -0.9, turn: 0.35 },
+    oneHand: true,
+    attacks: [
+      { act: SPIN, times: [-0.2, -0.08, 0.0, 0.05, 0.09, 0.13, 0.17, 0.4], hits: [6], fx: "melee/spin-slash", maxT: 0.45, opts: { palette: IRON }, weapon: "flail" },
+      { act: HAMMER, times: [-0.44, -0.3, -0.18, -0.06, 0.06, 0.15, 0.4, 0.7], hits: [5], fx: "melee/hammer-smash", maxT: 0.7, weapon: "flail" },
+    ],
+  },
+  glaive: {
+    guard: { ...READY, weapon: "glaive", fx: 11, fy: -22, bx: 7, by: -16, sa: -1.5, turn: 0.3 },
+    oneHand: false,
+    attacks: [
+      { act: SWEEP, times: [-0.34, -0.2, -0.08, 0.02, 0.06, 0.1, 0.35, 0.62], hits: [5], fx: "melee/spear-sweep", maxT: 0.5, opts: { palette: STEEL }, weapon: "glaive" },
+      { act: CLEAVE, times: [-0.3, -0.12, 0.05, 0.2, 0.28, 0.335, 0.6, 0.9], hits: [5], fx: "melee/heavy-cleave", maxT: 0.6, opts: { palette: STEEL }, weapon: "glaive" },
+    ],
+  },
+  crossbow: {
+    guard: XB_AIM,
+    oneHand: false,
+    // the bolt goes on the third frame; the string stays forward until it is drawn back again at the end
+    attacks: [{ act: XBOW, times: [-0.2, -0.08, 0, 0.05, 0.12, 0.24, 0.42], hits: [2], weapon: "crossbow", frames: [{}, {}, { loaded: false }, { loaded: false }, { loaded: false }, { loaded: false }, {}] }],
+  },
+  staff: {
+    guard: { ...READY, weapon: "staff", fx: 11, fy: -22, bx: 7, by: -16, sa: -1.3, turn: 0.3 },
+    oneHand: false,
+    attacks: [{ act: THRUST, times: [-0.24, -0.12, -0.04, 0, 0.07, 0.3, 0.55], hits: [3], weapon: "staff" }],
+  },
+  chakram: {
+    guard: { ...READY, weapon: "chakram", fx: 12, fy: -21, bx: 5, by: -15, sa: -0.4, turn: 0.35 },
+    oneHand: true,
+    attacks: [{ act: FIREBALL, times: [0.5, 0.7, 0.85, 0.92, 0.95, 1.05, 1.25, 1.39], hits: [4], weapon: "chakram" }],
+  },
+  bell: {
+    guard: { ...READY, weapon: "bell", fx: 12, fy: -22, bx: 5, by: -15, sa: -1.1, turn: 0.35 },
+    oneHand: true,
+    attacks: [
+      // (its rings of sound are drawn by the game, spreading from the hero)
+      { act: SLASH, times: [-0.3, -0.16, -0.06, 0, 0.06, 0.22, 0.45], hits: [3], weapon: "bell" },
+      { act: HAMMER, times: [-0.44, -0.3, -0.18, -0.06, 0.06, 0.15, 0.4, 0.7], hits: [5], weapon: "bell" },
+    ],
+  },
   bow: {
     guard: { ...READY, weapon: "bow", fx: 12, fy: -20, bx: 6, by: -17, sa: -0.4, turn: 0.3 },
     oneHand: false,
@@ -133,6 +189,7 @@ function attackPoses(w, a, legs) {
     if (a.weapon) p.weapon = a.weapon;
     else if (w.guard.weapon && !p.weapon) p.weapon = w.guard.weapon;
     if (a.extra) Object.assign(p, a.extra);
+    if (a.frames?.[f]) Object.assign(p, a.frames[f]);
     // the spellbook stays open in the off hand, its runes in the spell's element, a page turning as it goes off
     // and it is the book that is thrust at the foe: the hands trade places, the free one drawing the spell back
     if (w.book) [p.fx, p.fy, p.bx, p.by] = [p.bx ?? w.guard.bx, p.by ?? w.guard.by, p.fx ?? w.guard.fx, p.fy ?? w.guard.fy];
@@ -190,14 +247,15 @@ export const DEATH = [
  * A weapon on its own, turning in 3D: the stock figure holds it upright and turns round (yaw), and only the weapon's
  * pixels are kept, recentred. The altars float these over their stone.
  */
-export const MODEL_WEAPONS = { sword: "sword", hammer: "hammer", spear: "spear", scythe: "scythe", daggers: "dagger", greatsword: "greatsword", claws: "rig:claw", bow: "bow", spell: "rig:book", whip: "rig:whip" };
+export const MODEL_WEAPONS = { sword: "sword", hammer: "hammer", spear: "spear", scythe: "scythe", daggers: "dagger", greatsword: "greatsword", claws: "rig:claw", bow: "bow", spell: "rig:book", whip: "rig:whip", flail: "rig:flail", glaive: "rig:glaive", crossbow: "rig:crossbow", staff: "rig:staff", chakram: "rig:chakram", bell: "rig:bell" };
 export function weaponModelFrames(rigWeapon, n = 12) {
   const frames = [];
   for (let k = 0; k < n; k++) {
     const yaw = (k / n) * Math.PI * 2;
     // one of the heroes' own weapons (src/hero/rig.js), drawn upright on its own: the Book of Elements, open
     if (rigWeapon.startsWith("rig:")) {
-      frames.push(weaponModel(rigWeapon.slice(4), yaw, { rune: "arcane", flip: 0, scale: 1.6 }));
+      const [, id, size] = rigWeapon.split(":");
+      frames.push(weaponModel(id, yaw, { rune: "arcane", flip: 0, scale: 1.6, small: size === "small" }));
       continue;
     }
     const parts = posedParts({ ...READY, weapon: rigWeapon, fx: 8, fy: -20, sa: -Math.PI / 2 + 0.25, yaw, bx: 6, by: -16 });
