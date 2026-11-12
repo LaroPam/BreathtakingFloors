@@ -58,8 +58,10 @@ export interface SaveData {
    * the start.
    */
   opened: string[];
-  /** The vaults behind gates the player has found ("place:stage:n"). */
+  /** The vaults behind gates the player has found ("place:stage"). */
   vaults: string[];
+  /** The secret rooms behind cracked walls the player has opened ("place:stage"), for the atlas. */
+  secrets: string[];
 }
 
 export const defaultSave = (): SaveData => ({
@@ -92,6 +94,7 @@ export const defaultSave = (): SaveData => ({
   places: [],
   opened: [],
   vaults: [],
+  secrets: [],
 });
 
 /** The places a version-1 save could have reached, one for each three floors of its deepest. */
@@ -173,5 +176,6 @@ export function sanitize(raw: unknown): SaveData {
     places: old ? V1_PLACES.filter((_, k) => bestFloor > k * 3) : strs(r.places, 50),
     opened: old ? seen.filter((k) => /^(weapon|relic|stat):/.test(k)) : strs(r.opened),
     vaults: strs(r.vaults, 500),
+    secrets: strs(r.secrets, 500),
   };
 }

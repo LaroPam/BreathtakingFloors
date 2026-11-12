@@ -4,11 +4,11 @@
 import type { Audio } from "../engine/audio";
 import type { Input } from "../engine/input";
 import { Batch, rgba, rgbaf, withAlpha, type Lighting, type Renderer } from "../engine/renderer";
-import { anim, FONTS, frameAt, icon, type Anim, type Rect } from "../engine/atlas";
+import { anim, FONTS, frameAt, hasAnim, icon, type Anim, type Rect } from "../engine/atlas";
 import { heroSprites, initHeroSprites, lookId, type HeroAnim, type HeroSprites } from "./heroSprites";
 import { fitScale, measure, text, wrap } from "../engine/text";
 import { dayNumber, weekNumber, type Board, type BoardName, type Platform, type Product } from "../platform/platform";
-import { ACHIEVEMENTS, heroDef, combine, DEPTH, floorText, PLACE_FLOORS, EL_COLOR, LEGENDS, legendDesc, type WeaponId, EL_NAME, ENEMIES, EVOLUTIONS, evolutionOf, FORGE, questDef, TASK_BONUS, TASKS, type TaskId, type ForgeId, SHOP, type ShopItem, HEROES, WEAPONS, weaponName, MODIFIERS, MUTATORS, NO_MODIFIER, REACTIONS, RELIC_MAX, RELIC_SLOTS, ARTIFACT_SLOTS, RELICS, STATS, El, fullWeaponName, STAIR_EVENTS, type Outcome, type StairEvent, MYTHIC, PERK_TEXT, RARITIES, UNIQUES, type Modifier, type PlaceId, type GiftId, giftDef, giftFor, giftFrom, GIFTS, DOORS, GIFTS_IN_TOWER, PLACES, UNLOCKS, arsenalName, ARSENAL, unlockOf, type Reaction, type RelicKind, type StatId } from "./defs";
+import { ACHIEVEMENTS, heroDef, combine, DEPTH, floorText, PLACE_FLOORS, EL_COLOR, LEGENDS, legendDesc, type WeaponId, EL_NAME, ENEMIES, EVOLUTIONS, evolutionOf, FORGE, questDef, TASK_BONUS, TASKS, type TaskId, type ForgeId, SHOP, type ShopItem, HEROES, WEAPONS, weaponName, MODIFIERS, MUTATORS, NO_MODIFIER, REACTIONS, RELIC_MAX, RELIC_SLOTS, ARTIFACT_SLOTS, RELICS, STATS, El, fullWeaponName, STAIR_EVENTS, type Outcome, type StairEvent, MYTHIC, PERK_TEXT, RARITIES, UNIQUES, type Modifier, type PlaceId, type GiftId, giftDef, giftFor, giftFrom, GIFTS, DOORS, GIFTS_IN_TOWER, PLACES, UNLOCKS, arsenalName, ARSENAL, unlockOf, TIERS, placeDef, type GateKind, type Reaction, type RelicKind, type StatId } from "./defs";
 import { drawWorld, Scene } from "./draw";
 import { ascent } from "./ascent";
 import { getLang, langFor, setLang, t, tx, type Lang } from "./i18n";
@@ -19,7 +19,7 @@ import { button, slider, C, divider, glow as glowUi, drawHud, drawPointers, draw
 import { CINE_DUR, LUNGE_DASH, SRC_ABILITY, SRC_DASH, SRC_ELS, SRC_N, SRC_PARRY, SRC_REACT, SRC_RELIC, SRC_STATUS, SRC_WAVE, SRC_WEAPON, World } from "./world";
 
 type StatRow = { ic: Rect; name: string; col: number; sum: number; segs: [number, number][] };
-type State = "title" | "heroes" | "forge" | "shop" | "daily" | "records" | "tasks" | "settings" | "card" | "play" | "spin" | "pick" | "pause" | "book" | "stairs" | "dead" | "won" | "stats" | "gift" | "arsenal" | "credits" | "gifts";
+type State = "title" | "heroes" | "forge" | "shop" | "daily" | "records" | "tasks" | "settings" | "card" | "play" | "spin" | "pick" | "pause" | "book" | "stairs" | "dead" | "won" | "stats" | "gift" | "arsenal" | "credits" | "gifts" | "atlas";
 type Choice = { type: "relic"; kind: RelicKind; level: number } | { type: "stat"; id: StatId } | { type: "evo"; kind: RelicKind } | { type: "legend"; weapon: WeaponId } | { type: "rest" };
 
 /**
@@ -111,8 +111,8 @@ const BOSS_FEAT: Partial<Record<PlaceId, string>> = { crypt: "eye", garden: "toa
 /** A button of the end screens: its label and look, and what it does (true if it has left the screen). */
 type EndAct = { label: string; opts: ButtonOpts; go: () => boolean | void };
 /** The title menu's buttons, in order, and after how many runs each is shown to a newcomer. */
-type TitleItem = "play" | "trials" | "tasks" | "forge" | "shop" | "arsenal" | "records" | "settings";
-const TITLE_ORDER: TitleItem[] = ["play", "trials", "tasks", "forge", "shop", "arsenal", "records", "settings"];
+type TitleItem = "play" | "trials" | "tasks" | "forge" | "shop" | "arsenal" | "atlas" | "records" | "settings";
+const TITLE_ORDER: TitleItem[] = ["play", "trials", "tasks", "forge", "shop", "arsenal", "atlas", "records", "settings"];
 const TITLE_ITEMS: Record<TitleItem, { label: Parameters<typeof t>[0]; icon: string; color?: string; after: number }> = {
   play: { label: "play", icon: "play", after: 0 },
   trials: { label: "trials", icon: "daily", color: "#ffb0a0", after: 3 },
@@ -120,9 +120,13 @@ const TITLE_ITEMS: Record<TitleItem, { label: Parameters<typeof t>[0]; icon: str
   forge: { label: "forge", icon: "anvil", after: 1 },
   shop: { label: "shop", icon: "ember", color: "#ffd84a", after: 2 },
   arsenal: { label: "arsenal", icon: "book", after: 2 },
+  atlas: { label: "atlas", icon: "globe", after: 2 },
   records: { label: "records", icon: "crown", after: 0 },
   settings: { label: "settings", icon: "gear", after: 0 },
 };
+/** The atlas's places in the order the keys go through them: tier by tier, the main way first, then beyond the light. */
+const ATLAS_ORDER: PlaceId[] = [...TIERS.flat(), ...PLACES.filter((p) => p.tier > TIERS.length).map((p) => p.id)];
+const ROMAN = ["", "I", "II", "III", "IV"];
 /** Height of the title font's capitals. */
 const FONT_H = FONTS.title.h;
 
@@ -200,6 +204,11 @@ export class Game {
   /** The gifts' book: the gift picked, and the screen to go back to. */
   private giftSel = 0;
   private giftsFrom: State = "pause";
+  /** The atlas: the place picked, and the screen it was opened from. */
+  private atlasSel = 0;
+  private atlasFrom: State = "title";
+  /** Where the atlas's way back stands this frame (under the panel on a low screen), else in the middle. */
+  private atlasBackX: number | null = null;
   /** How long the closing words have been rolling. */
   private creditsT = 0;
   /** The arsenal's tile shown in its panel (the one tapped last; with keys, the one in focus). */
@@ -327,6 +336,8 @@ export class Game {
     const runs = this.save.runs, veteran = runs >= 3 || this.save.unlocked.length > 2;
     return TITLE_ORDER.filter((id) => {
       if (id === "shop" && !this.platform.shopAvailable()) return false;
+      // (the atlas once there is more than one place in it)
+      if (id === "atlas" && this.save.places.length < 2) return false;
       return veteran || runs >= TITLE_ITEMS[id].after;
     });
   }
@@ -370,6 +381,9 @@ export class Game {
       case "arsenal":
         this.arsenalSel = 0;
         this.setState("arsenal");
+        return false;
+      case "atlas":
+        this.openAtlas("title");
         return false;
       case "records":
         this.recordsTab = "score";
@@ -486,6 +500,9 @@ export class Game {
           this.showBanner(t("secretFound"), rgba("#c8c0e8"), t("secretFoundSub"));
         } else {
           this.bump("secrets");
+          // (kept for the atlas, by place and floor)
+          const key = `${this.world.place.id}:${this.world.stage}`;
+          if (!this.save.secrets.includes(key)) this.save.secrets.push(key);
           this.showBanner(t("secretOpened"), C.gold);
         }
       },
@@ -1345,6 +1362,7 @@ export class Game {
       case "arsenal": this.drawArsenal(); break;
       case "credits": this.drawCredits(); break;
       case "gifts": this.drawGifts(); break;
+      case "atlas": this.drawAtlas(); break;
     }
     if (this.state !== "heroes") this.menu.end(this.state === "stairs" || (this.state === "pick" && this.pickRow), this.state !== "settings");
     // a screen comes up out of the dark
@@ -1798,6 +1816,191 @@ export class Game {
     if (button(ui, this.menu, now, Math.round(W / 2 - 50), H - 24, 100, 18, t("back"), { icon: icon("hud", "back") }) || this.input.pressed("back")) this.setState(this.giftsFrom, this.giftsFrom === "pause" ? 3 : 0);
   }
 
+  // =========================================================================================== the atlas
+  /** The atlas, from the title or the pause: the place picked first is the one the run is in, else the last reached. */
+  private openAtlas(from: State): void {
+    this.atlasFrom = from;
+    const here = from === "pause" ? this.world.place.id : this.save.places[this.save.places.length - 1];
+    this.atlasSel = Math.max(0, ATLAS_ORDER.indexOf(here as PlaceId));
+    this.setState("atlas", this.atlasSel);
+  }
+  /**
+   * How much of the tower the player has seen, in whole percent: every place reached, its guardian fallen, and on each
+   * of its floors the vault behind a gate and the secret room behind a cracked wall.
+   */
+  private explored(): number {
+    const sv = this.save;
+    let have = 0, all = 0;
+    for (const p of PLACES) {
+      all++, sv.places.includes(p.id) && have++;
+      if (p.single) continue;
+      all++, this.fell(p.id) && have++;
+      for (let s = 1; s <= PLACE_FLOORS; s++) {
+        all += 2;
+        if (sv.vaults.includes(`${p.id}:${s}`)) have++;
+        if (sv.secrets.includes(`${p.id}:${s}`)) have++;
+      }
+    }
+    return Math.floor((100 * have) / all);
+  }
+
+  /**
+   * The atlas of the tower: its tiers from the bottom up, each place a strip of its three floors' stone (dark until
+   * reached) with a pip for the vault and one for the secret room of each floor and its guardian's skull; the ways
+   * between them, the branches' through their gates. The place picked says how one gets there and what is found.
+   */
+  private drawAtlas(): void {
+    const ui = this.ui, W = this.r.w, H = this.r.h, now = this.now, sv = this.save;
+    ui.rect(0, 0, W, H, rgba("#07060c", 0.72));
+    const th = this.heading(t("atlas"), 6, H >= 300 ? 2 : 1, C.gold, 1, t("atlasExplored").replace("{p}", String(this.explored())));
+    const P = ATLAS_ORDER.map(placeDef), reached = (id: PlaceId) => sv.places.includes(id);
+    // side by side on a landscape screen (on a low one the way back under the panel, the tower down to the bottom), the
+    // tower over its panel on a tall one. The biggest that fits: the stone twice as big, the places' names under them,
+    // the place beyond the light on a row of its own (else beside the tower's heart)
+    const wide = W >= H * 1.25, low = wide && H < 250, top = 6 + th + 8, bottom = H - 30;
+    const room = wide ? (low ? H - 6 : bottom) - top : bottom - top - 124;
+    let z = 1, fold = true, labelH = 0, colD = 36, names: string[][] = [];
+    for (const [tz, tf, tl] of [[2, false, true], [2, true, true], [2, true, false], [1, false, true], [1, true, true], [1, false, false], [1, true, false]] as [number, boolean, boolean][]) {
+      // (the two columns as far apart as suits the stone's size, closer on a narrow screen; the panel 190 wide at least)
+      const nw = 48 * tz + 4, cd = Math.min(Math.round(nw / 2 + 12 + 14 * tz), Math.floor((wide ? W - 28 - 190 - nw - 16 : W - 8 - nw) / 2));
+      if (cd < nw / 2 + 10) continue;
+      const nm = P.map((p) => wrap(reached(p.id) ? tx(p.name) : "???", 2 * cd - 10, "mini").slice(0, 2)), lh = tl ? 2 + 8 * Math.max(...nm.map((n) => n.length)) : 0;
+      const rw = TIERS.length + (tf ? 0 : 1);
+      [z, fold, labelH, colD, names] = [tz, tf, lh, cd, nm];
+      if (rw * (16 * tz + 4 + lh) + (rw - 1) * (8 + 4 * tz) <= room) break;
+    }
+    const TW = 16 * z, NW = 3 * TW + 4, NH = TW + 4, rows = TIERS.length + (fold ? 0 : 1), dW = wide ? 2 * colD + NW + 16 : W;
+    const rowsH = rows * (NH + labelH), gap = Math.max(4, Math.min(16 * z, Math.floor((room - rowsH) / (rows - 1)))), diagH = rowsH + (rows - 1) * gap;
+    // the panel's width, and the two together in the middle of the screen
+    const pw = wide ? Math.min(300, W - dW - 28) : Math.min(320, W - 16), left = wide ? Math.round((W - dW - 12 - pw) / 2) : 0;
+    const cx = wide ? left + Math.round(dW / 2) : Math.round(W / 2), y0 = top + (wide ? Math.round((room - diagH) / 2) : 0);
+    // each place's strip (its top left): a tier's one place in the middle, two either side of it (folded, the tower's
+    // heart and what lies beyond it side by side)
+    const pos = new Map<PlaceId, [number, number]>();
+    for (const p of P) {
+      const tier = Math.min(p.tier, fold ? TIERS.length : rows), list = fold && tier === TIERS.length ? [...TIERS[tier - 1], ...P.filter((q) => q.tier > TIERS.length).map((q) => q.id)] : TIERS[p.tier - 1] ?? [p.id];
+      const k = list.indexOf(p.id), x = list.length === 1 ? cx : cx + (k === 0 ? -colD : colD);
+      pos.set(p.id, [Math.round(x - NW / 2), Math.round(y0 + (rows - tier) * (NH + labelH + gap))]);
+    }
+    // the ways up: dotted, lit where both ends are reached; a branch's broken, in its gift's colour, with its gate on it
+    const line = (x0: number, y0: number, x1: number, y1: number, col: number, dash: boolean) => {
+      const n = Math.max(1, Math.round(Math.hypot(x1 - x0, y1 - y0) / 2));
+      for (let q = 0; q <= n; q++) if (!dash || q % 3 !== 2) ui.rect(Math.round(x0 + ((x1 - x0) * q) / n), Math.round(y0 + ((y1 - y0) * q) / n), 1, 1, col);
+    };
+    for (const p of P) {
+      if (p.single) continue;
+      const next: [PlaceId, GateKind | null][] = p.after ? [[p.after, null]] : TIERS[p.tier] ? [[TIERS[p.tier][0], null]] : [];
+      if (p.branch) next.push([p.branch, p.wayGate ?? "lattice"]);
+      const [ax, ay] = pos.get(p.id)!;
+      for (const [to, gate] of next) {
+        const [bx, by] = pos.get(to)!, lit = reached(p.id) && reached(to), x0 = ax + NW / 2, y1 = by + NH + labelH + 1, x1 = bx + NW / 2;
+        // (side by side: straight across)
+        if (by === ay) {
+          line(ax + NW + 2, ay + NH / 2, bx - 3, by + NH / 2, lit ? C.goldDim : C.edge, false);
+          continue;
+        }
+        if (!gate) {
+          line(x0, ay - 2, x1, y1, lit ? C.goldDim : C.edge, false);
+          continue;
+        }
+        const gc = rgba(giftFor(gate).color);
+        line(x0, ay - 2, x1, y1, withAlpha(gc, lit ? 0.9 : 0.35), true);
+        // the gate: an arch on the way, its opening lit once the way through it was taken
+        const gx = Math.round(x0 + (x1 - x0) * 0.3), gy = Math.round(ay - 2 + (y1 - ay + 2) * 0.3);
+        ui.rect(gx - 4, gy - 4, 9, 9, C.ink);
+        ui.rect(gx - 2, gy - 4, 5, 1, gc);
+        ui.rect(gx - 3, gy - 3, 1, 6, gc);
+        ui.rect(gx + 3, gy - 3, 1, 6, gc);
+        ui.rect(gx - 2, gy - 3, 5, 6, lit ? withAlpha(gc, 0.45 + 0.15 * Math.sin(now * 3)) : rgba("#1a1626"));
+      }
+    }
+    // the places
+    const pip = (x: number, y: number, on: boolean, col: number, r = 1) => {
+      ui.rect(x - r - 1, y - r - 1, 2 * r + 2, 2 * r + 2, C.ink);
+      ui.rect(x - r, y - r, 2 * r, 2 * r, on ? col : rgba("#3a3448"));
+    };
+    const VAULT = C.gold, SECRET = rgba("#c8c0e8");
+    P.forEach((p, k) => {
+      const [x, y] = pos.get(p.id)!, on = reached(p.id), it = this.menu.item(x - 3, y - 3, NW + 6, NH + labelH + 4, now);
+      if (it.hit || it.focused) this.atlasSel = k;
+      const sel = k === this.atlasSel;
+      if (on) glowUi(ui, x + NW / 2, y + NH / 2, NW * 0.75, NH * 1.3, rgba(p.torchLight), sel ? 0.24 : 0.1);
+      ui.rect(x, y, NW, NH, sel ? C.gold : on ? C.goldDim : C.edge);
+      ui.rect(x + 1, y + 1, NW - 2, NH - 2, C.ink);
+      // its three floors' stone, left to right, with what was found on each along their foot
+      for (let s = 1; s <= PLACE_FLOORS; s++) {
+        const name = s > 1 && hasAnim(`${p.floor}_${s}`) ? `${p.floor}_${s}` : p.floor, tile = anim(name).frames[0][0], tx0 = x + 2 + (s - 1) * TW;
+        const tint = on ? (sel ? 0xffffffff : rgbaf(0.78, 0.76, 0.84, 1)) : rgbaf(0.07, 0.06, 0.1, 1);
+        if (tile) ui.image(tile, tx0, y + 2, z, z, 0, tint);
+        if (on && !p.single) {
+          pip(tx0 + 3 + z, y + NH - 4 - z, sv.vaults.includes(`${p.id}:${s}`), VAULT, z);
+          pip(tx0 + TW - 3 - z, y + NH - 4 - z, sv.secrets.includes(`${p.id}:${s}`), SECRET, z);
+        }
+      }
+      if (!on) text(ui, "?", x + NW / 2, y + NH / 2 - 4, { align: "center", color: C.dim });
+      // its guardian, at the far end: lit once it fell
+      if (!p.single) ui.image(icon("hud", "boss"), x + NW - 3 - 3 * z, y + 3 + 3 * z, 0.6 * z, 0.6 * z, 0, this.fell(p.id) ? 0xffffffff : rgbaf(0.3, 0.28, 0.36, 1));
+      if (labelH) names[k].forEach((l, j) => text(ui, l, x + NW / 2, y + NH + 3 + j * 8, { font: "mini", align: "center", color: sel ? C.goldLight : on ? C.text : C.dim, shadow: C.ink }));
+    });
+    // the place picked: how one gets there; once reached, its floors and what was found on them, its guardian and gift
+    const sp = P[Math.min(P.length - 1, this.atlasSel)], on = reached(sp.id), lw = pw - 16;
+    const parent = P.find((q) => q.branch === sp.id), gateOf = parent ? giftFor(parent.wayGate ?? "lattice") : null;
+    const way = gateOf ? t("atlasWayGate").replace("{gate}", tx(gateOf.gateName)).replace("{place}", reached(parent!.id) ? tx(parent!.name) : "???")
+      : sp.single ? t("atlasWayPit") : sp.tier > 1 ? t("atlasWayMain").replace("{t}", ROMAN[sp.tier - 1]) : "";
+    const lines = (str: string) => (str ? wrap(str, lw, "mini").length * 8 + 2 : 0);
+    const full = on && !sp.single, note = !on ? t("atlasUnknown") : sp.single ? t("atlasEnd") : "";
+    // (what the pips mean, and the place's line, where there is the room for them)
+    const fixed = 6 + 12 + lines(way) + (full ? 3 * 9 + 2 + 9 + (sp.gift ? 9 : 0) : lines(note) + 2) + 5;
+    const avail = wide ? bottom - top : bottom - 4 - (y0 + diagH + 8), key = full && fixed + 14 <= avail;
+    const lore = full && fixed + (key ? 14 : 0) + lines(tx(sp.lore)) + 1 <= avail;
+    const ph = Math.min(avail, fixed + (key ? 14 : 0) + (lore ? lines(tx(sp.lore)) + 1 : 0));
+    const px = wide ? left + dW + 12 : Math.round(W / 2 - pw / 2), py = wide ? top + Math.round((avail - ph) / 2) : y0 + diagH + 8;
+    panel(ui, px, py, pw, ph, on ? C.goldDim : C.edge, C.panel);
+    this.atlasBackX = low ? Math.round(px + pw / 2 - 50) : null;
+    const lx = px + 8;
+    let ly = py + 6;
+    text(ui, on ? tx(sp.name) : "???", lx, ly, { color: on ? C.goldLight : C.dim, shadow: C.ink });
+    if (!sp.single) text(ui, t("atlasTier").replace("{t}", ROMAN[sp.tier]), px + pw - 8, ly + 1, { font: "mini", align: "right", color: C.goldDim });
+    ly += 12;
+    if (way) ly += para(ui, way, lx, ly, lw, gateOf ? rgba(gateOf.color) : C.dim, "left", 8, "mini") + 2;
+    if (!full) {
+      para(ui, note, lx, ly, lw, sp.single ? C.text : C.dim, "left", 8, "mini");
+      return this.atlasBack();
+    }
+    if (lore) ly += para(ui, tx(sp.lore), lx, ly, lw, C.dim, "left", 8, "mini") + 1;
+    for (let s = 1; s <= PLACE_FLOORS; s++) {
+      text(ui, `${s}  ${tx(sp.floors[s - 1].name)}`, lx, ly, { font: "mini", color: C.text });
+      pip(px + pw - 22, ly + 3, sv.vaults.includes(`${sp.id}:${s}`), VAULT);
+      pip(px + pw - 12, ly + 3, sv.secrets.includes(`${sp.id}:${s}`), SECRET);
+      ly += 9;
+    }
+    ly += 2;
+    const fell = this.fell(sp.id);
+    text(ui, `${t("atlasGuard")}: ${tx(ENEMIES[sp.boss].name)}`, lx, ly, { font: "mini", color: C.text });
+    text(ui, t(fell ? "atlasFell" : "atlasStands"), px + pw - 8, ly, { font: "mini", align: "right", color: fell ? C.green : C.dim });
+    ly += 9;
+    if (sp.gift) {
+      const g = giftDef(sp.gift), own = sv.gifts.includes(sp.gift);
+      text(ui, `${t("atlasGift")}: ${own ? tx(g.name) : "???"}`, lx, ly, { font: "mini", color: own ? rgba(g.color) : C.dim });
+      ly += 9;
+    }
+    // what the pips are
+    if (!key) return this.atlasBack();
+    const ky = ly + 3, sx = lx + 7 + measure(t("atlasVault"), "mini") + 10;
+    pip(lx + 2, ky + 3, true, VAULT);
+    text(ui, t("atlasVault"), lx + 7, ky, { font: "mini", color: C.dim });
+    pip(sx + 2, ky + 3, true, SECRET);
+    text(ui, t("atlasSecret"), sx + 7, ky, { font: "mini", color: C.dim });
+    this.atlasBack();
+  }
+  /** The atlas's way back, to the screen it came from. */
+  private atlasBack(): void {
+    const W = this.r.w, H = this.r.h;
+    const x = this.atlasBackX ?? Math.round(W / 2 - 50);
+    if (button(this.ui, this.menu, this.now, x, H - 24, 100, 18, t("back"), { icon: icon("hud", "back") }) || this.input.pressed("back"))
+      this.setState(this.atlasFrom, this.atlasFrom === "pause" ? 4 : this.titleSlot("atlas"));
+  }
+
   /** The floor's title card: its number, its biome, a line about it, and where it sits in the run. */
   private drawCard(): void {
     const ui = this.ui, W = this.r.w, H = this.r.h, w = this.world, B = w.place, a = Math.min(1, this.cardT * 3);
@@ -1990,7 +2193,7 @@ export class Game {
     }
     // the way to the game's support (the stores ask for one), as set for this build
     if (SUPPORT) text(ui, `${t("support")}: ${SUPPORT}`, W / 2, H - 38, { font: "mini", align: "center", color: C.dim });
-    if (button(ui, this.menu, now, Math.round(W / 2 - 50), H - 26, 100, 18, t("back"), { icon: icon("hud", "back") }) || this.input.pressed("back")) this.setState(this.settingsFrom, this.settingsFrom === "title" ? this.titleSlot("settings") : 4);
+    if (button(ui, this.menu, now, Math.round(W / 2 - 50), H - 26, 100, 18, t("back"), { icon: icon("hud", "back") }) || this.input.pressed("back")) this.setState(this.settingsFrom, this.settingsFrom === "title" ? this.titleSlot("settings") : 6);
   }
 
   /** Achievements: a card each, earned ones gilded, the rest dim with how far along; paged to fit the screen. */
@@ -2349,7 +2552,6 @@ export class Game {
     // reached, the fourth with tier III, the fifth with tier IV)
     const reached = Math.min(4, Math.ceil(Math.max(1, this.save.bestFloor) / 3));
     const tierOf = (lv: number) => [1, 1, 2, 3, 4][Math.min(4, lv)], shut = (lv: number) => tierOf(lv) > reached;
-    const ROMAN = ["", "I", "II", "III", "IV"];
     const buyItem = (k: number) => {
       const item = FORGE[k], lv = f[item.id] ?? 0, cost = item.costs[lv];
       if (lv >= item.costs.length || this.save.embers < cost || shut(lv)) return void this.audio.play("deny");
@@ -2782,7 +2984,8 @@ export class Game {
       { label: t("bookEvo"), opts: { icon: icon("hud", "book") }, go: () => void this.openBook("evo") },
       { label: t("bookEl"), opts: { icon: icon("hud", "curse") }, go: () => void this.openBook("el") },
       { label: t("gifts"), opts: { icon: icon("hud", "secret") }, go: () => void this.openGifts("pause") },
-      { label: t("stats"), opts: { icon: icon("hud", "trophy") }, go: () => void this.openStats("pause", 4) },
+      { label: t("atlas"), opts: { icon: icon("hud", "globe") }, go: () => void this.openAtlas("pause") },
+      { label: t("stats"), opts: { icon: icon("hud", "trophy") }, go: () => void this.openStats("pause", 5) },
       { label: t("settings"), opts: { icon: icon("hud", "gear") }, go: () => {
         this.settingsFrom = "pause";
         this.setState("settings");
@@ -2796,7 +2999,7 @@ export class Game {
       } },
     ];
     // one column; on a short screen (a phone on its side) two, three rows each
-    const short = 6 * 26 + 18 + 70 > H && W >= 340, cols = short ? 2 : 1, rows = Math.ceil(acts.length / cols);
+    const short = acts.length * 26 + 18 + 70 > H && W >= 340, cols = short ? 2 : 1, rows = Math.ceil(acts.length / cols);
     const bw = short ? Math.min(160, Math.floor((W - 60) / 2)) : 170, bh = short ? 18 : 20, gap = short ? 5 : 6, colGap = 10;
     const pw = cols * bw + (cols - 1) * colGap, ph = rows * (bh + gap) + 18;
     const py = short ? Math.round(Math.max(48, H / 2 - ph / 2 + 16)) : Math.round(Math.max(H * 0.2 + 30, H / 2 - ph / 2 + 10));
