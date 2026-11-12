@@ -197,7 +197,8 @@ export function weaponModelFrames(rigWeapon, n = 12) {
     const yaw = (k / n) * Math.PI * 2;
     // one of the heroes' own weapons (src/hero/rig.js), drawn upright on its own: the Book of Elements, open
     if (rigWeapon.startsWith("rig:")) {
-      frames.push(weaponModel(rigWeapon.slice(4), yaw, { rune: "arcane", flip: 0, scale: 1.6 }));
+      const [, id, size] = rigWeapon.split(":");
+      frames.push(weaponModel(id, yaw, { rune: "arcane", flip: 0, scale: 1.6, small: size === "small" }));
       continue;
     }
     const parts = posedParts({ ...READY, weapon: rigWeapon, fx: 8, fy: -20, sa: -Math.PI / 2 + 0.25, yaw, bx: 6, by: -16 });

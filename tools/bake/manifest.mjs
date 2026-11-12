@@ -51,6 +51,11 @@ export const ANIMS = [
   ...weaponAnims({ thr: 6, k: 0.85 }).filter((e) => !e.rig),
   // the weapons on their own, turning in 3D, for the altars
   ...Object.entries(MODEL_WEAPONS).map(([id, rigWeapon]) => ({ name: `model_${id}`, model: rigWeapon, fps: 10 })),
+  // the gifts: each turning, for its own screen, and a small badge of it (turned a little toward the light)
+  ...["shade", "ember", "rime", "beacon", "forge"].flatMap((id) => [
+    { name: `gift_${id}`, model: `rig:gift_${id}`, fps: 10, count: 16 },
+    { name: `gift_${id}_s`, model: `rig:gift_${id}:small`, fps: 1, count: 1 },
+  ]),
 
   // ---- the heroes' gear, their shots and spells
   { name: "lantern", art: "gear/lantern", fps: 10 },

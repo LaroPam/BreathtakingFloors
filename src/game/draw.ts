@@ -540,6 +540,16 @@ export function drawWorld(s: Scene, w: World, camX: number, camY: number, viewW:
     const g2 = born < 1 ? 1 : grow;
     // struck, it is knocked back a pixel or two from the hero for the beat of the flash: the blow has a direction
     let yy = y;
+    // a miniboss: a ring of its light turning at its feet, its glow strong; in a leap it is drawn up off the floor
+    if (d.ai === AI.Mini) {
+      const col = rgba(d.glow || "#ffd27a"), r = w.brx * 1.15 + 4, mb = w.mini && w.mini.uid === E.uid[i] ? w.mini : null;
+      for (let q = 0; q < 18; q++) {
+        const a = (q / 18) * Math.PI * 2 + time * 1.4;
+        s.back.rect(Math.round(x + Math.cos(a) * r), Math.round(y + Math.sin(a) * r * 0.36), 2, 1, withAlpha(col, q % 3 ? 0.35 : 0.8));
+      }
+      s.illum.light(x, y - w.bry, 34 * d.scale, 28 * d.scale, withAlpha(col, mb?.enraged ? 0.5 + 0.15 * Math.sin(time * 9) : 0.32));
+      if (mb) yy -= mb.lift;
+    }
     if (hit && born >= 1) {
       const dx = x - h.x, dy = y - h.y, dd = Math.hypot(dx, dy) || 1, k = 2 * Math.min(1, E.flash[i] / 0.07);
       x += (dx / dd) * k;

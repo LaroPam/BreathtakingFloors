@@ -406,6 +406,37 @@ function along(H, axis, side, part) {
 const STEEL = Object.fromEntries(Object.entries({ hi: "#ffffff", a: "#e8edf6", b: "#a4afc6", d: "#68748f", gold: "#ffd84a", goldD: "#b8862a", grip: "#7a3a2a", gripD: "#4a2018", wood: "#8a5a32", woodD: "#5a3820", dark: "#3a3448", darkD: "#262033" }).map(([k, v]) => [k, hex(v)]));
 const WHIP = Object.fromEntries(Object.entries({ grip: "#6a3a24", gripD: "#42200f", wrapD: "#2a140a", lash: "#8a5432", lashH: "#b07a4c", lashD: "#4e2a16", tuft: "#ece0c0" }).map(([k, v]) => [k, hex(v)]));
 const BOOK = Object.fromEntries(Object.entries({ leather: "#5a2a6a", leatherD: "#341640", gold: "#ffd84a", goldD: "#b8862a", page: "#f4ead0", pageE: "#d8c8a0", pageD: "#b8a47c", spine: "#4a2a1a", ink: "#7a6448", ribbon: "#c0302a" }).map(([k, v]) => [k, hex(v)]));
+// the gifts' own colours: shadow glass and silver, gold and ember, ice, lantern light, iron and fire
+const GIFT = Object.fromEntries(Object.entries({
+  glass: "#3a2a5a", glassH: "#6a54a0", glassD: "#1a1230", seam: "#c890ff", silver: "#c8c8dc", silverD: "#7a7890", rune: "#e0b8ff",
+  gold: "#ffd84a", goldH: "#fff0a0", goldD: "#b8862a", goldDD: "#6a4a14", ember: "#ff7a2a", emberH: "#ffd060",
+  ice: "#9bdcff", iceH: "#e8f8ff", iceD: "#4a8ac8", iceDD: "#22507a",
+  lamp: "#fff3a6", lampH: "#ffffff", stone: "#8a8498", stoneD: "#4a4658",
+  iron: "#5a5468", ironH: "#8a84a0", ironD: "#2e2a3a", fire: "#ff6a2a", fireH: "#ffc040",
+}).map(([k, v]) => [k, hex(v)]));
+/**
+ * How lit a point of a turning model is: its direction a (round the up axis, in the model) turned by the model's yaw,
+ * against a light from the front left. 0 in shadow to 1 full in the light.
+ */
+/** The gifts are drawn this much bigger than the weapons (their own screen shows them large). */
+const GZ = 2.3;
+/** A gift's points, scaled up by GZ (half that for the small one, a badge in a slot). */
+let GZc = GZ;
+const giftT = (T0, q) => ((GZc = q.small ? GZ / 2 : GZ), (i, k, c, lift = 0, glow = false) => T0(i * GZc, k * GZc, c, lift * GZc, glow));
+const giftLit = (a, yaw) => 0.5 + 0.5 * Math.cos(a - (yaw ?? 0) - 2.4);
+/** A ring round the up axis at height i: `sides` flat faces (0: round), r out; c(a) gives its colour (and glow). */
+function giftRing(T, i, r, sides, c) {
+  const step = 0.4 / Math.max(1, r * GZc);
+  for (let a = 0; a < Math.PI * 2; a += step) {
+    let rr = r;
+    if (sides) {
+      const f = Math.floor((a / (Math.PI * 2)) * sides), fa = ((f + 0.5) * Math.PI * 2) / sides;
+      rr = (r * Math.cos(Math.PI / sides)) / Math.cos(a - fa);
+    }
+    const [col, glow] = c(a, sides ? Math.floor((a / (Math.PI * 2)) * sides) : 0);
+    T(i, Math.cos(a) * rr, col, Math.sin(a) * rr, glow);
+  }
+}
 const BOOK_RUNE = Object.fromEntries(Object.entries({ arcane: "#c890ff", fire: "#ffae35", frost: "#9bdcff", storm: "#ffe03c", hot: "#ffffff" }).map(([k, v]) => [k, hex(v)]));
 function blade(T, from, length, w) {
   for (let i = from; i <= from + length + 0.01; i += 0.4) {
@@ -552,6 +583,94 @@ const WEAPONS = {
       for (let i = 0.4; i <= 7.61; i += d)
         for (let kk = 0.4; kk <= 5.21; kk += d) T(i, kk * Math.cos(th), back ? BOOK.pageD : BOOK.page, 1.6 + kk * Math.sin(th));
     }
+  } },
+  // ---- the gifts, as they turn on their own screen
+  // Shadow Step: a crystal of shadow glass, two six-sided points base to base, its edges seams of violet light, a ring
+  // of silver round its waist with runes burning on it
+  gift_shade: { draw(T0, q) {
+    const T = giftT(T0, q);
+    for (let i = -9; i <= 11; i += 0.35) {
+      const r = i < 2 ? ((i + 9) / 11) * 3.8 : ((11 - i) / 9) * 3.8;
+      if (r < 0.2) continue;
+      giftRing(T, i, r, 6, (a, f) => {
+        const edge = Math.abs(a - (f * Math.PI) / 3) < 0.09, lit = giftLit((f + 0.5) * (Math.PI / 3), q.yaw);
+        return [edge ? GIFT.seam : lit > 0.75 ? GIFT.glassH : lit > 0.35 ? GIFT.glass : GIFT.glassD, edge];
+      });
+    }
+    for (const w of [-0.35, 0, 0.35]) giftRing(T, 2 + w, 4.7, 0, (a) => {
+      const rune = Math.floor((a * 6) / Math.PI) % 3 === 0 && Math.abs(w) < 0.1;
+      return [rune ? GIFT.rune : giftLit(a, q.yaw) > 0.5 ? GIFT.silver : GIFT.silverD, rune];
+    });
+  } },
+  // Ember Key: a key of gold, its bow a ring with an ember burning at its heart, its bit cut in three wards
+  gift_ember: { draw(T0, q) {
+    const T = giftT(T0, q);
+    for (let a = 0; a < Math.PI * 2; a += 0.08)
+      for (let t = 0; t < Math.PI * 2; t += 0.5) {
+        const R = 3.6 + Math.cos(t) * 0.9;
+        T(6 + Math.sin(a) * R, Math.cos(a) * R, giftLit(t + Math.PI / 2, q.yaw) > 0.55 ? GIFT.gold : GIFT.goldD, Math.sin(t) * 0.9);
+      }
+    for (let r = 0; r <= 1.9; r += 0.3) for (let a = 0; a < Math.PI * 2; a += 0.3) T(6 + Math.sin(a) * r, Math.cos(a) * r, r < 1 ? GIFT.emberH : GIFT.ember, 0.2, true);
+    for (let i = -9; i <= 2.6; i += 0.3) giftRing(T, i, 0.8, 0, (a) => [giftLit(a, q.yaw) > 0.5 ? GIFT.goldH : GIFT.goldD, false]);
+    for (const i of [1.6, -1]) giftRing(T, i, 1.2, 0, (a) => [giftLit(a, q.yaw) > 0.5 ? GIFT.gold : GIFT.goldDD, false]);
+    for (const [i0, len] of [[-9, 3.2], [-7.4, 2.2], [-5.8, 3]])
+      for (let i = i0; i <= i0 + 1.1; i += 0.3) for (let k = 0.6; k <= len; k += 0.3) for (const l of [-0.4, 0, 0.4]) T(i, k, l < 0 ? GIFT.goldD : GIFT.gold, l);
+  } },
+  // Rime Path: a star of ice, six arms each branched twice, flat and clear, its tips bright
+  gift_rime: { draw(T0, q) {
+    const T = giftT(T0, q);
+    for (let arm = 0; arm < 6; arm++) {
+      const a = (arm * Math.PI) / 3, ux = Math.cos(a), uy = Math.sin(a);
+      for (let d = 0; d <= 8; d += 0.25) {
+        const w = 0.7 - d * 0.05;
+        for (let o = -w; o <= w; o += 0.3) for (const l of [-0.3, 0.3]) {
+          const lit = giftLit(l > 0 ? -Math.PI / 2 : Math.PI / 2, q.yaw);
+          T(1 + uy * d - ux * o, ux * d + uy * o, d > 7.2 ? GIFT.iceH : lit > 0.5 ? GIFT.ice : GIFT.iceD, l, d > 7.2);
+        }
+        for (const [at, len] of [[3, 2.4], [5.4, 1.6]])
+          if (Math.abs(d - at) < 0.13)
+            for (const side of [-1, 1]) {
+              const b = a + side * 0.9;
+              for (let e = 0; e <= len; e += 0.25) T(1 + uy * d + Math.sin(b) * e, ux * d + Math.cos(b) * e, e > len - 0.4 ? GIFT.iceH : GIFT.ice, 0, e > len - 0.4);
+            }
+      }
+    }
+    for (let r = 0; r <= 1.6; r += 0.3) for (let a = 0; a < Math.PI * 2; a += 0.3) T(1 + Math.sin(a) * r, Math.cos(a) * r, GIFT.iceH, 0.4, r < 0.7);
+  } },
+  // Beacon Light: a little lighthouse lamp, a base of stone, a cage of gold round panes with the light in them, a
+  // gold cap and a finial
+  gift_beacon: { draw(T0, q) {
+    const T = giftT(T0, q);
+    for (let i = -9; i <= -6.5; i += 0.3) giftRing(T, i, 3.4, 8, (a, f) => [giftLit((f + 0.5) * (Math.PI / 4), q.yaw) > 0.55 ? GIFT.stone : GIFT.stoneD, false]);
+    for (let i = -6.5; i <= 2; i += 0.3)
+      giftRing(T, i, 2.8, 6, (a, f) => {
+        const bar = Math.abs(a - (f * Math.PI) / 3) < 0.16;
+        return bar ? [giftLit(a, q.yaw) > 0.5 ? GIFT.gold : GIFT.goldD, false] : [i > -1 && i < 1 ? GIFT.lampH : GIFT.lamp, true];
+      });
+    for (let i = 2; i <= 6.2; i += 0.3) giftRing(T, i, Math.max(0.3, 3.4 * (1 - (i - 2) / 4.4)), 6, (a, f) => [giftLit((f + 0.5) * (Math.PI / 3), q.yaw) > 0.5 ? GIFT.gold : GIFT.goldD, false]);
+    for (let r = 0; r <= 0.9; r += 0.3) giftRing(T, 7, r + 0.01, 0, (a) => [giftLit(a, q.yaw) > 0.5 ? GIFT.goldH : GIFT.gold, false]);
+  } },
+  // Forge Might: an anvil of dark iron, its face cracked with fire that has not cooled
+  gift_forge: { draw(T0, q) {
+    const T = giftT(T0, q);
+    const block = (i0, i1, k0, k1, l0, l1, crack) => {
+      for (let i = i0; i <= i1; i += 0.3)
+        for (let k = k0; k <= k1; k += 0.3)
+          for (let l = l0; l <= l1; l += 0.3) {
+            const out = i > i1 - 0.3 || i < i0 + 0.3 || k < k0 + 0.3 || k > k1 - 0.3 || l < l0 + 0.3 || l > l1 - 0.3;
+            if (!out) continue;
+            const top = i > i1 - 0.3, hot = crack && top && Math.abs(Math.sin(k * 1.7 + l * 2.3)) < 0.18;
+            const lit = top ? 0.9 : giftLit(Math.abs(k - k1) < 0.3 ? 0 : Math.abs(k - k0) < 0.3 ? Math.PI : l > 0 ? Math.PI / 2 : -Math.PI / 2, q.yaw);
+            T(i, k, hot ? GIFT.fireH : lit > 0.7 ? GIFT.ironH : lit > 0.35 ? GIFT.iron : GIFT.ironD, l, hot);
+          }
+    };
+    block(-9, -7, -4, 4, -2.4, 2.4, false);
+    block(-7, -3, -1.8, 1.8, -1.4, 1.4, false);
+    block(-3, 0.5, -4.4, 3.4, -2, 2, true);
+    // the horn, tapering out of the face's end
+    for (let k = 3.4; k <= 7.4; k += 0.3) { const r = 1.6 * (1 - (k - 3.4) / 4.4) + 0.2; for (let a = 0; a < Math.PI * 2; a += 0.4) T(-1.3 + Math.sin(a) * r, k, giftLit(a, q.yaw) > 0.5 ? GIFT.ironH : GIFT.iron, Math.cos(a) * r); }
+    // sparks over it
+    for (const [i, k] of [[2.4, -1], [3.6, 1.2], [4.8, -0.2]]) T(i, k, GIFT.fireH, 0, true);
   } },
   handle: { draw(T) {
     haft(T, -2.6, 6, STEEL.grip, STEEL.gripD);
@@ -742,7 +861,7 @@ export function heroImage(L, pose) {
  * { n, xs, ys, color, light }, y down, about the hand's point. q is passed to its draw (a book's rune, its pages).
  */
 export function weaponModel(id, yaw, q = {}) {
-  q = { ...q, model: true };
+  q = { ...q, model: true, yaw };
   LOOK = prepare({ id: "weapon", mats: {} });
   const R = rotY(-yaw), out = (() => {
     WEAPONS[id].draw(along([0, 0, 0], mv(R, [0, 1, 0]), mv(R, [1, 0, 0]), PART.weapon), q, [0, 0, 0]);

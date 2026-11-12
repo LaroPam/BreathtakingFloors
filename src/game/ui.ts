@@ -578,6 +578,15 @@ export function drawHud(b: Batch, w: World, W: number, H: number, time: number, 
     bar(b, bx, by, bw, 5, k, shut ? rgba("#5a5a6a") : rgba("#a01858"), shut ? rgba("#b8b8c8") : rgba("#ff86e6"), { well: rgba("#1a0a14"), lag: bossLag, ticks: 3 });
     if (shut && Math.sin(time * 6) > -0.4) text(b, t("invulnerable"), bx + bw, by - 12, { font: "mini", align: "right", color: rgba("#c8d4ff"), shadow: C.ink });
   } else bossLag = 1;
+  // ---- a miniboss: its name over a smaller bar, above the boss's if both are up
+  const mi = w.miniIndex();
+  if (mi >= 0) {
+    const E = w.enemies, d = ENEMIES[E.type[mi]], bw = Math.min(200, W - 90), bx = Math.round(W / 2 - bw / 2), by = bi >= 0 ? H - 48 : H - 14, k = E.hp[mi] / E.maxHp[mi];
+    const col = rgba(d.glow || "#ffd27a");
+    plate(b, bx - 6, by - 13, bw + 12, 21, withAlpha(col, 0.7));
+    text(b, tx(d.name), W / 2, by - 10, { font: "mini", align: "center", color: col, shadow: C.ink });
+    bar(b, bx, by, bw, 4, k, rgba("#7a4a18"), col, { well: rgba("#1a120a"), ticks: 2 });
+  }
 
   // a banner on a band of darkness; it holds a little longer when it carries a line of what to do under it
   // (on a wide screen it sits in the middle column between the plates, on a tall one below them)

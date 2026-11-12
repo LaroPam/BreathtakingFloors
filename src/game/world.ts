@@ -7,9 +7,9 @@ import type { Audio } from "../engine/audio";
 import { rgba, rgbaf } from "../engine/renderer";
 import {
   AI, depthOf, El, EL_COLOR, EN, ENEMIES, evolutionOf, heroDef, mainStop, nextStop, PLACE_FLOORS, QUESTS, RELIC_MAX, RELICS, RelicKind, reactionFor, roster, WEAPON_IDS, WEAPONS,
-  type PlaceDef, type PlaceId, type Stop, type GateKind, giftFor, DOORS, type DoorKind, type Blow, type HeroDef, type Modifier, type QuestKind, type Reaction, type StatId, type TaskId, type WeaponId, MYTHIC, RARITIES, rollRarity, UNIQUES, type Perk,
+  type PlaceDef, type PlaceId, type Stop, type GateKind, giftFor, DOORS, type DoorKind, MINIS, type MiniMove, type Blow, type HeroDef, type Modifier, type QuestKind, type Reaction, type StatId, type TaskId, type WeaponId, MYTHIC, RARITIES, rollRarity, UNIQUES, type Perk,
 } from "./defs";
-import { getLang, t as tr } from "./i18n";
+import { getLang, t as tr, tx } from "./i18n";
 import { Bullets, Drops, Enemies, Grid, Particles, TEAM_FOE, TEAM_HERO } from "./pools";
 import { Rng } from "./rng";
 import { BEYOND_DOORS, BEYOND_PIT, BEYOND_TOP, buildBeyond, buildMap, Flow, FLOOR, LOOK_ICE, MAP_PLANS, TileMap, WALL, type Area } from "./map";
@@ -127,6 +127,24 @@ export interface Erupt {
   t: number;
   kind: "spike" | "root" | "rift";
 }
+/** A miniboss's mind: the move it is on and since when, its lane or landing, whether it is enraged (under half). */
+export interface MiniBrain {
+  uid: number;
+  act: MiniMove | "idle" | "recover";
+  t: number;
+  cd: number;
+  n: number;
+  plan: number;
+  init: boolean;
+  /** Where a leap set off from and lands, or a rush's way. */
+  sx: number;
+  sy: number;
+  ax: number;
+  ay: number;
+  /** How high it is in a leap (px, for the drawing). */
+  lift: number;
+  enraged: boolean;
+}
 /** A boss's mind: its phase (0..2), what it is doing and since when, and what it is aiming at. */
 export interface BossBrain {
   uid: number;
@@ -154,6 +172,10 @@ export const FLOOR_SQ = 0.72;
 export const EYE_H = 66;
 /** How long a newcomer takes to gather out of grey matter (draw.ts); till then it neither moves nor harms. */
 export const SPAWN_T = 0.7;
+/** A brazier lit wakes a miniboss this often (and a little more each floor down). */
+const MINI_CHANCE = 0.06, MINI_PER_FLOOR = 0.008;
+/** The bolts a place's minibosses throw. */
+const MINI_ORB: Partial<Record<PlaceId, number>> = { crypt: 3, garden: 4, frost: 5, heart: 2 };
 /**
  * The hero's lances (from the frost orb, from the Book of Elements) do not leave at full speed: over their first
  * LANCE_EASE seconds they slide out of what made them, slow at first, then are loosed. `lanceTravel(t)` is how far one
@@ -658,6 +680,9 @@ export class World {
   curse = false;
   /** The floor's gate, if it has one. */
   gate: Gate | null = null;
+  /** The miniboss up now (one a floor at the most), and whether this floor has had its chance at one. */
+  mini: MiniBrain | null = null;
+  miniCalled = false;
   /** Beyond the light: its sealed doors and its pit. */
   doors: Door[] = [];
   pit: Pit | null = null;
@@ -733,6 +758,8 @@ export class World {
     this.map = plan ? buildMap({ ...plan, cols: Math.round(plan.cols * mod.size), rows: Math.round(plan.rows * mod.size) }, this.rng) : buildBeyond();
     this.doors = [];
     this.pit = null;
+    this.mini = null;
+    this.miniCalled = false;
     this.toHero = new Flow(this.map, false);
     this.toHeroFly = new Flow(this.map, true);
     this.toGoal = new Flow(this.map, false);
@@ -2294,7 +2321,20 @@ export class World {
     }
     // hearts are rare: a kill now and then, an elite sometimes
     if (this.rng.chance(d.elite ? 0.15 : 0.003)) this.drops.add(D_HEART, x, y, 1, 0, -20);
-    const boss = d.ai >= AI.Boss;
+    const boss = d.ai >= AI.Boss && d.ai !== AI.Mini;
+    // a miniboss pays like a hoard: a chest, a heart, embers and red crystals
+    if (d.ai === AI.Mini) {
+      this.mini = null;
+      this.drops.add(D_CHEST, x, y, 1, 0, -30);
+      this.drops.add(D_HEART, x + this.rng.range(-20, 20), y, 1, 0, -20);
+      for (let q = 0; q < 8; q++) this.drops.add(D_EMBER, x, y - 4, 1, this.rng.range(-70, 70), this.rng.range(-80, -10));
+      this.embersBonus += 6 + this.floor * 2;
+      this.hitstop = Math.max(this.hitstop, 0.12);
+      this.shake = Math.max(this.shake, 0.7);
+      this.audio.play("boom", 0.8);
+      for (let k = 0; k < 3; k++) this.addFx("explosion", x + this.rng.range(-18, 18), y + this.rng.range(-14, 6), { delay: k * 0.12 });
+      this.ev.banner(tr("miniDown"), rgba(d.glow || "#ffd27a"), tx(d.name));
+    }
     // an elite pays in embers (chests come only from the spirits' tasks)
     if (d.elite && !boss)
       for (let q = 0; q < 4; q++) {
@@ -3378,6 +3418,9 @@ export class World {
           case AI.BossFrog:
             this.frogKing(i, dt, dist);
             break;
+          case AI.Mini:
+            [mx, my] = this.miniBrain(i, dt, dist, ux, uy, sp);
+            break;
         }
       // an elite is quicker than the rest, and now and then it gathers itself and throws itself at the hero: a
       // shivering wind-up with a red tell, then a rush at four times its pace along the line he was on
@@ -4352,6 +4395,154 @@ export class World {
     this.ev.banner(tr("waveStart").replace("{n}", String(n)), rgba("#ff7a6a"), tr("waveSub").replace("{s}", String(total)));
     this.spawnPack(this.pickEnemy(n), false);
     if ((this.floor >= 2 && n === 2) || (this.floor >= 5 && n === 1) || this.mutator === "champions") this.spawnElite();
+    // now and then the fire wakes something bigger: a miniboss (not in a newcomer's first floor, once a floor at the
+    // most, rarer high in the tower)
+    if (!this.miniCalled && !this.gentle && this.place.minis.length && this.rng.chance(MINI_CHANCE + MINI_PER_FLOOR * this.floor)) this.callMini();
+  }
+  /** A miniboss is called (one of the place's, or the one named): a great ring where it will rise, its name, then it is there. */
+  callMini(type = this.rng.pick(this.place.minis)): void {
+    this.miniCalled = true;
+    const d = ENEMIES[type], col = rgba(d.glow || "#ffd27a"), [x, y] = this.edgePoint(120);
+    this.ev.banner(tr("miniComes"), col, tx(d.name));
+    this.audio.play("roar", 0.7);
+    this.warnCircle(x, y, 32, 1.3, col, () => {
+      const i = this.spawnAt(type, x, y);
+      if (i < 0) return;
+      this.mini = { uid: this.enemies.uid[i], act: "idle", t: 0, cd: 1.2, n: 0, plan: 0, init: false, sx: x, sy: y, ax: x, ay: y, lift: 0, enraged: false };
+      this.addFx("spawn", x, y, { sx: 1.6, sy: 1.6, glow: 1, tint: col });
+      this.burst(x, y - 12, 30, col, 140, 0.6);
+      this.shake = Math.max(this.shake, 0.6);
+      this.audio.play("boom", 0.9);
+    });
+  }
+  /** The miniboss up now, by its index, or -1. */
+  miniIndex(): number {
+    return this.mini ? this.indexOf(this.mini.uid) : -1;
+  }
+  /**
+   * A miniboss's step: between its moves it walks after the hero (round the walls, as the horde does); its moves come
+   * in turn, each shown before it lands; under half its health it is enraged, quicker and fiercer. Returns how it
+   * walks (none while it is busy).
+   */
+  private miniBrain(i: number, dt: number, dist: number, ux: number, uy: number, sp: number): [number, number] {
+    const E = this.enemies, h = this.hero, d = ENEMIES[E.type[i]], def = MINIS[d.key], col = rgba(d.glow || "#ffd27a");
+    if (!this.mini || this.mini.uid !== E.uid[i]) this.mini = { uid: E.uid[i], act: "idle", t: 0, cd: 1.2, n: 0, plan: 0, init: false, sx: E.x[i], sy: E.y[i], ax: E.x[i], ay: E.y[i], lift: 0, enraged: false };
+    const m = this.mini, k = m.enraged ? 1.3 : 1, orb = MINI_ORB[this.place.id] ?? B_ORB_RED;
+    const ex = E.x[i], ey = E.y[i] - 12 * d.scale, ang = Math.atan2(h.y - HERO_HIT_Y - ey, h.x - ex);
+    E.face[i] = h.x < E.x[i] ? -1 : 1;
+    if (!m.enraged && E.hp[i] < E.maxHp[i] * 0.5) {
+      // enraged: a flare of its light and a roar
+      m.enraged = true;
+      this.burst(ex, ey, 24, col, 120, 0.5);
+      this.addFx("frost_nova", ex, E.y[i], { tint: col, glow: 0.8, sx: 0.8, sy: 0.8 });
+      this.audio.play("roar", 1.2);
+    }
+    m.t += dt;
+    m.cd -= dt;
+    const go = (act: MiniBrain["act"], cd = 0) => ((m.act = act), (m.t = 0), (m.n = 0), (m.init = false), cd && (m.cd = cd));
+    switch (m.act) {
+      case "idle":
+        if (m.cd <= 0) go(def.moves[m.plan++ % def.moves.length]);
+        return dist > 46 ? [ux * sp * k, uy * sp * k] : [0, 0];
+      case "hop": {
+        // up, along an arc to where the hero stood (a ring shows it), down with a ring of bolts
+        const T = 0.8 / k;
+        if (!m.init) {
+          m.init = true;
+          (m.sx = E.x[i]), (m.sy = E.y[i]), (m.ax = h.x), (m.ay = h.y);
+          if (this.map.wall(m.ax, m.ay) || !this.free(m.ax, m.ay, 10)) (m.ax = m.sx), (m.ay = m.sy);
+          this.warnCircle(m.ax, m.ay, 28, T, col, () => {});
+          this.audio.play("dash", 0.7);
+        }
+        const u = Math.min(1, m.t / T);
+        E.x[i] = m.sx + (m.ax - m.sx) * u;
+        E.y[i] = m.sy + (m.ay - m.sy) * u;
+        m.lift = Math.sin(u * Math.PI) * 28;
+        if (u >= 1 && m.n === 0) {
+          m.n = 1;
+          m.lift = 0;
+          this.addFx("slam", E.x[i], E.y[i], { sx: 0.9, sy: 0.9, glow: 0.8, tint: col });
+          this.dust(E.x[i], E.y[i], 10, 50);
+          if (this.heroIn(E.x[i], E.y[i], 28)) this.hurtHero(2);
+          const n = m.enraged ? 14 : 10;
+          for (let q = 0; q < n; q++) this.shoot(E.x[i], E.y[i] - 8, (q / n) * Math.PI * 2, 74 * k, orb, 4);
+          this.shake = Math.max(this.shake, 0.6);
+          this.audio.play("boom", 1.1);
+        }
+        if (m.t >= T + 0.5) go("recover");
+        return [0, 0];
+      }
+      case "fan": {
+        // fans of bolts at the hero, two (three enraged)
+        const volleys = m.enraged ? 3 : 2;
+        if (m.t >= 0.35 + m.n * 0.4 && m.n < volleys) {
+          const n = m.enraged ? 7 : 5;
+          for (let q = 0; q < n; q++) this.shoot(ex, ey, ang + (q - (n - 1) / 2) * 0.17, 92 * k, orb, 5);
+          this.audio.play("enemyShot");
+          m.n++;
+        }
+        if (m.t >= 0.35 + volleys * 0.4 + 0.3) go("recover");
+        return [0, 0];
+      }
+      case "ring": {
+        if (m.t >= 0.45 && m.n === 0) {
+          m.n = 1;
+          const n = m.enraged ? 16 : 12;
+          for (let q = 0; q < n; q++) this.shoot(ex, ey, (q / n) * Math.PI * 2, 70 * k, orb, 4);
+          this.addFx("heal_ring", ex, ey, { tint: col, glow: 0.8, sx: 0.7, sy: 0.7 });
+          this.audio.play("enemyShot");
+        }
+        if (m.enraged && m.t >= 0.85 && m.n === 1) {
+          m.n = 2;
+          for (let q = 0; q < 16; q++) this.shoot(ex, ey, ((q + 0.5) / 16) * Math.PI * 2, 70 * k, orb, 4);
+        }
+        if (m.t >= 1.2) go("recover");
+        return [0, 0];
+      }
+      case "charge": {
+        // a lane on the floor to the hero and beyond, a moment's shiver, then the rush down it
+        if (!m.init) {
+          m.init = true;
+          const a = Math.atan2(h.y - E.y[i], h.x - E.x[i]);
+          let len = 30;
+          while (len < 240 && !this.map.wall(E.x[i] + Math.cos(a) * len, E.y[i] + Math.sin(a) * len)) len += 10;
+          (m.ax = Math.cos(a)), (m.ay = Math.sin(a));
+          this.warn({ kind: "line", x: E.x[i], y: E.y[i], x2: E.x[i] + m.ax * len, y2: E.y[i] + m.ay * len, r: 20, dur: 0.7 / k, col, fire: () => {} });
+        }
+        if (m.t < 0.7 / k) return [0, 0];
+        if (m.n === 0) (m.n = 1), this.audio.play("dash", 0.6);
+        if (m.t >= 0.7 / k + 0.45) go("recover");
+        return [m.ax * 250 * k, m.ay * 250 * k];
+      }
+      case "summon": {
+        // its kind, called round it: each shown by a ring first
+        if (!m.init && def.summon) {
+          m.init = true;
+          const type = ENEMIES.findIndex((q) => q.key === def.summon), n = Math.min(m.enraged ? 4 : 3, Math.max(0, 140 - E.n));
+          for (let q = 0; q < n; q++) {
+            const a = (q / n) * Math.PI * 2 + this.rng.range(0, 0.6), x = E.x[i] + Math.cos(a) * 40, y = E.y[i] + Math.sin(a) * 30;
+            if (!this.free(x, y, 8)) continue;
+            this.warnCircle(x, y, 12, 0.7, col, () => void this.spawnAt(type, x, y));
+          }
+          this.audio.play("roar", 1.4);
+        }
+        if (m.t >= 1) go("recover");
+        return [0, 0];
+      }
+      case "spiral": {
+        E.cd[i] -= dt;
+        if (E.cd[i] <= 0) {
+          E.cd[i] = 0.12;
+          for (let a = 0; a < (m.enraged ? 3 : 2); a++) this.shoot(ex, ey, m.t * 2.2 + (a * Math.PI * 2) / (m.enraged ? 3 : 2), 64 * k, orb, 3);
+        }
+        if (m.t >= 2.2) go("recover");
+        return [0, 0];
+      }
+      case "recover":
+        if (m.t >= 0.6 / k) go("idle", 1.1 / k);
+        return dist > 46 ? [ux * sp * 0.5, uy * sp * 0.5] : [0, 0];
+    }
+    return [0, 0];
   }
   /** The wave is survived: a breath, a reward, and the way on (the next brazier, or the portal). */
   private endWave(): void {

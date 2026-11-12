@@ -8,7 +8,7 @@ import { anim, FONTS, frameAt, icon, type Anim, type Rect } from "../engine/atla
 import { heroSprites, initHeroSprites, lookId, type HeroAnim, type HeroSprites } from "./heroSprites";
 import { fitScale, measure, text, wrap } from "../engine/text";
 import { dayNumber, weekNumber, type Board, type BoardName, type Platform, type Product } from "../platform/platform";
-import { ACHIEVEMENTS, heroDef, combine, DEPTH, floorText, PLACE_FLOORS, EL_COLOR, LEGENDS, legendDesc, type WeaponId, EL_NAME, ENEMIES, EVOLUTIONS, evolutionOf, FORGE, questDef, TASK_BONUS, TASKS, type TaskId, type ForgeId, SHOP, type ShopItem, HEROES, WEAPONS, weaponName, MODIFIERS, MUTATORS, NO_MODIFIER, REACTIONS, RELIC_MAX, RELIC_SLOTS, ARTIFACT_SLOTS, RELICS, STATS, El, fullWeaponName, STAIR_EVENTS, type Outcome, type StairEvent, MYTHIC, PERK_TEXT, RARITIES, UNIQUES, type Modifier, type PlaceId, type GiftId, giftDef, giftFor, giftFrom, DOORS, GIFTS_IN_TOWER, PLACES, UNLOCKS, arsenalName, ARSENAL, unlockOf, type Reaction, type RelicKind, type StatId } from "./defs";
+import { ACHIEVEMENTS, heroDef, combine, DEPTH, floorText, PLACE_FLOORS, EL_COLOR, LEGENDS, legendDesc, type WeaponId, EL_NAME, ENEMIES, EVOLUTIONS, evolutionOf, FORGE, questDef, TASK_BONUS, TASKS, type TaskId, type ForgeId, SHOP, type ShopItem, HEROES, WEAPONS, weaponName, MODIFIERS, MUTATORS, NO_MODIFIER, REACTIONS, RELIC_MAX, RELIC_SLOTS, ARTIFACT_SLOTS, RELICS, STATS, El, fullWeaponName, STAIR_EVENTS, type Outcome, type StairEvent, MYTHIC, PERK_TEXT, RARITIES, UNIQUES, type Modifier, type PlaceId, type GiftId, giftDef, giftFor, giftFrom, GIFTS, DOORS, GIFTS_IN_TOWER, PLACES, UNLOCKS, arsenalName, ARSENAL, unlockOf, type Reaction, type RelicKind, type StatId } from "./defs";
 import { drawWorld, Scene } from "./draw";
 import { ascent } from "./ascent";
 import { getLang, langFor, setLang, t, tx, type Lang } from "./i18n";
@@ -19,7 +19,7 @@ import { button, slider, C, divider, glow as glowUi, drawHud, drawPointers, draw
 import { CINE_DUR, LUNGE_DASH, SRC_ABILITY, SRC_DASH, SRC_ELS, SRC_N, SRC_PARRY, SRC_REACT, SRC_RELIC, SRC_STATUS, SRC_WAVE, SRC_WEAPON, World } from "./world";
 
 type StatRow = { ic: Rect; name: string; col: number; sum: number; segs: [number, number][] };
-type State = "title" | "heroes" | "forge" | "shop" | "daily" | "records" | "tasks" | "settings" | "card" | "play" | "spin" | "pick" | "pause" | "book" | "stairs" | "dead" | "won" | "stats" | "gift" | "arsenal" | "credits";
+type State = "title" | "heroes" | "forge" | "shop" | "daily" | "records" | "tasks" | "settings" | "card" | "play" | "spin" | "pick" | "pause" | "book" | "stairs" | "dead" | "won" | "stats" | "gift" | "arsenal" | "credits" | "gifts";
 type Choice = { type: "relic"; kind: RelicKind; level: number } | { type: "stat"; id: StatId } | { type: "evo"; kind: RelicKind } | { type: "legend"; weapon: WeaponId } | { type: "rest" };
 
 /**
@@ -108,8 +108,6 @@ const FIRST_GIFT = 120;
 const FLOOR_ONE_HERO = "ranger";
 /** The achievement for beating each place's boss (the last one's is the victory itself). */
 const BOSS_FEAT: Partial<Record<PlaceId, string>> = { crypt: "eye", garden: "toad" };
-/** Each gift's sign, as on its gates: a rune of three by three. */
-const GIFT_RUNES: Record<GiftId, string[]> = { shade: ["x.x", ".x.", "x.x"] };
 /** A button of the end screens: its label and look, and what it does (true if it has left the screen). */
 type EndAct = { label: string; opts: ButtonOpts; go: () => boolean | void };
 /** The title menu's buttons, in order, and after how many runs each is shown to a newcomer. */
@@ -199,6 +197,9 @@ export class Game {
   private platformPaused = false;
   private runRng = new Rng(Date.now() & 0xffffff);
   /** The run just ended: what it reached, the embers it earned (`base`, and `embers` shown: doubled for an ad), its score. */
+  /** The gifts' book: the gift picked, and the screen to go back to. */
+  private giftSel = 0;
+  private giftsFrom: State = "pause";
   /** How long the closing words have been rolling. */
   private creditsT = 0;
   /** The arsenal's tile shown in its panel (the one tapped last; with keys, the one in focus). */
@@ -1343,6 +1344,7 @@ export class Game {
       case "gift": this.drawGift(); break;
       case "arsenal": this.drawArsenal(); break;
       case "credits": this.drawCredits(); break;
+      case "gifts": this.drawGifts(); break;
     }
     if (this.state !== "heroes") this.menu.end(this.state === "stairs" || (this.state === "pick" && this.pickRow), this.state !== "settings");
     // a screen comes up out of the dark
@@ -1712,16 +1714,11 @@ export class Game {
     if (!g) return;
     const ui = this.ui, W = this.r.w, H = this.r.h, now = this.now, def = giftDef(g.id), col = rgba(def.color);
     const a = Math.min(1, g.t * 2.5), short = H < 260, cx = Math.round(W / 2), cy = Math.round(H * (short ? 0.24 : 0.3)), R = short ? 18 : 24;
-    // the sign: a glow, a ring of motes turning, and the rune at the heart, three pixels to its one
-    glowUi(ui, cx, cy, R * 1.8 * a, R * 1.8 * a, col, 0.5 * a);
-    for (let q = 0; q < 28; q++) {
-      const an = (q / 28) * Math.PI * 2 + now * 0.7, p = 0.5 + 0.5 * Math.sin(now * 3 + q * 1.7), r = R * (0.8 + 0.2 * a);
-      ui.rect(Math.round(cx + Math.cos(an) * r), Math.round(cy + Math.sin(an) * r), q % 4 ? 1 : 2, q % 4 ? 1 : 2, withAlpha(col, a * (0.35 + 0.65 * p)));
-    }
-    const rune = GIFT_RUNES[g.id], px = short ? 3 : 4, rw = rune[0].length * px, rh = rune.length * px;
-    rune.forEach((row, j) => [...row].forEach((ch, i) => ch === "x" && ui.rect(cx - rw / 2 + i * px, cy - rh / 2 + j * px, px, px, withAlpha(j === 1 && i === 1 ? rgba("#ffffff") : col, a))));
+    // the gift itself, turning in its own light (about 24 px from its middle to its ends, at its scale)
+    const sc = short ? 1 : 2;
+    this.drawGiftModel(g.id, cx, cy, sc, R, a, true);
     // what it is
-    let y = cy + R + (short ? 8 : 14);
+    let y = cy + 24 * sc + 6;
     y += this.heading(t("giftNew"), y, short ? 1 : 2, C.gold, a);
     text(ui, tx(def.name), cx, y + 4, { font: "title", align: "center", color: withAlpha(col, a), shadow: withAlpha(C.ink, a), outline: true });
     y += 20;
@@ -1734,6 +1731,59 @@ export class Game {
       this.giftShow = null;
       this.setState("play");
     }
+  }
+
+  /**
+   * A gift turning in the air as a weapon does on its altar: its light about it, a ring of motes going round, rising
+   * and falling a little; `owned` false, a dark shape of it only, still.
+   */
+  private drawGiftModel(id: GiftId, x: number, y: number, scale: number, R: number, a: number, owned: boolean): void {
+    const ui = this.ui, now = this.now, col = rgba(giftDef(id).color), m = anim(`gift_${id}`), bob = Math.round(Math.sin(now * 1.6) * 2 * scale);
+    if (owned) {
+      glowUi(ui, x, y, R * 1.8 * a, R * 1.8 * a, col, 0.45 * a);
+      for (let q = 0; q < 28; q++) {
+        const an = (q / 28) * Math.PI * 2 + now * 0.7, p = 0.5 + 0.5 * Math.sin(now * 3 + q * 1.7), r = R * (0.85 + 0.15 * a);
+        ui.rect(Math.round(x + Math.cos(an) * r * 1.25), Math.round(y + Math.sin(an) * r * 0.55 + R * 0.55), q % 4 ? 1 : 2, 1, withAlpha(col, a * (0.3 + 0.6 * p)));
+      }
+    }
+    const [c, l] = owned ? m.frames[frameAt(m, now)] : m.frames[0];
+    if (c) ui.image(c, x, y + bob, scale, scale, 0, owned ? withAlpha(0xffffffff, a) : rgbaf(0.1, 0.09, 0.14, a));
+    if (l && owned) ui.image(l, x, y + bob, scale, scale, 0, withAlpha(0xffffffff, a * 0.8));
+  }
+
+  /**
+   * The gifts' book: every gift of the tower, the one picked turning large in its light with what it does, which gates
+   * it opens and who keeps it; below, all of them in a row, the ones not yet won dark. Never on the screen in a fight.
+   */
+  private drawGifts(): void {
+    const ui = this.ui, W = this.r.w, H = this.r.h, now = this.now, have = this.save.gifts;
+    ui.rect(0, 0, W, H, rgba("#07060c", 0.72));
+    const th = this.heading(t("gifts"), 6, H >= 300 ? 2 : 1, C.gold, 1, `${have.length}/${GIFTS.length}`);
+    const short = H < 260, sel = GIFTS[Math.min(GIFTS.length - 1, this.giftSel)], own = have.includes(sel.id), col = rgba(sel.color);
+    // the row of them at the bottom, above the way back
+    const S = short ? 30 : 38, G = 6, rowW = GIFTS.length * S + (GIFTS.length - 1) * G, rx = Math.round(W / 2 - rowW / 2), ry = H - 30 - S - 6;
+    GIFTS.forEach((g, k) => {
+      const x = rx + k * (S + G), it = this.menu.item(x, ry, S, S, now), on = have.includes(g.id), picked = k === this.giftSel;
+      if (it.hit || it.focused) this.giftSel = k;
+      slot(ui, x, ry, S, picked ? C.gold : on ? C.goldDim : C.edge);
+      const small = anim(`gift_${g.id}_s`).frames[0][0];
+      if (small) ui.image(small, x + S / 2, ry + S / 2, 1, 1, 0, on ? 0xffffffff : rgbaf(0.12, 0.1, 0.16, 1));
+      if (!on) ui.image(icon("hud", "lock"), x + S - 6, ry + S - 6, 0.6, 0.6, 0, rgbaf(0.75, 0.7, 0.85, 0.9));
+    });
+    // the one picked, large: its words just above the row, the gift above them (as high as there is room for)
+    const sc = short ? 1 : 2, wid = Math.min(320, W - 24), giver = giftFrom(sel.id);
+    const words = own ? [tx(sel.desc), t("giftOpens").replace("{gate}", tx(sel.gateName))] : [giver ? t("gateWhere").replace("{who}", tx(ENEMIES[giver.boss].name)) : t("giftUnknown")];
+    const lines = words.reduce((n, w) => n + wrap(w, wid).length, 0), textH = 18 + lines * 10 + 4;
+    let y = ry - 8 - textH;
+    const cy = Math.max(6 + th + 24 * sc, Math.min(Math.round(6 + th + (y - 6 - th) / 2), y - 24 * sc - 6));
+    this.drawGiftModel(sel.id, Math.round(W / 2), cy, sc, short ? 18 : 26, 1, own);
+    text(ui, own ? tx(sel.name) : "???", W / 2, y, { font: "title", align: "center", color: own ? col : C.dim, shadow: C.ink, outline: true });
+    y += 18;
+    if (own) {
+      y += para(ui, tx(sel.desc), Math.round(W / 2 - wid / 2), y, wid, C.text, "center");
+      para(ui, t("giftOpens").replace("{gate}", tx(sel.gateName)), Math.round(W / 2 - wid / 2), y + 2, wid, C.goldLight, "center");
+    } else para(ui, giver ? t("gateWhere").replace("{who}", tx(ENEMIES[giver.boss].name)) : t("giftUnknown"), Math.round(W / 2 - wid / 2), y, wid, C.dim, "center");
+    if (button(ui, this.menu, now, Math.round(W / 2 - 50), H - 24, 100, 18, t("back"), { icon: icon("hud", "back") }) || this.input.pressed("back")) this.setState(this.giftsFrom, this.giftsFrom === "pause" ? 3 : 0);
   }
 
   /** The floor's title card: its number, its biome, a line about it, and where it sits in the run. */
@@ -2107,7 +2157,10 @@ export class Game {
       ui.rect(px + 8, ly + 3, Math.round(bw * (have / u.goal)), 3, rgba("#9ad4ff"));
       text(ui, `${have}/${u.goal}`, px + pw - 8, ly + 1, { font: "mini", align: "right", color: C.dim });
     }
-    if (button(ui, this.menu, now, Math.round(W / 2 - 50), H - 24, 100, 18, t("back"), { icon: icon("hud", "back") }) || this.input.pressed("back")) this.setState("title", this.titleSlot("arsenal"));
+    // the way back, and the way to the gifts
+    const bw2 = Math.min(100, Math.floor((W - 24) / 2));
+    if (button(ui, this.menu, now, Math.round(W / 2 + 4), H - 24, bw2, 18, t("gifts"), { icon: icon("hud", "secret") })) this.openGifts("arsenal");
+    if (button(ui, this.menu, now, Math.round(W / 2 - bw2 - 4), H - 24, bw2, 18, t("back"), { icon: icon("hud", "back") }) || this.input.pressed("back")) this.setState("title", this.titleSlot("arsenal"));
   }
 
   /** Records: the platform's leaderboards (best runs, today's trial) and the player's own. */
@@ -2702,7 +2755,8 @@ export class Game {
       } },
       { label: t("bookEvo"), opts: { icon: icon("hud", "book") }, go: () => void this.openBook("evo") },
       { label: t("bookEl"), opts: { icon: icon("hud", "curse") }, go: () => void this.openBook("el") },
-      { label: t("stats"), opts: { icon: icon("hud", "trophy") }, go: () => void this.openStats("pause", 3) },
+      { label: t("gifts"), opts: { icon: icon("hud", "secret") }, go: () => void this.openGifts("pause") },
+      { label: t("stats"), opts: { icon: icon("hud", "trophy") }, go: () => void this.openStats("pause", 4) },
       { label: t("settings"), opts: { icon: icon("hud", "gear") }, go: () => {
         this.settingsFrom = "pause";
         this.setState("settings");
@@ -2747,6 +2801,13 @@ export class Game {
   }
   private evoKnown(kind: RelicKind): boolean {
     return !!this.save.stats[`evo_${kind}`];
+  }
+  /** The gifts' book, from the pause or the arsenal; the gift last won picked. */
+  private openGifts(from: State): void {
+    this.giftsFrom = from;
+    const last = this.save.gifts[this.save.gifts.length - 1];
+    this.giftSel = Math.max(0, GIFTS.findIndex((g) => g.id === last));
+    this.setState("gifts");
   }
   private openBook(kind: "evo" | "el"): void {
     // what this run holds counts as found, whatever came before the books kept count

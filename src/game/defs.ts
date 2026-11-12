@@ -85,6 +85,11 @@ export enum AI {
   Treant = 14,
   /** The Last Light: hovers after the hero, rays, rings from its lantern, columns of light; dives in its later phases. */
   LastLight = 15,
+  /**
+   * A miniboss: heavy as a boss (no knockback, no stun, a bar of its own), but its fall opens nothing; it fights by
+   * the moves its MINIS entry gives it.
+   */
+  Mini = 16,
 }
 export interface EnemyDef {
   id: number;
@@ -144,6 +149,15 @@ const DEFS: Def[] = [
   E({ key: "warden", name: { ru: "СТРАЖ СКЛЕПА", en: "THE CRYPT WARDEN" }, anim: "warden_0_idle", ai: AI.Warden, hp: 2200, speed: 30, xp: 100, glow: "#78ccf4", scale: 2, elite: true, title: { ru: "КАМЕННЫЙ РЫЦАРЬ, ЧТО СТЕРЕЖЁТ ПРАХ", en: "THE STONE KNIGHT WHO KEEPS THE DUST" } }),
   E({ key: "treant", name: { ru: "ГНИЮЩИЙ ДРЕВЕНЬ", en: "THE ROTTING TREANT" }, anim: "treant_0_idle", ai: AI.Treant, hp: 3300, speed: 16, xp: 140, glow: "#8ad83a", scale: 2, elite: true, title: { ru: "СТАРЕЙШЕЕ ДЕРЕВО ЗАБЫТОГО САДА", en: "THE ELDEST TREE OF THE LOST GARDEN" } }),
   E({ key: "lastlight", name: { ru: "ПОСЛЕДНИЙ СВЕТ", en: "THE LAST LIGHT" }, anim: "lastlight_0_idle", ai: AI.LastLight, hp: 6200, speed: 30, xp: 260, glow: "#ffd87a", scale: 2, elite: true, title: { ru: "ПЕРВЫЙ, КТО ДОНЁС СВЕТ ДО СЕРДЦА БАШНИ", en: "THE FIRST WHO CARRIED THE LIGHT TO THE TOWER'S HEART" } }),
+  // the minibosses: creatures of each place grown huge (see MINIS)
+  E({ key: "mini_slime", name: { ru: "СЛИЗЕНЬ-ГРОМАДА", en: "THE GREAT SLIME" }, anim: "slime", ai: AI.Mini, hp: 520, speed: 28, xp: 40, glow: "#3ad050", scale: 1.6, elite: true }),
+  E({ key: "mini_skull", name: { ru: "ЧЕРЕП-ПРОРОК", en: "THE SEER SKULL" }, anim: "skull_elite", ai: AI.Mini, hp: 440, speed: 38, xp: 40, glow: "#c684ff", scale: 1.3, elite: true }),
+  E({ key: "mini_frog", name: { ru: "ЖАБИЙ КОРОЛЬ", en: "THE TOAD KING" }, anim: "frog_king", ai: AI.Mini, hp: 600, speed: 30, xp: 50, glow: "#ffb040", scale: 1.5, elite: true }),
+  E({ key: "mini_moth", name: { ru: "МАТЬ МОТЫЛЬКОВ", en: "THE MOTH MOTHER" }, anim: "moth", ai: AI.Mini, hp: 520, speed: 36, xp: 50, glow: "#7ee88a", scale: 1.7, elite: true }),
+  E({ key: "mini_eye", name: { ru: "ЛЕДЯНОЙ СОГЛЯДАТАЙ", en: "THE ICE WATCHER" }, anim: "eye_frost", ai: AI.Mini, hp: 700, speed: 22, xp: 60, glow: "#78ccf4", scale: 1.5, elite: true }),
+  E({ key: "mini_ghost", name: { ru: "ВЬЮЖНЫЙ ДУХ", en: "THE BLIZZARD SPIRIT" }, anim: "ghost_ice", ai: AI.Mini, hp: 620, speed: 40, xp: 60, glow: "#d8f4ff", scale: 1.6, elite: true }),
+  E({ key: "mini_sunskull", name: { ru: "СОЛНЕЧНЫЙ ЧЕРЕП", en: "THE SUN SKULL" }, anim: "skull_sun", ai: AI.Mini, hp: 760, speed: 40, xp: 70, glow: "#ffd04a", scale: 1.4, elite: true }),
+  E({ key: "mini_spark", name: { ru: "МАТЬ ИСКР", en: "THE SPARK MOTHER" }, anim: "wisp_sun", ai: AI.Mini, hp: 700, speed: 34, xp: 70, glow: "#ffe08a", scale: 1.8, elite: true }),
   // the tower's heart: everything there gone to light
   E({ key: "slime_sun", name: { ru: "ЗОЛОТОЙ СЛИЗЕНЬ", en: "GILDED SLIME" }, anim: "slime_sun", ai: AI.Chase, hp: 40, speed: 34, xp: 3, glow: "#ffd04a", scale: 0.65, hops: true }),
   E({ key: "snake_sun", name: { ru: "СОЛНЕЧНЫЙ ПОЛОЗ", en: "SUN ADDER" }, anim: "snake_sun", ai: AI.Slither, hp: 30, speed: 82, xp: 3, scale: 0.75 }),
@@ -168,6 +182,8 @@ export const EN = {
   eyeBoss: id("eye_boss"), frogKing: id("frog_king"), eyeVoid: id("eye_void"), warden: id("warden"), treant: id("treant"), mimic: id("mimic"),
   lastLight: id("lastlight"), slimeSun: id("slime_sun"), snakeSun: id("snake_sun"), batSun: id("bat_sun"), skullSun: id("skull_sun"), ghostSun: id("ghost_sun"),
   eyeSun: id("eye_sun"), wispSun: id("wisp_sun"), mothSun: id("moth_sun"),
+  miniSlime: id("mini_slime"), miniSkull: id("mini_skull"), miniFrog: id("mini_frog"), miniMoth: id("mini_moth"), miniEye: id("mini_eye"),
+  miniGhost: id("mini_ghost"), miniSunSkull: id("mini_sunskull"), miniSpark: id("mini_spark"),
 };
 
 // ------------------------------------------------------------------------------------------------ the tower
@@ -208,6 +224,8 @@ export interface PlaceDef extends Biome {
   gates: GateKind[];
   /** The gift its boss leaves the first time it falls. */
   gift?: GiftId;
+  /** Its minibosses (one may answer a brazier being lit). */
+  minis: number[];
   /** Where the portal after its boss leads, instead of the next tier. */
   after?: PlaceId;
   /** A place of one floor, nothing to fight there (the place beyond the light). */
@@ -220,7 +238,7 @@ export interface PlaceDef extends Biome {
 export const PLACES: PlaceDef[] = [
   {
     id: "crypt", name: { ru: "СКЛЕП", en: "THE CRYPT" }, lore: { ru: "ЗДЕСЬ ЛЕЖАТ ТЕ, КТО НЁС СВЕТ ВНИЗ ДО ТЕБЯ", en: "HERE LIE THOSE WHO CARRIED LIGHT DOWN BEFORE YOU" }, floor: "floor_crypt", wall: "wall_crypt", pillar: "pillar_crypt", torch: "torch", ambient: [0.95, 0.88, 1.15], torchLight: "#ff9a40", motes: "dust",
-    tier: 1, boss: EN.warden, music: 0, gates: ["lattice"], gift: "shade",
+    tier: 1, boss: EN.warden, music: 0, minis: [EN.miniSlime, EN.miniSkull], gates: ["lattice"], gift: "shade",
     floors: [
       { name: { ru: "ВЕРХНИЕ ГАЛЕРЕИ", en: "THE UPPER GALLERIES" }, lore: { ru: "ЗДЕСЬ ЛЕЖАТ ТЕ, КТО НЁС СВЕТ ВНИЗ ДО ТЕБЯ", en: "HERE LIE THOSE WHO CARRIED LIGHT DOWN BEFORE YOU" } },
       { name: { ru: "ОССУАРИЙ", en: "THE OSSUARY" }, lore: { ru: "КОСТИ СЛОЖЕНЫ РЯДАМИ. КТО-ТО ИХ СЧИТАЛ", en: "THE BONES ARE STACKED IN ROWS. SOMEONE COUNTED THEM" } },
@@ -234,7 +252,7 @@ export const PLACES: PlaceDef[] = [
   },
   {
     id: "garden", name: { ru: "ЗАБЫТЫЙ САД", en: "THE LOST GARDEN" }, lore: { ru: "САД РОС БЕЗ СОЛНЦА И НАУЧИЛСЯ СВЕТИТЬСЯ САМ", en: "THE GARDEN GREW WITHOUT A SUN AND LEARNED TO GLOW" }, floor: "floor_garden", wall: "wall_garden", pillar: "pillar_garden", torch: "torch", ambient: [0.82, 1.08, 0.9], torchLight: "#ffb050", motes: "fireflies",
-    tier: 2, boss: EN.treant, music: 1, gates: ["lattice"],
+    tier: 2, boss: EN.treant, music: 1, minis: [EN.miniFrog, EN.miniMoth], gates: ["lattice"],
     floors: [
       { name: { ru: "ЗАРОСШИЕ АЛЛЕИ", en: "THE OVERGROWN WALKS" }, lore: { ru: "САД РОС БЕЗ СОЛНЦА И НАУЧИЛСЯ СВЕТИТЬСЯ САМ", en: "THE GARDEN GREW WITHOUT A SUN AND LEARNED TO GLOW" } },
       { name: { ru: "ЗАТОПЛЕННЫЙ САД", en: "THE DROWNED GARDEN" }, lore: { ru: "ВОДА ПРИШЛА ТИХО И ОСТАЛАСЬ. ИДИ ПО МОСТАМ", en: "THE WATER CAME QUIETLY AND STAYED. KEEP TO THE BRIDGES" } },
@@ -248,7 +266,7 @@ export const PLACES: PlaceDef[] = [
   },
   {
     id: "frost", name: { ru: "ЛЕДЯНЫЕ ЗАЛЫ", en: "THE FROZEN HALLS" }, lore: { ru: "ХОЛОД ПОДНИМАЕТСЯ С САМОГО ДНА БАШНИ", en: "THE COLD RISES FROM THE TOWER'S VERY BOTTOM" }, floor: "floor_frost", wall: "wall_frost", pillar: "pillar_frost", torch: "torch_blue", ambient: [0.8, 0.95, 1.3], torchLight: "#6ab8ff", motes: "snow",
-    tier: 3, boss: EN.eyeVoid, music: 2, gates: ["lattice"],
+    tier: 3, boss: EN.eyeVoid, music: 2, minis: [EN.miniEye, EN.miniGhost], gates: ["lattice"],
     floors: [
       { name: { ru: "ИНЕЙНЫЕ ГАЛЕРЕИ", en: "THE RIME GALLERIES" }, lore: { ru: "ХОЛОД ПОДНИМАЕТСЯ С САМОГО ДНА БАШНИ", en: "THE COLD RISES FROM THE TOWER'S VERY BOTTOM" } },
       { name: { ru: "ЛЕДЯНЫЕ ПЕЩЕРЫ", en: "THE ICE CAVES" }, lore: { ru: "ЛЁД СКОЛЬЗКИЙ: ДЕРЖИСЬ КАМНЯ, КОГДА ЖАРКО", en: "THE ICE IS SLIPPERY: KEEP TO THE STONE WHEN IT GETS HOT" } },
@@ -262,7 +280,7 @@ export const PLACES: PlaceDef[] = [
   },
   {
     id: "heart", name: { ru: "СЕРДЦЕ БАШНИ", en: "THE TOWER'S HEART" }, lore: { ru: "ЗДЕСЬ СВЕТ РОДИЛСЯ. ЗДЕСЬ ОН И ЖДЁТ", en: "HERE THE LIGHT WAS BORN. HERE IT WAITS" }, floor: "floor_heart", wall: "wall_heart", pillar: "pillar_heart", torch: "torch_gold", ambient: [1.06, 0.97, 0.84], torchLight: "#ffd27a", motes: "sparks",
-    tier: 4, boss: EN.lastLight, music: 4, gates: ["lattice"], after: "beyond",
+    tier: 4, boss: EN.lastLight, music: 4, minis: [EN.miniSunSkull, EN.miniSpark], gates: ["lattice"], after: "beyond",
     floors: [
       { name: { ru: "ЗАЛЫ ОТРАЖЕНИЙ", en: "THE HALLS OF REFLECTION" }, lore: { ru: "ЗДЕСЬ СВЕТ ВПЕРВЫЕ УВИДЕЛ САМ СЕБЯ", en: "HERE THE LIGHT FIRST SAW ITSELF" } },
       { name: { ru: "ЛИТЕЙНЯ ЗАРИ", en: "THE DAWN FOUNDRY" }, lore: { ru: "СВЕТ ЛИЛИ ЗДЕСЬ, КАК МЕТАЛЛ. ОН ЕЩЁ НЕ ОСТЫЛ", en: "THE LIGHT WAS CAST HERE LIKE METAL. IT HAS NOT COOLED" } },
@@ -277,7 +295,7 @@ export const PLACES: PlaceDef[] = [
   // beyond the last light: one quiet hall, sealed doors in its wall, a pit in its floor
   {
     id: "beyond", name: { ru: "ЗА СВЕТОМ", en: "BEYOND THE LIGHT" }, lore: { ru: "ЗДЕСЬ БАШНЯ КОНЧАЕТСЯ. ИЛИ НЕТ", en: "HERE THE TOWER ENDS. OR DOES IT" }, floor: "floor_beyond", wall: "wall_beyond", pillar: "pillar_beyond", torch: "torch_pale", ambient: [0.82, 0.82, 1.02], torchLight: "#c8b8ff", motes: "dust",
-    tier: 5, boss: -1, music: 2, gates: [], single: true,
+    tier: 5, boss: -1, music: 2, minis: [], gates: [], single: true,
     floors: [{ name: { ru: "ЗА СВЕТОМ", en: "BEYOND THE LIGHT" }, lore: { ru: "ЗДЕСЬ БАШНЯ КОНЧАЕТСЯ. ИЛИ НЕТ", en: "HERE THE TOWER ENDS. OR DOES IT" } }],
     roster: [[[], [], []]],
   },
@@ -298,9 +316,9 @@ export const DOORS: { kind: DoorKind; name: Text; need: Text; color: string }[] 
  * The gifts: each won for good from a boss the first time it falls; each opens its own kind of gate in the tower's
  * walls and changes the fight a little.
  */
-export type GiftId = "shade";
-/** What a gate is: a runic lattice (more kinds come with more gifts). */
-export type GateKind = "lattice";
+export type GiftId = "shade" | "ember" | "rime" | "beacon" | "forge";
+/** What a gate is: a runic lattice, living roots, a flooded way, a hidden door, a heavy door. */
+export type GateKind = "lattice" | "roots" | "water" | "hidden" | "heavy";
 export interface GiftDef {
   id: GiftId;
   /** The gate it opens. */
@@ -319,12 +337,53 @@ export const GIFTS: GiftDef[] = [
     desc: { ru: "РЫВОК СКВОЗЬ ВРАГА РАНИТ ЕГО", en: "DASHING THROUGH A FOE WOUNDS IT" },
     gateName: { ru: "РУНИЧЕСКАЯ РЕШЁТКА", en: "RUNIC LATTICE" },
   },
+  // (the gifts still to come with the places that hold them: shown in the gifts' book as what is yet to be found)
+  {
+    id: "ember", gate: "roots", color: "#ff8a3a",
+    name: { ru: "ОГНЕННЫЙ КЛЮЧ", en: "EMBER KEY" },
+    desc: { ru: "УДАРЫ ИНОГДА ПОДЖИГАЮТ", en: "BLOWS NOW AND THEN SET FOES ALIGHT" },
+    gateName: { ru: "ЖИВЫЕ КОРНИ", en: "LIVING ROOTS" },
+  },
+  {
+    id: "rime", gate: "water", color: "#9bdcff",
+    name: { ru: "ЛЕДЯНАЯ ТРОПА", en: "RIME PATH" },
+    desc: { ru: "РЫВОК ОСТАВЛЯЕТ ЛЕДЯНОЙ СЛЕД, ЗАМЕДЛЯЮЩИЙ ВРАГОВ", en: "THE DASH LEAVES A TRAIL OF ICE THAT SLOWS FOES" },
+    gateName: { ru: "ЗАТОПЛЕННЫЙ ПРОХОД", en: "FLOODED WAY" },
+  },
+  {
+    id: "beacon", gate: "hidden", color: "#ffe890",
+    name: { ru: "СВЕТ МАЯКА", en: "BEACON LIGHT" },
+    desc: { ru: "ФОНАРЬ СВЕТИТ ШИРЕ", en: "THE LANTERN SHINES WIDER" },
+    gateName: { ru: "СКРЫТЫЕ ДВЕРИ", en: "HIDDEN DOORS" },
+  },
+  {
+    id: "forge", gate: "heavy", color: "#ff6a2a",
+    name: { ru: "СИЛА ГОРНА", en: "FORGE MIGHT" },
+    desc: { ru: "ПОСЛЕ РЫВКА — ЗАРЯЖЕННЫЙ УДАР", en: "A CHARGED BLOW AFTER EACH DASH" },
+    gateName: { ru: "ТЯЖЁЛЫЕ ДВЕРИ", en: "HEAVY DOORS" },
+  },
 ];
 export const giftDef = (id: GiftId): GiftDef => GIFTS.find((g) => g.id === id)!;
 /** The gift that opens a kind of gate. */
 export const giftFor = (gate: GateKind): GiftDef => GIFTS.find((g) => g.gate === gate)!;
 /** The place whose boss gives a gift (where to look for it). */
 export const giftFrom = (id: GiftId): PlaceDef | undefined => PLACES.find((p) => p.gift === id);
+
+/**
+ * How each miniboss fights: the moves it takes in turn (a leap with a ring of bolts where it lands, a fan of bolts,
+ * a ring, a rush along a lane, a call for its kind, a spiral), and what it calls.
+ */
+export type MiniMove = "hop" | "fan" | "ring" | "charge" | "summon" | "spiral";
+export const MINIS: Record<string, { moves: MiniMove[]; summon?: string }> = {
+  mini_slime: { moves: ["hop", "summon", "ring"], summon: "slime" },
+  mini_skull: { moves: ["fan", "charge", "ring"] },
+  mini_frog: { moves: ["hop", "fan", "summon"], summon: "frog" },
+  mini_moth: { moves: ["ring", "summon", "spiral"], summon: "moth" },
+  mini_eye: { moves: ["spiral", "fan", "ring"] },
+  mini_ghost: { moves: ["charge", "fan", "summon"], summon: "ghost_ice" },
+  mini_sunskull: { moves: ["fan", "charge", "spiral"] },
+  mini_spark: { moves: ["ring", "summon", "hop"], summon: "wisp_sun" },
+};
 
 /** The tiers, top down: the places in each, the main one first. */
 export const TIERS: PlaceId[][] = [["crypt"], ["garden"], ["frost"], ["heart"]];
