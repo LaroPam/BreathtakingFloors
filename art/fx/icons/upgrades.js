@@ -7,8 +7,10 @@ export const IDS = [
   // relics, and what they evolve into
   "orbit", "lance", "coil", "flask", "halo", "void",
   "e_orbit", "e_lance", "e_coil", "e_flask", "e_halo", "e_void",
+  "roots", "mirror", "brazier", "crown", "e_roots", "e_mirror", "e_brazier", "e_crown",
   // the sword, the body, the light
   "edge", "haste", "reach", "wave", "parry", "speed", "maxhp", "magnet", "dashcd", "overdrive", "crit", "lantern",
+  "pact", "compass", "crucible", "echo", "candle", "tread",
   // weapons
   "w_sword", "w_hammer", "w_spear", "w_scythe", "w_daggers", "w_bow", "w_spell", "w_greatsword", "w_claws", "w_whip",
   "w_flail", "w_glaive", "w_crossbow", "w_staff", "w_chakram", "w_bell",
@@ -39,6 +41,8 @@ const BADGE = {
 const KIND = {
   orbit: "fire", lance: "frost", coil: "storm", flask: "venom", halo: "holy", void: "void",
   e_orbit: "fire", e_lance: "frost", e_coil: "storm", e_flask: "venom", e_halo: "holy", e_void: "void",
+  roots: "venom", mirror: "holy", brazier: "fire", crown: "frost", e_roots: "venom", e_mirror: "holy", e_brazier: "fire", e_crown: "frost",
+  pact: "life", compass: "gold", crucible: "fire", echo: "steel", candle: "holy", tread: "steel",
   edge: "gold", haste: "gold", reach: "gold", wave: "gold", parry: "steel", speed: "steel", maxhp: "life",
   magnet: "steel", dashcd: "steel", overdrive: "holy", crit: "gold", lantern: "holy",
   w_sword: "arms", w_hammer: "arms", w_spear: "arms", w_scythe: "arms", w_daggers: "arms", w_bow: "arms", w_spell: "arms",
@@ -272,6 +276,105 @@ Object.assign(SYMBOLS, {
       p.line(4, 4, 8, 6, pick(ink, "#b47c40"));
     });
     p.px(8, 6, H("#ffe26b")); p.px(9, 7, H("#ff8a2a")); p.px(-8, 8, H("#ffd84a"));
+  },
+  roots(p) {
+    outlined(p, (ink) => {
+      p.rect(-2, -7, 4, 11, pick(ink, "#8e5c2c"));
+      p.line(0, 4, -7, 8, pick(ink, "#6a421e"));
+      p.line(0, 4, 7, 8, pick(ink, "#6a421e"));
+      p.line(0, 4, 0, 8, pick(ink, "#6a421e"));
+    });
+    p.px(-1, -4, H("#a8e04a")); p.px(1, -4, H("#a8e04a")); p.px(-6, 7, H("#e8e0c0")); p.px(6, 7, H("#e8e0c0"));
+  },
+  e_roots(p) {
+    outlined(p, (ink) => {
+      p.line(-7, 8, 0, 0, pick(ink, "#6a421e")); p.line(7, 8, 0, 0, pick(ink, "#6a421e")); p.line(0, 8, 0, -8, pick(ink, "#8e5c2c"));
+      p.line(0, -2, -6, -7, pick(ink, "#6a421e")); p.line(0, -2, 6, -7, pick(ink, "#6a421e"));
+    });
+    p.px(0, -1, H("#e0ff8a")); p.px(-6, -7, H("#7cc048")); p.px(6, -7, H("#7cc048"));
+  },
+  mirror(p) {
+    outlined(p, (ink) => {
+      p.circle(0, 0, 7, (d) => pick(ink, d > 0.8 ? "#f0b424" : "#c4d4ec"));
+    });
+    p.px(-3, -3, H("#ffffff")); p.px(-2, -4, H("#ffffff")); p.px(2, 2, H("#fff09a"));
+  },
+  e_mirror(p) {
+    outlined(p, (ink) => {
+      p.ellipse(-5, 0, 3, 7, (d) => pick(ink, d > 0.75 ? "#f0b424" : "#c4d4ec"));
+      p.ellipse(5, 0, 3, 7, (d) => pick(ink, d > 0.75 ? "#f0b424" : "#c4d4ec"));
+    });
+    p.line(-2, -3, 2, 3, H("#fff09a")); p.line(2, -3, -2, 3, H("#fff09a")); p.px(0, 0, H("#ffffff"));
+  },
+  brazier(p) {
+    outlined(p, (ink) => {
+      p.poly([[-7, 1], [7, 1], [4, 5], [-4, 5]], pick(ink, "#504e62"));
+      p.line(-3, 5, -5, 8, pick(ink, "#363444")); p.line(3, 5, 5, 8, pick(ink, "#363444"));
+      p.poly([[-4, 1], [-2, -6], [0, -2], [2, -8], [4, 1]], pick(ink, "#ff8a2a"));
+    });
+    p.px(0, -1, H("#ffe27a")); p.px(2, -5, H("#ffc840")); p.px(-2, -3, H("#ffc840"));
+  },
+  e_brazier(p) {
+    outlined(p, (ink) => {
+      p.poly([[-1, -7], [3, -7], [3, 3], [7, 5], [7, 7], [-1, 7]], pick(ink, "#7e3d24"));
+      p.poly([[-8, 7], [-7, 1], [-5, 4], [-4, -1], [-2, 7]], pick(ink, "#ff8a2a"));
+    });
+    p.px(-6, 5, H("#ffe27a")); p.px(-4, 3, H("#ffc840"));
+  },
+  crown(p) {
+    outlined(p, (ink) => {
+      p.rect(-7, 2, 14, 4, pick(ink, "#58b4ec"));
+      p.poly([[-7, 2], [-6, -4], [-3, 2]], pick(ink, "#9bdcff")); p.poly([[-2, 2], [0, -7], [2, 2]], pick(ink, "#d8f4ff")); p.poly([[3, 2], [6, -4], [7, 2]], pick(ink, "#9bdcff"));
+    });
+    p.px(0, 4, H("#ffffff")); p.px(0, -5, H("#ffffff"));
+  },
+  e_crown(p) {
+    outlined(p, (ink) => {
+      p.rect(-6, -8, 12, 16, pick(ink, "#9bdcff"));
+    });
+    p.rect(-2, -5, 4, 9, H("#5c5664")); p.circle(0, -6, 1.6, H("#5c5664")); p.line(-6, -1, 1, 2, H("#ffffff")); p.line(1, 2, 6, -4, H("#ffffff"));
+  },
+  pact(p) {
+    outlined(p, (ink) => {
+      p.rect(-5, -7, 10, 13, pick(ink, "#e0d0ac"));
+      p.circle(0, 3, 3, pick(ink, "#d42a30"));
+    });
+    p.line(-3, -4, 3, -4, H("#86724f")); p.line(-3, -2, 3, -2, H("#86724f")); p.px(1, 7, H("#d42a30")); p.px(1, 8, H("#a01824"));
+  },
+  compass(p) {
+    outlined(p, (ink) => {
+      p.circle(0, 0, 7, (d) => pick(ink, d > 0.75 ? "#c48412" : "#e0d0ac"));
+    });
+    p.line(0, 0, 4, -4, H("#d42a30")); p.line(0, 0, -4, 4, H("#504e62")); p.px(0, 0, H("#f0b424"));
+  },
+  crucible(p) {
+    outlined(p, (ink) => {
+      p.poly([[-6, -3], [6, -3], [4, 7], [-4, 7]], pick(ink, "#a44c26"));
+      p.rect(-5, -4, 10, 2, pick(ink, "#ffc840"));
+    });
+    p.px(-2, -4, H("#fff8c8")); p.px(2, -6, H("#ff8a2a")); p.px(0, -8, H("#ffc840"));
+  },
+  echo(p) {
+    p.line(-8, 6, 4, -6, H("#3e4462")); p.line(-6, 7, 6, -5, H("#5e6688"));
+    outlined(p, (ink) => {
+      p.line(-4, 8, 8, -4, pick(ink, "#e8edf6"));
+    });
+    p.px(8, -4, H("#ffffff")); p.px(-4, 8, H("#ffd84a"));
+  },
+  candle(p) {
+    outlined(p, (ink) => {
+      p.rect(-2, -2, 4, 8, pick(ink, "#f4ead0"));
+      p.rect(-5, 6, 10, 2, pick(ink, "#c48412"));
+      p.poly([[0, -8], [2, -3], [0, -2], [-2, -3]], pick(ink, "#ffc840"));
+    });
+    p.px(0, -4, H("#ffffff"));
+  },
+  tread(p) {
+    outlined(p, (ink) => {
+      p.poly([[-4, -7], [1, -7], [2, 2], [7, 4], [7, 6], [-4, 6]], pick(ink, "#7e3d24"));
+      p.rect(-4, 6, 11, 2, pick(ink, "#504e62"));
+    });
+    p.px(-7, 7, H("#dcc8a2")); p.px(8, 7, H("#dcc8a2")); p.px(-8, 5, H("#b89f78"));
   },
   w_flail(p) {
     outlined(p, (ink) => {

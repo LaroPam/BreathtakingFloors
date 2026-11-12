@@ -88,7 +88,7 @@ export interface FrostOrb {
  * Where damage comes from, for the statistics: the weapon, the dash's cut, each relic (SRC_RELIC + its kind),
  * reactions, burning and poison, the hero's ability, the wave and deflected shots (artifacts), and the rest.
  */
-export const SRC_WEAPON = 0, SRC_DASH = 1, SRC_RELIC = 2, SRC_REACT = 8, SRC_STATUS = 9, SRC_ABILITY = 10, SRC_WAVE = 11, SRC_PARRY = 12, SRC_OTHER = 13, SRC_N = 14;
+export const SRC_WEAPON = 0, SRC_DASH = 1, SRC_RELIC = 2, SRC_REACT = 12, SRC_STATUS = 13, SRC_ABILITY = 14, SRC_WAVE = 15, SRC_PARRY = 16, SRC_OTHER = 17, SRC_N = 18;
 /** Elements per source in World.dmgStat. */
 export const SRC_ELS = 7;
 const GREY_MATTER = [rgba("#8a8698"), rgba("#a8a4b8"), rgba("#6a6678"), rgba("#c8c4d4")];
@@ -471,6 +471,14 @@ export interface Stats {
   crit: number;
   lantern: number;
   might: number;
+  /** Damage per heart lost (Blood Pact), speed while the arrow leads (Compass), status time (Crucible), the chance a
+   * blow strikes again (Echo), experience (Apprentice's Candle), the dash's shove (Heavy Tread). */
+  pact: number;
+  compass: number;
+  crucible: number;
+  echo: number;
+  xp: number;
+  tread: number;
 }
 
 /** What the world tells the game (screens, sounds that need the game, saves). */
@@ -601,9 +609,15 @@ export class World {
   private way: [number, number] = [0, 0];
   motes: Mote[] = [];
   relics: Relic[] = [];
-  stats: Stats = { edge: 1, haste: 1, reach: 1, wave: 0, parry: 0, speed: 1, magnet: 44, dashCd: 3.5, odGain: 1, crit: 0.05, lantern: 1, might: 1 };
+  stats: Stats = { edge: 1, haste: 1, reach: 1, wave: 0, parry: 0, speed: 1, magnet: 44, dashCd: 3.5, odGain: 1, crit: 0.05, lantern: 1, might: 1, pact: 0, compass: 0, crucible: 0, echo: 0, xp: 0, tread: 0 };
   statLevels: Partial<Record<StatId, number>> = {};
   frostOrb: FrostOrb | null = null;
+  /** The Ash Brazier's rings of fire on the floor: each burns what stands in it every so often (`tick`). */
+  firePools: { x: number; y: number; r: number; t: number; life: number; dmg: number; tick: number }[] = [];
+  /** When the Ice Crown last froze on a dash (s, the world's time). */
+  crownDashT = -9;
+  /** Enemy bolts that have reached the Mirror Shield: every so many is turned back. */
+  mirrorCount = 0;
   /** The bell's peals: rings of sound spreading from where it was rung (draw.ts), `r` growing to `R` over `t`. */
   soundRings: { x: number; y: number; r: number; R: number; t: number }[] = [];
   warns: Warn[] = [];
@@ -782,6 +796,7 @@ export class World {
     this.pulls = [];
     this.wayStone = null;
     this.soundRings = [];
+    this.firePools = [];
     this.rimeTrail = [];
     this.toHero = new Flow(this.map, false);
     this.toHeroFly = new Flow(this.map, true);
@@ -1411,6 +1426,10 @@ export class World {
       h.invuln = Math.max(h.invuln, 0.26);
       h.dashHits.clear();
       this.audio.play("dash");
+      // Heavy Tread: the dash's first step shoves all near away and hurts them; the Ice Crown at its last level
+      // freezes them too, once in six seconds
+      if (s.tread > 0) this.treadShove();
+      this.crownOnDash();
       this.dust(h.x, h.y, 8, 50);
     }
     h.dashBuf = Math.max(0, h.dashBuf - dt);
@@ -1437,7 +1456,7 @@ export class World {
       }
     } else {
       // a little slower in the middle of a blow, so it has weight
-      const speed = 92 * s.speed * (h.atk >= 0 ? 0.78 : 1) * (this.rage > 0 ? 1.15 : 1) * this.swarmed();
+      const speed = 92 * s.speed * (h.atk >= 0 ? 0.78 : 1) * (this.rage > 0 ? 1.15 : 1) * this.swarmed() * (s.compass && (this.guide[0] || this.guide[1]) ? 1 + s.compass : 1);
       // on ice the feet hold poorly: slow to start, slow to stop
       const ice = this.map.look[Math.floor(h.y / TILE) * this.map.cols + Math.floor(h.x / TILE)] === LOOK_ICE;
       const k = 1 - Math.exp(-dt * (ice ? 2.6 : 14));
@@ -1546,6 +1565,92 @@ export class World {
     });
   }
 
+  /**
+   * The Root Totem: roots burst under foe j, holding it (a boss is only slowed) and poisoning it; with `spread` they
+   * creep on to that many of its nearest neighbours (the Strangler Grove).
+   */
+  private rootFoe(j: number, hold: number, dmg: number, spread: number, skip: Set<number>): void {
+    const E = this.enemies, x = E.x[j], y = E.y[j], uid = E.uid[j];
+    this.erupt(x, y, "root");
+    this.dust(x, y, 4, 30);
+    if (ENEMIES[E.type[j]].ai < AI.Boss) E.stun[j] = Math.max(E.stun[j], hold);
+    else E.chill[j] = Math.max(E.chill[j], hold);
+    this.damage(j, dmg, El.Venom, { quiet: this.rng.chance(0.4) });
+    for (let k = 0; k < spread; k++) {
+      const q = this.nearestEnemy(x, y, 56, skip);
+      if (q < 0) break;
+      skip.add(E.uid[q]);
+      this.arcs.push({ pts: [x, y, (x + E.x[q]) / 2 + this.rng.range(-6, 6), (y + E.y[q]) / 2 + this.rng.range(-4, 4), E.x[q], E.y[q]], life: 0.25, color: rgba("#6a9a2a") });
+      this.rootFoe(q, hold * 0.8, dmg * 0.7, 0, skip);
+    }
+    void uid;
+  }
+  /** Heavy Tread: everything near the hero as a dash begins is thrown back and hurt. */
+  private treadShove(): void {
+    const h = this.hero, E = this.enemies, s = this.stats, R = 34 + 6 * s.tread;
+    this.setSrc(SRC_DASH);
+    this.grid.query(h.x, h.y, R + 20, (i) => {
+      const dx = E.x[i] - h.x, dy = E.y[i] - h.y, d = Math.hypot(dx, dy) || 1;
+      if (d > R) return;
+      if (ENEMIES[E.type[i]].ai < AI.Boss) (E.kx[i] += (dx / d) * (120 + 50 * s.tread), E.ky[i] += (dy / d) * (120 + 50 * s.tread));
+      this.damage(i, 5 * s.tread * s.might, El.None, { quiet: true });
+    });
+    this.dust(h.x, h.y, 10, 60);
+    this.addFx("slam", h.x, h.y + 2, { sx: 0.45, sy: 0.45, glow: 0.4 });
+  }
+  /** The Ice Crown: a burst of frost out to R from the hero, freezing and hurting what it reaches. */
+  private crownNova(R: number, r: { level: number; evo: boolean }, quiet = false): void {
+    const h = this.hero, E = this.enemies, m = this.stats.might, L = r.level;
+    this.setSrc(SRC_RELIC + RelicKind.Crown);
+    if (r.evo && !quiet) {
+      // sealed in ice a moment: no harm comes through, then it shatters
+      h.invuln = Math.max(h.invuln, 1.6);
+      this.addFx("frost_nova", h.x, h.y - 6, { glow: 1, sx: 1.4, sy: 1.4 });
+    } else this.addFx("frost_nova", h.x, h.y - 6, { glow: 0.9, sx: R / 70, sy: R / 70 });
+    const dmg = 14 * (L >= 4 ? 1.6 : 1) * (r.evo ? 1.4 : 1) * m, hold = (L >= 3 ? 2.2 : 1.5) * (r.evo ? 1.4 : 1) * (1 + this.stats.crucible);
+    for (let i = E.n - 1; i >= 0; i--) {
+      const dx = E.x[i] - h.x, dy = (E.y[i] - h.y) / FLOOR_SQ;
+      if (dx * dx + dy * dy > R * R) continue;
+      if (ENEMIES[E.type[i]].ai < AI.Boss) E.frozen[i] = Math.max(E.frozen[i], hold);
+      else E.chill[i] = Math.max(E.chill[i], hold);
+      this.damage(i, dmg, El.Frost, { quiet: this.rng.chance(0.5), react: false });
+    }
+    this.audio.play("freeze", 0.8);
+    this.shake = Math.max(this.shake, 0.3);
+  }
+  /** The Ice Crown at its last level: a dash freezes what is near, once in six seconds. */
+  private crownOnDash(): void {
+    const c = this.relics.find((r) => r.kind === RelicKind.Crown);
+    if (!c || c.level < 5 || this.time - this.crownDashT < 6) return;
+    this.crownDashT = this.time;
+    this.crownNova(c.evo ? 110 : 80, c, true);
+  }
+  /**
+   * The Mirror Shield: an enemy bolt about to strike the hero is, every so many, turned back as the hero's own (split
+   * in three at the last level; the Eternal Mirror turns every one, and the turned one seeks the nearest foe).
+   */
+  private mirrorTurns(i: number): boolean {
+    const r = this.relics.find((q) => q.kind === RelicKind.Mirror);
+    if (!r) return false;
+    const every = r.evo ? 1 : r.level >= 4 ? 2 : r.level >= 2 ? 3 : 4;
+    if (++this.mirrorCount % every !== 0) return false;
+    const B = this.bullets, h = this.hero, x = B.x[i], y = B.y[i], m = this.stats.might;
+    let a = Math.atan2(-B.vy[i], -B.vx[i]);
+    if (r.evo) {
+      const j = this.nearestEnemy(x, y, 260);
+      if (j >= 0) (this.body(j), (a = Math.atan2(this.by - y, this.bx - x)));
+    }
+    const sp = Math.max(160, Math.hypot(B.vx[i], B.vy[i]) * 1.6), dmg = 18 * (r.level >= 3 ? 1.5 : 1) * (r.evo ? 1.5 : 1) * m, kind = B.kind[i];
+    B.remove(i);
+    this.setSrc(SRC_RELIC + RelicKind.Mirror);
+    for (const da of r.level >= 5 || r.evo ? [-0.25, 0, 0.25] : [0]) this.bullets.add(TEAM_HERO, kind, x, y, Math.cos(a + da) * sp, Math.sin(a + da) * sp, 1.2, dmg, 5, El.Holy, 1);
+    this.burst(x, y, 8, rgba("#fff6c0"), 80, 0.3);
+    this.addFx("hit_spark", x, y + 6, { glow: 1, sx: 0.6, sy: 0.6, tint: rgba("#fff6c0") });
+    this.audio.play("holy", 1.5);
+    h.invuln = Math.max(h.invuln, 0.12);
+    return true;
+  }
+
   /** Keep something (the hero, an enemy) out of the columns. */
   private pushOut(o: { x: number; y: number }, r: number): void {
     for (const p of this.pillars) {
@@ -1610,7 +1715,7 @@ export class World {
   private land(B: Blow, k: number, hit: number, of: number): void {
     this.setSrc(SRC_WEAPON);
     const h = this.hero, s = this.stats, dir = h.atkDir, W = WEAPONS[h.weapon], wel = this.weaponEl;
-    const dmg = B.dmg * s.edge * s.might * this.fury * (h.legend ? 1.4 : 1) * RARITIES[h.rarity].dmg;
+    const dmg = B.dmg * s.edge * s.might * this.fury * (h.legend ? 1.4 : 1) * RARITIES[h.rarity].dmg * (1 + s.pact * Math.max(0, h.maxHp - h.hp));
     const cx = h.x, cy = h.y - 18;
     if (B.kind === "arrow" || B.kind === "fire" || B.kind === "frost") {
       const [hx, hy] = this.handPos(), n = 1 + s.wave + (h.legend && B.kind !== "arrow" ? 1 : 0), spread = B.kind === "arrow" ? 0.1 : 0.22;
@@ -1737,7 +1842,13 @@ export class World {
         E.ky[i] += ((this.by - oy) / dd) * B.push;
         if (B.stun) E.stun[i] = Math.max(E.stun[i], B.stun);
       }
+      // (Echo: now and then the blow strikes again, a pale ghost of it)
+      const echoed = s.echo > 0 && this.rng.chance(s.echo), uidE = E.uid[i];
       this.damage(i, dmg * (crit ? 2 : 1), wel, { crit });
+      if (echoed) {
+        const j = this.indexOf(uidE);
+        if (j >= 0) (this.damage(j, dmg * 0.6, wel, { quiet: true }), this.popup(ex, ey - 14, "≈", rgba("#c8d8ff")));
+      }
       if (hits < 6) {
         this.addFx(crit ? "crit" : "hit_spark", ex, ey + 10, { rot: Math.atan2(ey - cy, ex - cx), sx: 0.55, sy: 0.55, glow: 0.7, key: 2 });
         if (wel) this.burst(ex, ey, 4, rgba(EL_COLOR[wel]), 60, 0.35, wel === El.Venom ? 120 : 0);
@@ -1928,6 +2039,9 @@ export class World {
     this.flash = 0.6;
     this.audio.play("hurt");
     this.burst(h.x, h.y - 18, 14, rgba("#ff4a5a"), 90, 0.5, 200);
+    // the Ice Crown answers the wound: everything near freezes (the Endless Winter seals the hero in ice first)
+    const crown = this.relics.find((r) => r.kind === RelicKind.Crown);
+    if (crown && h.hp > 0) this.crownNova(crown.evo ? 130 : 70 + (crown.level >= 2 ? 18 : 0), crown);
     // mercy: bullets right next to the hero vanish
     const B = this.bullets;
     for (let i = B.n - 1; i >= 0; i--) if (B.team[i] === TEAM_FOE && (B.x[i] - h.x) ** 2 + (B.y[i] - h.y + 10) ** 2 < 36 * 36) B.remove(i);
@@ -2312,13 +2426,13 @@ export class World {
       }
     switch (el) {
       case El.Fire:
-        E.burn[i] = 3;
+        E.burn[i] = 3 * (1 + this.stats.crucible);
         break;
       case El.Frost:
-        E.chill[i] = 2.2;
+        E.chill[i] = 2.2 * (1 + this.stats.crucible);
         if (++E.chillN[i] >= 3) {
           E.chillN[i] = 0;
-          E.frozen[i] = 1.3;
+          E.frozen[i] = 1.3 * (1 + this.stats.crucible);
           this.audio.play("freeze");
         }
         break;
@@ -2327,14 +2441,14 @@ export class World {
         E.stun[i] = Math.max(E.stun[i], 0.18);
         break;
       case El.Venom:
-        E.poison[i] = 4;
+        E.poison[i] = 4 * (1 + this.stats.crucible);
         E.poisonN[i] = Math.min(6, E.poisonN[i] + 1);
         break;
       case El.Holy:
         E.holy[i] = 3;
         break;
       case El.Void:
-        E.hex[i] = 3;
+        E.hex[i] = 3 * (1 + this.stats.crucible);
         break;
     }
   }
@@ -3240,6 +3354,43 @@ export class World {
           this.audio.play("heal");
           break;
         }
+        case RelicKind.Roots: {
+          // roots out of the floor under the foes nearest, holding them, venom in their thorns
+          if (r.timer > 0) break;
+          r.timer = r.evo ? 2.2 : 3.2 * (L >= 3 ? 0.8 : 1);
+          const n = r.evo ? 5 : 1 + (L >= 2 ? 1 : 0) + (L >= 4 ? 1 : 0), hold = (L >= 3 ? 1.6 : 1.1) * (r.evo ? 1.3 : 1), dmg = 12 * (L >= 5 ? 1.4 : 1) * m;
+          const skip = new Set<number>();
+          for (let k = 0; k < n; k++) {
+            const j = this.nearestEnemy(h.x, h.y - 10, 170, skip);
+            if (j < 0) break;
+            skip.add(E.uid[j]);
+            this.rootFoe(j, hold, dmg, r.evo ? 2 : 0, skip);
+          }
+          if (skip.size) this.audio.play("venom", 0.8);
+          break;
+        }
+        case RelicKind.Brazier: {
+          // rings of fire left where the hero goes (the Flame Wake: a wake of them, hotter)
+          r.clock += dt * (h.moving ? 1 : 0.35);
+          const every = r.evo ? 0.16 : 1.3 * (L >= 4 ? 0.7 : 1);
+          if (r.clock >= every) {
+            r.clock = 0;
+            const R = (r.evo ? 16 : 22) * (L >= 2 ? 1.25 : 1);
+            this.firePools.push({ x: h.x, y: h.y, r: R, t: 0, life: (r.evo ? 1.4 : 2.2) * (L >= 3 ? 1.4 : 1), dmg: (r.evo ? 8 : 6) * (L >= 5 ? 1.5 : 1) * m, tick: 0 });
+          }
+          break;
+        }
+        case RelicKind.Crown: {
+          // the Endless Winter also breathes out a little frost now and then when foes crowd close
+          if (!r.evo) break;
+          r.clock += dt;
+          if (r.clock >= 6) {
+            let near = 0;
+            for (let i = 0; i < E.n && near < 3; i++) if ((E.x[i] - h.x) ** 2 + (E.y[i] - h.y) ** 2 < 70 * 70) near++;
+            if (near >= 3) (r.clock = 0), this.crownNova(80, r, true);
+          }
+          break;
+        }
         case RelicKind.Void: {
           if (r.evo) {
             if (!this.star) this.star = { x: h.x, y: h.y - 30, vx: 0, vy: 0, t: 0 };
@@ -3254,6 +3405,21 @@ export class World {
           break;
         }
       }
+    }
+    // the brazier's rings burn what stands in them
+    if (this.firePools.length) {
+      this.setSrc(SRC_RELIC + RelicKind.Brazier);
+      for (const f of this.firePools) {
+        f.t += dt;
+        f.tick -= dt;
+        if (f.tick > 0) continue;
+        f.tick = 0.4;
+        for (let i = E.n - 1; i >= 0; i--) {
+          const dx = E.x[i] - f.x, dy = (E.y[i] - f.y) / FLOOR_SQ;
+          if (dx * dx + dy * dy < (f.r + 6) * (f.r + 6)) this.damage(i, f.dmg, El.Fire, { quiet: this.rng.chance(0.7) });
+        }
+      }
+      this.firePools = this.firePools.filter((f) => f.t < f.life);
     }
     // flasks in flight become pools where they land
     for (const f of this.flasks) {
@@ -4630,7 +4796,11 @@ export class World {
             gone = true;
             return true;
           }
-          const dead = this.damage(j, B.dmg[i] * (crit ? 2 : 1), B.el[i] as El, { crit });
+          let dead = this.damage(j, B.dmg[i] * (crit ? 2 : 1), B.el[i] as El, { crit });
+          if (!dead && this.stats.echo > 0 && this.rng.chance(this.stats.echo)) {
+            const jj = this.indexOf(uid);
+            if (jj >= 0) dead = this.damage(jj, B.dmg[i] * 0.6, B.el[i] as El, { quiet: true });
+          }
           // the Skybow's arrow splits in two on its first hit
           if ((B.kind[i] === B_ARROW || B.kind[i] === B_BOLT) && this.hero.legend && !B.grazed[i]) {
             B.grazed[i] = 1;
@@ -4667,6 +4837,7 @@ export class World {
             }
             continue;
           }
+          if (this.mirrorTurns(i)) continue;
           this.hurtHero(B.dmg[i] >= 2 ? 2 : 1);
           B.remove(i);
           continue;
@@ -4727,7 +4898,7 @@ export class World {
       }
       if (d < 10 && D.pulled[i]) {
         if (kind === D_EMBER) {
-          this.embersBonus += D.value[i];
+          this.embersBonus += D.value[i] * (1 + this.stats.compass * 0.85);
           this.audio.play("coin");
           this.parts.add(h.x + this.rng.range(-3, 3), h.y - 18, 0, -30, 0.4, rgba("#ffc23d"), 1, 0, 1);
         } else if (kind === D_HEART) {
@@ -4735,7 +4906,7 @@ export class World {
           this.audio.play("heal");
           this.popup(h.x, h.y - 40, "+1", rgba("#ff8a9a"), true);
         } else {
-          h.xp += D.value[i];
+          h.xp += D.value[i] * (1 + this.stats.xp);
           this.audio.play("pickup");
           while (h.xp >= this.levelNeed()) {
             h.xp -= this.levelNeed();
@@ -5602,6 +5773,12 @@ export class World {
       case "overdrive": s.odGain += 0.25; break;
       case "crit": s.crit += 0.08; break;
       case "lantern": s.lantern += 0.2; break;
+      case "pact": s.pact += 0.08; break;
+      case "compass": s.compass += 0.12; break;
+      case "crucible": s.crucible += 0.3; break;
+      case "echo": s.echo += 0.1; break;
+      case "candle": s.xp += 0.15; break;
+      case "tread": s.tread += 1; break;
     }
   }
 }

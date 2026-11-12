@@ -49,7 +49,7 @@ interface Pick {
 }
 /** The chest's screen (s): it comes in and shakes, its lid flies up, then the reel rises out of it and spins. */
 const SPIN_LID = 0.42, SPIN_OPEN = 0.62;
-const RELIC_ICON = ["orbit", "lance", "coil", "flask", "halo", "void"];
+const RELIC_ICON = ["orbit", "lance", "coil", "flask", "halo", "void", "roots", "mirror", "brazier", "crown"];
 /** A big number short: 950, 12.3K, 4.1M (К and М in Russian). */
 const fmtNum = (n: number): string => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}${t("mega")}` : n >= 1e4 ? `${(n / 1e3).toFixed(n >= 1e5 ? 0 : 1)}${t("kilo")}` : String(Math.round(n)));
 /** An arsenal key's badge in the icons: a weapon's, a relic's, an artifact's. */
@@ -2616,7 +2616,7 @@ export class Game {
   private sourceOf(src: number): { name: string; ic: Rect } {
     const w = this.world, h = w.hero;
     if (src === SRC_WEAPON) return { name: tx(h.legend ? LEGENDS[h.weapon] : fullWeaponName(h.weapon, h.weaponEl, h.rarity)), ic: icon("icons", `w_${h.weapon}`) };
-    if (src >= SRC_RELIC && src < SRC_RELIC + 6) {
+    if (src >= SRC_RELIC && src < SRC_RELIC + RELICS.length) {
       const kind = (src - SRC_RELIC) as RelicKind, evo = w.evolved(kind);
       return { name: tx(evo ? evolutionOf(kind).name : RELICS[kind].name), ic: icon("icons", evo ? evolutionOf(kind).icon : RELIC_ICON[kind]) };
     }

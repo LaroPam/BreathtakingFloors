@@ -354,6 +354,19 @@ export function drawWorld(s: Scene, w: World, camX: number, camY: number, viewW:
     }
   }
 
+  // ---- the Ash Brazier's rings: flames standing round each ring's edge, an ember glow in it, dying down
+  for (const f of w.firePools) {
+    if (!inView(f.x, f.y, f.r + 10)) continue;
+    const k = Math.min(1, f.t / 0.15) * Math.min(1, (f.life - f.t) / 0.5), n = Math.max(10, Math.round(f.r * 0.9));
+    s.back.disc(f.x, f.y, f.r, f.r * FLOOR_SQ, rgbaf(0.35, 0.08, 0.02, 0.35 * k));
+    for (let q = 0; q < n; q++) {
+      const a = (q / n) * Math.PI * 2 + f.t * 0.6, px = Math.round(f.x + Math.cos(a) * f.r), py = Math.round(f.y + Math.sin(a) * f.r * FLOOR_SQ);
+      const fl = Math.round(2 + 2 * Math.abs(Math.sin(time * 9 + q * 1.7)));
+      s.glow.rect(px, py - fl, 1, fl, rgbaf(1, 0.5 + 0.3 * Math.sin(time * 7 + q), 0.12, 0.8 * k));
+    }
+    s.illum.light(f.x, f.y, f.r + 10, (f.r + 10) * FLOOR_SQ, rgbaf(1, 0.42, 0.12, 0.25 * k));
+  }
+
   // ---- the bell's peals: rings of bronze light spreading over the floor, thinning as they go
   for (const r of w.soundRings) {
     if (r.t < 0 || !inView(r.x, r.y, r.R + 10)) continue;
@@ -1032,6 +1045,26 @@ export function drawWorld(s: Scene, w: World, camX: number, camY: number, viewW:
       }
     }
     s.illum.light(fo.x, fo.y + 10, 40 + 10 * c, 32 + 8 * c, rgbaf(0.45, 0.75, 1, 0.4 + 0.2 * c + 0.15 * fo.flash));
+  }
+  // the Mirror Shield: a small round mirror hovering at the hero's shoulder, turning to catch the light
+  const mirror = w.relics.find((q) => q.kind === RelicKind.Mirror);
+  if (mirror && !h.dead) {
+    const mx = Math.round(h.x + h.face * 13 + Math.sin(time * 1.3) * 2), my = Math.round(h.y - 26 + Math.sin(time * 2.1) * 1.5), tilt = Math.sin(time * 1.7);
+    s.color.disc(mx, my, 3.5 * Math.max(0.35, Math.abs(tilt)), 4, rgba("#c8c8dc"), h.y + 0.5);
+    s.color.disc(mx, my, 2.4 * Math.max(0.3, Math.abs(tilt)), 2.8, rgba(mirror.evo ? "#fff6c0" : "#eef0ff"), h.y + 0.6);
+    if (tilt > 0.6) s.glow.rect(mx - 1, my - 2, 1, 1, rgbaf(1, 1, 1, 1));
+    s.glow.light(mx, my, 6, 6, rgbaf(1, 0.95, 0.7, mirror.evo ? 0.5 : 0.25));
+  }
+  // the Ice Crown: a ring of pale ice points over the hero's head, glinting
+  const crown = w.relics.find((q) => q.kind === RelicKind.Crown);
+  if (crown && !h.dead && h.exitT < 0) {
+    const cx = Math.round(h.x), cy = Math.round(h.y - 40 + Math.sin(time * 2) * 1);
+    for (let q = -2; q <= 2; q++) {
+      const tall = 3 - Math.abs(q) + (crown.evo ? 1 : 0);
+      s.color.rect(cx + q * 2, cy - tall, 1, tall, rgba(q % 2 ? "#9bdcff" : "#e8f8ff"), h.y + 1);
+    }
+    s.color.rect(cx - 5, cy, 11, 1, rgba("#78ccf4"), h.y + 1);
+    s.glow.light(cx, cy - 2, 7, 5, rgbaf(0.6, 0.9, 1, 0.35));
   }
   // the Sanctuary: a ring of light about the hero, turning, pulsing as it burns
   const halo = w.relics.find((q) => q.kind === RelicKind.Halo);

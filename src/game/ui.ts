@@ -390,7 +390,7 @@ export function reticle(b: Batch, x: number, y: number, time: number, hot: boole
 }
 
 // ------------------------------------------------------------------------------------------------ the HUD
-const RELIC_ICON = ["orbit", "lance", "coil", "flask", "halo", "void"];
+const RELIC_ICON = ["orbit", "lance", "coil", "flask", "halo", "void", "roots", "mirror", "brazier", "crown"];
 /** What the boss's bar showed a moment ago (for the pale strip of the hit it just took). */
 let bossLag = 1;
 

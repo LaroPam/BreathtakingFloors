@@ -507,6 +507,10 @@ export enum RelicKind {
   Flask = 3,
   Halo = 4,
   Void = 5,
+  Roots = 6,
+  Mirror = 7,
+  Brazier = 8,
+  Crown = 9,
 }
 export interface RelicDef {
   kind: RelicKind;
@@ -553,6 +557,31 @@ export const RELICS: RelicDef[] = [
     desc: { ru: "МЕДЛЕННАЯ СФЕРА ПРОКЛИНАЕТ: +30% УРОНА ПО ЦЕЛИ", en: "A SLOW SPHERE HEXES: +30% DAMAGE TAKEN" },
     levels: [{ ru: "+1 СФЕРА", en: "+1 SPHERE" }, { ru: "БОЛЬШЕ И ДОЛЬШЕ", en: "BIGGER, LASTS LONGER" }, { ru: "+1 СФЕРА", en: "+1 SPHERE" }, { ru: "+60% УРОНА", en: "+60% DAMAGE" }],
   },
+  // (the tower's update brought these)
+  {
+    kind: RelicKind.Roots, el: El.Venom,
+    name: { ru: "ТОТЕМ КОРНЕЙ", en: "ROOT TOTEM" },
+    desc: { ru: "КОРНИ ВЫРЫВАЮТСЯ ИЗ ПОЛА И ДЕРЖАТ ВРАГОВ, ШИПЫ ОТРАВЛЯЮТ", en: "ROOTS BURST FROM THE FLOOR AND HOLD FOES; THEIR THORNS POISON" },
+    levels: [{ ru: "+1 КОРЕНЬ", en: "+1 ROOT" }, { ru: "ДЕРЖАТ ДОЛЬШЕ, ЧАЩЕ", en: "HOLD LONGER, MORE OFTEN" }, { ru: "+1 КОРЕНЬ", en: "+1 ROOT" }, { ru: "+40% УРОНА", en: "+40% DAMAGE" }],
+  },
+  {
+    kind: RelicKind.Mirror, el: El.Holy,
+    name: { ru: "ЗЕРКАЛЬНЫЙ ЩИТ", en: "MIRROR SHIELD" },
+    desc: { ru: "КАЖДЫЙ ЧЕТВЁРТЫЙ ВРАЖЕСКИЙ СНАРЯД ОТРАЖАЕТСЯ ОБРАТНО", en: "EVERY FOURTH ENEMY BOLT IS TURNED BACK" },
+    levels: [{ ru: "КАЖДЫЙ ТРЕТИЙ", en: "EVERY THIRD" }, { ru: "ОТРАЖЁННЫЙ БЬЁТ СИЛЬНЕЕ", en: "TURNED BOLTS HIT HARDER" }, { ru: "КАЖДЫЙ ВТОРОЙ", en: "EVERY SECOND" }, { ru: "ОТРАЖЁННЫЙ РАСПАДАЕТСЯ НА ТРИ", en: "TURNED BOLTS SPLIT IN THREE" }],
+  },
+  {
+    kind: RelicKind.Brazier, el: El.Fire,
+    name: { ru: "ПЕПЕЛЬНАЯ ЖАРОВНЯ", en: "ASH BRAZIER" },
+    desc: { ru: "ПОД НОГАМИ ОСТАЮТСЯ ОГНЕННЫЕ КРУГИ И ЖГУТ ВРАГОВ", en: "RINGS OF FIRE ARE LEFT UNDERFOOT AND BURN FOES" },
+    levels: [{ ru: "КРУГИ ШИРЕ", en: "WIDER RINGS" }, { ru: "ГОРЯТ ДОЛЬШЕ", en: "BURN LONGER" }, { ru: "ЧАЩЕ", en: "MORE OFTEN" }, { ru: "+50% УРОНА", en: "+50% DAMAGE" }],
+  },
+  {
+    kind: RelicKind.Crown, el: El.Frost,
+    name: { ru: "ЛЕДЯНАЯ КОРОНА", en: "ICE CROWN" },
+    desc: { ru: "КОГДА ТЕБЯ РАНЯТ, ВСЕ РЯДОМ ЗАМЕРЗАЮТ", en: "WHEN YOU ARE HURT, ALL NEAR YOU FREEZE" },
+    levels: [{ ru: "ШИРЕ", en: "WIDER" }, { ru: "ЛЁД ДЕРЖИТ ДОЛЬШЕ", en: "THE ICE HOLDS LONGER" }, { ru: "+60% УРОНА", en: "+60% DAMAGE" }, { ru: "ЕЩЁ И ПРИ РЫВКЕ, РАЗ В 6 С", en: "ON A DASH TOO, ONCE IN 6 S" }],
+  },
 ];
 export const RELIC_MAX = 5;
 export const RELIC_SLOTS = 5;
@@ -560,7 +589,7 @@ export const RELIC_SLOTS = 5;
 export const ARTIFACT_SLOTS = 5;
 
 // ------------------------------------------------------------------------------------------------ upgrades
-export type StatId = "edge" | "haste" | "reach" | "wave" | "parry" | "speed" | "maxhp" | "magnet" | "dashcd" | "overdrive" | "crit" | "lantern";
+export type StatId = "edge" | "haste" | "reach" | "wave" | "parry" | "speed" | "maxhp" | "magnet" | "dashcd" | "overdrive" | "crit" | "lantern" | "pact" | "compass" | "crucible" | "echo" | "candle" | "tread";
 export interface StatDef {
   id: StatId;
   name: Text;
@@ -581,6 +610,13 @@ export const STATS: StatDef[] = [
   { id: "overdrive", name: { ru: "ЖАЖДА СВЕТА", en: "LIGHT HUNGER" }, desc: { ru: "+25% ЗАРЯДА ВЫБРОСА", en: "+25% OVERDRIVE GAIN" }, max: 3, weight: 5 },
   { id: "crit", name: { ru: "ЗОРКИЙ ГЛАЗ", en: "KEEN EYE" }, desc: { ru: "+8% ШАНС КРИТА (Х2)", en: "+8% CRIT CHANCE (X2)" }, max: 4, weight: 6 },
   { id: "lantern", name: { ru: "ЯРКИЙ ФОНАРЬ", en: "BRIGHT LANTERN" }, desc: { ru: "СВЕТ ШИРЕ: ПРИЗРАКИ УЯЗВИМЫ В НЁМ", en: "WIDER LIGHT: GHOSTS ARE VULNERABLE IN IT" }, max: 3, weight: 4 },
+  // (the tower's update brought these)
+  { id: "pact", name: { ru: "КРОВАВЫЙ ДОГОВОР", en: "BLOOD PACT" }, desc: { ru: "+8% УРОНА ЗА КАЖДОЕ ПОТЕРЯННОЕ СЕРДЦЕ", en: "+8% DAMAGE FOR EACH HEART LOST" }, max: 3, weight: 4 },
+  { id: "compass", name: { ru: "КОМПАС", en: "COMPASS" }, desc: { ru: "+12% СКОРОСТИ, ПОКА СТРЕЛКА ВЕДЁТ; +10% УГЛЕЙ", en: "+12% SPEED WHILE THE ARROW LEADS; +10% EMBERS" }, max: 3, weight: 5 },
+  { id: "crucible", name: { ru: "ТИГЕЛЬ", en: "CRUCIBLE" }, desc: { ru: "ГОРЕНИЕ, ЯД, ЛЁД И ПРОКЛЯТИЕ ДЛЯТСЯ НА 30% ДОЛЬШЕ", en: "BURNS, POISON, ICE AND HEXES LAST 30% LONGER" }, max: 3, weight: 5 },
+  { id: "echo", name: { ru: "ЭХО", en: "ECHO" }, desc: { ru: "10% ШАНС, ЧТО УДАР ОТЗОВЁТСЯ ЕЩЁ РАЗ", en: "A 10% CHANCE A BLOW STRIKES AGAIN" }, max: 3, weight: 5 },
+  { id: "candle", name: { ru: "СВЕЧА УЧЕНИКА", en: "APPRENTICE'S CANDLE" }, desc: { ru: "+15% ОПЫТА", en: "+15% EXPERIENCE" }, max: 4, weight: 5 },
+  { id: "tread", name: { ru: "ТЯЖЁЛАЯ ПОСТУПЬ", en: "HEAVY TREAD" }, desc: { ru: "РЫВОК ОТБРАСЫВАЕТ И РАНИТ ВСЕХ РЯДОМ", en: "THE DASH THROWS BACK AND HURTS ALL NEAR" }, max: 3, weight: 4 },
 ];
 
 // ------------------------------------------------------------------------------------------------ the arsenal
@@ -614,6 +650,16 @@ export const UNLOCKS: UnlockDef[] = [
   { key: `relic:${RelicKind.Coil}`, stat: "evolve", goal: 1, need: { ru: "СОБЕРИ ЭВОЛЮЦИЮ", en: "EVOLVE A RELIC" } },
   { key: `relic:${RelicKind.Halo}`, stat: "spirits", goal: 5, need: { ru: "ВЫПОЛНИ 5 ЗАДАНИЙ ДУХОВ", en: "FULFIL 5 SPIRITS' TASKS" } },
   { key: `relic:${RelicKind.Void}`, stat: "bestFloor", goal: 7, need: { ru: "ДОЙДИ ДО ЛЕДЯНЫХ ЗАЛОВ", en: "REACH THE FROZEN HALLS" } },
+  { key: `relic:${RelicKind.Roots}`, stat: "fell_garden", goal: 1, need: { ru: "ПОБЕДИ ГНИЮЩЕГО ДРЕВНЯ", en: "DEFEAT THE ROTTING TREANT" } },
+  { key: `relic:${RelicKind.Mirror}`, stat: "grazes", goal: 150, need: { ru: "ЗАДЕНЬ 150 СНАРЯДОВ", en: "GRAZE 150 BOLTS" } },
+  { key: `relic:${RelicKind.Brazier}`, stat: "fell_ashen", goal: 1, need: { ru: "ПОБЕДИ ГОРНОВОГО", en: "DEFEAT THE FORGEMASTER" } },
+  { key: `relic:${RelicKind.Crown}`, stat: "fell_frost", goal: 1, need: { ru: "ПОБЕДИ ОКО ПУСТОТЫ", en: "DEFEAT THE VOID EYE" } },
+  { key: "stat:pact", stat: "kills", goal: 4000, need: { ru: "УБЕЙ 4000 ВРАГОВ", en: "SLAY 4000 FOES" } },
+  { key: "stat:compass", stat: "floorsCleared", goal: 25, need: { ru: "ПРОЙДИ 25 ЭТАЖЕЙ", en: "CLEAR 25 FLOORS" } },
+  { key: "stat:crucible", stat: "evolve", goal: 3, need: { ru: "СОБЕРИ 3 ЭВОЛЮЦИИ", en: "EVOLVE 3 RELICS" } },
+  { key: "stat:echo", stat: "minis", goal: 6, need: { ru: "ПОБЕДИ 6 МИНИ-БОССОВ", en: "DEFEAT 6 MINIBOSSES" } },
+  { key: "stat:candle", stat: "chests", goal: 30, need: { ru: "ОТКРОЙ 30 СУНДУКОВ", en: "OPEN 30 CHESTS" } },
+  { key: "stat:tread", stat: "urns", goal: 150, need: { ru: "РАЗБЕЙ 150 УРН", en: "SMASH 150 URNS" } },
   { key: "stat:parry", stat: "grazes", goal: 50, need: { ru: "ЗАДЕНЬ 50 СНАРЯДОВ", en: "GRAZE 50 BOLTS" } },
   { key: "stat:overdrive", stat: "urns", goal: 40, need: { ru: "РАЗБЕЙ 40 УРН", en: "SMASH 40 URNS" } },
   { key: "stat:wave", stat: "floorsCleared", goal: 10, need: { ru: "ПРОЙДИ 10 ЭТАЖЕЙ", en: "CLEAR 10 FLOORS" } },
@@ -865,6 +911,10 @@ export const EVOLUTIONS: EvolutionDef[] = [
   { relic: RelicKind.Flask, stat: "crit", icon: "e_flask", name: { ru: "ЧУМНОЙ КОТЁЛ", en: "PLAGUE CAULDRON" }, desc: { ru: "ЧЕТЫРЕ ФЛЯГИ РАЗОМ, ОТРАВЛЕННЫЕ ВРАГИ ЛОПАЮТСЯ НОВЫМИ ЛУЖАМИ", en: "FOUR FLASKS AT ONCE; POISONED FOES BURST INTO NEW POOLS" } },
   { relic: RelicKind.Halo, stat: "wave", icon: "e_halo", name: { ru: "ОБИТЕЛЬ СВЕТА", en: "SANCTUARY" }, desc: { ru: "СВЯТОЙ КРУГ ВСЕГДА С ТОБОЙ: ЖЖЁТ ВРАГОВ, ГАСИТ СНАРЯДЫ, РАЗ В 40 С ЛЕЧИТ СЕРДЦЕ", en: "A HOLY RING ALWAYS ABOUT YOU: BURNS FOES, SNUFFS BOLTS, HEALS A HEART EVERY 40 S" } },
   { relic: RelicKind.Void, stat: "edge", icon: "e_void", name: { ru: "ЧЁРНАЯ ЗВЕЗДА", en: "BLACK STAR" }, desc: { ru: "ЗВЕЗДА ПУСТОТЫ ТЯНЕТ ВРАГОВ В СЕБЯ И РАЗ В ЧЕТЫРЕ СЕКУНДЫ СХЛОПЫВАЕТСЯ", en: "A STAR OF VOID DRAWS FOES IN AND COLLAPSES EVERY FOUR SECONDS" } },
+  { relic: RelicKind.Roots, stat: "magnet", icon: "e_roots", name: { ru: "ЛЕС-ДУШИТЕЛЬ", en: "STRANGLER GROVE" }, desc: { ru: "ПЯТЬ КОРНЕЙ РАЗОМ, И ОТ КАЖДОГО ПОЙМАННОГО ОНИ ПОЛЗУТ К СОСЕДЯМ", en: "FIVE ROOTS AT ONCE, AND FROM EACH ONE CAUGHT THEY CREEP TO ITS NEIGHBOURS" } },
+  { relic: RelicKind.Mirror, stat: "parry", icon: "e_mirror", name: { ru: "ЗЕРКАЛО ВЕЧНОСТИ", en: "ETERNAL MIRROR" }, desc: { ru: "ОТРАЖАЕТ КАЖДЫЙ СНАРЯД, И ОТРАЖЁННЫЙ САМ ИЩЕТ ВРАГА", en: "TURNS BACK EVERY BOLT, AND THE TURNED BOLT SEEKS A FOE" } },
+  { relic: RelicKind.Brazier, stat: "speed", icon: "e_brazier", name: { ru: "ПУТЬ ПЛАМЕНИ", en: "FLAME WAKE" }, desc: { ru: "ЗА ТОБОЙ ТЯНЕТСЯ ОГНЕННЫЙ СЛЕД, И ОН ЖЖЁТ СИЛЬНЕЕ", en: "A WAKE OF FIRE TRAILS BEHIND YOU AND BURNS HARDER" } },
+  { relic: RelicKind.Crown, stat: "maxhp", icon: "e_crown", name: { ru: "ВЕЧНАЯ ЗИМА", en: "ENDLESS WINTER" }, desc: { ru: "РАНЕННЫЙ, ТЫ В ЛЕДЯНОЙ ГРОБНИЦЕ: ОНА ЛОПАЕТСЯ И ЗАМОРАЖИВАЕТ ВСЁ ВОКРУГ", en: "HURT, YOU ARE SEALED IN ICE THAT SHATTERS AND FREEZES ALL ABOUT" } },
 ];
 export const evolutionOf = (kind: RelicKind): EvolutionDef => EVOLUTIONS.find((e) => e.relic === kind)!;
 
