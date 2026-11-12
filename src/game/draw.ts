@@ -6,7 +6,7 @@ import { heroSprites, lookId, type HeroAnim } from "./heroSprites";
 import { TEAM_HERO } from "./pools";
 import { Batch, rgba, rgbaf, SOFT, withAlpha } from "../engine/renderer";
 import { text } from "../engine/text";
-import { AI, DOORS, giftFor, EL_COLOR, ENEMIES, fullWeaponName, LEGENDS, questDef, RARITIES, RelicKind, WEAPONS, type PlaceId } from "./defs";
+import { AI, DOORS, giftFor, placeDef, EL_COLOR, ENEMIES, fullWeaponName, LEGENDS, questDef, RARITIES, RelicKind, WEAPONS, type GateKind, type PlaceId } from "./defs";
 import { t as tr, tx } from "./i18n";
 import { FLOOR, LOOK_BRIDGE, LOOK_ICE, LOOK_VEIN, PIT, WALL } from "./map";
 import { lanceTravel, BULLET_ANIMS, EYE_H, FLOOR_SQ, LUNGE_DASH, SPAWN_T, type BossBrain, poolSpread, HERO_HIT_Y, HERO_R, B_CRESCENT, B_FIREBALL, B_LANCE, CINE_DUR, D_CHEST, D_EMBER, D_GREEN, D_HEART, D_RED, SANCTUARY_R, STAR_EVERY, TILE, type World } from "./world";
@@ -116,15 +116,17 @@ const FX_LIGHT: Record<string, [number, string, number]> = {
   parry: [30, "#fff0c0", 0.6],
   slam: [90, "#ffb060", 0.8],
 };
+/** Each kind of gate's art, as `<name>_<place>` (closed, open). */
+const GATE_ART: Record<GateKind, string> = { lattice: "gate", water: "gatew", roots: "gater", hidden: "gateh", heavy: "gatex" };
 /** The colour of the shafts of light falling into a place from above (none in the crypt). */
 const SHAFT: Partial<Record<PlaceId, string>> = { garden: "#d8ffb0", frost: "#c0e0ff", heart: "#ffe8b0", cistern: "#a8f0e8" };
 // the walls' and the room's edges, per biome
-const EDGE: Record<PlaceId, readonly [string, string]> = { crypt: ["#1a1724", "#3a3348"], garden: ["#141a13", "#33402f"], frost: ["#131b28", "#304460"], heart: ["#1e1610", "#4a3c26"], beyond: ["#12101a", "#2e2a3a"], cistern: ["#0e1618", "#2a3c40"] };
-/** What a drop looks like in each biome: a chasm with embers far down, dark water, the starry void. */
+const EDGE: Record<PlaceId, readonly [string, string]> = { crypt: ["#1a1724", "#3a3348"], garden: ["#141a13", "#33402f"], frost: ["#131b28", "#304460"], heart: ["#1e1610", "#4a3c26"], beyond: ["#12101a", "#2e2a3a"], cistern: ["#0e1618", "#2a3c40"], ashen: ["#160e0c", "#40281e"] };
+/** What a drop looks like in each biome: a chasm with embers far down, dark water, the starry void, molten slag. */
 interface PitLook {
   fill: string;
   deep: string;
-  kind: "chasm" | "water" | "void";
+  kind: "chasm" | "water" | "void" | "lava";
   /** A bridge's planks: base, the gaps between them, the lit edge. */
   planks: [string, string, string];
 }
@@ -135,6 +137,7 @@ const PIT_LOOK: Record<PlaceId, PitLook> = {
   heart: { fill: "#0a0604", deep: "#5a3a0a", kind: "chasm", planks: ["#7a6034", "#3a2c14", "#b09050"] },
   beyond: { fill: "#020206", deep: "#1a1030", kind: "void", planks: ["#4a4458", "#1c1a24", "#7a7490"] },
   cistern: { fill: "#06161c", deep: "#0e3a44", kind: "water", planks: ["#4e4030", "#241c12", "#76603e"] },
+  ashen: { fill: "#5a1608", deep: "#ff7a1a", kind: "lava", planks: ["#3a3438", "#141016", "#6a6070"] },
 };
 /** One tile of a drop. */
 function drawPit(s: Scene, P: PitLook, x: number, y: number, tx: number, ty: number, time: number): void {
@@ -145,6 +148,18 @@ function drawPit(s: Scene, P: PitLook, x: number, y: number, tx: number, ty: num
     const ph = (time * 0.8 + hv * 6.3) % 6.3, ry = y + 3 + Math.floor(hv * 9);
     s.back.rect(x + Math.floor(hv * 6), ry, 5 + Math.floor(Math.sin(ph) * 2 + 2), 1, rgba(P.deep));
     if (Math.sin(ph * 1.7) > 0.96) s.glow.rect(x + 4 + Math.floor(hv * 8), ry - 1, 2, 1, rgbaf(0.6, 0.9, 0.9, 0.6));
+  } else if (P.kind === "lava") {
+    // molten slag under a dark crust: plates of it drifting slowly, the melt glowing in the seams between, a bubble
+    // of bright melt breaking through now and then, the heat throwing a little light up
+    const crust = rgba("#1c0604"), ph = time * 0.5 + hv * 6.3, pulse = 0.7 + 0.3 * Math.sin(ph * 1.6), h2 = hash(ty * 3, tx * 7);
+    const sx = 1 + Math.floor(hv * 5), sy = 1 + Math.floor(h2 * 5);
+    s.back.rect(x, y, sx - 1, TILE, crust);
+    s.back.rect(x + sx, y, TILE - sx, sy - 1, crust);
+    s.back.rect(x + sx, y + sy, TILE - sx, TILE - sy, crust);
+    s.glow.rect(x + sx - 1, y, 1, TILE, rgbaf(1, 0.42, 0.1, 0.55 * pulse));
+    s.glow.rect(x + sx, y + sy - 1, TILE - sx, 1, rgbaf(1, 0.5, 0.12, 0.55 * pulse));
+    if (Math.sin(ph * 1.3 + h2 * 9) > 0.94) s.glow.rect(x + sx + 2 + Math.floor(h2 * 6), y + sy + 3 + Math.floor(hv * 6), 2, 2, rgbaf(1, 0.8, 0.35, 0.9));
+    if (hv < 0.18) s.illum.light(x + 8, y + 8, 30, 24, rgbaf(1, 0.36, 0.1, 0.3 * pulse));
   } else if (P.kind === "chasm") {
     // the dark goes red far down; an ember rises out of it now and then
     if (hv < 0.5) s.back.rect(x + Math.floor(hv * 10), y + Math.floor(hash(ty, tx) * 12), 3, 2, rgba(P.deep));
@@ -222,6 +237,7 @@ const STAIR_STONE: Record<PlaceId, string[]> = {
   heart: ["#2a2018", "#4a3c28", "#6e5c3c", "#a08a5c"],
   beyond: ["#1a1822", "#2e2a3a", "#4a4458", "#7a7490"],
   cistern: ["#16201e", "#2a3a38", "#445a56", "#6a8a84"],
+  ashen: ["#241a16", "#3e2c24", "#5e4436", "#8a6650"],
 };
 /** The lower `h` px of a sprite anchored at its foot (a wall's face as tall as the wall is thick). */
 function clipUp(b: Batch, r: Rect, x: number, y: number, h: number): void {
@@ -317,23 +333,24 @@ export function drawWorld(s: Scene, w: World, camX: number, camY: number, viewW:
     }
   }
 
-  // ---- the gate: closed, its runes burning (stirring as the hero comes); opening, the bars sink and the runes flare;
-  // open, an arch with a violet haze in it
+  // ---- the gate: closed, its runes (buds, sigil) burning, stirring as the hero comes; opening, a lattice's bars sink,
+  // anything else fades as it goes (roots burn, a door swings), its light flaring; open, the passage with a haze in it.
+  // A hidden door is the wall's own face: only its light shows, and only where the lantern falls on it
   const gt = w.gate;
   if (gt && inView(gt.x + TILE, gt.y - 20, 60)) {
-    const ga = anim(gt.kind === "water" ? `gatew_${B.id}` : `gate_${B.id}`), cx = gt.x + TILE, col = rgba(giftFor(gt.kind).color);
+    const hx = giftFor(gt.kind).color, ga = anim(`${GATE_ART[gt.kind]}_${B.id}`), cx = gt.x + TILE, col = rgba(hx), [cr, cg, cb] = [1, 3, 5].map((k) => parseInt(hx.slice(k, k + 2), 16) / 255);
     if (gt.open >= 1) {
       s.back.image(ga.frames[1][0]!, gt.x, gt.y);
       if (ga.frames[1][1]) s.glow.image(ga.frames[1][1]!, gt.x, gt.y, 1, 1, 0, rgbaf(1, 1, 1, 0.6 + 0.2 * Math.sin(time * 1.5)));
-      s.illum.light(cx, gt.y - 18, 40, 34, rgbaf(0.7, 0.5, 1, 0.45));
+      s.illum.light(cx, gt.y - 18, 40, 34, rgbaf(cr, cg, cb, 0.4));
     } else {
-      const k = gt.open, jit = gt.opening ? Math.round(Math.sin(time * 70) * (1 - k)) : 0;
-      // the open arch under it, showing through as the lattice goes
+      const k = gt.open, jit = gt.opening ? Math.round(Math.sin(time * 70) * (1 - k)) : 0, sink = gt.kind === "lattice" ? Math.round(k * 10) : 0, seen = gt.seen;
+      // the open passage under it, showing through as the gate goes
       if (k > 0) s.back.image(ga.frames[1][0]!, gt.x, gt.y, 1, 1, 0, rgbaf(1, 1, 1, k));
-      s.back.image(ga.frames[0][0]!, gt.x + jit, gt.y + Math.round(k * 10), 1, 1, 0, rgbaf(1, 1, 1, 1 - k * k));
+      s.back.image(ga.frames[0][0]!, gt.x + jit, gt.y + sink, 1, 1, 0, rgbaf(1, 1, 1, 1 - k * k));
       const stir = 0.55 + 0.25 * Math.sin(time * 2.2) + 0.35 * gt.near + 1.2 * k;
-      if (ga.frames[0][1]) s.glow.image(ga.frames[0][1]!, gt.x + jit, gt.y + Math.round(k * 10), 1, 1, 0, rgbaf(1, 1, 1, Math.min(1.5, stir) * (1 - k * k)));
-      s.illum.light(cx, gt.y - 22, 34 + 16 * gt.near, 28 + 10 * gt.near, withAlpha(col, Math.min(1, 0.35 + 0.3 * gt.near + 0.6 * k)));
+      if (ga.frames[0][1] && seen > 0.01) s.glow.image(ga.frames[0][1]!, gt.x + jit, gt.y + sink, 1, 1, 0, rgbaf(1, 1, 1, Math.min(1.5, stir) * (1 - k * k) * seen));
+      if (seen > 0.01) s.illum.light(cx, gt.y - 22, 34 + 16 * gt.near, 28 + 10 * gt.near, withAlpha(col, Math.min(1, 0.35 + 0.3 * gt.near + 0.6 * k) * seen));
     }
   }
 
@@ -349,7 +366,8 @@ export function drawWorld(s: Scene, w: World, camX: number, camY: number, viewW:
   // ---- a way stone: a standing stone, the other place's runes down it in its own light; touched, it blazes
   const ws = w.wayStone;
   if (ws && inView(ws.x, ws.y, 40)) {
-    const k = ws.taken ? 1 : 0.55 + 0.25 * Math.sin(time * 2), col = rgbaf(0.48, 0.92, 0.88, 1);
+    // (the runes in the light of the place it turns the way to)
+    const k = ws.taken ? 1 : 0.55 + 0.25 * Math.sin(time * 2), col = rgba(placeDef(ws.to).torchLight);
     s.back.disc(ws.x, ws.y + 1, 10, 3, rgba("#000000", 0.35));
     s.color.rect(ws.x - 5, ws.y - 30, 10, 30, rgba("#2a3438"), ws.y);
     s.color.rect(ws.x - 4, ws.y - 32, 8, 2, rgba("#3e4c50"), ws.y);
@@ -1122,6 +1140,13 @@ export function drawWorld(s: Scene, w: World, camX: number, camY: number, viewW:
       const k = 0.5 + 0.5 * Math.sin(m.ph * 1.7 + m.vx * 7);
       s.front.rect(m.x, m.y, 1, 1, rgbaf(1, 0.9, 0.55, 0.3 + 0.6 * k));
       if (k > 0.7) s.glow.light(m.x + 0.5, m.y + 0.5, 5, 5, rgbaf(1, 0.85, 0.4, (k - 0.7) * 1.6));
+    } else if (B.motes === "ash") {
+      // grey flakes of ash, and now and then an ember rising through them
+      if (m.vx > 0.75) {
+        const k = 0.5 + 0.5 * Math.sin(m.ph * 2.3 + m.vy * 9);
+        s.front.rect(m.x, m.y, 1, 1, rgbaf(1, 0.5 + 0.3 * k, 0.15, 0.5 + 0.5 * k));
+        if (k > 0.6) s.glow.light(m.x + 0.5, m.y + 0.5, 5, 5, rgbaf(1, 0.45, 0.1, (k - 0.6) * 1.5));
+      } else s.front.rect(m.x, m.y, Math.sin(m.ph * 3 + m.vy * 5) > 0.3 ? 2 : 1, 1, rgbaf(0.62, 0.58, 0.58, 0.45 + 0.2 * Math.sin(m.ph)));
     } else s.front.rect(m.x, m.y, 1, 1, rgbaf(0.8, 0.75, 0.9, 0.25 + 0.15 * Math.sin(m.ph)));
   }
 
@@ -1135,13 +1160,14 @@ export function drawWorld(s: Scene, w: World, camX: number, camY: number, viewW:
 }
 
 // ============================================================================================ bosses
-const BOSS_ART = { warden: "warden", treant: "treant", eye: "voideye", light: "lastlight", well: "wellmistress" } as const;
+const BOSS_ART = { warden: "warden", treant: "treant", eye: "voideye", light: "lastlight", well: "wellmistress", forge: "forgemaster" } as const;
 /** A boss's pose for what it is doing. */
 function bossPose(b: BossBrain): string {
-  if (b.act === "summon") return b.kind === "warden" ? "kneel" : b.kind === "treant" ? "cocoon" : b.kind === "light" ? "rise" : b.kind === "well" ? "sink" : "closed";
+  if (b.act === "summon") return b.kind === "warden" || b.kind === "forge" ? "kneel" : b.kind === "treant" ? "cocoon" : b.kind === "light" ? "rise" : b.kind === "well" ? "sink" : "closed";
   if (b.kind === "well") return b.act === "dive" && b.t < 1.05 ? "sink" : b.act === "wave" || b.act === "tide" ? "cast" : b.act === "whirl" || b.act === "geyser" ? "slam" : "idle";
   if (b.kind === "light") return b.act === "rays" || b.act === "lantern" || b.act === "judgement" || b.act === "nova" ? "cast" : b.act === "dive" ? "slam" : "idle";
   if (b.kind === "warden") return b.act === "windup" || b.act === "hold" ? "windup" : b.act === "strike" || b.act === "recover" || b.act === "spikes" ? "strike" : b.act === "dashwarn" || b.act === "dash" ? "dash" : b.moving ? "walk" : "idle";
+  if (b.kind === "forge") return b.act === "raise" || b.act === "hold" || b.act === "dashwarn" ? "windup" : b.act === "slam" || b.act === "star" || (b.act === "recover" && b.t < 0.3) ? "strike" : b.act === "sparks" || b.act === "pour" ? "cast" : b.moving || b.act === "dash" ? "walk" : "idle";
   if (b.kind === "treant") return b.act === "roots" || b.act === "spores" ? "cast" : b.act === "rootline" || b.act === "thorns" ? "slam" : "idle";
   return b.act === "beam" || b.act === "cross" ? "charge" : "idle";
 }
@@ -1163,7 +1189,7 @@ function drawBoss(s: Scene, w: World, i: number, b: BossBrain, time: number): vo
   } else if (b.kind === "eye") lift = Math.round(Math.sin(time * 2.2) * 3 + (b.moving ? Math.sin(time * 5) : 0));
   s.back.disc(x, y + 1, b.kind === "treant" ? 46 : b.kind === "eye" ? 26 : 30, b.kind === "treant" ? 10 : 7, C_SHADOW);
   // the red outline before the warden's blow (and the treant's thorns): the sprite four times, a pixel out each way
-  const tell = (b.kind === "warden" && (b.act === "windup" || b.act === "hold")) || (b.kind === "treant" && b.act === "thorns" && !b.init);
+  const tell = (b.kind === "warden" && (b.act === "windup" || b.act === "hold")) || (b.kind === "forge" && (b.act === "raise" || b.act === "hold")) || (b.kind === "treant" && b.act === "thorns" && !b.init);
   if (tell) {
     const pulse = 0.55 + 0.45 * Math.sin(time * 22), col = rgbaf(1, 0.15, 0.12, pulse);
     for (const [dx, dy] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) drawAnim(s, a, E.t[i], x + shake + dx * 2, y + lift + dy * 2, { sx: face * d.scale, sy: d.scale * sq, tint: col, flash: 2, key: y - 0.01, glow: 0 });

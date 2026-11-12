@@ -87,6 +87,8 @@ export enum AI {
   LastLight = 15,
   /** The Well Mistress: in her well, waves, whirlpools, geysers; in her last phase she sinks and rises elsewhere. */
   Well = 17,
+  /** The Forgemaster: walks his forge, hammer blows that crack the floor, molten pours, sparks off the anvil; heats up. */
+  Forge = 18,
   /**
    * A miniboss: heavy as a boss (no knockback, no stun, a bar of its own), but its fall opens nothing; it fights by
    * the moves its MINIS entry gives it.
@@ -152,6 +154,7 @@ const DEFS: Def[] = [
   E({ key: "treant", name: { ru: "ГНИЮЩИЙ ДРЕВЕНЬ", en: "THE ROTTING TREANT" }, anim: "treant_0_idle", ai: AI.Treant, hp: 3300, speed: 16, xp: 140, glow: "#8ad83a", scale: 2, elite: true, title: { ru: "СТАРЕЙШЕЕ ДЕРЕВО ЗАБЫТОГО САДА", en: "THE ELDEST TREE OF THE LOST GARDEN" } }),
   E({ key: "lastlight", name: { ru: "ПОСЛЕДНИЙ СВЕТ", en: "THE LAST LIGHT" }, anim: "lastlight_0_idle", ai: AI.LastLight, hp: 6200, speed: 30, xp: 260, glow: "#ffd87a", scale: 2, elite: true, title: { ru: "ПЕРВЫЙ, КТО ДОНЁС СВЕТ ДО СЕРДЦА БАШНИ", en: "THE FIRST WHO CARRIED THE LIGHT TO THE TOWER'S HEART" } }),
   E({ key: "wellmistress", name: { ru: "ХОЗЯЙКА КОЛОДЦА", en: "THE WELL MISTRESS" }, anim: "wellmistress_0_idle", ai: AI.Well, hp: 3400, speed: 0, xp: 150, glow: "#5ad0d0", scale: 2, elite: true, title: { ru: "УТОПЛЕННАЯ КОРОЛЕВА СТАРЫХ КАТАКОМБ", en: "THE DROWNED QUEEN OF THE OLD CATACOMBS" } }),
+  E({ key: "forgemaster", name: { ru: "ГОРНОВОЙ", en: "THE FORGEMASTER" }, anim: "forgemaster_0_idle", ai: AI.Forge, hp: 4800, speed: 24, xp: 210, glow: "#ff6a1a", scale: 2, elite: true, title: { ru: "ВЕЧНЫЙ КУЗНЕЦ, ЧТО КУЁТ ЦЕПИ БАШНИ", en: "THE UNDYING SMITH WHO FORGES THE TOWER'S CHAINS" } }),
   // the drowned catacombs: everything there of the water
   E({ key: "slime_tide", name: { ru: "ПРИЛИВНЫЙ СЛИЗЕНЬ", en: "TIDE SLIME" }, anim: "slime_tide", ai: AI.Chase, hp: 26, speed: 30, xp: 2, glow: "#3ab0bc", scale: 0.65, hops: true }),
   E({ key: "snake_tide", name: { ru: "КОЛОДЕЗНЫЙ УГОРЬ", en: "WELL EEL" }, anim: "snake_tide", ai: AI.Slither, hp: 22, speed: 80, xp: 2, scale: 0.75 }),
@@ -159,6 +162,15 @@ const DEFS: Def[] = [
   E({ key: "skull_tide", name: { ru: "ЧЕРЕП УТОПЛЕННИКА", en: "DROWNED SKULL" }, anim: "skull_tide", ai: AI.Shooter, hp: 46, speed: 40, xp: 4, glow: "#5ad0d0", every: 2.5, shot: 5, scale: 0.55 }),
   E({ key: "ghost_tide", name: { ru: "УТОПЛЕННИЦА", en: "THE DROWNED" }, anim: "ghost_tide", ai: AI.Phantom, hp: 44, speed: 46, xp: 4, glow: "#7ae8e0", scale: 0.65 }),
   E({ key: "eye_tide", name: { ru: "ГЛАЗ ГЛУБИНЫ", en: "DEEP EYE" }, anim: "eye_tide", ai: AI.Turret, hp: 80, speed: 16, xp: 6, glow: "#3ab0bc", every: 3.3, scale: 0.6 }),
+  // the ashen forge: everything there of the fire and the slag
+  E({ key: "slime_ash", name: { ru: "ШЛАКОВЫЙ СЛИЗЕНЬ", en: "SLAG SLIME" }, anim: "slime_ash", ai: AI.Chase, hp: 36, speed: 32, xp: 2, glow: "#ff6a1a", scale: 0.65, hops: true }),
+  E({ key: "snake_ash", name: { ru: "УГОЛЬНЫЙ ПОЛОЗ", en: "CINDER ADDER" }, anim: "snake_ash", ai: AI.Slither, hp: 28, speed: 80, xp: 2, scale: 0.75 }),
+  E({ key: "bat_ash", name: { ru: "ПЕПЕЛЬНЫЙ НЕТОПЫРЬ", en: "ASH BAT" }, anim: "bat_ash", ai: AI.Flutter, hp: 20, speed: 66, xp: 2, glow: "#ff8a3a", scale: 0.7 }),
+  E({ key: "skull_ash", name: { ru: "ЧЕРЕП ГОРНА", en: "FORGE SKULL" }, anim: "skull_ash", ai: AI.Shooter, hp: 52, speed: 40, xp: 4, glow: "#ff6a1a", every: 2.4, shot: 2, scale: 0.55 }),
+  E({ key: "ghost_ash", name: { ru: "ТЕНЬ КУЗНЕЦА", en: "SMITH'S SHADE" }, anim: "ghost_ash", ai: AI.Phantom, hp: 48, speed: 46, xp: 4, glow: "#ffb070", scale: 0.65 }),
+  E({ key: "eye_ash", name: { ru: "ОКО ПЛАВИЛЬНИ", en: "SMELTER'S EYE" }, anim: "eye_ash", ai: AI.Turret, hp: 86, speed: 16, xp: 6, glow: "#ff6a1a", every: 3.3, scale: 0.6 }),
+  E({ key: "wisp_ash", name: { ru: "ЖАРОВАЯ ИСКРА", en: "FORGE SPARK" }, anim: "wisp_ash", ai: AI.Bomber, hp: 22, speed: 62, xp: 3, glow: "#ff8a3a", scale: 0.7 }),
+  E({ key: "moth_ash", name: { ru: "ПЕПЕЛЬНИЦА", en: "ASH MOTH" }, anim: "moth_ash", ai: AI.Healer, hp: 30, speed: 46, xp: 5, glow: "#ffb070", scale: 0.7 }),
   // the minibosses: creatures of each place grown huge (see MINIS)
   E({ key: "mini_slime", name: { ru: "СЛИЗЕНЬ-ГРОМАДА", en: "THE GREAT SLIME" }, anim: "slime", ai: AI.Mini, hp: 520, speed: 28, xp: 40, glow: "#3ad050", scale: 1.6, elite: true }),
   E({ key: "mini_skull", name: { ru: "ЧЕРЕП-ПРОРОК", en: "THE SEER SKULL" }, anim: "skull_elite", ai: AI.Mini, hp: 440, speed: 38, xp: 40, glow: "#c684ff", scale: 1.3, elite: true }),
@@ -169,6 +181,8 @@ const DEFS: Def[] = [
   E({ key: "mini_sunskull", name: { ru: "СОЛНЕЧНЫЙ ЧЕРЕП", en: "THE SUN SKULL" }, anim: "skull_sun", ai: AI.Mini, hp: 760, speed: 40, xp: 70, glow: "#ffd04a", scale: 1.4, elite: true }),
   E({ key: "mini_jelly", name: { ru: "ГРОЗОВАЯ ПРАМАТЕРЬ", en: "THE STORM MATRIARCH" }, anim: "jelly", ai: AI.Mini, hp: 560, speed: 26, xp: 50, glow: "#c684ff", scale: 1.8, elite: true }),
   E({ key: "mini_eel", name: { ru: "ВЕЛИКИЙ УГОРЬ", en: "THE GREAT EEL" }, anim: "snake_tide", ai: AI.Mini, hp: 580, speed: 44, xp: 50, glow: "#3ab0bc", scale: 1.7, elite: true }),
+  E({ key: "mini_slag", name: { ru: "ПЛАВИЛЬНАЯ ГРОМАДА", en: "THE SLAG HEAP" }, anim: "slime_ash", ai: AI.Mini, hp: 720, speed: 26, xp: 60, glow: "#ff6a1a", scale: 1.7, elite: true }),
+  E({ key: "mini_cinder", name: { ru: "ПЕПЕЛЬНЫЙ ВОЖАК", en: "THE ASH ALPHA" }, anim: "bat_ash", ai: AI.Mini, hp: 640, speed: 44, xp: 60, glow: "#ff8a3a", scale: 1.8, elite: true }),
   E({ key: "mini_spark", name: { ru: "МАТЬ ИСКР", en: "THE SPARK MOTHER" }, anim: "wisp_sun", ai: AI.Mini, hp: 700, speed: 34, xp: 70, glow: "#ffe08a", scale: 1.8, elite: true }),
   // the tower's heart: everything there gone to light
   E({ key: "slime_sun", name: { ru: "ЗОЛОТОЙ СЛИЗЕНЬ", en: "GILDED SLIME" }, anim: "slime_sun", ai: AI.Chase, hp: 40, speed: 34, xp: 3, glow: "#ffd04a", scale: 0.65, hops: true }),
@@ -198,6 +212,8 @@ export const EN = {
   miniGhost: id("mini_ghost"), miniSunSkull: id("mini_sunskull"), miniSpark: id("mini_spark"), miniJelly: id("mini_jelly"), miniEel: id("mini_eel"),
   wellMistress: id("wellmistress"), slimeTide: id("slime_tide"), snakeTide: id("snake_tide"), batTide: id("bat_tide"), skullTide: id("skull_tide"),
   ghostTide: id("ghost_tide"), eyeTide: id("eye_tide"),
+  forgemaster: id("forgemaster"), slimeAsh: id("slime_ash"), snakeAsh: id("snake_ash"), batAsh: id("bat_ash"), skullAsh: id("skull_ash"),
+  ghostAsh: id("ghost_ash"), eyeAsh: id("eye_ash"), wispAsh: id("wisp_ash"), mothAsh: id("moth_ash"), miniSlag: id("mini_slag"), miniCinder: id("mini_cinder"),
 };
 
 // ------------------------------------------------------------------------------------------------ the tower
@@ -211,7 +227,7 @@ export const EN = {
  * joins after the first brazier, the third after the second. So a floor starts calm, a new enemy arrives one at a
  * time, and the room is at its hardest just before the portal opens.
  */
-export type PlaceId = "crypt" | "garden" | "frost" | "heart" | "beyond" | "cistern";
+export type PlaceId = "crypt" | "garden" | "frost" | "heart" | "beyond" | "cistern" | "ashen";
 export interface Biome {
   id: PlaceId;
   name: Text;
@@ -224,8 +240,8 @@ export interface Biome {
   /** The ambient light's color (multiplied into the room) and the torches' light. */
   ambient: [number, number, number];
   torchLight: string;
-  /** Floating motes: dust, fireflies and leaves, snow, sparks of light rising. */
-  motes: "dust" | "fireflies" | "snow" | "sparks";
+  /** Floating motes: dust, fireflies and leaves, snow, sparks of light rising, ash sinking (embers rising through it). */
+  motes: "dust" | "fireflies" | "snow" | "sparks" | "ash";
 }
 export interface PlaceDef extends Biome {
   /** Its tier, 1 at the top: its floors are the depths (tier - 1) * 3 + 1..3. */
@@ -247,6 +263,8 @@ export interface PlaceDef extends Biome {
    * a way stone; touched, it turns the portal after the boss toward that place (of the next tier).
    */
   branch?: PlaceId;
+  /** The kind of the gate that way stone stands behind (the gift it asks for is the way's key). */
+  wayGate?: GateKind;
   /** A place of one floor, nothing to fight there (the place beyond the light). */
   single?: boolean;
   /** Each floor's own name and a line for its title card. */
@@ -257,7 +275,7 @@ export interface PlaceDef extends Biome {
 export const PLACES: PlaceDef[] = [
   {
     id: "crypt", name: { ru: "СКЛЕП", en: "THE CRYPT" }, lore: { ru: "ЗДЕСЬ ЛЕЖАТ ТЕ, КТО НЁС СВЕТ ВНИЗ ДО ТЕБЯ", en: "HERE LIE THOSE WHO CARRIED LIGHT DOWN BEFORE YOU" }, floor: "floor_crypt", wall: "wall_crypt", pillar: "pillar_crypt", torch: "torch", ambient: [0.95, 0.88, 1.15], torchLight: "#ff9a40", motes: "dust",
-    tier: 1, boss: EN.warden, music: 0, minis: [EN.miniSlime, EN.miniSkull], branch: "cistern", gates: ["lattice"], gift: "shade",
+    tier: 1, boss: EN.warden, music: 0, minis: [EN.miniSlime, EN.miniSkull], branch: "cistern", wayGate: "lattice", gates: ["lattice"], gift: "shade",
     floors: [
       { name: { ru: "ВЕРХНИЕ ГАЛЕРЕИ", en: "THE UPPER GALLERIES" }, lore: { ru: "ЗДЕСЬ ЛЕЖАТ ТЕ, КТО НЁС СВЕТ ВНИЗ ДО ТЕБЯ", en: "HERE LIE THOSE WHO CARRIED LIGHT DOWN BEFORE YOU" } },
       { name: { ru: "ОССУАРИЙ", en: "THE OSSUARY" }, lore: { ru: "КОСТИ СЛОЖЕНЫ РЯДАМИ. КТО-ТО ИХ СЧИТАЛ", en: "THE BONES ARE STACKED IN ROWS. SOMEONE COUNTED THEM" } },
@@ -271,7 +289,7 @@ export const PLACES: PlaceDef[] = [
   },
   {
     id: "garden", name: { ru: "ЗАБЫТЫЙ САД", en: "THE LOST GARDEN" }, lore: { ru: "САД РОС БЕЗ СОЛНЦА И НАУЧИЛСЯ СВЕТИТЬСЯ САМ", en: "THE GARDEN GREW WITHOUT A SUN AND LEARNED TO GLOW" }, floor: "floor_garden", wall: "wall_garden", pillar: "pillar_garden", torch: "torch", ambient: [0.82, 1.08, 0.9], torchLight: "#ffb050", motes: "fireflies",
-    tier: 2, boss: EN.treant, music: 1, minis: [EN.miniFrog, EN.miniMoth], gates: ["lattice"],
+    tier: 2, boss: EN.treant, music: 1, minis: [EN.miniFrog, EN.miniMoth], branch: "ashen", wayGate: "roots", gates: ["lattice", "roots"], gift: "ember",
     floors: [
       { name: { ru: "ЗАРОСШИЕ АЛЛЕИ", en: "THE OVERGROWN WALKS" }, lore: { ru: "САД РОС БЕЗ СОЛНЦА И НАУЧИЛСЯ СВЕТИТЬСЯ САМ", en: "THE GARDEN GREW WITHOUT A SUN AND LEARNED TO GLOW" } },
       { name: { ru: "ЗАТОПЛЕННЫЙ САД", en: "THE DROWNED GARDEN" }, lore: { ru: "ВОДА ПРИШЛА ТИХО И ОСТАЛАСЬ. ИДИ ПО МОСТАМ", en: "THE WATER CAME QUIETLY AND STAYED. KEEP TO THE BRIDGES" } },
@@ -285,7 +303,7 @@ export const PLACES: PlaceDef[] = [
   },
   {
     id: "frost", name: { ru: "ЛЕДЯНЫЕ ЗАЛЫ", en: "THE FROZEN HALLS" }, lore: { ru: "ХОЛОД ПОДНИМАЕТСЯ С САМОГО ДНА БАШНИ", en: "THE COLD RISES FROM THE TOWER'S VERY BOTTOM" }, floor: "floor_frost", wall: "wall_frost", pillar: "pillar_frost", torch: "torch_blue", ambient: [0.8, 0.95, 1.3], torchLight: "#6ab8ff", motes: "snow",
-    tier: 3, boss: EN.eyeVoid, music: 2, minis: [EN.miniEye, EN.miniGhost], gates: ["lattice", "water"],
+    tier: 3, boss: EN.eyeVoid, music: 2, minis: [EN.miniEye, EN.miniGhost], gates: ["lattice", "water", "hidden"], gift: "beacon",
     floors: [
       { name: { ru: "ИНЕЙНЫЕ ГАЛЕРЕИ", en: "THE RIME GALLERIES" }, lore: { ru: "ХОЛОД ПОДНИМАЕТСЯ С САМОГО ДНА БАШНИ", en: "THE COLD RISES FROM THE TOWER'S VERY BOTTOM" } },
       { name: { ru: "ЛЕДЯНЫЕ ПЕЩЕРЫ", en: "THE ICE CAVES" }, lore: { ru: "ЛЁД СКОЛЬЗКИЙ: ДЕРЖИСЬ КАМНЯ, КОГДА ЖАРКО", en: "THE ICE IS SLIPPERY: KEEP TO THE STONE WHEN IT GETS HOT" } },
@@ -299,7 +317,7 @@ export const PLACES: PlaceDef[] = [
   },
   {
     id: "heart", name: { ru: "СЕРДЦЕ БАШНИ", en: "THE TOWER'S HEART" }, lore: { ru: "ЗДЕСЬ СВЕТ РОДИЛСЯ. ЗДЕСЬ ОН И ЖДЁТ", en: "HERE THE LIGHT WAS BORN. HERE IT WAITS" }, floor: "floor_heart", wall: "wall_heart", pillar: "pillar_heart", torch: "torch_gold", ambient: [1.06, 0.97, 0.84], torchLight: "#ffd27a", motes: "sparks",
-    tier: 4, boss: EN.lastLight, music: 4, minis: [EN.miniSunSkull, EN.miniSpark], gates: ["lattice"], after: "beyond",
+    tier: 4, boss: EN.lastLight, music: 4, minis: [EN.miniSunSkull, EN.miniSpark], gates: ["lattice", "hidden", "heavy"], after: "beyond",
     floors: [
       { name: { ru: "ЗАЛЫ ОТРАЖЕНИЙ", en: "THE HALLS OF REFLECTION" }, lore: { ru: "ЗДЕСЬ СВЕТ ВПЕРВЫЕ УВИДЕЛ САМ СЕБЯ", en: "HERE THE LIGHT FIRST SAW ITSELF" } },
       { name: { ru: "ЛИТЕЙНЯ ЗАРИ", en: "THE DAWN FOUNDRY" }, lore: { ru: "СВЕТ ЛИЛИ ЗДЕСЬ, КАК МЕТАЛЛ. ОН ЕЩЁ НЕ ОСТЫЛ", en: "THE LIGHT WAS CAST HERE LIKE METAL. IT HAS NOT COOLED" } },
@@ -314,7 +332,7 @@ export const PLACES: PlaceDef[] = [
   // the drowned catacombs: the crypt's lower vaults, flooded; the other way through the second tier
   {
     id: "cistern", name: { ru: "ЗАТОПЛЕННЫЕ КАТАКОМБЫ", en: "THE DROWNED CATACOMBS" }, lore: { ru: "ВОДА ПРИШЛА СВЕРХУ И ЗАБРАЛА НИЖНИЕ СКЛЕПЫ", en: "THE WATER CAME FROM ABOVE AND TOOK THE LOWER VAULTS" }, floor: "floor_cistern", wall: "wall_cistern", pillar: "pillar_cistern", torch: "torch_tide", ambient: [0.78, 0.98, 1.08], torchLight: "#5ad0d0", motes: "dust",
-    tier: 2, boss: EN.wellMistress, music: 5, minis: [EN.miniJelly, EN.miniEel], gates: ["lattice", "water"], gift: "rime",
+    tier: 2, boss: EN.wellMistress, music: 5, minis: [EN.miniJelly, EN.miniEel], gates: ["lattice", "water", "roots"], gift: "rime",
     floors: [
       { name: { ru: "ЗАТОПЛЕННЫЕ ГАЛЕРЕИ", en: "THE FLOODED GALLERIES" }, lore: { ru: "ВОДА ПРИШЛА СВЕРХУ И ЗАБРАЛА НИЖНИЕ СКЛЕПЫ", en: "THE WATER CAME FROM ABOVE AND TOOK THE LOWER VAULTS" } },
       { name: { ru: "ЦИСТЕРНЫ", en: "THE CISTERNS" }, lore: { ru: "ЗДЕСЬ ДЕРЖАЛИ ВОДУ ДЛЯ ВСЕЙ БАШНИ. ТЕПЕРЬ ВОДА ДЕРЖИТ ИХ", en: "HERE THEY KEPT THE WATER FOR THE WHOLE TOWER. NOW THE WATER KEEPS THEM" } },
@@ -324,6 +342,21 @@ export const PLACES: PlaceDef[] = [
       [[[EN.slimeTide, 9], [EN.snakeTide, 4]], [[EN.batTide, 5], [EN.jelly, 2]], [[EN.skullTide, 3]]],
       [[[EN.slimeTide, 7], [EN.batTide, 5], [EN.snakeTide, 4]], [[EN.skullTide, 4], [EN.jelly, 3]], [[EN.ghostTide, 3], [EN.eyeTide, 2]]],
       [[[EN.slimeTide, 6], [EN.snakeTide, 5], [EN.batTide, 4]], [[EN.skullTide, 4], [EN.jelly, 3], [EN.ghostTide, 2]], [[EN.eyeTide, 3], [EN.ghostTide, 4]]],
+    ],
+  },
+  // the ashen forge: where the tower's iron was made, and is made still; the other way through the third tier
+  {
+    id: "ashen", name: { ru: "ПЕПЕЛЬНАЯ КУЗНЯ", en: "THE ASHEN FORGE" }, lore: { ru: "ЗДЕСЬ КОВАЛИ ЖЕЛЕЗО БАШНИ. МОЛОТ ВСЁ ЕЩЁ СТУЧИТ", en: "HERE THE TOWER'S IRON WAS FORGED. THE HAMMER STILL FALLS" }, floor: "floor_ashen", wall: "wall_ashen", pillar: "pillar_ashen", torch: "torch_ember", ambient: [1.12, 0.86, 0.78], torchLight: "#ff7a30", motes: "ash",
+    tier: 3, boss: EN.forgemaster, music: 6, minis: [EN.miniSlag, EN.miniCinder], gates: ["lattice", "roots", "heavy"], gift: "forge",
+    floors: [
+      { name: { ru: "ПЛАВИЛЬНИ", en: "THE SMELTERIES" }, lore: { ru: "ЗДЕСЬ КОВАЛИ ЖЕЛЕЗО БАШНИ. МОЛОТ ВСЁ ЕЩЁ СТУЧИТ", en: "HERE THE TOWER'S IRON WAS FORGED. THE HAMMER STILL FALLS" } },
+      { name: { ru: "РЕКИ ШЛАКА", en: "THE SLAG RIVERS" }, lore: { ru: "РАСПЛАВ ТЕЧЁТ МЕЖДУ КАМНЯМИ. НЕ ОСТУПИСЬ", en: "THE MELT RUNS BETWEEN THE STONES. MIND YOUR STEP" } },
+      { name: { ru: "ВЕЛИКИЙ ГОРН", en: "THE GREAT HEARTH" }, lore: { ru: "ОН НЕ ОСТАНАВЛИВАЛСЯ С ТЕХ ПОР, КАК ЗАЖЁГ ЕГО", en: "HE HAS NOT STOPPED SINCE HE LIT IT" } },
+    ],
+    roster: [
+      [[[EN.slimeAsh, 8], [EN.snakeAsh, 5]], [[EN.batAsh, 5], [EN.mothAsh, 2]], [[EN.skullAsh, 4]]],
+      [[[EN.slimeAsh, 6], [EN.snakeAsh, 6], [EN.batAsh, 4]], [[EN.skullAsh, 4], [EN.wispAsh, 3], [EN.mothAsh, 2]], [[EN.eyeAsh, 3], [EN.ghostAsh, 3]]],
+      [[[EN.slimeAsh, 6], [EN.snakeAsh, 6], [EN.batAsh, 4]], [[EN.skullAsh, 4], [EN.wispAsh, 4], [EN.mothAsh, 2]], [[EN.eyeAsh, 3], [EN.ghostAsh, 4], [EN.wispAsh, 3]]],
     ],
   },
   // beyond the last light: one quiet hall, sealed doors in its wall, a pit in its floor
@@ -371,7 +404,6 @@ export const GIFTS: GiftDef[] = [
     desc: { ru: "РЫВОК СКВОЗЬ ВРАГА РАНИТ ЕГО", en: "DASHING THROUGH A FOE WOUNDS IT" },
     gateName: { ru: "РУНИЧЕСКАЯ РЕШЁТКА", en: "RUNIC LATTICE" },
   },
-  // (the gifts still to come with the places that hold them: shown in the gifts' book as what is yet to be found)
   {
     id: "ember", gate: "roots", color: "#ff8a3a",
     name: { ru: "ОГНЕННЫЙ КЛЮЧ", en: "EMBER KEY" },
@@ -419,10 +451,12 @@ export const MINIS: Record<string, { moves: MiniMove[]; summon?: string }> = {
   mini_spark: { moves: ["ring", "summon", "hop"], summon: "wisp_sun" },
   mini_jelly: { moves: ["ring", "spiral", "summon"], summon: "jelly" },
   mini_eel: { moves: ["charge", "fan", "charge", "ring"] },
+  mini_slag: { moves: ["hop", "ring", "summon"], summon: "slime_ash" },
+  mini_cinder: { moves: ["charge", "fan", "summon"], summon: "bat_ash" },
 };
 
 /** The tiers, top down: the places in each, the main one first. */
-export const TIERS: PlaceId[][] = [["crypt"], ["garden", "cistern"], ["frost"], ["heart"]];
+export const TIERS: PlaceId[][] = [["crypt"], ["garden", "cistern"], ["frost", "ashen"], ["heart"]];
 /** Floors in a place. */
 export const PLACE_FLOORS = 3;
 /** The tower's depth: the last floor, its last boss. */

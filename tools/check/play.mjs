@@ -6,7 +6,8 @@
 //   npm run check:play                      every hero, the whole tower
 //   npm run check:play -- --heroes=mage,ranger --floors=4 --seed=7
 //   npm run check:play -- --heroes=shadow --from=9         from a deeper floor (with the levels a run would have)
-//   npm run check:play -- --branch=yes                     every hero takes the way stone (no: none; else every other)
+//   npm run check:play -- --branch=ashen                   every hero turns off the main way there (cistern, ashen,
+//                                                          no; by default the heroes take turns: none, cistern, ashen)
 //
 // Floors are counted by depth down the whole tower (whichever places the run goes through); a report names the
 // place and its floor too, and an ok line the places the run went through.
@@ -98,7 +99,7 @@ for (const hero of heroes) {
     continue;
   }
   const t0 = Date.now();
-  const takeWay = args.branch ? args.branch !== "no" : HEROES.indexOf(hero) % 2 === 1;
+  const takeWay = args.branch ? (args.branch === "no" ? [] : args.branch.split(",")) : [[], ["cistern"], ["ashen"]][HEROES.indexOf(hero) % 3];
   await page.evaluate(({ hero, seed, gifts, from, takeWay }) => {
     const G = window.__game;
     // a seeded Math.random for the bot's own choices, so a run can be played again
@@ -158,7 +159,7 @@ for (const hero of heroes) {
         // a gift won: taken (its button usually is, by the bot's presses; else here)
         if (G.state === "gift" && G.giftShow && G.giftShow.t > 1.5) (G.giftShow = null), G.setState("play");
         // a gate the hero can open: once a floor, straight to its foot, and it must open onto its vault in a few seconds
-        const gt = w.gate, OPENS = { lattice: "shade", water: "rime" };
+        const gt = w.gate, OPENS = { lattice: "shade", water: "rime", roots: "ember", hidden: "beacon", heavy: "forge" };
         if (G.state === "play" && gt && gt.open < 1 && w.gifts.has(OPENS[gt.kind]) && B.gateFloor !== w.floor && h.arriveT > 1.5 && !w.cine && w.bossIndex() < 0) {
           B.gateFloor = w.floor;
           B.gateT = 0;
@@ -172,8 +173,8 @@ for (const hero of heroes) {
             if (mid !== 0 || way !== 0) B.log.push(`floor ${w.floor}: the gate opened but its vault is not open (room ${mid}, passage ${way})`);
             B.gates = (B.gates ?? 0) + 1;
             B.gateT = -1;
-            // a way stone behind it: every other hero takes the other road (both get played)
-            if (w.wayStone && !w.wayStone.taken && B.takeWay) (h.x = w.wayStone.x), (h.y = w.wayStone.y + 4);
+            // a way stone behind it: the heroes take turns at the roads (each gets played)
+            if (w.wayStone && !w.wayStone.taken && B.takeWay.includes(w.wayStone.to)) (h.x = w.wayStone.x), (h.y = w.wayStone.y + 4);
           } else if (B.gateT > 4) (B.log.push(`floor ${w.floor}: the hero at the gate with its gift, and it did not open`), (B.gateT = -1));
         }
         if (G.state === "won") return { done: true, won: true, floor: w.floor, trail: w.trail, log: B.log };

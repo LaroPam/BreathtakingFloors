@@ -30,6 +30,7 @@ const STONE = {
   heart: ["#221a14", "#30251a", "#3e3020", "#4e3d28", "#6a5434"],
   beyond: ["#16141c", "#22202a", "#302d3a", "#403c4c", "#5a5668"],
   cistern: ["#121a1e", "#1c282c", "#26363a", "#32464a", "#486264"],
+  ashen: ["#1a1412", "#261c18", "#32261f", "#40302a", "#584238"],
 };
 const WALL = {
   crypt: ["#0e0c14", "#1c1826", "#2a2436", "#3a3348", "#4e4660"],
@@ -38,6 +39,7 @@ const WALL = {
   heart: ["#120e0a", "#201a12", "#2e261a", "#3e3424", "#56482e"],
   beyond: ["#0a0910", "#14121c", "#201d2a", "#2c2838", "#403a50"],
   cistern: ["#0a1012", "#121c20", "#1c2a2e", "#26383c", "#3a5256"],
+  ashen: ["#0e0a0a", "#1a1212", "#281c1a", "#382824", "#4e3a32"],
 };
 
 /**
@@ -45,7 +47,7 @@ const WALL = {
  * pages of their own at the end of the atlas, which the game loads in the background once it has started (the menu,
  * the heroes' gear, the crypt and every effect come first).
  */
-const LATE = /garden|frost|heart|beyond|cistern|gatew_|_tide\b|wellmistress|^splash$|^geyser$|^whirl$|door_|_pale\b|_ice\b|_ice_|_moss|_spore|_bog|_void|_sun\b|treant|voideye|warden|lastlight|crystal|mushroom|grass/;
+const LATE = /garden|frost|heart|beyond|cistern|ashen|_ash\b|forgemaster|torch_ember|gatew_|gater_|gateh_|gatex_|_tide\b|wellmistress|^splash$|^geyser$|^whirl$|door_|_pale\b|_ice\b|_ice_|_moss|_spore|_bog|_void|_sun\b|treant|voideye|warden|lastlight|crystal|mushroom|grass/;
 export const isLate = (name) => LATE.test(name);
 
 export const ANIMS = [
@@ -89,7 +91,7 @@ export const ANIMS = [
   { name: "frog", fx: "critters/frog", fps: 12, light: CRITTER_LIGHT, body: true },
   { name: "frog_toxic", fx: "critters/frog", fps: 12, light: CRITTER_LIGHT, body: true, opts: { palette: PAL.arcane, belly: PAL.candy } },
   // the bosses at their own size, a set of poses for each of their three phases: name_phase_pose
-  ...Object.entries({ warden: ["idle", "walk", "windup", "strike", "dash", "kneel"], treant: ["idle", "cast", "slam", "cocoon"], voideye: ["idle", "charge", "closed", "iris"], lastlight: ["idle", "cast", "slam", "rise"], wellmistress: ["idle", "cast", "slam", "sink"] }).flatMap(([id, poses]) =>
+  ...Object.entries({ warden: ["idle", "walk", "windup", "strike", "dash", "kneel"], treant: ["idle", "cast", "slam", "cocoon"], voideye: ["idle", "charge", "closed", "iris"], lastlight: ["idle", "cast", "slam", "rise"], wellmistress: ["idle", "cast", "slam", "sink"], forgemaster: ["idle", "walk", "windup", "strike", "cast", "kneel"] }).flatMap(([id, poses]) =>
     [0, 1, 2].flatMap((phase) => poses.map((pose) => ({ name: `${id}_${phase}_${pose}`, art: `bosses/${id}`, fps: pose === "idle" || pose === "walk" ? 8 : 4, light: { thr: 8, k: 0.9 }, body: pose === "idle", opts: { phase, pose } })))),
   { name: "frog_king", fx: "critters/frog", fps: 12, light: CRITTER_LIGHT, body: true, opts: { palette: PAL.lava, belly: PAL.gold } },
   { name: "snake", fx: "critters/snake", fps: 12, light: CRITTER_LIGHT, body: true },
@@ -113,6 +115,15 @@ export const ANIMS = [
   { name: "skull_tide", fx: "critters/flying-skull", fps: 12, light: CRITTER_LIGHT, body: true, opts: { floor: false, palette: PAL.water } },
   { name: "ghost_tide", fx: "critters/ghost", fps: 12, light: CRITTER_LIGHT, body: true, opts: { palette: ["#062028", "#0e3e48", "#1e6a72", "#3aa0a0", "#7ae8e0", "#c8fff8", "#ffffff"] } },
   { name: "eye_tide", fx: "critters/eyeball", fps: 10, light: CRITTER_LIGHT, body: true, opts: { iris: PAL.water.slice(2, 7), flesh: PAL.night ?? PAL.water.slice(0, 5) } },
+  // the ashen forge's: slag, cinders and ash
+  { name: "slime_ash", fx: "critters/slime", fps: 12, light: CRITTER_LIGHT, body: true, opts: { palette: PAL.lava } },
+  { name: "snake_ash", fx: "critters/snake", fps: 12, light: CRITTER_LIGHT, body: true, opts: { palette: PAL.smoke, belly: PAL.ember } },
+  { name: "bat_ash", fx: "critters/bat", fps: 12, light: CRITTER_LIGHT, body: true, opts: { palette: ["#120c0c", "#241a18", "#3a2a26", "#544038", "#6e584c", "#8a7262", "#b0988a"], eyes: ["#4a1006", "#c83a10", "#ff8a3a", "#ffffff"] } },
+  { name: "skull_ash", fx: "critters/flying-skull", fps: 12, light: CRITTER_LIGHT, body: true, opts: { floor: false, palette: PAL.lava } },
+  { name: "ghost_ash", fx: "critters/ghost", fps: 12, light: CRITTER_LIGHT, body: true, opts: { palette: ["#2a0e06", "#5a2010", "#8a3a1c", "#c8642c", "#ff9a50", "#ffd0a0", "#fff4e0"] } },
+  { name: "eye_ash", fx: "critters/eyeball", fps: 10, light: CRITTER_LIGHT, body: true, opts: { iris: PAL.lava, flesh: PAL.smoke } },
+  { name: "wisp_ash", fx: "critters/wisp", fps: 10, light: CRITTER_LIGHT, body: true, opts: { palette: PAL.fire } },
+  { name: "moth_ash", fx: "critters/butterfly", fps: 10, light: CRITTER_LIGHT, body: true, opts: { palette: PAL.smoke } },
   // the tower's heart: everything gone to gold and light
   { name: "slime_sun", fx: "critters/slime", fps: 12, light: CRITTER_LIGHT, body: true, opts: { palette: PAL.gold } },
   { name: "snake_sun", fx: "critters/snake", fps: 12, light: CRITTER_LIGHT, body: true, opts: { palette: PAL.gold, belly: PAL.holy } },
@@ -217,7 +228,21 @@ export const ANIMS = [
   // the flooded ways (opened by the Rime Path: the water freezes), where there is water about
   { name: "gatew_cistern", art: "tiles/gate", opts: { stone: WALL.cistern }, variants: { variant: [3, 4] } },
   { name: "gatew_frost", art: "tiles/gate", opts: { stone: WALL.frost }, variants: { variant: [3, 4] } },
+  // living roots (the Ember Key burns them), hidden doors (seen in the lantern's light), heavy doors (Forge Might)
+  ...[["gater", [5, 6], ["garden", "cistern", "ashen"]], ["gateh", [7, 8], ["frost", "heart"]], ["gatex", [9, 10], ["heart", "ashen"]]].flatMap(([k, variant, places]) =>
+    places.map((pl) => ({ name: `${k}_${pl}`, art: "tiles/gate", opts: { stone: WALL[pl], seed: 5 + pl.length }, variants: { variant } }))),
   { name: "secret_cistern", art: "tiles/secret-wall", opts: { stone: WALL.cistern }, variants: { variant: [0, 1] } },
+  // the ashen forge: soot-black flagstones, scorched, cracks of fire in the walls; iron columns; torches of the forge
+  { name: "floor_ashen", art: "tiles/floor", opts: { stone: STONE.ashen, soot: "#0c0806", rune: "#4a2414" }, variants: { variant: [0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 2, 2, 5, 5, 3, 11] } },
+  { name: "floor_ashen_2", art: "tiles/floor", opts: { stone: ["#161010", "#221816", "#2e221c", "#3a2c26", "#503a32"], soot: "#0a0604" }, variants: { variant: [0, 0, 0, 0, 0, 0, 1, 1, 2, 5, 5, 11, 3] } },
+  { name: "floor_ashen_3", art: "tiles/floor", opts: { stone: ["#1e1612", "#2c201a", "#3a2a22", "#4a362c", "#644a3c"], soot: "#0c0806", rune: "#5a2a14" }, variants: { variant: [0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 2, 5, 3, 11, 6] } },
+  { name: "wall_ashen", art: "tiles/wall", opts: { stone: WALL.ashen }, variants: { variant: [0, 0, 0, 0, 1, 6, 4] } },
+  { name: "wall_ashen_2", art: "tiles/wall", opts: { stone: ["#0c0808", "#181010", "#241a16", "#322420", "#46342c"] }, variants: { variant: [0, 0, 1, 6, 0, 6] } },
+  { name: "wall_ashen_3", art: "tiles/wall", opts: { stone: WALL.ashen }, variants: { variant: [0, 6, 0, 6, 1, 4] } },
+  { name: "pillar_ashen", art: "props/pillar", opts: { stone: ["#0e0a0a", "#241a16", "#3a2a22", "#56402e", "#7a5a40"] } },
+  { name: "torch_ember", fx: "fire/torch", fps: 10, light: { thr: 10, k: 0.9 }, opts: { palette: PAL.lava } },
+  { name: "gate_ashen", art: "tiles/gate", opts: { stone: WALL.ashen }, variants: { variant: [0, 1] } },
+  { name: "secret_ashen", art: "tiles/secret-wall", opts: { stone: WALL.ashen }, variants: { variant: [0, 1] } },
   // beyond the light: its floor and walls, cold and pale, its candles' pale fire, and its three sealed doors
   { name: "floor_beyond", art: "tiles/floor", opts: { stone: STONE.beyond, rune: "#2a2638", void: ["#3a2a6a", "#b8a0ff"] }, variants: { variant: [0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 2, 7, 6, 15] } },
   { name: "wall_beyond", art: "tiles/wall", opts: { stone: WALL.beyond, void: ["#24143e", "#7a4ac8", "#c8a8ff"] }, variants: { variant: [0, 0, 0, 1, 8] } },

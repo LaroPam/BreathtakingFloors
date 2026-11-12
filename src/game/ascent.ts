@@ -16,6 +16,7 @@ const STONE: Record<Biome["id"], string[]> = {
   heart: ["#221a14", "#30251a", "#3e3020", "#4e3d28", "#6a5434"],
   beyond: ["#16141c", "#22202a", "#302d3a", "#403c4c", "#5a5668"],
   cistern: ["#121a1e", "#1c282c", "#26363a", "#32464a", "#486264"],
+  ashen: ["#1a1412", "#261c18", "#32261f", "#40302a", "#584238"],
 };
 const WALL: Record<Biome["id"], string[]> = {
   crypt: ["#0e0c14", "#1c1826", "#2a2436", "#3a3348", "#4e4660"],
@@ -24,8 +25,9 @@ const WALL: Record<Biome["id"], string[]> = {
   heart: ["#120e0a", "#201a12", "#2e261a", "#3e3424", "#56482e"],
   beyond: ["#0a0910", "#14121c", "#201d2a", "#2c2838", "#403a50"],
   cistern: ["#0a1012", "#121c20", "#1c2a2e", "#26383c", "#3a5256"],
+  ashen: ["#0e0a0a", "#1a1212", "#281c1a", "#382824", "#4e3a32"],
 };
-const ABOVE: Record<Biome["id"], string> = { crypt: "#ffb070", garden: "#8af0b0", frost: "#9ad4ff", heart: "#ffe0a0", beyond: "#c8b8ff", cistern: "#7ae8e0" };
+const ABOVE: Record<Biome["id"], string> = { crypt: "#ffb070", garden: "#8af0b0", frost: "#9ad4ff", heart: "#ffe0a0", beyond: "#c8b8ff", cistern: "#7ae8e0", ashen: "#ff8a4a" };
 
 /** A step's rise (its run is 1), the stair's half width, how high the walls stand, steps climbed a second. */
 const RISE = 0.34, HW = 1.35, WALL_H = 3.4, SPEED = 1.5;

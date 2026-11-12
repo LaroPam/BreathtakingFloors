@@ -1871,6 +1871,10 @@ export class Game {
         x = (h0 * W + Math.sin(now * 0.5 + k) * 10) % W;
         y = (h1 * H - now * (10 + h0 * 12) + H * 8) % H;
         col = rgbaf(1, 0.88, 0.5, 0.35 + 0.45 * Math.max(0, Math.sin(now * 1.7 + k)));
+      } else if (B.motes === "ash") {
+        x = (h0 * W + now * 4 + Math.sin(now * 0.8 + k) * 8) % W;
+        y = (h1 * H + now * (k % 8 === 0 ? -12 : 7 + h0 * 6) + H * 8) % H;
+        col = k % 8 === 0 ? rgbaf(1, 0.55, 0.2, 0.5 + 0.4 * Math.max(0, Math.sin(now * 2 + k))) : rgbaf(0.62, 0.58, 0.58, 0.4 + 0.2 * h1);
       } else if (B.motes === "fireflies") {
         x = h0 * W + Math.sin(now * 0.6 + k) * 30;
         y = h1 * H + Math.cos(now * 0.5 + k * 2) * 20;

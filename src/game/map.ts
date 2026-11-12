@@ -592,6 +592,13 @@ export const MAP_PLANS: Record<string, MapPlan[]> = {
     { cols: 98, rows: 64, shape: "isle", lanes: 3, per: 3, link: "straight", wide: 4 },
     { cols: 100, rows: 60, shape: "cave", lanes: 2, per: 3, link: "winding", wide: 5, pit: true, arena: true },
   ],
+  // the ashen forge: smelting halls in rows, iron columns, the floor veined with fire; the slag rivers, islands of
+  // stone in the melt joined by iron walks; the great hearth, rough, pools of melt in it, the arena at the end
+  ashen: [
+    { cols: 96, rows: 62, shape: "rect", lanes: 3, per: 3, link: "straight", wide: 5, columns: true, veins: true },
+    { cols: 100, rows: 66, shape: "isle", lanes: 3, per: 3, link: "straight", wide: 4, veins: true },
+    { cols: 104, rows: 60, shape: "cave", lanes: 2, per: 3, link: "winding", wide: 5, pit: true, veins: true, arena: true },
+  ],
   // the frost: faceted halls of rime; ice caves, a sheet to slide on in each; the throne of the void, islands over
   // nothing to the arena
   frost: [
