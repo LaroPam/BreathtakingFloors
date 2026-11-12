@@ -2055,7 +2055,8 @@ export class World {
     h.hp -= dmg;
     this.floorHits++;
     if (this.quest?.state === "active" && (this.quest.kind === "untouched" || this.quest.kind === "graze")) this.endQuest(false);
-    h.invuln = 0.85;
+    // (the first run's first floor gives a newcomer longer to get clear after a blow)
+    h.invuln = this.gentle && this.floor === 1 ? 1.5 : 0.85;
     h.hurtT = 0.3;
     h.atk = -1;
     this.hitstop = 0.09;

@@ -164,6 +164,9 @@ export class Game {
   /** The kills when the lesson now on began (it counts its own), and the time since a pack was last called to it. */
   private tutKills = -1;
   private tutCall = 9;
+  /** Where the lesson's plate began this frame (its top), for the floor's hint to stand above it. */
+  private tutTop = 0;
+  private tutBottom = 0;
   /** When the last first-sight hint was shown (this.now). */
   private sightT = -99;
   /** The book's page, where it does not fit the screen at once (a phone). */
@@ -1455,11 +1458,17 @@ export class Game {
     if (!hint || hint.t < 0) return;
     const ui = this.ui, W = this.r.w, H = this.r.h, a = Math.max(0, Math.min(1, hint.t / 0.45, (hint.dur - hint.t) / 0.7));
     if (a <= 0) return;
-    const lines = wrap(hint.text, Math.min(W - 40, 360)), lw = Math.min(W - 16, Math.max(...lines.map((l) => measure(l))) + 20);
-    // above the first floor's controls, if they are still showing
-    const tut = this.tutorShown(), y = Math.round(H * (tut ? 0.56 : 0.68) + (1 - a) * 6);
-    plate(ui, W / 2 - lw / 2, y - 5, lw, lines.length * 11 + 8, withAlpha(C.gold, a));
-    lines.forEach((l, k) => text(ui, l, W / 2, y + k * 11, { align: "center", color: withAlpha(rgba("#ffe8b0"), a), shadow: withAlpha(C.ink, a) }));
+    // (on a phone held sideways it keeps clear of the dash and ability buttons at the right, as the lessons do; held
+    // upright they are below it)
+    const side = this.touch && W > H, room = side ? W - 84 : W - 16, cx = side ? Math.min(W / 2, 8 + room / 2) : W / 2;
+    const lines = wrap(hint.text, Math.min(room - 24, 360)), lw = Math.min(room, Math.max(...lines.map((l) => measure(l))) + 20);
+    // above the first floor's lesson, if one is showing, never on it
+    // (above it where there is room under the HUD's plates, else just below it)
+    const tut = this.tutorShown(), hh = lines.length * 11 + 8, above = this.tutTop - hh - 6;
+    const at = !tut ? H * 0.68 : above >= 48 ? Math.min(H * 0.56, above) : this.tutBottom + 10;
+    const y = Math.round(at + (1 - a) * 6);
+    plate(ui, cx - lw / 2, y - 5, lw, lines.length * 11 + 8, withAlpha(C.gold, a));
+    lines.forEach((l, k) => text(ui, l, cx, y + k * 11, { align: "center", color: withAlpha(rgba("#ffe8b0"), a), shadow: withAlpha(C.ink, a) }));
   }
 
   /** The slow-down into a level: a ring of gold closing on the hero, the screen's edges warming. */
@@ -1556,6 +1565,11 @@ export class Game {
     else if (step === "dash") done = h.dashT > 0;
     else if (step === "gems") done = h.level >= 2;
     else {
+      // the ability's lesson does not wait for the charge: a moment after the last lesson, it is given full
+      if (h.od < 100 && this.tutT > 1.5 && this.tutOd < 100) {
+        h.od = 100;
+        this.audio.play("levelup", 1.5);
+      }
       done = this.tutOd >= 100 && h.od < 100;
       this.tutOd = h.od;
     }
@@ -1582,6 +1596,8 @@ export class Game {
     const lw = Math.min(room, Math.max(measure(tag, "mini"), ...lines.map((l) => measure(l))) + 24), lh = lines.length * 11 + 17;
     const cxT = this.touch ? Math.min(W / 2, 8 + room / 2) : W / 2;
     const x = Math.round(cxT - lw / 2), y = Math.round(H - (this.touch ? 74 + TOUCH_INSET : 26) - lh + rise);
+    this.tutTop = y;
+    this.tutBottom = y + lh;
     const green = rgbaf(0.55, 1, 0.6, 1), gold = rgba("#ffd84a");
     // a step learnt: the plate flares green for an instant
     if (done) glowUi(ui, cxT, y + lh / 2, lw * 0.6, lh, green, 0.35 * Math.max(0, 1 - u / 0.5));
