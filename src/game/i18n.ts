@@ -329,7 +329,8 @@ const RU = {
 type Strings = typeof RU;
 
 const EN: Strings = {
-  title: __PLATFORM__ === "pikabu" ? "FLOORS OF THE ABYSS" : "BREATHTAKING FLOORS",
+  // (the Russian name on Pikabu is only for Russian: in English the game keeps its own)
+  title: "BREATHTAKING FLOORS",
   subtitle: "DOWN A TOWER WITHOUT LIGHT",
   play: "PLAY",
   forge: "FORGE",

@@ -1652,7 +1652,7 @@ export class Game {
     // (the Russian name is short and would swell to fill the width: it is held to a size that reads as a title)
     // (a short screen, a phone on its side: the name smaller, the buttons in two columns, the credits in the settings)
     const short = H < 260;
-    const th = this.heading(t("title"), ty, __PLATFORM__ === "pikabu" || short ? 2 : 3);
+    const th = this.heading(t("title"), ty, (__PLATFORM__ === "pikabu" && getLang() === "ru") || short ? 2 : 3);
     text(ui, t("subtitle"), W / 2, ty + th + 2, { align: "center", color: rgba("#c8b8a0"), shadow: C.ink });
     // (the plaques end above the line of embers and the fonts' authors)
     const credits = short ? [] : wrap(t("fontCredits"), W - 16, "mini");
