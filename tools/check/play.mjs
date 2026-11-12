@@ -184,7 +184,9 @@ for (const hero of heroes) {
         if (G.state === "dead") return { done: true, won: false, floor: w.floor, log: [...B.log, "the hero died, though the bot keeps them alive"] };
         // the walk: the guide arrow while it points somewhere, else at the nearest foe (or the boss)
         let mx = 0, my = 0;
-        if (G.state === "play" && w.hero.arriveT > 0.6) {
+        // (at a gate it is opening: it opens while the hero stands by it, so the bot waits there)
+        const atGate = B.gateT >= 0 && B.gateFloor === w.floor && !!gt && gt.open < 1;
+        if (G.state === "play" && w.hero.arriveT > 0.6 && !atGate) {
           const [gx, gy] = w.guide;
           if (gx || gy) (mx = gx), (my = gy);
           else {
@@ -234,6 +236,14 @@ for (const hero of heroes) {
           }
           B.last = { dmg, hits: w.floorHits, level: h.level };
           B.lastTier = w.place.tier;
+        }
+        // a way off the main road the bot was to take, left behind: say why (the gate, its gift, the stone)
+        if (G.state === "play" && w.place.branch && w.bossFloor() && B.takeWay.includes(w.place.branch))
+          B.want = { at, to: w.place.branch, gate: w.gate ? `${w.gate.kind} ${w.gate.open.toFixed(2)}` : "none", gifts: [...w.gifts].join(","), stone: w.wayStone ? (w.wayStone.taken ? "taken" : "there") : "none", boss: w.bossIndex() };
+        if (here !== B.floor && B.want && w.place.tier > 1) {
+          const q = B.want;
+          if (w.place.id !== q.to) B.log.push(`${q.at}: the way to ${q.to} not taken (gate ${q.gate}, gifts ${q.gifts || "-"}, stone ${q.stone}, boss ${q.boss})`);
+          B.want = null;
         }
         if (here !== B.floor) (B.floor = here), (B.floorT = 0), (B.descending = false), (B.bossKilled = false), (B.wasBoss = false), (B.vanished = false), (B.bossWallSaid = false);
         if (G.state === "play") B.floorT += 1 / 60;
