@@ -62,6 +62,48 @@ export interface SaveData {
   vaults: string[];
   /** The secret rooms behind cracked walls the player has opened ("place:stage"), for the atlas. */
   secrets: string[];
+  /** The run in progress, as it stood when its floor began (a closed tab goes on from there). Not the trials'. */
+  run?: RunSave;
+}
+
+/**
+ * A run in progress, taken as each floor begins: who, with what, how far, and the dice, so the floor is made again
+ * the same. What only lasts a floor (the curse, the fury, the ward) is not in it.
+ */
+export interface RunSave {
+  v: 1;
+  /** The floor: its place and stage, how it was come to, the stairs' combined rule it was made with. */
+  at: [string, number];
+  via: "stairs" | "portal";
+  mod: Record<string, unknown>;
+  /** The stairs taken (modifier ids) and the climbs' happenings already met. */
+  path: string[];
+  events: string[];
+  /** The world's dice before the floor was made, and the run's own. */
+  rng: number;
+  runRng: number;
+  hero: { id: string; victor: boolean; weapon: string; el: number; legend: boolean; rarity: number; level: number; xp: number; hp: number; maxHp: number; od: number; harvest: number; vampKills: number; dashMax: number };
+  stats: Record<string, number>;
+  statLevels: Record<string, number>;
+  /** Each relic: [kind, level, evolved]. */
+  relics: [number, number, boolean][];
+  dodge: number;
+  xpMul: number;
+  kills: number;
+  runTime: number;
+  embersBonus: number;
+  dmg: number[];
+  pendingLevels: number;
+  pendingChests: number;
+  branch: string | null;
+  trail: string[];
+  reactions: string[];
+  seenFoes: number[];
+  startSpins: number;
+  rerolls: number;
+  secondWind: boolean;
+  revived: boolean;
+  runFrom: number;
 }
 
 export const defaultSave = (): SaveData => ({
@@ -177,5 +219,7 @@ export function sanitize(raw: unknown): SaveData {
     opened: old ? seen.filter((k) => /^(weapon|relic|stat):/.test(k)) : strs(r.opened),
     vaults: strs(r.vaults, 500),
     secrets: strs(r.secrets, 500),
+    // (the game checks it again as it puts the run back together, and drops it if anything is amiss)
+    run: r.run && typeof r.run === "object" && r.run.v === 1 && Array.isArray(r.run.at) && r.run.hero && typeof r.run.hero === "object" ? (r.run as RunSave) : undefined,
   };
 }

@@ -14,7 +14,7 @@ import { ascent } from "./ascent";
 import { getLang, langFor, setLang, t, tx, type Lang } from "./i18n";
 import { Rng } from "./rng";
 import { TEAM_FOE } from "./pools";
-import { defaultSave, sanitize, type SaveData } from "./save";
+import { defaultSave, sanitize, type RunSave, type SaveData } from "./save";
 import { button, slider, C, divider, glow as glowUi, drawHud, drawPointers, drawTouch, fmtTime, frame, header , Menu, panel, para, plate , slot, type ButtonOpts } from "./ui";
 import { CINE_DUR, LUNGE_DASH, SRC_ABILITY, SRC_DASH, SRC_ELS, SRC_N, SRC_PARRY, SRC_REACT, SRC_RELIC, SRC_STATUS, SRC_WAVE, SRC_WEAPON, World } from "./world";
 
@@ -115,9 +115,10 @@ const BOSS_FEAT: Partial<Record<PlaceId, string>> = { crypt: "eye", garden: "toa
 /** A button of the end screens: its label and look, and what it does (true if it has left the screen). */
 type EndAct = { label: string; opts: ButtonOpts; go: () => boolean | void };
 /** The title menu's buttons, in order, and after how many runs each is shown to a newcomer. */
-type TitleItem = "play" | "trials" | "tasks" | "forge" | "shop" | "arsenal" | "atlas" | "records" | "settings";
-const TITLE_ORDER: TitleItem[] = ["play", "trials", "tasks", "forge", "shop", "arsenal", "atlas", "records", "settings"];
+type TitleItem = "continue" | "play" | "trials" | "tasks" | "forge" | "shop" | "arsenal" | "atlas" | "records" | "settings";
+const TITLE_ORDER: TitleItem[] = ["continue", "play", "trials", "tasks", "forge", "shop", "arsenal", "atlas", "records", "settings"];
 const TITLE_ITEMS: Record<TitleItem, { label: Parameters<typeof t>[0]; icon: string; color?: string; after: number }> = {
+  continue: { label: "resume", icon: "resume", after: 0 },
   play: { label: "play", icon: "play", after: 0 },
   trials: { label: "trials", icon: "daily", color: "#ffb0a0", after: 3 },
   tasks: { label: "tasks", icon: "scroll", after: 2 },
@@ -214,6 +215,9 @@ export class Game {
   /** Where the next run starts (a shortcut to a later tier's place, once reached), and the depth this run began at. */
   private startAt: PlaceId = "crypt";
   private runFrom = 1;
+  /** The world's dice as the floor now under way was made (for the run's save), and that save, kept for a revive. */
+  private floorRng = 0;
+  private lastSnap: RunSave | null = null;
   /** Where the atlas's way back stands this frame (under the panel on a low screen), else in the middle. */
   private atlasBackX: number | null = null;
   /** How long the closing words have been rolling. */
@@ -343,6 +347,8 @@ export class Game {
     const runs = this.save.runs, veteran = runs >= 3 || this.save.unlocked.length > 2;
     return TITLE_ORDER.filter((id) => {
       if (id === "shop" && !this.platform.shopAvailable()) return false;
+      // (going on with a saved run, while there is one)
+      if (id === "continue" && !this.save.run) return false;
       // (the atlas once there is more than one place in it)
       if (id === "atlas" && this.save.places.length < 2) return false;
       return veteran || runs >= TITLE_ITEMS[id].after;
@@ -359,6 +365,10 @@ export class Game {
   /** What a title button does; true if the title screen is left for another this frame. */
   private openTitleItem(id: TitleItem): boolean {
     switch (id) {
+      case "continue":
+        this.audio.unlock();
+        this.transition(() => this.continueRun());
+        return true;
       case "play":
         this.audio.unlock();
         this.daily = this.weekly = false;
@@ -680,6 +690,7 @@ export class Game {
     // from the top)
     const from = this.daily || !this.starts().includes(this.startAt) ? placeDef("crypt") : placeDef(this.startAt), skip = from.tier - 1;
     this.runFrom = depthOf({ place: from, stage: 1 });
+    this.floorRng = w.rng.state;
     w.startFloor(skip ? { place: from, stage: 1 } : 1, combine(this.path), "portal", this.path[0]);
     // (the hero's level counts those levels too: else the experience pace would take it for one far behind, and
     // the levels would come twice)
@@ -694,6 +705,7 @@ export class Game {
     // every run starts with a relic of the player's choice (the forge's Legacy gives a second, a rich week three)
     // (not in the player's very first run: straight into the fight, the choice comes with the first level)
     this.startSpins = this.save.runs === 1 && !this.daily ? 0 : spins;
+    this.snapRun();
   }
 
   /** Has this place's boss ever fallen (its seal, for the door beyond the light)? Saves from before count too. */
@@ -741,6 +753,8 @@ export class Game {
     }
     this.lastResult = { floor: w.floor, kills: w.kills, time: w.runTime, embers, base: embers, gift, doubled: false, score, best, daily: this.daily, weekly: this.weekly };
     this.save.embers += embers + gift;
+    // the run is over: nothing to go on with
+    if (!this.daily) this.save.run = undefined;
     this.save.bestFloor = Math.max(this.save.bestFloor, w.floor);
     this.checkUnlocks();
     if (won) {
@@ -777,8 +791,10 @@ export class Game {
       const next = w.next();
       if (!next) return;
       this.transition(() => {
+        this.floorRng = w.rng.state;
         w.startFloor(next, combine(this.path), "portal");
         this.reached(w.floor);
+        this.snapRun();
         this.cardT = 0;
         this.setState("card");
       });
@@ -800,9 +816,11 @@ export class Game {
       const w = this.world;
       this.path.push(mod);
       // the climb's own happenings count for the floor above only
+      this.floorRng = w.rng.state;
       w.startFloor(w.next() ?? w.stop, combine([...this.path, ...this.eventMods]), "stairs", mod);
       this.eventMods = [];
       this.reached(w.floor);
+      this.snapRun();
       this.cardT = 0;
       this.setState("card");
     });
@@ -818,6 +836,13 @@ export class Game {
   }
 
   private onDeath(quit = false): void {
+    // the saved run goes at once, so closing the tab as the hero falls does not undo the death (with the second wind
+    // it stays, that wind spent)
+    if (!this.daily && this.save.run) {
+      if (this.secondWind && !quit) this.save.run.secondWind = false;
+      else this.save.run = undefined;
+      this.persist();
+    }
     // the forge's second wind: once a run the hero rises with two hearts (not when the player gives up)
     if (this.secondWind && !quit) {
       this.secondWind = false;
@@ -872,6 +897,9 @@ export class Game {
     // give back what the death screen took (the run goes on and pays again at its end; an ad's doubling, already
     // watched for, is the player's to keep)
     this.save.embers -= this.lastResult.base;
+    // (the run goes on, so its save comes back: from this floor's start, the revive spent)
+    if (this.lastSnap && !this.daily) this.save.run = { ...this.lastSnap, revived: true, secondWind: this.secondWind };
+    this.persist();
     h.dead = false;
     h.hp = h.maxHp;
     h.invuln = 3;
@@ -1549,7 +1577,10 @@ export class Game {
     for (let k = 0; k < items.length; k++) {
       const id = items[k], bx = x0 + (cols === 2 ? (k % 2) * (bw + 10) : 0), y = y0 + (cols === 2 ? Math.floor(k / 2) : k) * (bh + gap);
       const o = TITLE_ITEMS[id], fresh = this.titleFresh(id);
-      const hit = button(ui, this.menu, now, bx, y, bw, bh, t(o.label), { primary: id === "play", color: o.color ? rgba(o.color) : undefined, icon: icon("hud", o.icon) });
+      // (a saved run: going on with it is the first thing offered, with the floor it stands on)
+      const run = this.save.run, at = id === "continue" && run ? PLACES.find((p) => p.id === run.at[0]) : undefined;
+      const label = at ? `${t(o.label)} · ${t("floor")} ${depthOf({ place: at, stage: run!.at[1] })}` : t(o.label);
+      const hit = button(ui, this.menu, now, bx, y, bw, bh, label, { primary: id === (run ? "continue" : "play"), color: o.color ? rgba(o.color) : undefined, icon: icon("hud", o.icon) });
       // newly opened: a green NEW at its right end until it is first opened
       if (fresh) {
         const p = 0.75 + 0.25 * Math.sin(now * 5);
@@ -1835,6 +1866,126 @@ export class Game {
       para(ui, t("giftOpens").replace("{gate}", tx(sel.gateName)), tl, y + 2, wid, C.goldLight, "center");
     } else para(ui, giver ? t("gateWhere").replace("{who}", tx(ENEMIES[giver.boss].name)) : t("giftUnknown"), tl, y, wid, C.dim, "center");
     if (button(ui, this.menu, now, Math.round(W / 2 - 50), H - 24, 100, 18, t("back"), { icon: icon("hud", "back") }) || this.input.pressed("back")) this.setState(this.giftsFrom, this.giftsFrom === "pause" ? 3 : 0);
+  }
+
+  // =========================================================================================== the run's save
+  /**
+   * Keep the run as its floor begins (not a trial's): a closed tab, a lost connection, goes on from this floor's
+   * start. The floor is made again from the same dice, with what the hero had as it began.
+   */
+  private snapRun(): void {
+    if (this.daily) return;
+    const w = this.world, h = w.hero;
+    this.save.run = this.lastSnap = {
+      v: 1,
+      at: [w.place.id, w.stage],
+      via: w.arrivedBy,
+      mod: { ...w.mod },
+      path: this.path.map((m) => m.id),
+      events: [...this.eventsSeen],
+      rng: this.floorRng,
+      runRng: this.runRng.state,
+      hero: { id: h.def.id, victor: h.victor, weapon: h.weapon, el: h.weaponEl, legend: h.legend, rarity: h.rarity, level: h.level, xp: h.xp, hp: h.hp, maxHp: h.maxHp, od: h.od, harvest: h.harvest, vampKills: h.vampKills, dashMax: h.dashMax },
+      stats: { ...w.stats },
+      statLevels: { ...w.statLevels } as Record<string, number>,
+      relics: w.relics.map((r): [number, number, boolean] => [r.kind, r.level, r.evo]),
+      dodge: w.dodge,
+      xpMul: w.xpMul,
+      kills: w.kills,
+      runTime: w.runTime,
+      embersBonus: w.embersBonus,
+      dmg: [...w.dmgStat],
+      pendingLevels: w.pendingLevels,
+      pendingChests: w.pendingChests,
+      branch: w.branch,
+      trail: [...w.trail],
+      reactions: [...w.reactionsSeen],
+      seenFoes: [...w.seen],
+      startSpins: this.startSpins,
+      rerolls: this.rerolls,
+      secondWind: this.secondWind,
+      revived: this.revived,
+      runFrom: this.runFrom,
+    };
+    this.persist();
+  }
+
+  /** Go on with the saved run: the world made again as its floor began. Anything amiss, and the save is dropped. */
+  private continueRun(): void {
+    const r = this.save.run;
+    if (!r) return;
+    try {
+      this.newHero = "";
+      this.runsHere++;
+      this.lvlT = 0;
+      this.lvlArmed = false;
+      this.tutT = 0;
+      this.tutDoneT = -1;
+      this.daily = this.weekly = false;
+      this.runRng = new Rng(1);
+      this.runRng.state = r.runRng;
+      this.newWorld();
+      const w = this.world, hd = HEROES.find((q) => q.id === r.hero.id);
+      const place = PLACES.find((p) => p.id === r.at[0]);
+      if (!hd || !place || !(r.hero.weapon in WEAPONS)) throw new Error("unknown hero, place or weapon");
+      this.heroIdx = HEROES.indexOf(hd);
+      w.setHero(hd);
+      const h = w.hero;
+      h.victor = r.hero.victor;
+      h.weapon = r.hero.weapon as WeaponId;
+      h.weaponEl = r.hero.el as El;
+      h.legend = r.hero.legend;
+      h.rarity = r.hero.rarity;
+      h.level = r.hero.level;
+      h.xp = r.hero.xp;
+      h.maxHp = r.hero.maxHp;
+      h.hp = Math.max(1, Math.min(r.hero.maxHp, r.hero.hp));
+      h.od = r.hero.od;
+      h.harvest = r.hero.harvest;
+      h.vampKills = r.hero.vampKills;
+      h.dashMax = r.hero.dashMax;
+      heroSprites().prefetch(lookId(hd.id, h.victor), h.weapon);
+      Object.assign(w.stats, r.stats);
+      w.statLevels = { ...r.statLevels } as typeof w.statLevels;
+      w.relics = r.relics.filter(([kind]) => RELICS[kind]).map(([kind, level, evo]) => ({ kind: kind as RelicKind, level, evo, timer: 0.5, angle: 0, clock: 0 }));
+      w.dodge = r.dodge;
+      w.xpMul = r.xpMul;
+      w.autoAim = true;
+      w.gifts = new Set(this.save.gifts);
+      w.locked = new Set(UNLOCKS.map((u) => u.key).filter((k) => !this.save.opened.includes(k)));
+      w.kills = r.kills;
+      w.runTime = r.runTime;
+      w.embersBonus = r.embersBonus;
+      w.dmgStat.set(r.dmg.slice(0, w.dmgStat.length));
+      w.reactionsSeen = new Set(r.reactions);
+      w.seen = new Set(r.seenFoes);
+      w.branch = (r.branch as PlaceId | null) ?? null;
+      w.trail = [...r.trail] as PlaceId[];
+      w.rng.state = r.rng;
+      w.startFloor({ place, stage: r.at[1] }, r.mod as unknown as Modifier, r.via);
+      w.pendingLevels = r.pendingLevels;
+      w.pendingChests = r.pendingChests;
+      this.path = r.path.map((id) => MODIFIERS.find((m) => m.id === id)).filter((m): m is Modifier => !!m);
+      this.eventMods = [];
+      this.eventsSeen = [...r.events];
+      this.startSpins = r.startSpins;
+      this.rerolls = r.rerolls;
+      this.secondWind = r.secondWind;
+      this.revived = r.revived;
+      this.runFrom = r.runFrom;
+      this.floorRng = r.rng;
+      this.lastSnap = r;
+      this.audio.playMusic();
+      this.cardT = 0;
+      this.setState("card");
+    } catch (e) {
+      console.warn("the saved run could not be put back together", e);
+      this.save.run = undefined;
+      this.persist();
+      this.newWorld();
+      this.attract();
+      this.setState("title");
+    }
   }
 
   // =========================================================================================== shortcuts
