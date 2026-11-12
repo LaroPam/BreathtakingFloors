@@ -1123,6 +1123,17 @@ export class World {
   levelNeed(level = this.hero.level): number {
     return Math.round(6 + level * 6 + level * level * 1.1);
   }
+  /**
+   * How the hero's level keeps pace with the tower: about three levels a floor (the balance targets in
+   * docs/PLAN-BRANCHES.md). Far ahead of that, experience comes slower; far behind it, faster. So neither a build that
+   * snowballs nor one that lags leaves its depth's measure for long, and a run started higher up catches up.
+   */
+  xpPace(): number {
+    const want = 1 + 3.2 * this.floor, L = this.hero.level;
+    if (L > want + 2) return Math.max(0.35, 1 - 0.08 * (L - want - 2));
+    if (L < want - 3) return Math.min(1.5, 1 + 0.05 * (want - 3 - L));
+    return 1;
+  }
 
   /** Set the hero up for a run: who, their weapon, hearts, speed, dashes, light. */
   setHero(def: HeroDef): void {
@@ -1206,9 +1217,9 @@ export class World {
     const tough = d.ai >= AI.Boss ? 1.7 : 2.5;
     // (the horde thickens the longer a floor goes on; a boss does not: its health is its tier's, not how long the
     // hero took to reach it, and the last one is the test of the whole build)
-    const boss = d.ai >= AI.Boss && d.ai !== AI.Mini, late = boss ? (d.ai === AI.LastLight ? 1.9 : 1.6) : 1 + Math.min(1.2, this.time / 180);
+    const boss = d.ai >= AI.Boss && d.ai !== AI.Mini, late = boss ? (d.ai === AI.LastLight ? 1.75 : 1.6) : 1 + Math.min(1.2, this.time / 180);
     const hp = d.hp * tough * (1 + 0.4 * (f - 1)) * late * curse;
-    const i = this.enemies.add(type, x, y, hp, this.rng.next(), this.mod.speed * (1.08 + (f - 1) * 0.04) * this.rng.range(0.9, 1.1) * (this.curse ? 1.2 : 1) * (this.mutator === "haste" ? 1.25 : 1));
+    const i = this.enemies.add(type, x, y, hp, this.rng.next(), this.mod.speed * (1.08 + Math.min(9, f - 1) * 0.04) * this.rng.range(0.9, 1.1) * (this.curse ? 1.2 : 1) * (this.mutator === "haste" ? 1.25 : 1));
     if (i >= 0) {
       this.enemies.face[i] = this.hero.x < x ? -1 : 1;
       // slimes of a pack do not all hop as one: each starts at its own point of the loop
@@ -4911,7 +4922,7 @@ export class World {
           this.audio.play("heal");
           this.popup(h.x, h.y - 40, "+1", rgba("#ff8a9a"), true);
         } else {
-          h.xp += D.value[i] * (1 + this.stats.xp);
+          h.xp += D.value[i] * (1 + this.stats.xp) * this.xpPace();
           this.audio.play("pickup");
           while (h.xp >= this.levelNeed()) {
             h.xp -= this.levelNeed();

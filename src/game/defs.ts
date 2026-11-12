@@ -1327,7 +1327,7 @@ export const HEROES: HeroDef[] = [
     id: "knight", cost: 0, name: { ru: "РЫЦАРЬ ФОНАРЯ", en: "LANTERN KNIGHT" }, title: { ru: "СТАЛЬ И ТЁПЛЫЙ СВЕТ", en: "STEEL AND WARM LIGHT" },
     perk: { ru: "+1 СЕРДЦЕ, ФОНАРЬ СВЕТИТ НА 20% ШИРЕ", en: "+1 HEART, A LANTERN 20% WIDER" },
     weapon: "sword", hearts: 6, speed: 1, dashCd: 3.5, dashes: 1, lantern: 1.2, light: "lantern", lightColor: [1, 0.82, 0.58],
-    might: 1, haste: 1, crit: 0.05,
+    might: 1.08, haste: 1, crit: 0.05,
     ability: { name: { ru: "ВСПЫШКА ФОНАРЯ", en: "LANTERN FLARE" }, desc: { ru: "ВЗРЫВ СВЕТА ЖЖЁТ ВСЕХ ВОКРУГ И СТИРАЕТ СНАРЯДЫ. 3 СЕКУНДЫ ЩИТ СВЕТА: НЕУЯЗВИМ, СНАРЯДЫ ГАСНУТ", en: "A BURST OF LIGHT BURNS ALL AROUND AND ERASES BOLTS. 3 SECONDS OF A WARD: UNHARMED, BOLTS DIE ON IT" } },
 
   },

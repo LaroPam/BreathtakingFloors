@@ -231,11 +231,12 @@ for (const hero of heroes) {
           for (let q = 0; q < w.dmgStat.length; q++) dmg += w.dmgStat[q];
           if (here !== B.floor && B.floor && B.floorT > 1) {
             const done = B.last ?? { dmg: 0, hits: 0, level: h.level, tier: w.place.tier };
-            (B.tiers ??= []).push({ tier: B.lastTier, t: B.floorT, level: done.level, hits: done.hits, dmg: Math.max(0, done.dmg - (B.dmg0 ?? 0)) });
+            (B.tiers ??= []).push({ tier: B.lastTier, stage: B.lastStage, t: B.floorT, level: done.level, hits: done.hits, dmg: Math.max(0, done.dmg - (B.dmg0 ?? 0)) });
             B.dmg0 = dmg < (B.last?.dmg ?? 0) ? 0 : done.dmg;
           }
           B.last = { dmg, hits: w.floorHits, level: h.level };
           B.lastTier = w.place.tier;
+          B.lastStage = w.stage;
         }
         // a way off the main road the bot was to take, left behind: say why (the gate, its gift, the stone)
         if (G.state === "play" && w.place.branch && w.bossFloor() && B.takeWay.includes(w.place.branch))
@@ -297,13 +298,15 @@ for (const hero of heroes) {
       // per tier: its floors' mean time, the hero's level at its end, the hits taken a floor, damage a second
       const tiers = await page.evaluate(() => {
         const R = ["", "I", "II", "III", "IV", "✦"], by = new Map();
+        // (the time is the ordinary floors' only: a boss's floor has its fight, in the bosses' own line)
         for (const f of window.__bot.tiers ?? []) {
-          const a = by.get(f.tier) ?? { n: 0, t: 0, level: 0, hits: 0, dmg: 0 };
-          (a.n += 1), (a.t += f.t), (a.level = Math.max(a.level, f.level)), (a.hits += f.hits), (a.dmg += f.dmg);
+          const a = by.get(f.tier) ?? { n: 0, t: 0, nt: 0, all: 0, level: 0, hits: 0, dmg: 0 };
+          (a.n += 1), (a.all += f.t), (a.level = Math.max(a.level, f.level)), (a.hits += f.hits), (a.dmg += f.dmg);
+          if (f.stage < 3) (a.t += f.t), (a.nt += 1);
           by.set(f.tier, a);
         }
         const mmss = (s) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, "0")}`;
-        return [...by.entries()].sort((a, b) => a[0] - b[0]).map(([k, a]) => `${R[k] ?? k} ${mmss(a.t / a.n)} L${a.level} ${(a.hits / a.n).toFixed(1)} hits ${Math.round(a.dmg / a.t)} dps`).join(" | ");
+        return [...by.entries()].sort((a, b) => a[0] - b[0]).map(([k, a]) => `${R[k] ?? k} ${mmss(a.nt ? a.t / a.nt : a.all / a.n)} L${a.level} ${(a.hits / a.n).toFixed(1)} hits ${Math.round(a.dmg / a.all)} dps`).join(" | ");
       });
       if (tiers) console.log(`  tiers ${hero}: ${tiers}`);
       if (st.won && !seen.length && !errors.length) console.log(`  ok    ${hero}: through floor ${st.floor} (${st.trail.join(" > ")}), ${extra}, ${played} min of play (${mins} min to check)`);
