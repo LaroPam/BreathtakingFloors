@@ -6,7 +6,7 @@ import { heroSprites, lookId, type HeroAnim } from "./heroSprites";
 import { TEAM_HERO } from "./pools";
 import { Batch, rgba, rgbaf, SOFT, withAlpha } from "../engine/renderer";
 import { text } from "../engine/text";
-import { AI, DOORS, EL_COLOR, ENEMIES, fullWeaponName, LEGENDS, questDef, RARITIES, RelicKind, WEAPONS, type PlaceId } from "./defs";
+import { AI, DOORS, giftFor, EL_COLOR, ENEMIES, fullWeaponName, LEGENDS, questDef, RARITIES, RelicKind, WEAPONS, type PlaceId } from "./defs";
 import { t as tr, tx } from "./i18n";
 import { FLOOR, LOOK_BRIDGE, LOOK_ICE, LOOK_VEIN, PIT, WALL } from "./map";
 import { lanceTravel, BULLET_ANIMS, EYE_H, FLOOR_SQ, LUNGE_DASH, SPAWN_T, type BossBrain, poolSpread, HERO_HIT_Y, HERO_R, B_CRESCENT, B_FIREBALL, B_LANCE, CINE_DUR, D_CHEST, D_EMBER, D_GREEN, D_HEART, D_RED, SANCTUARY_R, STAR_EVERY, TILE, type World } from "./world";
@@ -117,9 +117,9 @@ const FX_LIGHT: Record<string, [number, string, number]> = {
   slam: [90, "#ffb060", 0.8],
 };
 /** The colour of the shafts of light falling into a place from above (none in the crypt). */
-const SHAFT: Partial<Record<PlaceId, string>> = { garden: "#d8ffb0", frost: "#c0e0ff", heart: "#ffe8b0" };
+const SHAFT: Partial<Record<PlaceId, string>> = { garden: "#d8ffb0", frost: "#c0e0ff", heart: "#ffe8b0", cistern: "#a8f0e8" };
 // the walls' and the room's edges, per biome
-const EDGE: Record<PlaceId, readonly [string, string]> = { crypt: ["#1a1724", "#3a3348"], garden: ["#141a13", "#33402f"], frost: ["#131b28", "#304460"], heart: ["#1e1610", "#4a3c26"], beyond: ["#12101a", "#2e2a3a"] };
+const EDGE: Record<PlaceId, readonly [string, string]> = { crypt: ["#1a1724", "#3a3348"], garden: ["#141a13", "#33402f"], frost: ["#131b28", "#304460"], heart: ["#1e1610", "#4a3c26"], beyond: ["#12101a", "#2e2a3a"], cistern: ["#0e1618", "#2a3c40"] };
 /** What a drop looks like in each biome: a chasm with embers far down, dark water, the starry void. */
 interface PitLook {
   fill: string;
@@ -134,6 +134,7 @@ const PIT_LOOK: Record<PlaceId, PitLook> = {
   frost: { fill: "#030309", deep: "#14102a", kind: "void", planks: ["#4a6078", "#1c2838", "#8aa6c4"] },
   heart: { fill: "#0a0604", deep: "#5a3a0a", kind: "chasm", planks: ["#7a6034", "#3a2c14", "#b09050"] },
   beyond: { fill: "#020206", deep: "#1a1030", kind: "void", planks: ["#4a4458", "#1c1a24", "#7a7490"] },
+  cistern: { fill: "#06161c", deep: "#0e3a44", kind: "water", planks: ["#4e4030", "#241c12", "#76603e"] },
 };
 /** One tile of a drop. */
 function drawPit(s: Scene, P: PitLook, x: number, y: number, tx: number, ty: number, time: number): void {
@@ -220,6 +221,7 @@ const STAIR_STONE: Record<PlaceId, string[]> = {
   frost: ["#1a2434", "#2e4460", "#4a6a90", "#7aa0cc"],
   heart: ["#2a2018", "#4a3c28", "#6e5c3c", "#a08a5c"],
   beyond: ["#1a1822", "#2e2a3a", "#4a4458", "#7a7490"],
+  cistern: ["#16201e", "#2a3a38", "#445a56", "#6a8a84"],
 };
 /** The lower `h` px of a sprite anchored at its foot (a wall's face as tall as the wall is thick). */
 function clipUp(b: Batch, r: Rect, x: number, y: number, h: number): void {
@@ -319,7 +321,7 @@ export function drawWorld(s: Scene, w: World, camX: number, camY: number, viewW:
   // open, an arch with a violet haze in it
   const gt = w.gate;
   if (gt && inView(gt.x + TILE, gt.y - 20, 60)) {
-    const ga = anim(`gate_${B.id}`), cx = gt.x + TILE, col = rgba("#b58cff");
+    const ga = anim(gt.kind === "water" ? `gatew_${B.id}` : `gate_${B.id}`), cx = gt.x + TILE, col = rgba(giftFor(gt.kind).color);
     if (gt.open >= 1) {
       s.back.image(ga.frames[1][0]!, gt.x, gt.y);
       if (ga.frames[1][1]) s.glow.image(ga.frames[1][1]!, gt.x, gt.y, 1, 1, 0, rgbaf(1, 1, 1, 0.6 + 0.2 * Math.sin(time * 1.5)));
@@ -333,6 +335,28 @@ export function drawWorld(s: Scene, w: World, camX: number, camY: number, viewW:
       if (ga.frames[0][1]) s.glow.image(ga.frames[0][1]!, gt.x + jit, gt.y + Math.round(k * 10), 1, 1, 0, rgbaf(1, 1, 1, Math.min(1.5, stir) * (1 - k * k)));
       s.illum.light(cx, gt.y - 22, 34 + 16 * gt.near, 28 + 10 * gt.near, withAlpha(col, Math.min(1, 0.35 + 0.3 * gt.near + 0.6 * k)));
     }
+  }
+
+  // ---- the Rime Path's trail: pale ice on the floor, glinting, melting away
+  for (const p of w.rimeTrail) {
+    if (!inView(p.x, p.y, 20)) continue;
+    const k = Math.min(1, p.t / 0.6);
+    s.back.disc(p.x, p.y, 8, 4, rgbaf(0.6, 0.85, 1, 0.35 * k));
+    s.back.disc(p.x, p.y, 5, 2.5, rgbaf(0.85, 0.95, 1, 0.4 * k));
+    if (Math.sin(time * 5 + p.x) > 0.8) s.glow.rect(Math.round(p.x - 2), Math.round(p.y - 1), 1, 1, rgbaf(0.9, 1, 1, k));
+  }
+
+  // ---- a way stone: a standing stone, the other place's runes down it in its own light; touched, it blazes
+  const ws = w.wayStone;
+  if (ws && inView(ws.x, ws.y, 40)) {
+    const k = ws.taken ? 1 : 0.55 + 0.25 * Math.sin(time * 2), col = rgbaf(0.48, 0.92, 0.88, 1);
+    s.back.disc(ws.x, ws.y + 1, 10, 3, rgba("#000000", 0.35));
+    s.color.rect(ws.x - 5, ws.y - 30, 10, 30, rgba("#2a3438"), ws.y);
+    s.color.rect(ws.x - 4, ws.y - 32, 8, 2, rgba("#3e4c50"), ws.y);
+    s.color.rect(ws.x - 5, ws.y - 30, 2, 30, rgba("#4a5c60"), ws.y);
+    s.color.rect(ws.x + 3, ws.y - 30, 2, 30, rgba("#1a2226"), ws.y);
+    for (let q = 0; q < 5; q++) s.glow.rect(ws.x - 1 + (q % 2), ws.y - 27 + q * 5, 2, 3, withAlpha(col, k));
+    s.illum.light(ws.x, ws.y - 16, 40 + 20 * k, 34 + 16 * k, withAlpha(col, 0.35 * k));
   }
 
   // ---- beyond the light: the sealed doors, their seals burning brighter as the hero comes; the pit, a well of dark
@@ -1111,10 +1135,11 @@ export function drawWorld(s: Scene, w: World, camX: number, camY: number, viewW:
 }
 
 // ============================================================================================ bosses
-const BOSS_ART = { warden: "warden", treant: "treant", eye: "voideye", light: "lastlight" } as const;
+const BOSS_ART = { warden: "warden", treant: "treant", eye: "voideye", light: "lastlight", well: "wellmistress" } as const;
 /** A boss's pose for what it is doing. */
 function bossPose(b: BossBrain): string {
-  if (b.act === "summon") return b.kind === "warden" ? "kneel" : b.kind === "treant" ? "cocoon" : b.kind === "light" ? "rise" : "closed";
+  if (b.act === "summon") return b.kind === "warden" ? "kneel" : b.kind === "treant" ? "cocoon" : b.kind === "light" ? "rise" : b.kind === "well" ? "sink" : "closed";
+  if (b.kind === "well") return b.act === "dive" && b.t < 1.05 ? "sink" : b.act === "wave" || b.act === "tide" ? "cast" : b.act === "whirl" || b.act === "geyser" ? "slam" : "idle";
   if (b.kind === "light") return b.act === "rays" || b.act === "lantern" || b.act === "judgement" || b.act === "nova" ? "cast" : b.act === "dive" ? "slam" : "idle";
   if (b.kind === "warden") return b.act === "windup" || b.act === "hold" ? "windup" : b.act === "strike" || b.act === "recover" || b.act === "spikes" ? "strike" : b.act === "dashwarn" || b.act === "dash" ? "dash" : b.moving ? "walk" : "idle";
   if (b.kind === "treant") return b.act === "roots" || b.act === "spores" ? "cast" : b.act === "rootline" || b.act === "thorns" ? "slam" : "idle";

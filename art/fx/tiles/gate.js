@@ -4,6 +4,8 @@
 // keystone, the dark recess beyond. Variant 1: the same arch open: the bars gone into the floor (their stubs left),
 // a violet haze settling in the passage. The game fades the runes' glow and sinks the bars between the two.
 // Variant 2: a sealed door: the arch filled by two leaves of dressed stone, a great sigil burning across them.
+// Variant 3: a flooded way: dark water standing in the arch to near its top, light rippling on it, drips falling.
+// Variant 4: the same water frozen: pale ice filling the arch, a path cut in it, frost on the stones.
 import { fit, hex, rand, mix } from "../../../pixelfx/src/core/index.js";
 
 export const meta = {
@@ -70,6 +72,17 @@ export function draw(p, t, o) {
       const side = !inside(X - 2, Y) || !inside(X + 2, Y), deep = Math.min(1, (Y - ATOP) / 40);
       if (side) return S[1];
       const back = mix(S[0], hex("#000000"), 0.55);
+      if (v === 3 || v === 4) {
+        // the water (or its ice) up to a line near the arch's top; above it the dark passage
+        const level = ATOP + AW - 2, side = !inside(X - 2, Y) || !inside(X + 2, Y);
+        if (Y < level) return side ? S[1] : back;
+        if (v === 3) {
+          const ripple = (Y - level) % 5 === 0 && (X + Y) % 3 !== 0;
+          return Y === level ? hex("#7ac8c0") : ripple ? hex("#1e5a5e") : Y - level < 6 ? hex("#0e3a44") : hex("#06161c");
+        }
+        const crack = (X * 7 + Y * 3) % 23 === 0 || (X === AX && Y > level + 6);
+        return Y === level ? hex("#e8f8ff") : crack ? hex("#4ea2e2") : Math.abs(X - AX + 0.5) < 3 && Y > -12 ? hex("#c8ecff") : hex("#96d6ff");
+      }
       if (v === 2) {
         // the door's two leaves: dressed stone, a seam down the middle, bevelled panels
         if (X === AX - 1 || X === AX) return S[0];
@@ -91,6 +104,20 @@ export function draw(p, t, o) {
   // the keystone at the arch's crown, a rune cut into it
   p.rect(AX - 2, ATOP - 3, 4, 4, S[4]);
   p.rect(AX - 2, ATOP + 1, 4, 1, S[1]);
+  if (v === 3) {
+    // drips from the keystone into the water, a ring where one lands
+    p.px(AX, ATOP + AW + 2, hex("#7ac8c0"));
+    p.px(AX - 4, ATOP + AW + 6, hex("#7ac8c0"));
+    p.glow(AX, -20, 9, hex("#1e7a8e"), 0.4);
+    return;
+  }
+  if (v === 4) {
+    // frost on the stones round the arch, icicles from its crown
+    for (const [x, y] of [[6, -40], [25, -40], [5, -24], [26, -24], [7, -8], [24, -8]]) p.px(x, y, hex("#e8f8ff"));
+    for (let k = -4; k <= 4; k += 2) for (let l = 0; l < 3 - Math.abs(k) / 2; l++) p.px(AX + k, ATOP + AW + l, hex("#c8ecff"));
+    p.glow(AX, -16, 10, hex("#4ea2e2"), 0.35);
+    return;
+  }
   if (v === 2) {
     // the seal: a ring across both leaves, a rune at its heart and three about it, all burning
     const cy = -22;

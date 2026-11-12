@@ -6,7 +6,7 @@ import { attackFrames, attackHits, HERO_FPS, heroHands, lookId } from "./heroSpr
 import type { Audio } from "../engine/audio";
 import { rgba, rgbaf } from "../engine/renderer";
 import {
-  AI, depthOf, El, EL_COLOR, EN, ENEMIES, evolutionOf, heroDef, mainStop, nextStop, PLACE_FLOORS, QUESTS, RELIC_MAX, RELICS, RelicKind, reactionFor, roster, WEAPON_IDS, WEAPONS,
+  AI, depthOf, placeDef, El, EL_COLOR, EN, ENEMIES, evolutionOf, heroDef, mainStop, nextStop, PLACE_FLOORS, QUESTS, RELIC_MAX, RELICS, RelicKind, reactionFor, roster, WEAPON_IDS, WEAPONS,
   type PlaceDef, type PlaceId, type Stop, type GateKind, giftFor, DOORS, type DoorKind, MINIS, type MiniMove, type Blow, type HeroDef, type Modifier, type QuestKind, type Reaction, type StatId, type TaskId, type WeaponId, MYTHIC, RARITIES, rollRarity, UNIQUES, type Perk,
 } from "./defs";
 import { getLang, t as tr, tx } from "./i18n";
@@ -29,7 +29,7 @@ BULLET_ANIMS.push("arrow", "fireball");
 const ATK_FPS = 20;
 const ELEMENTS = [El.Fire, El.Frost, El.Storm, El.Venom, El.Holy, El.Void];
 /** What the floor kicks up under the feet, per biome. */
-const DUST: Record<PlaceId, readonly [string, string]> = { crypt: ["#6a6078", "#4a4258"], garden: ["#6a7a46", "#4a5a30"], frost: ["#d8e8f8", "#a8c0dc"], heart: ["#c8a868", "#8a6a3a"], beyond: ["#6a6680", "#3a3648"] };
+const DUST: Record<PlaceId, readonly [string, string]> = { crypt: ["#6a6078", "#4a4258"], garden: ["#6a7a46", "#4a5a30"], frost: ["#d8e8f8", "#a8c0dc"], heart: ["#c8a868", "#8a6a3a"], beyond: ["#6a6680", "#3a3648"], cistern: ["#5a8a88", "#36585a"] };
 /** The sound each element makes when a blow lands with it. */
 const EL_SFX = ["hit", "burn", "freeze", "zap", "venom", "holy", "void"] as const;
 const ORB_TRAIL = ["", "", "#ff5a6a", "#c684ff", "#8ad83a", "#78ccf4"];
@@ -148,7 +148,7 @@ export interface MiniBrain {
 /** A boss's mind: its phase (0..2), what it is doing and since when, and what it is aiming at. */
 export interface BossBrain {
   uid: number;
-  kind: "warden" | "treant" | "eye" | "light";
+  kind: "warden" | "treant" | "eye" | "light" | "well";
   phase: number;
   act: string;
   t: number;
@@ -172,6 +172,8 @@ export const FLOOR_SQ = 0.72;
 export const EYE_H = 66;
 /** How long a newcomer takes to gather out of grey matter (draw.ts); till then it neither moves nor harms. */
 export const SPAWN_T = 0.7;
+/** How long the Rime Path's ice lasts (s). */
+const RIME_LIFE = 2.6;
 /** A brazier lit wakes a miniboss this often (and a little more each floor down). */
 const MINI_CHANCE = 0.06, MINI_PER_FLOOR = 0.008;
 /** The bolts a place's minibosses throw. */
@@ -359,7 +361,7 @@ export interface Room {
   y: number;
   w: number;
   h: number;
-  kind: "treasure" | "guardian" | "fountain" | "armory" | "vault";
+  kind: "treasure" | "guardian" | "fountain" | "armory" | "vault" | "way";
 }
 /**
  * A gate in the back wall, in plain sight from the first visit: closed until the hero holds the gift that opens its
@@ -680,6 +682,12 @@ export class World {
   curse = false;
   /** The floor's gate, if it has one. */
   gate: Gate | null = null;
+  /** A way stone behind the gate of a place's boss floor: touched, the portal after the boss leads to `to`. */
+  wayStone: { x: number; y: number; to: PlaceId; taken: boolean; t: number } | null = null;
+  /** The Rime Path's trail: patches of ice the dash leaves, chilling whatever stands on them while they last. */
+  rimeTrail: { x: number; y: number; t: number }[] = [];
+  /** Whirlpools turning on the floor: each drags the hero toward its middle while it lasts. */
+  pulls: { x: number; y: number; r: number; t: number }[] = [];
   /** The miniboss up now (one a floor at the most), and whether this floor has had its chance at one. */
   mini: MiniBrain | null = null;
   miniCalled = false;
@@ -760,6 +768,9 @@ export class World {
     this.pit = null;
     this.mini = null;
     this.miniCalled = false;
+    this.pulls = [];
+    this.wayStone = null;
+    this.rimeTrail = [];
     this.toHero = new Flow(this.map, false);
     this.toHeroFly = new Flow(this.map, true);
     this.toGoal = new Flow(this.map, false);
@@ -940,14 +951,15 @@ export class World {
     // the gate first: on the tower's first floor always (it is seen from the first run on, long before the gift that
     // opens it; a torch gives way to it if it must), on others now and then; on the way rather than in a side room,
     // where the hero passes it. Its runes are its light: no torch of its own beside it
-    const gateKinds = this.place.gates;
-    if (gateKinds.length && (this.floor === 1 || R.chance(0.5))) {
+    // (on the boss's floor of a place with a way out of the main road the gate is always there: the way stone is behind it)
+    const gateKinds = this.place.gates, way = !!this.place.branch && this.bossFloor();
+    if (gateKinds.length && (this.floor === 1 || way || R.chance(0.5))) {
       const onWay = ([c, r]: [number, number]) => m.route.some((a) => c >= a.x && c + 1 < a.x + a.w && r + 1 >= a.y && r + 1 < a.y + a.h);
       const list = [...order.filter(onWay), ...order.filter((f) => !onWay(f))];
-      const spot = wallRoom(list, 100, null) ?? (this.floor === 1 ? wallRoom(list, 60, null, false) : null);
+      const spot = wallRoom(list, 100, null) ?? (this.floor === 1 || way ? wallRoom(list, 60, null, false) : null);
       if (spot) {
         this.torches = this.torches.filter(([tx, ty]) => !(ty === spot.y && tx > spot.x - 26 && tx < spot.x + TILE * 2 + 26));
-        this.gate = { kind: R.pick(gateKinds), x: spot.x, y: spot.y, open: 0, opening: false, near: 0, sayT: 9, room: { ...spot.room, kind: "vault" } };
+        this.gate = { kind: way ? "lattice" : R.pick(gateKinds), x: spot.x, y: spot.y, open: 0, opening: false, near: 0, sayT: 9, room: { ...spot.room, kind: way ? "way" : "vault" } };
       }
     }
     // now and then a stretch of wall is cracked, and behind it a secret room
@@ -1398,6 +1410,11 @@ export class World {
       }
       // the Shade cuts with every dash; with the Shadow Step anyone does (the Shade the harder)
       if (h.def.id === "shadow" || this.gifts.has("shade")) this.dashCut();
+      // the Rime Path: ice left behind every few steps of the dash
+      if (this.gifts.has("rime")) {
+        const last = this.rimeTrail[this.rimeTrail.length - 1];
+        if (!last || (last.x - h.x) ** 2 + (last.y - h.y) ** 2 > 10 * 10) this.rimeTrail.push({ x: h.x, y: h.y, t: RIME_LIFE });
+      }
       // the dash ends with the feet skidding into the floor
       if (h.dashT <= 0) this.dust(h.x + h.dashDx * 6, h.y, 7, 45);
     } else {
@@ -1448,6 +1465,8 @@ export class World {
     }
     h.wantUlt = false;
     this.updateAbility(dt);
+    if (this.pulls.length) this.updatePulls(dt);
+    if (this.rimeTrail.length) this.updateRime(dt);
     if (this.inBrazierLight(h.x, h.y)) this.gainOd(dt * 1.5);
 
     // touch: enemies hurt on contact
@@ -2001,6 +2020,39 @@ export class World {
   }
 
   /** The ward, the war cry and the blows on their way. */
+  /** The Rime Path's ice: it melts away; whatever walks on it is chilled. */
+  private updateRime(dt: number): void {
+    const E = this.enemies;
+    for (let k = this.rimeTrail.length - 1; k >= 0; k--) {
+      const p = this.rimeTrail[k];
+      p.t -= dt;
+      if (p.t <= 0) {
+        this.rimeTrail.splice(k, 1);
+        continue;
+      }
+      this.grid.query(p.x, p.y, 14, (i) => {
+        if ((E.x[i] - p.x) ** 2 + (E.y[i] - p.y) ** 2 < 12 * 12 && ENEMIES[E.type[i]].ai < AI.Boss) E.chill[i] = Math.max(E.chill[i], 0.6);
+      });
+    }
+  }
+  /** The whirlpools: the hero in one is dragged to its middle (a dash breaks free). */
+  private updatePulls(dt: number): void {
+    const h = this.hero;
+    for (let k = this.pulls.length - 1; k >= 0; k--) {
+      const p = this.pulls[k];
+      p.t -= dt;
+      if (p.t <= 0) {
+        this.pulls.splice(k, 1);
+        continue;
+      }
+      const dx = p.x - h.x, dy = p.y - h.y, d = Math.hypot(dx, dy);
+      if (d < p.r && d > 2 && h.dashT <= 0 && !h.dead) {
+        h.x += (dx / d) * 46 * dt;
+        h.y += (dy / d) * 46 * dt;
+        this.map.push(h, 5, false);
+      }
+    }
+  }
   private updateAbility(dt: number): void {
     const h = this.hero, E = this.enemies;
     if (this.rage > 0) {
@@ -2427,7 +2479,7 @@ export class World {
       g.sayT += dt;
       if (g.opening) {
         g.open = Math.min(1, g.open + dt / 1.1);
-        if (this.rng.chance(dt * 40)) this.parts.add(cx + this.rng.range(-12, 12), g.y - this.rng.range(4, 40), this.rng.range(-10, 10), -this.rng.range(10, 30), 0.7, rgba("#b58cff"), 1, -20, 1);
+        if (this.rng.chance(dt * 40)) this.parts.add(cx + this.rng.range(-12, 12), g.y - this.rng.range(4, 40), this.rng.range(-10, 10), -this.rng.range(10, 30), 0.7, rgba(giftFor(g.kind).color), 1, -20, 1);
         if (g.open >= 1) this.openGate(g);
       } else if (near && !h.dead) {
         if (this.gifts.has(giftFor(g.kind).id)) {
@@ -2440,6 +2492,21 @@ export class World {
           this.audio.play("deny", 0.8);
           this.ev.gate(g.kind, "locked");
         }
+      }
+    }
+    // a way stone: touched, the way after this place's boss turns toward the other place
+    const ws = this.wayStone;
+    if (ws) {
+      ws.t += dt;
+      if (!ws.taken && (h.x - ws.x) ** 2 + (h.y - ws.y - 6) ** 2 < 18 * 18) {
+        ws.taken = true;
+        ws.t = 0;
+        this.branch = ws.to;
+        this.addFx("beam", ws.x, ws.y, { glow: 1, tint: rgba("#5ad0d0") });
+        this.burst(ws.x, ws.y - 20, 26, rgba("#7ae8e0"), 110, 0.6);
+        this.flash = Math.max(this.flash, 0.3);
+        this.audio.play("portal", 1.2);
+        this.ev.banner(tr("wayOpen"), rgba("#7ae8e0"), tr("wayOpenSub").replace("{place}", tx(placeDef(ws.to).name)));
       }
     }
     // a secret room's fountain: stand at it a moment and it restores every heart (once)
@@ -2542,7 +2609,11 @@ export class World {
     // its torches on the far wall, and the old air puffing out
     for (const tc of [room.x + 1, room.x + room.w - 2]) this.torches.push([tc * TILE + 8, room.y * TILE]);
     this.dust(sc.x + TILE, sc.y - 30, 14, 40);
-    if (room.kind === "vault") {
+    if (room.kind === "way" && this.place.branch) {
+      // a way stone: a standing stone with the other place's runes on it; a few embers about it
+      this.wayStone = { x: mx, y: my, to: this.place.branch, taken: false, t: 0 };
+      for (let q = 0; q < 6; q++) this.drops.add(D_EMBER, mx + R.range(-40, 40), my + R.range(-16, 16), 1, 0, 0);
+    } else if (room.kind === "vault") {
       // a vault behind a gate: a chest on a dais, a heart, and more embers than any cache
       this.drops.add(D_CHEST, mx, my, 1, 0, 0);
       this.drops.add(D_HEART, mx + R.range(-30, 30), my + R.range(-10, 10), 1, 0, 0);
@@ -2645,8 +2716,9 @@ export class World {
   private openGate(g: Gate): void {
     const cx = g.x + TILE;
     this.openRoom(g);
-    this.addFx("frost_nova", cx, g.y - 8, { tint: rgba("#b58cff"), glow: 0.9, sx: 0.6, sy: 0.6 });
-    this.burst(cx, g.y - 20, 24, rgba("#c8a8ff"), 110, 0.6);
+    const col = rgba(giftFor(g.kind).color);
+    this.addFx("frost_nova", cx, g.y - 8, { tint: col, glow: 0.9, sx: 0.6, sy: 0.6 });
+    this.burst(cx, g.y - 20, 24, col, 110, 0.6);
     this.flash = Math.max(this.flash, 0.25);
     this.shake = Math.max(this.shake, 0.5);
     this.audio.play("chest");
@@ -3413,6 +3485,7 @@ export class World {
           case AI.Warden:
           case AI.Treant:
           case AI.LastLight:
+          case AI.Well:
             this.bossBrain(i, dt, dist);
             break;
           case AI.BossFrog:
@@ -3544,7 +3617,7 @@ export class World {
   private brainFor(i: number): BossBrain {
     const E = this.enemies, ai = ENEMIES[E.type[i]].ai;
     if (!this.brain || this.brain.uid !== E.uid[i])
-      this.brain = { uid: E.uid[i], kind: ai === AI.Warden ? "warden" : ai === AI.Treant ? "treant" : ai === AI.LastLight ? "light" : "eye", phase: 0, act: "idle", t: 0, init: false, n: 0, invuln: false, ang: 0, ax: 0, ay: 0, cd: 1.4, plan: 0, combo: 0, moving: false };
+      this.brain = { uid: E.uid[i], kind: ai === AI.Warden ? "warden" : ai === AI.Treant ? "treant" : ai === AI.LastLight ? "light" : ai === AI.Well ? "well" : "eye", phase: 0, act: "idle", t: 0, init: false, n: 0, invuln: false, ang: 0, ax: 0, ay: 0, cd: 1.4, plan: 0, combo: 0, moving: false };
     return this.brain;
   }
   private act(b: BossBrain, act: string, cd = 0): void {
@@ -3555,7 +3628,7 @@ export class World {
   }
   /** The colour of a boss's warnings: its own light, hotter as it changes. */
   private bossCol(b: BossBrain): number {
-    return rgba(b.kind === "warden" ? (b.phase === 0 ? "#78ccf4" : "#ff6a2a") : b.kind === "treant" ? (b.phase === 2 ? "#b070e0" : "#c8e050") : b.kind === "light" ? (b.phase === 2 ? "#c890ff" : b.phase === 1 ? "#ffb040" : "#ffe08a") : "#a884ff");
+    return rgba(b.kind === "warden" ? (b.phase === 0 ? "#78ccf4" : "#ff6a2a") : b.kind === "treant" ? (b.phase === 2 ? "#b070e0" : "#c8e050") : b.kind === "light" ? (b.phase === 2 ? "#c890ff" : b.phase === 1 ? "#ffb040" : "#ffe08a") : b.kind === "well" ? (b.phase === 2 ? "#a8d8ff" : "#5ad0d0") : "#a884ff");
   }
   private bossBrain(i: number, dt: number, dist: number): void {
     const E = this.enemies, b = this.brainFor(i);
@@ -3572,6 +3645,7 @@ export class World {
     else if (b.kind === "warden") this.warden(i, b, dt, dist);
     else if (b.kind === "treant") this.treant(i, b, dt, dist);
     else if (b.kind === "light") this.lastLight(i, b, dt, dist);
+    else if (b.kind === "well") this.wellMistress(i, b, dt, dist);
     else this.voidEye(i, b, dt, dist);
     this.keepBoss(i, dt);
     b.moving = dt > 0 && Math.hypot(E.x[i] - x0, E.y[i] - y0) / dt > 5;
@@ -3599,7 +3673,7 @@ export class World {
     // a wave of its servants every so often, each first shown where it will rise
     if (b.n < waves && b.t >= 0.6 + b.n * ((dur - 1.6) / waves)) {
       b.n++;
-      const kinds = b.kind === "warden" ? [EN.skull, EN.bat, EN.slime] : b.kind === "treant" ? [EN.frog, EN.snakeMoss, EN.wispSpore] : b.kind === "light" ? [EN.wispSun, EN.batSun, EN.skullSun] : [EN.ghostIce, EN.wisp, EN.batIce];
+      const kinds = b.kind === "warden" ? [EN.skull, EN.bat, EN.slime] : b.kind === "treant" ? [EN.frog, EN.snakeMoss, EN.wispSpore] : b.kind === "light" ? [EN.wispSun, EN.batSun, EN.skullSun] : b.kind === "well" ? [EN.slimeTide, EN.batTide, EN.ghostTide] : [EN.ghostIce, EN.wisp, EN.batIce];
       for (let k = 0; k < 2 + b.phase; k++) {
         let x = 0, y = 0, ok = false;
         for (let q = 0; q < 20 && !ok; q++) {
@@ -3880,6 +3954,113 @@ export class World {
         if (b.t >= [0.7, 0.55, 0.45][P]) this.act(b, "idle", [1.3, 1.0, 0.8][P]);
         break;
     }
+  }
+
+  // ---- the Well Mistress
+  /**
+   * She stays in her well and the water fights for her: fans of bolts in waves, whirlpools that drag the hero in (rings
+   * first), geysers bursting along a line to him (the line first); from her second phase a tide, a ring of bolts with
+   * gaps to slip through; in her last she sinks and comes up out of the floor where the hero stands (a ring first).
+   */
+  private wellMistress(i: number, b: BossBrain, dt: number, dist: number): void {
+    const E = this.enemies, h = this.hero, P = b.phase, col = this.bossCol(b), k = 1 + 0.15 * P;
+    const cx = E.x[i], cy = E.y[i] - 60, ang = Math.atan2(h.y - HERO_HIT_Y - cy, h.x - cx);
+    E.face[i] = h.x < E.x[i] ? -1 : 1;
+    switch (b.act) {
+      case "idle": {
+        if (b.cd > 0) break;
+        const plans = [["wave", "whirl", "geyser"], ["tide", "whirl", "wave", "geyser"], ["dive", "tide", "whirl", "geyser", "wave"]][P];
+        this.act(b, plans[b.plan++ % plans.length]);
+        break;
+      }
+      case "wave": {
+        const waves = [3, 3, 4][P];
+        if (b.t >= 0.3 + b.n * 0.42 && b.n < waves) {
+          const n = 9 + P * 2;
+          for (let q = 0; q < n; q++) this.shoot(cx, cy, ang + (q - (n - 1) / 2) * 0.13 + (b.n % 2 ? 0.065 : 0), 80 * k, B_ORB_BLUE, 4);
+          this.audio.play("enemyShot");
+          b.n++;
+        }
+        if (b.t >= 0.3 + waves * 0.42 + 0.3) (b.n = 0), this.act(b, "recover");
+        break;
+      }
+      case "whirl": {
+        // whirlpools about the hero: a ring first, then the water turns there, drags him in and strikes
+        if (!b.init) {
+          b.init = true;
+          for (let q = 0; q < [2, 3, 4][P]; q++) {
+            const a = this.rng.range(0, Math.PI * 2), r = q === 0 ? 0 : this.rng.range(40, 90), x = h.x + Math.cos(a) * r, y = h.y + Math.sin(a) * r * FLOOR_SQ;
+            if (this.map.wall(x, y)) continue;
+            this.warnCircle(x, y, 28, 0.8 + q * 0.1, col, () => {
+              this.addFx("whirl", x, y, { glow: 0.6, sx: 0.5, sy: 0.4, tint: col });
+              this.pulls.push({ x, y, r: 46, t: 1.4 });
+              if (this.heroIn(x, y, 28)) this.hurtHero(2);
+              this.audio.play("boom", 1.5);
+            });
+          }
+        }
+        if (b.t >= 1.6) this.act(b, "recover");
+        break;
+      }
+      case "geyser": {
+        // geysers bursting one after another along a line from her to the hero (the line first)
+        if (!b.init) {
+          b.init = true;
+          const a = Math.atan2(h.y - E.y[i], h.x - E.x[i]);
+          let len = 40;
+          while (len < 280 && !this.map.wall(E.x[i] + Math.cos(a) * len, E.y[i] + Math.sin(a) * len)) len += 10;
+          const x0 = E.x[i] + Math.cos(a) * 30, y0 = E.y[i] + Math.sin(a) * 30, x2 = E.x[i] + Math.cos(a) * len, y2 = E.y[i] + Math.sin(a) * len;
+          this.warn({ kind: "line", x: x0, y: y0, x2, y2, r: 24, dur: 0.8, col, fire: () => {
+            for (let s2 = 0; s2 < len - 30; s2 += 22) {
+              const gx = x0 + Math.cos(a) * s2, gy = y0 + Math.sin(a) * s2;
+              this.addFx("geyser", gx, gy, { glow: 0.5, sx: 0.35, sy: 0.35, delay: s2 / 700 });
+            }
+            if (this.heroOnLine(x0, y0, x2, y2, 24)) this.hurtHero(2);
+            this.shake = Math.max(this.shake, 0.4);
+            this.audio.play("boom", 1.2);
+          } });
+        }
+        if (b.t >= 1.3) this.act(b, "recover");
+        break;
+      }
+      case "tide": {
+        // a ring of bolts with gaps to slip through, then another turned half a gap
+        const rings = P === 2 ? 3 : 2;
+        if (b.t >= 0.4 + b.n * 0.55 && b.n < rings) {
+          const n = 28, gap = this.rng.int(0, n - 1);
+          for (let q = 0; q < n; q++) if ((q - gap + n) % n > 3) this.shoot(E.x[i], E.y[i] - 20, ((q + b.n * 0.5) / n) * Math.PI * 2, 66 * k, B_ORB_BLUE, 4);
+          this.addFx("splash", E.x[i], E.y[i], { glow: 0.5, sx: 0.6, sy: 0.5 });
+          this.audio.play("enemyShot");
+          b.n++;
+        }
+        if (b.t >= 0.4 + rings * 0.55 + 0.4) (b.n = 0), this.act(b, "recover");
+        break;
+      }
+      case "dive": {
+        // down into the water, a ring where the hero stands, up out of the floor there with a burst of bolts
+        if (!b.init) {
+          b.init = true;
+          (b.ax = h.x), (b.ay = h.y);
+          this.addFx("splash", E.x[i], E.y[i], { glow: 0.6 });
+          this.warnCircle(b.ax, b.ay, 36, 1.0, col, () => {
+            const j = this.indexOf(b.uid);
+            if (j < 0) return;
+            if (this.free(b.ax, b.ay, 20)) (E.x[j] = b.ax), (E.y[j] = b.ay);
+            this.addFx("splash", E.x[j], E.y[j], { glow: 0.7, sx: 1.2, sy: 1.2 });
+            if (this.heroIn(E.x[j], E.y[j], 36)) this.hurtHero(2);
+            for (let q = 0; q < 16; q++) this.shoot(E.x[j], E.y[j] - 16, (q / 16) * Math.PI * 2, 76 * k, B_ORB_BLUE, 4);
+            this.shake = Math.max(this.shake, 0.7);
+            this.audio.play("boom", 0.8);
+          });
+        }
+        if (b.t >= 1.6) this.act(b, "recover");
+        break;
+      }
+      case "recover":
+        if (b.t >= [0.8, 0.6, 0.5][P]) this.act(b, "idle", [1.4, 1.1, 0.85][P]);
+        break;
+    }
+    void dist, dt;
   }
 
   // ---- the Last Light

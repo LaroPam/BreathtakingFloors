@@ -29,6 +29,7 @@ const STONE = {
   frost: ["#121a28", "#1c2838", "#283a50", "#344c68", "#52709a"],
   heart: ["#221a14", "#30251a", "#3e3020", "#4e3d28", "#6a5434"],
   beyond: ["#16141c", "#22202a", "#302d3a", "#403c4c", "#5a5668"],
+  cistern: ["#121a1e", "#1c282c", "#26363a", "#32464a", "#486264"],
 };
 const WALL = {
   crypt: ["#0e0c14", "#1c1826", "#2a2436", "#3a3348", "#4e4660"],
@@ -36,6 +37,7 @@ const WALL = {
   frost: ["#0c121c", "#16202e", "#223044", "#2e4058", "#46607e"],
   heart: ["#120e0a", "#201a12", "#2e261a", "#3e3424", "#56482e"],
   beyond: ["#0a0910", "#14121c", "#201d2a", "#2c2838", "#403a50"],
+  cistern: ["#0a1012", "#121c20", "#1c2a2e", "#26383c", "#3a5256"],
 };
 
 /**
@@ -43,7 +45,7 @@ const WALL = {
  * pages of their own at the end of the atlas, which the game loads in the background once it has started (the menu,
  * the heroes' gear, the crypt and every effect come first).
  */
-const LATE = /garden|frost|heart|beyond|door_|_pale\b|_ice\b|_ice_|_moss|_spore|_bog|_void|_sun\b|treant|voideye|warden|lastlight|crystal|mushroom|grass/;
+const LATE = /garden|frost|heart|beyond|cistern|gatew_|_tide\b|wellmistress|^splash$|^geyser$|^whirl$|door_|_pale\b|_ice\b|_ice_|_moss|_spore|_bog|_void|_sun\b|treant|voideye|warden|lastlight|crystal|mushroom|grass/;
 export const isLate = (name) => LATE.test(name);
 
 export const ANIMS = [
@@ -87,7 +89,7 @@ export const ANIMS = [
   { name: "frog", fx: "critters/frog", fps: 12, light: CRITTER_LIGHT, body: true },
   { name: "frog_toxic", fx: "critters/frog", fps: 12, light: CRITTER_LIGHT, body: true, opts: { palette: PAL.arcane, belly: PAL.candy } },
   // the bosses at their own size, a set of poses for each of their three phases: name_phase_pose
-  ...Object.entries({ warden: ["idle", "walk", "windup", "strike", "dash", "kneel"], treant: ["idle", "cast", "slam", "cocoon"], voideye: ["idle", "charge", "closed", "iris"], lastlight: ["idle", "cast", "slam", "rise"] }).flatMap(([id, poses]) =>
+  ...Object.entries({ warden: ["idle", "walk", "windup", "strike", "dash", "kneel"], treant: ["idle", "cast", "slam", "cocoon"], voideye: ["idle", "charge", "closed", "iris"], lastlight: ["idle", "cast", "slam", "rise"], wellmistress: ["idle", "cast", "slam", "sink"] }).flatMap(([id, poses]) =>
     [0, 1, 2].flatMap((phase) => poses.map((pose) => ({ name: `${id}_${phase}_${pose}`, art: `bosses/${id}`, fps: pose === "idle" || pose === "walk" ? 8 : 4, light: { thr: 8, k: 0.9 }, body: pose === "idle", opts: { phase, pose } })))),
   { name: "frog_king", fx: "critters/frog", fps: 12, light: CRITTER_LIGHT, body: true, opts: { palette: PAL.lava, belly: PAL.gold } },
   { name: "snake", fx: "critters/snake", fps: 12, light: CRITTER_LIGHT, body: true },
@@ -104,6 +106,13 @@ export const ANIMS = [
   { name: "eye_frost", fx: "critters/eyeball", fps: 10, light: CRITTER_LIGHT, body: true, opts: { iris: PAL.ice.slice(1, 6), flesh: PAL.water.slice(0, 5) } },
   { name: "wisp_frost", fx: "critters/wisp", fps: 10, light: CRITTER_LIGHT, body: true, opts: { palette: ICE_FIRE.slice(0, 7) } },
   { name: "moth_frost", fx: "critters/butterfly", fps: 10, light: CRITTER_LIGHT, body: true },
+  // the drowned catacombs: everything there of the water
+  { name: "slime_tide", fx: "critters/slime", fps: 12, light: CRITTER_LIGHT, body: true, opts: { palette: PAL.water } },
+  { name: "snake_tide", fx: "critters/snake", fps: 12, light: CRITTER_LIGHT, body: true, opts: { palette: PAL.water, belly: PAL.ice.slice(2, 6) } },
+  { name: "bat_tide", fx: "critters/bat", fps: 12, light: CRITTER_LIGHT, body: true, opts: { palette: ["#061a24", "#0c2c3c", "#145064", "#1e7a8e", "#3ab0bc", "#9ae8e8", "#e0ffff"], eyes: ["#0a3a30", "#3aa0a0", "#c8fff8", "#ffffff"] } },
+  { name: "skull_tide", fx: "critters/flying-skull", fps: 12, light: CRITTER_LIGHT, body: true, opts: { floor: false, palette: PAL.water } },
+  { name: "ghost_tide", fx: "critters/ghost", fps: 12, light: CRITTER_LIGHT, body: true, opts: { palette: ["#062028", "#0e3e48", "#1e6a72", "#3aa0a0", "#7ae8e0", "#c8fff8", "#ffffff"] } },
+  { name: "eye_tide", fx: "critters/eyeball", fps: 10, light: CRITTER_LIGHT, body: true, opts: { iris: PAL.water.slice(2, 7), flesh: PAL.night ?? PAL.water.slice(0, 5) } },
   // the tower's heart: everything gone to gold and light
   { name: "slime_sun", fx: "critters/slime", fps: 12, light: CRITTER_LIGHT, body: true, opts: { palette: PAL.gold } },
   { name: "snake_sun", fx: "critters/snake", fps: 12, light: CRITTER_LIGHT, body: true, opts: { palette: PAL.gold, belly: PAL.holy } },
@@ -134,6 +143,10 @@ export const ANIMS = [
   { name: "acid", fx: "nature/acid-splash", fps: 12, maxT: 1.0, light: FX_BIG },
   { name: "smite", fx: "holy/smite", fps: 12, maxT: 1.2, light: FX_BIG },
   { name: "frost_nova", fx: "ice/frost-nova", fps: 12, maxT: 1.3, light: FX_BIG },
+  // the water's own (the Well Mistress and her catacombs)
+  { name: "splash", fx: "water/splash", fps: 14, maxT: 1.0, light: FX_LIGHT },
+  { name: "geyser", fx: "water/geyser", fps: 12, maxT: 1.5, light: FX_LIGHT },
+  { name: "whirl", fx: "water/whirlpool", fps: 10, light: FX_LIGHT },
   { name: "frost_nova_s", fx: "ice/frost-nova", fps: 12, maxT: 1.0, light: FX_BIG, opts: { reach: 30 } },
   { name: "heal_ring", fx: "holy/heal-aoe", fps: 12, maxT: 1.0, light: FX_BIG },
   { name: "spawn", fx: "spawn/spawn-portal", fps: 12, maxT: 1.0, light: FX_BIG },
@@ -191,6 +204,20 @@ export const ANIMS = [
   { name: "gate_garden", art: "tiles/gate", opts: { stone: WALL.garden }, variants: { variant: [0, 1] } },
   { name: "gate_frost", art: "tiles/gate", opts: { stone: WALL.frost }, variants: { variant: [0, 1] } },
   { name: "gate_heart", art: "tiles/gate", opts: { stone: WALL.heart }, variants: { variant: [0, 1] } },
+  // the drowned catacombs: wet stone gone green-grey, teal fire, the gate and the cache in its walls
+  { name: "floor_cistern", art: "tiles/floor", opts: { stone: STONE.cistern, water: ["#0a2228", "#1e5a5e", "#7ac8c0"], moss: ["#1c3a30", "#2e5a48"] }, variants: { variant: [0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 2, 12, 4, 7] } },
+  { name: "floor_cistern_2", art: "tiles/floor", opts: { stone: ["#101618", "#1a2426", "#243234", "#304244", "#445c5e"], water: ["#0a2228", "#1e5a5e", "#7ac8c0"] }, variants: { variant: [0, 0, 0, 0, 0, 1, 1, 2, 12, 3, 7] } },
+  { name: "floor_cistern_3", art: "tiles/floor", opts: { stone: ["#0e1418", "#182226", "#222e34", "#2c3c44", "#405660"], water: ["#0a2228", "#1e5a5e", "#7ac8c0"], moss: ["#1c3a30", "#2e5a48"] }, variants: { variant: [0, 0, 0, 0, 0, 0, 1, 2, 12, 4, 4, 7] } },
+  { name: "wall_cistern", art: "tiles/wall", opts: { stone: WALL.cistern, moss: ["#123a2a", "#1e5a40", "#3a7a50"] }, variants: { variant: [0, 0, 0, 1, 2, 4] } },
+  { name: "wall_cistern_2", art: "tiles/wall", opts: { stone: WALL.cistern, moss: ["#123a2a", "#1e5a40", "#3a7a50"] }, variants: { variant: [0, 0, 2, 2, 1, 4] } },
+  { name: "wall_cistern_3", art: "tiles/wall", opts: { stone: ["#080e10", "#10181c", "#1a2428", "#243236", "#36484e"], moss: ["#123a2a", "#1e5a40", "#3a7a50"] }, variants: { variant: [0, 0, 2, 2, 2, 1] } },
+  { name: "pillar_cistern", art: "props/pillar", opts: { stone: ["#0a1012", "#1a2628", "#2a3c3e", "#3e5658", "#5a7a7a"], decor: 1 } },
+  { name: "torch_tide", fx: "fire/torch", fps: 10, light: { thr: 10, k: 0.9 }, opts: { palette: PAL.water } },
+  { name: "gate_cistern", art: "tiles/gate", opts: { stone: WALL.cistern }, variants: { variant: [0, 1] } },
+  // the flooded ways (opened by the Rime Path: the water freezes), where there is water about
+  { name: "gatew_cistern", art: "tiles/gate", opts: { stone: WALL.cistern }, variants: { variant: [3, 4] } },
+  { name: "gatew_frost", art: "tiles/gate", opts: { stone: WALL.frost }, variants: { variant: [3, 4] } },
+  { name: "secret_cistern", art: "tiles/secret-wall", opts: { stone: WALL.cistern }, variants: { variant: [0, 1] } },
   // beyond the light: its floor and walls, cold and pale, its candles' pale fire, and its three sealed doors
   { name: "floor_beyond", art: "tiles/floor", opts: { stone: STONE.beyond, rune: "#2a2638", void: ["#3a2a6a", "#b8a0ff"] }, variants: { variant: [0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 2, 7, 6, 15] } },
   { name: "wall_beyond", art: "tiles/wall", opts: { stone: WALL.beyond, void: ["#24143e", "#7a4ac8", "#c8a8ff"] }, variants: { variant: [0, 0, 0, 1, 8] } },

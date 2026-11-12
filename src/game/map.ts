@@ -585,6 +585,13 @@ export const MAP_PLANS: Record<string, MapPlan[]> = {
     { cols: 104, rows: 66, shape: "cave", lanes: 3, per: 3, link: "winding", wide: 5, veins: true, clumps: true },
     { cols: 108, rows: 62, shape: "facet", lanes: 2, per: 3, link: "straight", wide: 5, pit: true, veins: true, arena: true },
   ],
+  // the drowned catacombs: halls whose middles have gone under, crossed on planks; cisterns, islands of stone in
+  // black water; the old well's hall, rough, a pool in its middle and the arena at the end
+  cistern: [
+    { cols: 92, rows: 58, shape: "rect", lanes: 2, per: 3, link: "straight", wide: 5, pit: true, columns: true },
+    { cols: 98, rows: 64, shape: "isle", lanes: 3, per: 3, link: "straight", wide: 4 },
+    { cols: 100, rows: 60, shape: "cave", lanes: 2, per: 3, link: "winding", wide: 5, pit: true, arena: true },
+  ],
   // the frost: faceted halls of rime; ice caves, a sheet to slide on in each; the throne of the void, islands over
   // nothing to the arena
   frost: [
