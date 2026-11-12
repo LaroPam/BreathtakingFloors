@@ -1007,7 +1007,8 @@ export class Game {
   }
   /** A new floor: the tasks that count how deep you got. */
   private reached(floor: number): void {
-    this.bump("floor", floor, true);
+    // (the day's task counts the floors climbed in this run: a run started on a shortcut does not get them free)
+    this.bump("floor", floor - this.runFrom + 1, true);
     // the places the player has been to stay known (the atlas, the ways opened from them)
     const place = this.world.place.id;
     if (!this.save.places.includes(place)) this.save.places.push(place);
