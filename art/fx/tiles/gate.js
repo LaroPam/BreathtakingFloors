@@ -3,6 +3,7 @@
 // Variant 0: a runic lattice, closed: iron bars across the arch, violet runes burning on the crossbars and the
 // keystone, the dark recess beyond. Variant 1: the same arch open: the bars gone into the floor (their stubs left),
 // a violet haze settling in the passage. The game fades the runes' glow and sinks the bars between the two.
+// Variant 2: a sealed door: the arch filled by two leaves of dressed stone, a great sigil burning across them.
 import { fit, hex, rand, mix } from "../../../pixelfx/src/core/index.js";
 
 export const meta = {
@@ -69,6 +70,14 @@ export function draw(p, t, o) {
       const side = !inside(X - 2, Y) || !inside(X + 2, Y), deep = Math.min(1, (Y - ATOP) / 40);
       if (side) return S[1];
       const back = mix(S[0], hex("#000000"), 0.55);
+      if (v === 2) {
+        // the door's two leaves: dressed stone, a seam down the middle, bevelled panels
+        if (X === AX - 1 || X === AX) return S[0];
+        const px = X < AX ? X - (AX - AW) : X - AX, panel = (Y + 40) % 13;
+        if (panel === 0) return S[1];
+        if (panel === 1 || px === 1) return S[4];
+        return rand(X, Y, seed) < 0.06 ? S[2] : S[3];
+      }
       return v === 1 ? mix(back, R[0], 0.25 + 0.2 * (1 - deep)) : back;
     }
     if (frame(X, Y)) {
@@ -82,6 +91,22 @@ export function draw(p, t, o) {
   // the keystone at the arch's crown, a rune cut into it
   p.rect(AX - 2, ATOP - 3, 4, 4, S[4]);
   p.rect(AX - 2, ATOP + 1, 4, 1, S[1]);
+  if (v === 2) {
+    // the seal: a ring across both leaves, a rune at its heart and three about it, all burning
+    const cy = -22;
+    for (let a = 0; a < 64; a++) {
+      const t = (a / 64) * Math.PI * 2, x = Math.round(AX - 0.5 + Math.cos(t) * 7), y = Math.round(cy + Math.sin(t) * 7);
+      p.px(x, y, a % 8 === 0 ? R[3] : R[2]);
+    }
+    p.glow(AX, cy, 9, R[1], 0.8);
+    rune(p, AX - 2, cy - 2, seed + 4, R);
+    for (let k = 0; k < 3; k++) {
+      const t = -Math.PI / 2 + (k * Math.PI * 2) / 3;
+      rune(p, Math.round(AX - 1.5 + Math.cos(t) * 12), Math.round(cy - 1.5 + Math.sin(t) * 12), seed + k, R);
+    }
+    rune(p, AX - 2, ATOP - 3, seed, R);
+    return;
+  }
   if (v === 0) {
     rune(p, AX - 2, ATOP - 3, seed, R);
     // the lattice: four bars down, two across, rivets where they cross; each bar dark iron with a lit edge

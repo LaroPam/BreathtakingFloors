@@ -18,13 +18,17 @@ const STONE: Record<Biome["id"], string[]> = {
   crypt: ["#1d1a26", "#2a2636", "#363145", "#433d54", "#575070"],
   garden: ["#161c18", "#222a22", "#2e382c", "#3a4636", "#52604a"],
   frost: ["#121a28", "#1c2838", "#283a50", "#344c68", "#52709a"],
+  heart: ["#221a14", "#30251a", "#3e3020", "#4e3d28", "#6a5434"],
+  beyond: ["#16141c", "#22202a", "#302d3a", "#403c4c", "#5a5668"],
 };
 const WALL: Record<Biome["id"], string[]> = {
   crypt: ["#0e0c14", "#1c1826", "#2a2436", "#3a3348", "#4e4660"],
   garden: ["#0c100c", "#182018", "#242e22", "#323e2e", "#465640"],
   frost: ["#0c121c", "#16202e", "#223044", "#2e4058", "#46607e"],
+  heart: ["#120e0a", "#201a12", "#2e261a", "#3e3424", "#56482e"],
+  beyond: ["#0a0910", "#14121c", "#201d2a", "#2c2838", "#403a50"],
 };
-const DEEP: Record<Biome["id"], string> = { crypt: "#ff9a48", garden: "#6af0a0", frost: "#7ac4ff" };
+const DEEP: Record<Biome["id"], string> = { crypt: "#ff9a48", garden: "#6af0a0", frost: "#7ac4ff", heart: "#ffd060", beyond: "#a890ff" };
 
 const rgb = (h: string): [number, number, number] => [parseInt(h.slice(1, 3), 16) / 255, parseInt(h.slice(3, 5), 16) / 255, parseInt(h.slice(5, 7), 16) / 255];
 const hash = (k: number, salt: number) => {

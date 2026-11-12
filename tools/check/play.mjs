@@ -217,9 +217,9 @@ for (const hero of heroes) {
         if (G.state === "play") B.floorT += 1 / 60;
         // a boss that is gone without its death
         if (w.bossIndex() >= 0) (B.wasBoss = true), (B.bossT = (B.bossT ?? 0) + 1 / 60);
+        else if (B.wasBoss && !B.bossKilled && !B.vanished) (B.vanished = true), B.log.push(`${at}: the boss is gone without dying`);
         // how long each boss took (a balance matter: its own line in the report)
         if (B.wasBoss && w.bossIndex() < 0 && B.bossT) ((B.fights ??= []).push(`${w.place.id} ${Math.floor(B.bossT / 60)}:${String(Math.round(B.bossT % 60)).padStart(2, "0")}`), (B.bossT = 0));
-        else if (B.wasBoss && !B.bossKilled && !B.vanished) (B.vanished = true), B.log.push(`${at}: the boss is gone without dying`);
         // every 2 s: the world's numbers make sense
         if (B.frames % 120 === 0) {
           for (let i = 0; i < E.n; i++) {

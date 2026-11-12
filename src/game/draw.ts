@@ -6,10 +6,10 @@ import { heroSprites, lookId, type HeroAnim } from "./heroSprites";
 import { TEAM_HERO } from "./pools";
 import { Batch, rgba, rgbaf, SOFT, withAlpha } from "../engine/renderer";
 import { text } from "../engine/text";
-import { AI, EL_COLOR, ENEMIES, fullWeaponName, LEGENDS, questDef, RARITIES, RelicKind, WEAPONS, type PlaceId } from "./defs";
+import { AI, DOORS, EL_COLOR, ENEMIES, fullWeaponName, LEGENDS, questDef, RARITIES, RelicKind, WEAPONS, type PlaceId } from "./defs";
 import { t as tr, tx } from "./i18n";
 import { FLOOR, LOOK_BRIDGE, LOOK_ICE, LOOK_VEIN, PIT, WALL } from "./map";
-import { BULLET_ANIMS, EYE_H, FLOOR_SQ, LUNGE_DASH, SPAWN_T, type BossBrain, poolSpread, HERO_HIT_Y, HERO_R, B_CRESCENT, B_FIREBALL, B_LANCE, CINE_DUR, D_CHEST, D_EMBER, D_GREEN, D_HEART, D_RED, SANCTUARY_R, STAR_EVERY, TILE, type World } from "./world";
+import { lanceTravel, BULLET_ANIMS, EYE_H, FLOOR_SQ, LUNGE_DASH, SPAWN_T, type BossBrain, poolSpread, HERO_HIT_Y, HERO_R, B_CRESCENT, B_FIREBALL, B_LANCE, CINE_DUR, D_CHEST, D_EMBER, D_GREEN, D_HEART, D_RED, SANCTUARY_R, STAR_EVERY, TILE, type World } from "./world";
 
 export class Scene {
   back = new Batch();
@@ -116,8 +116,10 @@ const FX_LIGHT: Record<string, [number, string, number]> = {
   parry: [30, "#fff0c0", 0.6],
   slam: [90, "#ffb060", 0.8],
 };
+/** The colour of the shafts of light falling into a place from above (none in the crypt). */
+const SHAFT: Partial<Record<PlaceId, string>> = { garden: "#d8ffb0", frost: "#c0e0ff", heart: "#ffe8b0" };
 // the walls' and the room's edges, per biome
-const EDGE: Record<PlaceId, readonly [string, string]> = { crypt: ["#1a1724", "#3a3348"], garden: ["#141a13", "#33402f"], frost: ["#131b28", "#304460"] };
+const EDGE: Record<PlaceId, readonly [string, string]> = { crypt: ["#1a1724", "#3a3348"], garden: ["#141a13", "#33402f"], frost: ["#131b28", "#304460"], heart: ["#1e1610", "#4a3c26"], beyond: ["#12101a", "#2e2a3a"] };
 /** What a drop looks like in each biome: a chasm with embers far down, dark water, the starry void. */
 interface PitLook {
   fill: string;
@@ -130,6 +132,8 @@ const PIT_LOOK: Record<PlaceId, PitLook> = {
   crypt: { fill: "#07060c", deep: "#2a0f0c", kind: "chasm", planks: ["#5a3a24", "#2a1a10", "#7c5634"] },
   garden: { fill: "#0a1c20", deep: "#14383a", kind: "water", planks: ["#5e4428", "#2c2012", "#80603a"] },
   frost: { fill: "#030309", deep: "#14102a", kind: "void", planks: ["#4a6078", "#1c2838", "#8aa6c4"] },
+  heart: { fill: "#0a0604", deep: "#5a3a0a", kind: "chasm", planks: ["#7a6034", "#3a2c14", "#b09050"] },
+  beyond: { fill: "#020206", deep: "#1a1030", kind: "void", planks: ["#4a4458", "#1c1a24", "#7a7490"] },
 };
 /** One tile of a drop. */
 function drawPit(s: Scene, P: PitLook, x: number, y: number, tx: number, ty: number, time: number): void {
@@ -214,6 +218,8 @@ const STAIR_STONE: Record<PlaceId, string[]> = {
   crypt: ["#221e2e", "#3a3550", "#5a5476", "#8a82a8"],
   garden: ["#1c241c", "#344232", "#526650", "#7a9470"],
   frost: ["#1a2434", "#2e4460", "#4a6a90", "#7aa0cc"],
+  heart: ["#2a2018", "#4a3c28", "#6e5c3c", "#a08a5c"],
+  beyond: ["#1a1822", "#2e2a3a", "#4a4458", "#7a7490"],
 };
 /** The lower `h` px of a sprite anchored at its foot (a wall's face as tall as the wall is thick). */
 function clipUp(b: Batch, r: Rect, x: number, y: number, h: number): void {
@@ -329,6 +335,29 @@ export function drawWorld(s: Scene, w: World, camX: number, camY: number, viewW:
     }
   }
 
+  // ---- beyond the light: the sealed doors, their seals burning brighter as the hero comes; the pit, a well of dark
+  // with a rim of stone and pale motes rising out of it
+  for (const d of w.doors) {
+    if (!inView(d.x + TILE, d.y - 20, 60)) continue;
+    const da = anim(`door_${d.kind}`), col = rgba(DOORS.find((q) => q.kind === d.kind)!.color), k = 0.6 + 0.2 * Math.sin(time * 1.6 + d.x) + 0.5 * d.near;
+    s.back.image(da.frames[0][0]!, d.x, d.y);
+    if (da.frames[0][1]) s.glow.image(da.frames[0][1]!, d.x, d.y, 1, 1, 0, rgbaf(1, 1, 1, Math.min(1.4, k)));
+    s.illum.light(d.x + TILE, d.y - 22, 36 + 14 * d.near, 30 + 10 * d.near, withAlpha(col, 0.35 + 0.35 * d.near));
+  }
+  const hole = w.pit;
+  if (hole && inView(hole.x, hole.y, 60)) {
+    const r = hole.r;
+    s.back.disc(hole.x, hole.y + 2, r + 5, (r + 5) * 0.6, rgba("#3a3648"));
+    s.back.disc(hole.x, hole.y + 1, r + 3, (r + 3) * 0.6, rgba("#5a5668"));
+    s.back.disc(hole.x, hole.y, r, r * 0.6, rgba("#020206"));
+    s.back.disc(hole.x, hole.y - 2, r - 3, (r - 3) * 0.5, rgba("#0a0814"));
+    for (let q = 0; q < 8; q++) {
+      const u = (time * 0.35 + q / 8) % 1, a = q * 2.4;
+      s.glow.rect(Math.round(hole.x + Math.cos(a) * r * 0.5 * (1 - u)), Math.round(hole.y - u * 34), 1, 1, rgbaf(0.75, 0.7, 1, 0.8 * Math.sin(u * Math.PI)));
+    }
+    s.illum.light(hole.x, hole.y - 6, 50, 34, rgbaf(0.55, 0.5, 0.9, 0.35 + 0.1 * Math.sin(time)));
+  }
+
   // ---- a secret room's fountain: a stone basin of clear water, glinting; drunk from, it goes still and dark
   const fn = w.fountain;
   if (fn && inView(fn.x, fn.y, 40)) {
@@ -367,7 +396,7 @@ export function drawWorld(s: Scene, w: World, camX: number, camY: number, viewW:
     for (let k = 0; k < 3; k++) {
       const x = ((k + 0.5) / 3) * w.w + Math.sin(k * 7) * 40, len = w.h * 0.9, wid = 46 + k * 10;
       const breathe = 0.12 + 0.04 * Math.sin(time * 0.6 + k * 2);
-      s.illum.push(x, 0, -wid / 2, 0, wid, len, 0, 0, 1, 1, -0.32, SOFT, withAlpha(B.id === "garden" ? rgba("#d8ffb0") : rgba("#c0e0ff"), breathe), 0, 0);
+      s.illum.push(x, 0, -wid / 2, 0, wid, len, 0, 0, 1, 1, -0.32, SOFT, withAlpha(rgba(SHAFT[B.id] ?? "#c0e0ff"), breathe), 0, 0);
     }
 
   // ---- things lying about and growing
@@ -657,7 +686,14 @@ export function drawWorld(s: Scene, w: World, camX: number, camY: number, viewW:
       sx = h.face * (1.4 - 0.4 * Math.min(1, u));
       flash = u < 0.8 ? 1 : 0;
     }
-    if (h.exitT >= 0 && !w.portal && w.stairs) {
+    if (w.pit && w.pit.fall >= 0) {
+      // into the pit: smaller and smaller, gone into the dark
+      const k = Math.max(0, 1 - w.pit.fall / 1.1);
+      sx *= k;
+      sy = k;
+      fade = Math.min(fade, k);
+      show = k > 0.02;
+    } else if (h.exitT >= 0 && !w.portal && w.stairs) {
       // down the stairs: he walks into the dark, step by step
       fade = Math.max(0, 1 - h.exitT / 0.8);
       show = fade > 0.05;
@@ -954,12 +990,12 @@ export function drawWorld(s: Scene, w: World, camX: number, camY: number, viewW:
     const k = Bu.kind[i], a = banims[k], orb = k >= 2 && k <= 5;
     // a lance from the frost orb slides out of it: the part still inside the orb is cut away, so its point comes
     // out of the orb's surface and the rest follows, at full size, rather than the whole of it appearing inside
-    if (k === B_LANCE && fo && lance && Bu.t[i] < 0.4) {
+    if (k === B_LANCE && fo && lance && Bu.t[i] < 0.5) {
       const sp = Math.hypot(Bu.vx[i], Bu.vy[i]) || 1, ux = Bu.vx[i] / sp, uy = Bu.vy[i] / sp, dx = x - fo.x, dy = y - fo.y;
       const along = dx * ux + dy * uy, off = Math.abs(dx * uy - dy * ux), R = lance.evo ? 8.5 : 7;
       if (off < 4 && along > -4) {
         const rot = Math.atan2(Bu.vy[i], Bu.vx[i]), minX = R - along, [c, l] = a.frames[frameAt(a, Bu.t[i])];
-        const fade = Math.min(1, Bu.t[i] / 0.05);
+        const fade = Math.min(1, 0.5 + Bu.t[i] / 0.08);
         if (c) s.color.imageCropLeft(c, x, y, minX, 1, 1, rot, rgbaf(1, 1, 1, fade), 0, y + 14);
         if (l) s.glow.imageCropLeft(l, x, y, minX, 1, 1, rot, rgbaf(1, 1, 1, 0.9 * fade));
         // where it breaks through: a cold glint on the orb's surface while the lance passes it
@@ -970,8 +1006,8 @@ export function drawWorld(s: Scene, w: World, camX: number, camY: number, viewW:
     }
     // a lance from the Book of Elements slides out of its pages the same way: the sprite hangs back from its point,
     // so everything behind the book's face (where it left, LANCE_OUT short of its spawn) is cut away until it is clear
-    if (k === B_LANCE && Bu.team[i] === TEAM_HERO && Bu.t[i] < 0.45) {
-      const sp = Math.hypot(Bu.vx[i], Bu.vy[i]) || 1, ux = Bu.vx[i] / sp, uy = Bu.vy[i] / sp, minX = -(Bu.t[i] * sp + LANCE_OUT);
+    if (k === B_LANCE && Bu.team[i] === TEAM_HERO && Bu.t[i] < 0.5) {
+      const sp = Math.hypot(Bu.vx[i], Bu.vy[i]) || 1, ux = Bu.vx[i] / sp, uy = Bu.vy[i] / sp, minX = -(lanceTravel(Bu.t[i]) * sp + LANCE_OUT);
       const rot = Math.atan2(Bu.vy[i], Bu.vx[i]), [c, l] = a.frames[frameAt(a, Bu.t[i])], fade = Math.min(1, 0.4 + Bu.t[i] / 0.06);
       if (c) s.color.imageCropLeft(c, x, y, minX, 1, 1, rot, rgbaf(1, 1, 1, fade), 0, y + 14);
       if (l) s.glow.imageCropLeft(l, x, y, minX, 1, 1, rot, rgbaf(1, 1, 1, 0.9 * fade));
@@ -1047,6 +1083,11 @@ export function drawWorld(s: Scene, w: World, camX: number, camY: number, viewW:
       s.glow.light(m.x + 0.5, m.y + 0.5, 6, 6, rgbaf(0.7, 1, 0.3, blink * 0.7));
     } else if (B.motes === "snow") {
       s.front.rect(m.x, m.y, m.vy > 0.5 ? 2 : 1, m.vy > 0.5 ? 2 : 1, rgbaf(0.9, 0.95, 1, 0.75));
+    } else if (B.motes === "sparks") {
+      // sparks of light rising and fading, now bright, now gone
+      const k = 0.5 + 0.5 * Math.sin(m.ph * 1.7 + m.vx * 7);
+      s.front.rect(m.x, m.y, 1, 1, rgbaf(1, 0.9, 0.55, 0.3 + 0.6 * k));
+      if (k > 0.7) s.glow.light(m.x + 0.5, m.y + 0.5, 5, 5, rgbaf(1, 0.85, 0.4, (k - 0.7) * 1.6));
     } else s.front.rect(m.x, m.y, 1, 1, rgbaf(0.8, 0.75, 0.9, 0.25 + 0.15 * Math.sin(m.ph)));
   }
 
@@ -1060,10 +1101,11 @@ export function drawWorld(s: Scene, w: World, camX: number, camY: number, viewW:
 }
 
 // ============================================================================================ bosses
-const BOSS_ART = { warden: "warden", treant: "treant", eye: "voideye" } as const;
+const BOSS_ART = { warden: "warden", treant: "treant", eye: "voideye", light: "lastlight" } as const;
 /** A boss's pose for what it is doing. */
 function bossPose(b: BossBrain): string {
-  if (b.act === "summon") return b.kind === "warden" ? "kneel" : b.kind === "treant" ? "cocoon" : "closed";
+  if (b.act === "summon") return b.kind === "warden" ? "kneel" : b.kind === "treant" ? "cocoon" : b.kind === "light" ? "rise" : "closed";
+  if (b.kind === "light") return b.act === "rays" || b.act === "lantern" || b.act === "judgement" || b.act === "nova" ? "cast" : b.act === "dive" ? "slam" : "idle";
   if (b.kind === "warden") return b.act === "windup" || b.act === "hold" ? "windup" : b.act === "strike" || b.act === "recover" || b.act === "spikes" ? "strike" : b.act === "dashwarn" || b.act === "dash" ? "dash" : b.moving ? "walk" : "idle";
   if (b.kind === "treant") return b.act === "roots" || b.act === "spores" ? "cast" : b.act === "rootline" || b.act === "thorns" ? "slam" : "idle";
   return b.act === "beam" || b.act === "cross" ? "charge" : "idle";

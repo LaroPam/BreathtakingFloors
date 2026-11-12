@@ -83,6 +83,8 @@ export enum AI {
   Warden = 13,
   /** The Rotting Treant: rooted, roots out of the ground, spore pods, thorns; walks in its last phase. */
   Treant = 14,
+  /** The Last Light: hovers after the hero, rays, rings from its lantern, columns of light; dives in its later phases. */
+  LastLight = 15,
 }
 export interface EnemyDef {
   id: number;
@@ -141,6 +143,16 @@ const DEFS: Def[] = [
   E({ key: "frog_king", name: { ru: "ЖАБИЙ КОРОЛЬ", en: "THE TOAD KING" }, anim: "frog_king", ai: AI.BossFrog, hp: 2800, speed: 0, xp: 140, glow: "#ff8a2a", scale: 2.2, elite: true, title: { ru: "ВЛАДЫКА ТОПКОГО САДА", en: "LORD OF THE SUNKEN GARDEN" } }),
   E({ key: "warden", name: { ru: "СТРАЖ СКЛЕПА", en: "THE CRYPT WARDEN" }, anim: "warden_0_idle", ai: AI.Warden, hp: 2200, speed: 30, xp: 100, glow: "#78ccf4", scale: 2, elite: true, title: { ru: "КАМЕННЫЙ РЫЦАРЬ, ЧТО СТЕРЕЖЁТ ПРАХ", en: "THE STONE KNIGHT WHO KEEPS THE DUST" } }),
   E({ key: "treant", name: { ru: "ГНИЮЩИЙ ДРЕВЕНЬ", en: "THE ROTTING TREANT" }, anim: "treant_0_idle", ai: AI.Treant, hp: 3300, speed: 16, xp: 140, glow: "#8ad83a", scale: 2, elite: true, title: { ru: "СТАРЕЙШЕЕ ДЕРЕВО ЗАБЫТОГО САДА", en: "THE ELDEST TREE OF THE LOST GARDEN" } }),
+  E({ key: "lastlight", name: { ru: "ПОСЛЕДНИЙ СВЕТ", en: "THE LAST LIGHT" }, anim: "lastlight_0_idle", ai: AI.LastLight, hp: 6200, speed: 30, xp: 260, glow: "#ffd87a", scale: 2, elite: true, title: { ru: "ПЕРВЫЙ, КТО ДОНЁС СВЕТ ДО СЕРДЦА БАШНИ", en: "THE FIRST WHO CARRIED THE LIGHT TO THE TOWER'S HEART" } }),
+  // the tower's heart: everything there gone to light
+  E({ key: "slime_sun", name: { ru: "ЗОЛОТОЙ СЛИЗЕНЬ", en: "GILDED SLIME" }, anim: "slime_sun", ai: AI.Chase, hp: 40, speed: 34, xp: 3, glow: "#ffd04a", scale: 0.65, hops: true }),
+  E({ key: "snake_sun", name: { ru: "СОЛНЕЧНЫЙ ПОЛОЗ", en: "SUN ADDER" }, anim: "snake_sun", ai: AI.Slither, hp: 30, speed: 82, xp: 3, scale: 0.75 }),
+  E({ key: "bat_sun", name: { ru: "СВЕТЛЯК-НЕТОПЫРЬ", en: "GLEAM BAT" }, anim: "bat_sun", ai: AI.Flutter, hp: 22, speed: 70, xp: 2, glow: "#ffe08a", scale: 0.7 }),
+  E({ key: "skull_sun", name: { ru: "ПЫЛАЮЩИЙ ЧЕРЕП", en: "BLAZING SKULL" }, anim: "skull_sun", ai: AI.Shooter, hp: 58, speed: 42, xp: 4, glow: "#ffd04a", every: 2.2, shot: 2, scale: 0.55 }),
+  E({ key: "ghost_sun", name: { ru: "СВЕТЛЫЙ ПРИЗРАК", en: "BRIGHT WRAITH" }, anim: "ghost_sun", ai: AI.Phantom, hp: 52, speed: 48, xp: 4, glow: "#fff0b0", scale: 0.65 }),
+  E({ key: "eye_sun", name: { ru: "ВСЕВИДЯЩЕЕ ОКО", en: "ALL-SEEING EYE" }, anim: "eye_sun", ai: AI.Turret, hp: 96, speed: 16, xp: 6, glow: "#ffb040", every: 3.1, scale: 0.6 }),
+  E({ key: "wisp_sun", name: { ru: "ИСКРА ЗАРИ", en: "DAWN SPARK" }, anim: "wisp_sun", ai: AI.Bomber, hp: 26, speed: 64, xp: 3, glow: "#ffe08a", scale: 0.7 }),
+  E({ key: "moth_sun", name: { ru: "ЗОЛОТАЯ БАБОЧКА", en: "GOLDEN MOTH" }, anim: "moth_sun", ai: AI.Healer, hp: 34, speed: 48, xp: 5, glow: "#ffe08a", scale: 0.7 }),
   E({ key: "eye_void", name: { ru: "ОКО ПУСТОТЫ", en: "THE VOID EYE" }, anim: "voideye_0_idle", ai: AI.Boss, hp: 4600, speed: 26, xp: 200, glow: "#a884ff", scale: 2, elite: true, title: { ru: "ТО, ЧТО СМОТРИТ ИЗ-ПОД БАШНИ", en: "WHAT WATCHES FROM BENEATH THE TOWER" } }),
   // not on any roster: it waits on the floor looking like a chest
   E({ key: "mimic", name: { ru: "МИМИК", en: "MIMIC" }, anim: "mimic", ai: AI.Chase, hp: 240, speed: 62, xp: 30, glow: "#ffd84a", elite: true }),
@@ -154,6 +166,8 @@ export const EN = {
   snakeMoss: id("snake_moss"), wispSpore: id("wisp_spore"), ghostBog: id("ghost_bog"), batIce: id("bat_ice"), ghostIce: id("ghost_ice"),
   eyeFrost: id("eye_frost"), wispFrost: id("wisp_frost"), mothFrost: id("moth_frost"),
   eyeBoss: id("eye_boss"), frogKing: id("frog_king"), eyeVoid: id("eye_void"), warden: id("warden"), treant: id("treant"), mimic: id("mimic"),
+  lastLight: id("lastlight"), slimeSun: id("slime_sun"), snakeSun: id("snake_sun"), batSun: id("bat_sun"), skullSun: id("skull_sun"), ghostSun: id("ghost_sun"),
+  eyeSun: id("eye_sun"), wispSun: id("wisp_sun"), mothSun: id("moth_sun"),
 };
 
 // ------------------------------------------------------------------------------------------------ the tower
@@ -167,7 +181,7 @@ export const EN = {
  * joins after the first brazier, the third after the second. So a floor starts calm, a new enemy arrives one at a
  * time, and the room is at its hardest just before the portal opens.
  */
-export type PlaceId = "crypt" | "garden" | "frost";
+export type PlaceId = "crypt" | "garden" | "frost" | "heart" | "beyond";
 export interface Biome {
   id: PlaceId;
   name: Text;
@@ -180,8 +194,8 @@ export interface Biome {
   /** The ambient light's color (multiplied into the room) and the torches' light. */
   ambient: [number, number, number];
   torchLight: string;
-  /** Floating motes: dust, fireflies and leaves, snow. */
-  motes: "dust" | "fireflies" | "snow";
+  /** Floating motes: dust, fireflies and leaves, snow, sparks of light rising. */
+  motes: "dust" | "fireflies" | "snow" | "sparks";
 }
 export interface PlaceDef extends Biome {
   /** Its tier, 1 at the top: its floors are the depths (tier - 1) * 3 + 1..3. */
@@ -194,6 +208,10 @@ export interface PlaceDef extends Biome {
   gates: GateKind[];
   /** The gift its boss leaves the first time it falls. */
   gift?: GiftId;
+  /** Where the portal after its boss leads, instead of the next tier. */
+  after?: PlaceId;
+  /** A place of one floor, nothing to fight there (the place beyond the light). */
+  single?: boolean;
   /** Each floor's own name and a line for its title card. */
   floors: { name: Text; lore: Text }[];
   /** Each floor's enemies, in three phases, as [enemy, weight]. */
@@ -242,6 +260,39 @@ export const PLACES: PlaceDef[] = [
       [[[EN.slimeIce, 6], [EN.snakeIce, 6], [EN.batIce, 4]], [[EN.skullIce, 4], [EN.wispFrost, 4], [EN.mothFrost, 2]], [[EN.eyeFrost, 3], [EN.ghostIce, 4], [EN.wispFrost, 3]]],
     ],
   },
+  {
+    id: "heart", name: { ru: "СЕРДЦЕ БАШНИ", en: "THE TOWER'S HEART" }, lore: { ru: "ЗДЕСЬ СВЕТ РОДИЛСЯ. ЗДЕСЬ ОН И ЖДЁТ", en: "HERE THE LIGHT WAS BORN. HERE IT WAITS" }, floor: "floor_heart", wall: "wall_heart", pillar: "pillar_heart", torch: "torch_gold", ambient: [1.06, 0.97, 0.84], torchLight: "#ffd27a", motes: "sparks",
+    tier: 4, boss: EN.lastLight, music: 4, gates: ["lattice"], after: "beyond",
+    floors: [
+      { name: { ru: "ЗАЛЫ ОТРАЖЕНИЙ", en: "THE HALLS OF REFLECTION" }, lore: { ru: "ЗДЕСЬ СВЕТ ВПЕРВЫЕ УВИДЕЛ САМ СЕБЯ", en: "HERE THE LIGHT FIRST SAW ITSELF" } },
+      { name: { ru: "ЛИТЕЙНЯ ЗАРИ", en: "THE DAWN FOUNDRY" }, lore: { ru: "СВЕТ ЛИЛИ ЗДЕСЬ, КАК МЕТАЛЛ. ОН ЕЩЁ НЕ ОСТЫЛ", en: "THE LIGHT WAS CAST HERE LIKE METAL. IT HAS NOT COOLED" } },
+      { name: { ru: "ГОРНИЛО СВЕТА", en: "THE CRUCIBLE OF LIGHT" }, lore: { ru: "ПОСЛЕДНИЙ СВЕТ ЖДЁТ ТОГО, КТО ДОНЁС СВОЙ", en: "THE LAST LIGHT WAITS FOR ONE WHO BROUGHT THEIR OWN" } },
+    ],
+    roster: [
+      [[[EN.slimeSun, 8], [EN.snakeSun, 5]], [[EN.batSun, 5], [EN.mothSun, 2]], [[EN.skullSun, 4]]],
+      [[[EN.slimeSun, 6], [EN.snakeSun, 6], [EN.batSun, 4]], [[EN.skullSun, 4], [EN.wispSun, 3], [EN.mothSun, 2]], [[EN.eyeSun, 3], [EN.ghostSun, 3]]],
+      [[[EN.slimeSun, 6], [EN.snakeSun, 6], [EN.batSun, 4]], [[EN.skullSun, 4], [EN.wispSun, 4], [EN.mothSun, 2]], [[EN.eyeSun, 3], [EN.ghostSun, 4], [EN.wispSun, 3]]],
+    ],
+  },
+  // beyond the last light: one quiet hall, sealed doors in its wall, a pit in its floor
+  {
+    id: "beyond", name: { ru: "ЗА СВЕТОМ", en: "BEYOND THE LIGHT" }, lore: { ru: "ЗДЕСЬ БАШНЯ КОНЧАЕТСЯ. ИЛИ НЕТ", en: "HERE THE TOWER ENDS. OR DOES IT" }, floor: "floor_beyond", wall: "wall_beyond", pillar: "pillar_beyond", torch: "torch_pale", ambient: [0.82, 0.82, 1.02], torchLight: "#c8b8ff", motes: "dust",
+    tier: 5, boss: -1, music: 2, gates: [], single: true,
+    floors: [{ name: { ru: "ЗА СВЕТОМ", en: "BEYOND THE LIGHT" }, lore: { ru: "ЗДЕСЬ БАШНЯ КОНЧАЕТСЯ. ИЛИ НЕТ", en: "HERE THE TOWER ENDS. OR DOES IT" } }],
+    roster: [[[], [], []]],
+  },
+];
+/**
+ * The doors in the wall beyond the light: each sealed, saying what it will one day ask for (none opens yet: what lies
+ * behind them comes later).
+ */
+export type DoorKind = "gifts" | "seals" | "deep";
+/** The gifts the whole tower holds (some come with places still to come): what the Door of Gifts waits for. */
+export const GIFTS_IN_TOWER = 5;
+export const DOORS: { kind: DoorKind; name: Text; need: Text; color: string }[] = [
+  { kind: "gifts", color: "#ffd04a", name: { ru: "ДВЕРЬ ДАРОВ", en: "THE DOOR OF GIFTS" }, need: { ru: "ЗАПЕЧАТАНА. ОНА ЖДЁТ ВСЕХ ДАРОВ БАШНИ: {have}/{all}", en: "SEALED. IT WAITS FOR ALL THE TOWER'S GIFTS: {have}/{all}" } },
+  { kind: "seals", color: "#ff6a5a", name: { ru: "ДВЕРЬ ПЕЧАТЕЙ", en: "THE DOOR OF SEALS" }, need: { ru: "ЗАПЕЧАТАНА. ОНА ЖДЁТ ПЕЧАТЕЙ ВСЕХ СТРАЖЕЙ: {have}/{all}", en: "SEALED. IT WAITS FOR EVERY WARDEN'S SEAL: {have}/{all}" } },
+  { kind: "deep", color: "#b58cff", name: { ru: "ДВЕРЬ ГЛУБИНЫ", en: "THE DOOR OF THE DEEP" }, need: { ru: "ЗАПЕЧАТАНА. ЕЁ ВРЕМЯ ЕЩЁ НЕ ПРИШЛО", en: "SEALED. ITS TIME HAS NOT YET COME" } },
 ];
 /**
  * The gifts: each won for good from a boss the first time it falls; each opens its own kind of gate in the tower's
@@ -276,7 +327,7 @@ export const giftFor = (gate: GateKind): GiftDef => GIFTS.find((g) => g.gate ===
 export const giftFrom = (id: GiftId): PlaceDef | undefined => PLACES.find((p) => p.gift === id);
 
 /** The tiers, top down: the places in each, the main one first. */
-export const TIERS: PlaceId[][] = [["crypt"], ["garden"], ["frost"]];
+export const TIERS: PlaceId[][] = [["crypt"], ["garden"], ["frost"], ["heart"]];
 /** Floors in a place. */
 export const PLACE_FLOORS = 3;
 /** The tower's depth: the last floor, its last boss. */
@@ -287,7 +338,7 @@ export interface Stop {
   place: PlaceDef;
   stage: number;
 }
-export const depthOf = (s: Stop): number => (s.place.tier - 1) * PLACE_FLOORS + s.stage;
+export const depthOf = (s: Stop): number => (s.place.single ? DEPTH : (s.place.tier - 1) * PLACE_FLOORS + s.stage);
 /** The floor at a depth on the main way down (tests and the title backdrop start there). */
 export function mainStop(depth: number): Stop {
   const d = Math.max(1, Math.min(DEPTH, Math.floor(depth))), tier = Math.ceil(d / PLACE_FLOORS);
@@ -299,7 +350,9 @@ export function mainStop(depth: number): Stop {
  * the last tier, nowhere.
  */
 export function nextStop(s: Stop, branch?: PlaceId | null): Stop | null {
+  if (s.place.single) return null;
   if (s.stage < PLACE_FLOORS) return { place: s.place, stage: s.stage + 1 };
+  if (s.place.after) return { place: placeDef(s.place.after), stage: 1 };
   const tier = TIERS[s.place.tier];
   if (!tier) return null;
   return { place: placeDef(branch && tier.includes(branch) ? branch : tier[0]), stage: 1 };

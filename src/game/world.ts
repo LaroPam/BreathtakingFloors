@@ -7,12 +7,12 @@ import type { Audio } from "../engine/audio";
 import { rgba, rgbaf } from "../engine/renderer";
 import {
   AI, depthOf, El, EL_COLOR, EN, ENEMIES, evolutionOf, heroDef, mainStop, nextStop, PLACE_FLOORS, QUESTS, RELIC_MAX, RELICS, RelicKind, reactionFor, roster, WEAPON_IDS, WEAPONS,
-  type PlaceDef, type PlaceId, type Stop, type GateKind, giftFor, type Blow, type HeroDef, type Modifier, type QuestKind, type Reaction, type StatId, type TaskId, type WeaponId, MYTHIC, RARITIES, rollRarity, UNIQUES, type Perk,
+  type PlaceDef, type PlaceId, type Stop, type GateKind, giftFor, DOORS, type DoorKind, type Blow, type HeroDef, type Modifier, type QuestKind, type Reaction, type StatId, type TaskId, type WeaponId, MYTHIC, RARITIES, rollRarity, UNIQUES, type Perk,
 } from "./defs";
 import { getLang, t as tr } from "./i18n";
 import { Bullets, Drops, Enemies, Grid, Particles, TEAM_FOE, TEAM_HERO } from "./pools";
 import { Rng } from "./rng";
-import { buildMap, Flow, FLOOR, LOOK_ICE, MAP_PLANS, TileMap, WALL, type Area } from "./map";
+import { BEYOND_DOORS, BEYOND_PIT, BEYOND_TOP, buildBeyond, buildMap, Flow, FLOOR, LOOK_ICE, MAP_PLANS, TileMap, WALL, type Area } from "./map";
 
 export const TILE = 16;
 // bullet kinds (what they look like)
@@ -29,7 +29,7 @@ BULLET_ANIMS.push("arrow", "fireball");
 const ATK_FPS = 20;
 const ELEMENTS = [El.Fire, El.Frost, El.Storm, El.Venom, El.Holy, El.Void];
 /** What the floor kicks up under the feet, per biome. */
-const DUST: Record<PlaceId, readonly [string, string]> = { crypt: ["#6a6078", "#4a4258"], garden: ["#6a7a46", "#4a5a30"], frost: ["#d8e8f8", "#a8c0dc"] };
+const DUST: Record<PlaceId, readonly [string, string]> = { crypt: ["#6a6078", "#4a4258"], garden: ["#6a7a46", "#4a5a30"], frost: ["#d8e8f8", "#a8c0dc"], heart: ["#c8a868", "#8a6a3a"], beyond: ["#6a6680", "#3a3648"] };
 /** The sound each element makes when a blow lands with it. */
 const EL_SFX = ["hit", "burn", "freeze", "zap", "venom", "holy", "void"] as const;
 const ORB_TRAIL = ["", "", "#ff5a6a", "#c684ff", "#8ad83a", "#78ccf4"];
@@ -130,7 +130,7 @@ export interface Erupt {
 /** A boss's mind: its phase (0..2), what it is doing and since when, and what it is aiming at. */
 export interface BossBrain {
   uid: number;
-  kind: "warden" | "treant" | "eye";
+  kind: "warden" | "treant" | "eye" | "light";
   phase: number;
   act: string;
   t: number;
@@ -154,6 +154,14 @@ export const FLOOR_SQ = 0.72;
 export const EYE_H = 66;
 /** How long a newcomer takes to gather out of grey matter (draw.ts); till then it neither moves nor harms. */
 export const SPAWN_T = 0.7;
+/**
+ * The hero's lances (from the frost orb, from the Book of Elements) do not leave at full speed: over their first
+ * LANCE_EASE seconds they slide out of what made them, slow at first, then are loosed. `lanceTravel(t)` is how far one
+ * has gone by then, in seconds at full speed (the drawing crops them by it).
+ */
+export const LANCE_EASE = 0.16;
+const lanceRamp = (t: number): number => (t >= LANCE_EASE ? 1 : 0.15 + 0.85 * (t / LANCE_EASE) ** 2);
+export const lanceTravel = (t: number): number => (t >= LANCE_EASE ? LANCE_EASE * (0.15 + 0.85 / 3) + (t - LANCE_EASE) : 0.15 * t + (0.85 * t ** 3) / (3 * LANCE_EASE ** 2));
 /** An elite's lunge: it stops and shivers (wind-up), then rushes along the line to the hero. */
 export const LUNGE_WIND = 0.42, LUNGE_DASH = 0.34;
 /** How long a dash pressed too soon waits for its chance (s). */
@@ -349,6 +357,22 @@ export interface Gate {
   sayT: number;
   room: Room;
 }
+/** A sealed door in the wall beyond the light: it stirs as the hero comes and says what it waits for. */
+export interface Door {
+  kind: DoorKind;
+  /** As a gate's: its two wall columns' left edge and the wall's foot (px). */
+  x: number;
+  y: number;
+  near: number;
+  sayT: number;
+}
+/** The pit beyond the light: step in and the tower is done. `fall` counts up once the hero is falling (-1 before). */
+export interface Pit {
+  x: number;
+  y: number;
+  r: number;
+  fall: number;
+}
 /** A healing fountain in a secret room: one long drink restores the hero. */
 export interface Fountain {
   x: number;
@@ -431,6 +455,8 @@ export interface WorldEvents {
   secret(state: "found" | "opened"): void;
   /** The floor's gate: the hero came to it without its gift, or it opened (its vault is found). */
   gate(kind: GateKind, state: "locked" | "opened"): void;
+  /** A sealed door beyond the light: the hero came to it. */
+  door(kind: DoorKind): void;
   /** A spirit's quest was taken, done or failed. */
   quest(q: Quest): void;
   /** Something the day's tasks count happened. */
@@ -632,6 +658,9 @@ export class World {
   curse = false;
   /** The floor's gate, if it has one. */
   gate: Gate | null = null;
+  /** Beyond the light: its sealed doors and its pit. */
+  doors: Door[] = [];
+  pit: Pit | null = null;
   /** The gifts the player holds (the game sets them at a run's start and when one is won). */
   gifts = new Set<string>();
   /** The weapons, relics and artifacts not yet opened by the player (arsenal keys): kept out of this run's pools. */
@@ -700,8 +729,10 @@ export class World {
     this.arrivedBy = via;
     this.mod = mod;
     // the floor's own map, built the way its plan says (a narrow stair makes it smaller)
-    const plan = MAP_PLANS[stop.place.id][stop.stage - 1];
-    this.map = buildMap({ ...plan, cols: Math.round(plan.cols * mod.size), rows: Math.round(plan.rows * mod.size) }, this.rng);
+    const plan = stop.place.single ? null : MAP_PLANS[stop.place.id][stop.stage - 1];
+    this.map = plan ? buildMap({ ...plan, cols: Math.round(plan.cols * mod.size), rows: Math.round(plan.rows * mod.size) }, this.rng) : buildBeyond();
+    this.doors = [];
+    this.pit = null;
     this.toHero = new Flow(this.map, false);
     this.toHeroFly = new Flow(this.map, true);
     this.toGoal = new Flow(this.map, false);
@@ -742,7 +773,7 @@ export class World {
     this.wave = null;
     this.waitSaid = false;
     // what to do here, once the hero has arrived (the first floor says it in full)
-    this.hint = { text: tr(floor === 1 && this.gentle ? "hintFloor1" : "hintFloor"), t: -1.4, dur: floor === 1 && this.gentle ? 7 : 4.5 };
+    this.hint = { text: tr(stop.place.single ? "hintBeyond" : floor === 1 && this.gentle ? "hintFloor1" : "hintFloor"), t: -1.4, dur: floor === 1 && this.gentle ? 7 : stop.place.single ? 6 : 4.5 };
     const h = this.hero;
     h.x = this.map.start[0] * TILE + 8;
     h.y = this.map.start[1] * TILE + 12;
@@ -763,8 +794,8 @@ export class World {
     this.layout();
     this.toHero.compute(this.map.start[0], this.map.start[1]);
     this.toHeroFly.compute(this.map.start[0], this.map.start[1]);
-    // a few enemies already waiting, far off
-    for (let i = 0; i < 1 + Math.floor(floor / 3); i++) this.spawnAt(this.pickEnemy(0), ...this.edgePoint(300));
+    // a few enemies already waiting, far off (none beyond the light)
+    if (!stop.place.single) for (let i = 0; i < 1 + Math.floor(floor / 3); i++) this.spawnAt(this.pickEnemy(0), ...this.edgePoint(300));
   }
 
   /**
@@ -772,6 +803,7 @@ export class World {
    * map, spread by walking distance from the way in.
    */
   private layout(): void {
+    if (this.place.single) return this.layoutBeyond();
     const R = this.rng, m = this.map, W = this.w, H = this.h, [c0, r0] = m.start, sx = c0 * TILE + 8, sy = r0 * TILE + 8;
     const walk = new Flow(m, false);
     walk.compute(c0, r0);
@@ -926,7 +958,7 @@ export class World {
       this.decor.push({ anim: name, x: Math.round(x), y: Math.round(y), frame: R.int(0, frames - 1), flip: R.chance(0.5) ? -1 : 1, flat, phase: R.range(0, 5) });
     }
     // the place's own lights (candles, glowing mushrooms, crystals) in pairs, at two opposite corners of each chamber
-    const glowKind = id === "crypt" ? "candle" : id === "garden" ? "mushrooms" : "crystal";
+    const glowKind = id === "garden" ? "mushrooms" : id === "frost" ? "crystal" : "candle";
     for (const a of route) {
       const flipC = R.chance(0.5);
       for (const [u, v] of flipC ? [[0, 0], [1, 1]] : [[1, 0], [0, 1]]) {
@@ -970,7 +1002,7 @@ export class World {
       (!this.spirit || (x - this.spirit.x) ** 2 + (y - this.spirit.y) ** 2 > 36 * 36);
     // things to break: urns in twos and threes at the foot of the walls and by the columns
     this.urns = [];
-    const urnKinds = this.place.id === "crypt" ? [0, 0, 3] : this.place.id === "garden" ? [1] : [2, 2, 3];
+    const urnKinds = this.place.id === "garden" ? [1] : this.place.id === "frost" ? [2, 2, 3] : [0, 0, 3];
     const groups = 3 + Math.round(ground.length / 300);
     for (let g = 0, tries = 0; g < groups && tries < 160; tries++) {
       const pil = this.pillars.length && R.chance(0.35) ? R.pick(this.pillars) : null, face = faces.length ? faces[Math.floor(R.next() * faces.length)] : null;
@@ -2313,6 +2345,7 @@ export class World {
   // ============================================================================================ urns, chests, the altar
   private updateProps(dt: number): void {
     const h = this.hero;
+    if (this.place.single) this.updateBeyond(dt);
     if (h.dead || h.exitT >= 0) return;
     // a dash goes through urns
     if (h.dashT > 0) this.smashUrns(h.x, h.y - 8, 12);
@@ -2503,6 +2536,69 @@ export class World {
       const rarity = Math.max(2, rollRarity(R.next(), this.floor, 0.35));
       this.racks.push({ x: Math.round(mx), y: Math.round(my), weapon, el: rarity >= MYTHIC ? UNIQUES[weapon].el : R.pick(ELEMENTS), legend: false, rarity, progress: 0, armed: true });
       for (let q = 0; q < 4; q++) this.drops.add(D_EMBER, mx + R.range(-36, 36), my + R.range(-16, 16), 1, 0, 0);
+    }
+  }
+  /**
+   * The hall beyond the light: nothing to light, nothing to fight; its columns, its torches between the three sealed
+   * doors in its back wall, the pit in the middle of its floor, dust in the air.
+   */
+  private layoutBeyond(): void {
+    const m = this.map, R = this.rng, y = BEYOND_TOP * TILE;
+    this.braziers = [];
+    this.stairs = null;
+    this.racks = [];
+    this.urns = [];
+    this.chests = [];
+    this.decor = [];
+    this.spirit = null;
+    this.altar = null;
+    this.secret = null;
+    this.gate = null;
+    this.fountain = null;
+    this.guardianUid = 0;
+    this.pillars = m.columns.map(([x, py]) => ({ x, y: py, r: 10 }));
+    this.torches = [7, 16, 26, 35].map((c): [number, number] => [c * TILE + 8, y]);
+    this.doors = BEYOND_DOORS.map((c, k) => ({ kind: DOORS[k].kind, x: c * TILE, y, near: 0, sayT: 9 }));
+    this.pit = { x: BEYOND_PIT[0] * TILE, y: BEYOND_PIT[1] * TILE + 8, r: 24, fall: -1 };
+    this.motes = [];
+    for (let k = 0; k < 90; k++) this.motes.push({ x: R.range(0, this.w), y: R.range(-40, this.h), vx: R.range(-1, 1), vy: R.range(-1, 1), ph: R.range(0, 6.3) });
+  }
+  /**
+   * Beyond the light: a door stirs as the hero comes and says what it waits for; the pit takes the hero who steps in,
+   * and the tower is done.
+   */
+  private updateBeyond(dt: number): void {
+    const h = this.hero, p = this.pit;
+    for (const d of this.doors) {
+      const near = Math.abs(h.x - d.x - TILE) < 26 && h.y - d.y > -4 && h.y - d.y < 34;
+      d.near += ((near ? 1 : 0) - d.near) * Math.min(1, dt * 5);
+      d.sayT += dt;
+      if (near && d.sayT > 5 && !h.dead) {
+        d.sayT = 0;
+        this.audio.play("deny", 0.7);
+        this.ev.door(d.kind);
+      }
+    }
+    if (!p) return;
+    if (p.fall < 0) {
+      // a step over its edge is enough
+      const dx = (h.x - p.x) / p.r, dy = (h.y - p.y) / (p.r * 0.6);
+      if (dx * dx + dy * dy < 0.6 && h.arriveT > 1 && !h.dead && !this.won) {
+        p.fall = 0;
+        h.invuln = 99;
+        h.atk = -1;
+        this.audio.play("portal", 0.5);
+      }
+      return;
+    }
+    // falling: drawn to its middle, smaller and smaller, then gone; the tower is done
+    p.fall += dt;
+    h.vx = h.vy = 0;
+    h.x += (p.x - h.x) * Math.min(1, dt * 6);
+    h.y += (p.y - h.y) * Math.min(1, dt * 6);
+    if (p.fall >= 1.4 && !this.won) {
+      this.won = true;
+      this.ev.victory();
     }
   }
   /** The gate is open: the passage behind it is cut through to its vault, the vault lit and full. */
@@ -3276,6 +3372,7 @@ export class World {
           case AI.Boss:
           case AI.Warden:
           case AI.Treant:
+          case AI.LastLight:
             this.bossBrain(i, dt, dist);
             break;
           case AI.BossFrog:
@@ -3404,7 +3501,7 @@ export class World {
   private brainFor(i: number): BossBrain {
     const E = this.enemies, ai = ENEMIES[E.type[i]].ai;
     if (!this.brain || this.brain.uid !== E.uid[i])
-      this.brain = { uid: E.uid[i], kind: ai === AI.Warden ? "warden" : ai === AI.Treant ? "treant" : "eye", phase: 0, act: "idle", t: 0, init: false, n: 0, invuln: false, ang: 0, ax: 0, ay: 0, cd: 1.4, plan: 0, combo: 0, moving: false };
+      this.brain = { uid: E.uid[i], kind: ai === AI.Warden ? "warden" : ai === AI.Treant ? "treant" : ai === AI.LastLight ? "light" : "eye", phase: 0, act: "idle", t: 0, init: false, n: 0, invuln: false, ang: 0, ax: 0, ay: 0, cd: 1.4, plan: 0, combo: 0, moving: false };
     return this.brain;
   }
   private act(b: BossBrain, act: string, cd = 0): void {
@@ -3415,7 +3512,7 @@ export class World {
   }
   /** The colour of a boss's warnings: its own light, hotter as it changes. */
   private bossCol(b: BossBrain): number {
-    return rgba(b.kind === "warden" ? (b.phase === 0 ? "#78ccf4" : "#ff6a2a") : b.kind === "treant" ? (b.phase === 2 ? "#b070e0" : "#c8e050") : "#a884ff");
+    return rgba(b.kind === "warden" ? (b.phase === 0 ? "#78ccf4" : "#ff6a2a") : b.kind === "treant" ? (b.phase === 2 ? "#b070e0" : "#c8e050") : b.kind === "light" ? (b.phase === 2 ? "#c890ff" : b.phase === 1 ? "#ffb040" : "#ffe08a") : "#a884ff");
   }
   private bossBrain(i: number, dt: number, dist: number): void {
     const E = this.enemies, b = this.brainFor(i);
@@ -3431,6 +3528,7 @@ export class World {
     if (b.act === "summon") this.summoning(i, b);
     else if (b.kind === "warden") this.warden(i, b, dt, dist);
     else if (b.kind === "treant") this.treant(i, b, dt, dist);
+    else if (b.kind === "light") this.lastLight(i, b, dt, dist);
     else this.voidEye(i, b, dt, dist);
     this.keepBoss(i, dt);
     b.moving = dt > 0 && Math.hypot(E.x[i] - x0, E.y[i] - y0) / dt > 5;
@@ -3458,7 +3556,7 @@ export class World {
     // a wave of its servants every so often, each first shown where it will rise
     if (b.n < waves && b.t >= 0.6 + b.n * ((dur - 1.6) / waves)) {
       b.n++;
-      const kinds = b.kind === "warden" ? [EN.skull, EN.bat, EN.slime] : b.kind === "treant" ? [EN.frog, EN.snakeMoss, EN.wispSpore] : [EN.ghostIce, EN.wisp, EN.batIce];
+      const kinds = b.kind === "warden" ? [EN.skull, EN.bat, EN.slime] : b.kind === "treant" ? [EN.frog, EN.snakeMoss, EN.wispSpore] : b.kind === "light" ? [EN.wispSun, EN.batSun, EN.skullSun] : [EN.ghostIce, EN.wisp, EN.batIce];
       for (let k = 0; k < 2 + b.phase; k++) {
         let x = 0, y = 0, ok = false;
         for (let q = 0; q < 20 && !ok; q++) {
@@ -3741,6 +3839,119 @@ export class World {
     }
   }
 
+  // ---- the Last Light
+  /**
+   * It hovers after the hero at a little distance and answers with light: rays out of its breast in a fan that
+   * turns (thin lines first), rings of bolts from its lantern, columns of light falling on and about the hero (rings
+   * first); from its second phase it rises and comes down where the hero stood (a ring first), with a wave of bolts;
+   * in its last, a double spiral of bolts turning both ways.
+   */
+  private lastLight(i: number, b: BossBrain, dt: number, dist: number): void {
+    const E = this.enemies, h = this.hero, d = ENEMIES[E.type[i]], P = b.phase, col = this.bossCol(b), k = 1 + 0.15 * P;
+    const cx = E.x[i], cy = E.y[i] - 80, ang = Math.atan2(h.y - HERO_HIT_Y - cy, h.x - cx), orb = P === 2 ? B_ORB_VIOLET : B_ORB_RED;
+    E.face[i] = h.x < E.x[i] ? -1 : 1;
+    // between its acts it drifts after the hero, keeping a little way off and circling
+    if (b.act === "idle" || b.act === "recover") {
+      const want = dist > 120 ? 1 : dist < 70 ? -1 : 0, ux = (h.x - E.x[i]) / (dist || 1), uy = (h.y - E.y[i]) / (dist || 1);
+      E.x[i] += (ux * want * d.speed - uy * 12) * dt;
+      E.y[i] += (uy * want * d.speed + ux * 12) * dt;
+    }
+    switch (b.act) {
+      case "idle": {
+        if (b.cd > 0) break;
+        const plans = [["lantern", "rays", "judgement"], ["dive", "rays", "lantern", "judgement"], ["dive", "nova", "rays", "judgement", "lantern"]][P];
+        this.act(b, plans[b.plan++ % plans.length]);
+        break;
+      }
+      case "rays": {
+        // a fan of rays all round, turning: the thin lines first, then the light
+        if (!b.init) {
+          b.init = true;
+          const n = [6, 8, 10][P], spin = (this.rng.chance(0.5) ? 1 : -1) * [0.3, 0.4, 0.5][P];
+          for (let q = 0; q < n; q++) {
+            const a = ang + Math.PI / n + (q * Math.PI * 2) / n;
+            this.warn({ kind: "beam", x: cx, y: cy, x2: cx + Math.cos(a) * 320, y2: cy + Math.sin(a) * 320, r: 2, dur: 0.9, col, fire: () => {
+              const j = this.indexOf(b.uid);
+              if (j >= 0) this.beams.push({ uid: b.uid, x: E.x[j], y: E.y[j] - 80, ang: a, len: 320, w: 12, t: 1.8, dur: 1.8, spin, col });
+            } });
+          }
+          this.audio.play("portal", 1.8);
+        }
+        if (b.t >= 2.9) this.act(b, "recover");
+        break;
+      }
+      case "lantern": {
+        // rings of bolts from the lantern, each a little turned from the last
+        const rings = [2, 3, 3][P], every = [0.55, 0.45, 0.4][P];
+        if (b.t >= 0.35 + b.n * every && b.n < rings) {
+          const m = [14, 16, 18][P];
+          for (let q = 0; q < m; q++) this.shoot(cx, cy - 36, ((q + b.n * 0.5) / m) * Math.PI * 2, 70 * k, orb, 4);
+          this.addFx("heal_ring", cx, cy - 36, { tint: col, glow: 0.9, sx: 0.6, sy: 0.6 });
+          this.audio.play("enemyShot");
+          b.n++;
+        }
+        if (b.t >= 0.35 + rings * every + 0.4) (b.n = 0), this.act(b, "recover");
+        break;
+      }
+      case "judgement": {
+        // columns of light: on the hero first, then about him, one after another, each shown first
+        const n = [3, 5, 7][P], every = [0.34, 0.28, 0.24][P];
+        if (b.t >= b.n * every && b.n < n) {
+          const a = this.rng.range(0, Math.PI * 2), r = b.n === 0 ? 0 : this.rng.range(30, 70), x = h.x + h.vx * 0.2 + Math.cos(a) * r, y = h.y + h.vy * 0.2 + Math.sin(a) * r * FLOOR_SQ;
+          b.n++;
+          if (!this.map.wall(x, y))
+            this.warnCircle(x, y, 20, 0.7, col, () => {
+              this.addFx("smite", x, y, { glow: 1, tint: col, sx: 0.8, sy: 0.8 });
+              if (this.heroIn(x, y, 20)) this.hurtHero(2);
+              this.shake = Math.max(this.shake, 0.25);
+              this.audio.play("boom", 1.3);
+            });
+        }
+        if (b.t >= n * every + 0.8) (b.n = 0), this.act(b, "recover");
+        break;
+      }
+      case "dive": {
+        // up and gone for a moment, a ring where the hero stood; down there with a wave of bolts
+        if (!b.init) {
+          b.init = true;
+          b.ax = h.x;
+          b.ay = h.y;
+          this.warnCircle(b.ax, b.ay, 40, 0.9, col, () => {
+            const j = this.indexOf(b.uid);
+            if (j < 0) return;
+            if (!this.map.wall(b.ax, b.ay)) (E.x[j] = b.ax), (E.y[j] = b.ay);
+            this.addFx("slam", E.x[j], E.y[j], { sx: 1, sy: 1, glow: 0.9, tint: col });
+            if (this.heroIn(E.x[j], E.y[j], 40)) this.hurtHero(2);
+            const m = [0, 12, 16][P];
+            for (let q = 0; q < m; q++) this.shoot(E.x[j], E.y[j] - 10, (q / m) * Math.PI * 2, 80 * k, orb, 4);
+            this.shake = Math.max(this.shake, 0.8);
+            this.flash = Math.max(this.flash, 0.3);
+            this.audio.play("boom", 0.7);
+          });
+          this.audio.play("dash", 0.6);
+        }
+        if (b.t >= 1.5) this.act(b, "recover");
+        break;
+      }
+      case "nova": {
+        // two spirals of bolts turning against each other
+        E.cd[i] -= dt;
+        if (E.cd[i] <= 0) {
+          E.cd[i] = 0.14;
+          for (let a = 0; a < 3; a++) {
+            this.shoot(cx, cy - 36, E.t[i] * 1.5 + (a * Math.PI * 2) / 3, 68, orb, 3);
+            this.shoot(cx, cy - 36, -E.t[i] * 1.5 + (a * Math.PI * 2) / 3 + 0.5, 68, B_ORB_RED, 3);
+          }
+        }
+        if (b.t >= 2.6) this.act(b, "recover");
+        break;
+      }
+      case "recover":
+        if (b.t >= [0.8, 0.6, 0.5][P]) this.act(b, "idle", [1.3, 1.0, 0.8][P]);
+        break;
+    }
+  }
+
   // ---- the Void Eye
   private voidEye(i: number, b: BossBrain, dt: number, dist: number): void {
     const E = this.enemies, h = this.hero, d = ENEMIES[E.type[i]], P = b.phase, col = this.bossCol(b), k = 1 + 0.15 * P;
@@ -3863,8 +4074,10 @@ export class World {
     for (let i = B.n - 1; i >= 0; i--) {
       B.t[i] += dt;
       B.life[i] -= dt;
-      B.x[i] += B.vx[i] * dt;
-      B.y[i] += B.vy[i] * dt;
+      // (a lance of the hero's eases out of the orb or the book before it flies)
+      const ease = B.kind[i] === B_LANCE && B.team[i] === TEAM_HERO ? lanceRamp(B.t[i]) : 1;
+      B.x[i] += B.vx[i] * dt * ease;
+      B.y[i] += B.vy[i] * dt * ease;
       const x = B.x[i], y = B.y[i];
       if (B.life[i] <= 0 || x < -20 || y < -40 || x > this.w + 20 || y > this.h + 20) {
         B.remove(i);
@@ -3873,7 +4086,7 @@ export class World {
       // trails: fire sheds embers, ice sheds frost, arrows and crescents a thin wake, enemy orbs a faint glimmer
       const kind = B.kind[i], R = this.rng;
       if (B.team[i] === TEAM_HERO) {
-        const rate = kind === B_FIREBALL ? 70 : kind === B_LANCE ? 40 : kind === B_ARROW ? 30 : 22;
+        const rate = kind === B_FIREBALL ? 70 : kind === B_LANCE ? (B.t[i] < LANCE_EASE ? 0 : 40) : kind === B_ARROW ? 30 : 22;
         if (R.chance(dt * rate)) {
           const col = kind === B_FIREBALL ? R.pick(FIRE_TRAIL) : kind === B_LANCE ? R.pick(ICE_TRAIL) : B.el[i] ? rgba(EL_COLOR[B.el[i] as El]) : kind === B_ARROW ? rgba("#d8d0e8", 0.8) : rgba("#ffe08a");
           this.parts.add(x + R.range(-1.5, 1.5), y + R.range(-1.5, 1.5), -B.vx[i] * 0.08 + R.range(-6, 6), -B.vy[i] * 0.08 + (kind === B_FIREBALL ? -14 : R.range(-6, 6)), R.range(0.15, kind === B_FIREBALL ? 0.4 : 0.28), col, kind === B_FIREBALL && R.chance(0.4) ? 2 : 1, 0, 1);
@@ -4111,6 +4324,9 @@ export class World {
       } else if (kind === "fireflies") {
         m.x += Math.sin(m.ph * 0.9 + m.vx * 6) * 14 * dt;
         m.y += Math.cos(m.ph * 0.7 + m.vy * 6) * 10 * dt;
+      } else if (kind === "sparks") {
+        m.x += Math.sin(m.ph * 0.6 + m.vx * 5) * 6 * dt;
+        m.y -= (10 + m.vy * 4) * dt;
       } else {
         m.x += (6 + m.vx * 4) * dt;
         m.y += (16 + m.vy * 5) * dt;
@@ -4165,6 +4381,7 @@ export class World {
    * unlit brazier along the way.
    */
   objective(): [number, number] | null {
+    if (this.pit) return this.pit.fall < 0 ? [this.pit.x, this.pit.y] : null;
     if (this.portal) return [this.portal.x, this.portal.y];
     if (this.stairs?.open) return [this.stairs.x, this.stairs.y];
     // a boss up: the way to it, while the hero is far from it
@@ -4363,7 +4580,7 @@ export class World {
   }
 
   private director(dt: number): void {
-    if (this.hero.dead || this.cleared || this.won || this.hero.exitT >= 0 || this.holdSpawns) return;
+    if (this.hero.dead || this.cleared || this.won || this.hero.exitT >= 0 || this.holdSpawns || this.place.single) return;
     const E = this.enemies, f = this.floor, boss = this.bossIndex() >= 0;
     // the stairs' and the curse's "more enemies" count everywhere: in the waves, by the boss and between waves
     const more = this.mod.spawn * (this.curse ? 1.25 : 1) * (this.mutator === "swarm" ? 1.5 : 1) * (this.gentle && f === 1 ? 0.65 : 1);

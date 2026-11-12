@@ -516,7 +516,7 @@ export function drawHud(b: Batch, w: World, W: number, H: number, time: number, 
   // (a narrow screen, a phone upright: the plate stands in the room between the vitals and the timer, and says only
   // the floor's number: its name was on the floor's card a moment ago, and would not fit there)
   const narrow = W < 300, timerW = quiet ? 0 : Math.max(measure(fmtTime(w.time)), measure(String(w.kills))) + 26;
-  const floorLine = narrow ? `${t("floor")} ${w.floor}` : `${t("floor")} ${w.floor}  ·  ${tx(floorText(w.stop).name)}`, bi = w.bossIndex();
+  const floorLine = w.place.single ? tx(w.place.name) : narrow ? `${t("floor")} ${w.floor}` : `${t("floor")} ${w.floor}  ·  ${tx(floorText(w.stop).name)}`, bi = w.bossIndex();
   const intro = Math.max(0, Math.min(1, (6.5 - w.time) / 0.5)), e = intro * intro * (3 - 2 * intro);
   const bossName = bi >= 0 ? tx(ENEMIES[w.enemies.type[bi]].name) : "";
   const small = Math.max(w.portal ? measure(t("portalOpen"), "mini") + 12 : bi >= 0 ? measure(bossName, "mini") + 22 : w.braziers.length * 14 + 10, 48);
@@ -633,6 +633,52 @@ function roundButton(b: Batch, x: number, y: number, r: number, k: number, lit: 
   }
 }
 
+/**
+ * The ability's lantern on its button, drawn pixel by pixel round its exact middle: a ring to hang by, a cap, a frame
+ * of iron round panes of glass, a flame inside. The flame grows and the glass warms as the ability charges (k, 0..1),
+ * flickering all the while; full, the lantern blazes, a halo round it and sparks rising off it.
+ */
+function lanternBadge(b: Batch, x: number, y: number, k: number, time: number): void {
+  const cx = Math.round(x), cy = Math.round(y), full = k >= 1, ink = rgba("#0b0a12"), iron = rgba("#4a4058"), lit = rgba("#7a6c8a");
+  const flick = Math.sin(time * 13) * 0.5 + Math.sin(time * 7.3 + 1) * 0.5;
+  if (k > 0.05) glow(b, cx, cy + 1, 9 + 5 * k, 9 + 5 * k, rgba(full ? "#ffd27a" : "#ff9a40"), (full ? 0.55 + 0.15 * Math.sin(time * 5) : 0.3) * k);
+  // the ring and the cap
+  b.rect(cx - 1, cy - 11, 2, 1, ink);
+  b.rect(cx - 2, cy - 10, 1, 2, ink);
+  b.rect(cx + 1, cy - 10, 1, 2, ink);
+  b.rect(cx - 3, cy - 8, 6, 2, ink);
+  b.rect(cx - 2, cy - 8, 4, 1, lit);
+  b.rect(cx - 4, cy - 6, 8, 1, ink);
+  // the frame: iron sides round the glass, darker edges outside
+  b.rect(cx - 5, cy - 5, 10, 10, ink);
+  b.rect(cx - 4, cy - 5, 1, 10, iron);
+  b.rect(cx + 3, cy - 5, 1, 10, iron);
+  // the panes: dark when cold, warm with the flame
+  const pane = rgbaf(0.2 + 0.75 * k, 0.16 + 0.5 * k, 0.24 + 0.1 * k, 1);
+  b.rect(cx - 3, cy - 5, 6, 10, pane);
+  b.rect(cx - 3, cy - 5, 1, 10, rgbaf(0.35 + 0.6 * k, 0.3 + 0.5 * k, 0.4, 1));
+  // the flame: a drop of fire standing on the wick, taller with the charge, swaying
+  const fh = Math.round(2 + 5 * k + (k > 0.05 ? flick * 0.8 : 0)), sway = k > 0.05 ? Math.round(flick * 0.6) : 0;
+  if (k > 0.02) {
+    // (from the wick up: a round base three wide, white at its heart; narrowing, yellow; a tip of orange that sways)
+    for (let r = 0; r < fh; r++) {
+      const u = r / fh, wdt = u < 0.4 ? 3 : u < 0.75 ? 2 : 1, yy = cy + 3 - r, xx = cx - (wdt === 3 ? 2 : 1) + (u >= 0.5 ? sway : 0);
+      b.rect(xx, yy, wdt, 1, u < 0.4 ? rgba("#ffb040") : u < 0.75 ? rgba("#ffd060") : rgba("#e8601c"));
+      if (wdt === 3) b.rect(xx + 1, yy, 1, 1, rgba("#fff6c8"));
+    }
+  }
+  b.rect(cx - 1, cy + 4, 2, 1, rgba("#2a2230"));
+  // the base
+  b.rect(cx - 5, cy + 5, 10, 2, ink);
+  b.rect(cx - 4, cy + 5, 8, 1, iron);
+  // full: sparks rising off it
+  if (full)
+    for (let q = 0; q < 3; q++) {
+      const u = (time * 0.9 + q / 3) % 1;
+      b.rect(Math.round(cx - 3 + q * 3 + Math.sin(time * 3 + q) * 1.5), Math.round(cy - 10 - u * 10), 1, 1, rgbaf(1, 0.85, 0.45, 1 - u));
+    }
+}
+
 /** On a touch screen: the two sticks where the thumbs are, and the dash, Overdrive and pause buttons. */
 export function drawTouch(b: Batch, input: Input, w: World, W: number, H: number, time: number): void {
   const R = input.stickRadius;
@@ -654,8 +700,8 @@ export function drawTouch(b: Batch, input: Input, w: World, W: number, H: number
   b.image(icon("hud", "stamina"), dashX, dashY, 2, 2, 0, ready ? 0xffffffff : rgbaf(0.5, 0.5, 0.55, 1));
   const full = h.od >= 100;
   roundButton(b, ultX, ultY, 18, h.od / 100, rgba("#ffc23d"), time);
-  b.image(icon("hud", "overdrive"), ultX, ultY - 2, 2, 2, 0, full ? 0xffffffff : rgbaf(0.5, 0.5, 0.55, 1));
-  text(b, `${Math.floor(h.od)}%`, ultX, ultY + 9, { font: "mini", align: "center", color: full ? C.gold : C.dim, outline: true });
+  lanternBadge(b, ultX, ultY - 3, Math.min(1, h.od / 100), time);
+  text(b, `${Math.floor(h.od)}%`, ultX, ultY + 7, { font: "mini", align: "center", color: full ? C.gold : C.dim, outline: true });
   frame(b, pauseX - 9, pauseY - 9, 18, 18, { corners: false });
   b.rect(pauseX - 3, pauseY - 4, 2, 8, C.text);
   b.rect(pauseX + 1, pauseY - 4, 2, 8, C.text);

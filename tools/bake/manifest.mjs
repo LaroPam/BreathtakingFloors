@@ -27,11 +27,15 @@ const STONE = {
   crypt: ["#1d1a26", "#2a2636", "#363145", "#433d54", "#575070"],
   garden: ["#161c18", "#222a22", "#2e382c", "#3a4636", "#52604a"],
   frost: ["#121a28", "#1c2838", "#283a50", "#344c68", "#52709a"],
+  heart: ["#221a14", "#30251a", "#3e3020", "#4e3d28", "#6a5434"],
+  beyond: ["#16141c", "#22202a", "#302d3a", "#403c4c", "#5a5668"],
 };
 const WALL = {
   crypt: ["#0e0c14", "#1c1826", "#2a2436", "#3a3348", "#4e4660"],
   garden: ["#0c100c", "#182018", "#242e22", "#323e2e", "#465640"],
   frost: ["#0c121c", "#16202e", "#223044", "#2e4058", "#46607e"],
+  heart: ["#120e0a", "#201a12", "#2e261a", "#3e3424", "#56482e"],
+  beyond: ["#0a0910", "#14121c", "#201d2a", "#2c2838", "#403a50"],
 };
 
 /**
@@ -39,7 +43,7 @@ const WALL = {
  * pages of their own at the end of the atlas, which the game loads in the background once it has started (the menu,
  * the heroes' gear, the crypt and every effect come first).
  */
-const LATE = /garden|frost|_ice\b|_ice_|_moss|_spore|_bog|_void|treant|voideye|warden|crystal|mushroom|grass/;
+const LATE = /garden|frost|heart|beyond|door_|_pale\b|_ice\b|_ice_|_moss|_spore|_bog|_void|_sun\b|treant|voideye|warden|lastlight|crystal|mushroom|grass/;
 export const isLate = (name) => LATE.test(name);
 
 export const ANIMS = [
@@ -78,7 +82,7 @@ export const ANIMS = [
   { name: "frog", fx: "critters/frog", fps: 12, light: CRITTER_LIGHT, body: true },
   { name: "frog_toxic", fx: "critters/frog", fps: 12, light: CRITTER_LIGHT, body: true, opts: { palette: PAL.arcane, belly: PAL.candy } },
   // the bosses at their own size, a set of poses for each of their three phases: name_phase_pose
-  ...Object.entries({ warden: ["idle", "walk", "windup", "strike", "dash", "kneel"], treant: ["idle", "cast", "slam", "cocoon"], voideye: ["idle", "charge", "closed", "iris"] }).flatMap(([id, poses]) =>
+  ...Object.entries({ warden: ["idle", "walk", "windup", "strike", "dash", "kneel"], treant: ["idle", "cast", "slam", "cocoon"], voideye: ["idle", "charge", "closed", "iris"], lastlight: ["idle", "cast", "slam", "rise"] }).flatMap(([id, poses]) =>
     [0, 1, 2].flatMap((phase) => poses.map((pose) => ({ name: `${id}_${phase}_${pose}`, art: `bosses/${id}`, fps: pose === "idle" || pose === "walk" ? 8 : 4, light: { thr: 8, k: 0.9 }, body: pose === "idle", opts: { phase, pose } })))),
   { name: "frog_king", fx: "critters/frog", fps: 12, light: CRITTER_LIGHT, body: true, opts: { palette: PAL.lava, belly: PAL.gold } },
   { name: "snake", fx: "critters/snake", fps: 12, light: CRITTER_LIGHT, body: true },
@@ -95,6 +99,15 @@ export const ANIMS = [
   { name: "eye_frost", fx: "critters/eyeball", fps: 10, light: CRITTER_LIGHT, body: true, opts: { iris: PAL.ice.slice(1, 6), flesh: PAL.water.slice(0, 5) } },
   { name: "wisp_frost", fx: "critters/wisp", fps: 10, light: CRITTER_LIGHT, body: true, opts: { palette: ICE_FIRE.slice(0, 7) } },
   { name: "moth_frost", fx: "critters/butterfly", fps: 10, light: CRITTER_LIGHT, body: true },
+  // the tower's heart: everything gone to gold and light
+  { name: "slime_sun", fx: "critters/slime", fps: 12, light: CRITTER_LIGHT, body: true, opts: { palette: PAL.gold } },
+  { name: "snake_sun", fx: "critters/snake", fps: 12, light: CRITTER_LIGHT, body: true, opts: { palette: PAL.gold, belly: PAL.holy } },
+  { name: "bat_sun", fx: "critters/bat", fps: 12, light: CRITTER_LIGHT, body: true, opts: { palette: PAL.gold.slice(0, 7), eyes: ["#8a2a06", "#e0601a", "#ffc040", "#ffffff"] } },
+  { name: "skull_sun", fx: "critters/flying-skull", fps: 12, light: CRITTER_LIGHT, body: true, opts: { floor: false, palette: PAL.holy } },
+  { name: "ghost_sun", fx: "critters/ghost", fps: 12, light: CRITTER_LIGHT, body: true, opts: { palette: ["#5a3e10", "#a07a20", "#e0b840", "#ffe080", "#fff4c0", "#ffffff", "#ffffff"] } },
+  { name: "eye_sun", fx: "critters/eyeball", fps: 10, light: CRITTER_LIGHT, body: true, opts: { iris: PAL.fire, flesh: PAL.gold } },
+  { name: "wisp_sun", fx: "critters/wisp", fps: 10, light: CRITTER_LIGHT, body: true, opts: { palette: PAL.holy } },
+  { name: "moth_sun", fx: "critters/butterfly", fps: 10, light: CRITTER_LIGHT, body: true, opts: { palette: PAL.gold } },
 
   // ---- enemy bullets
   { name: "orb_red", art: "shots/orb", fps: 10 },
@@ -145,10 +158,17 @@ export const ANIMS = [
   { name: "wall_garden_2", art: "tiles/wall", opts: { stone: ["#0c1210", "#16201c", "#222e2a", "#2e3c36", "#425650"] }, variants: { variant: [2, 2, 2, 0, 1, 7] } },
   { name: "wall_garden_3", art: "tiles/wall", opts: { stone: WALL.garden }, variants: { variant: [7, 7, 7, 7, 2, 2, 1] } },
   { name: "wall_frost_2", art: "tiles/wall", opts: { stone: WALL.frost }, variants: { variant: [3, 3, 3, 3, 0, 1] } },
+  { name: "floor_heart", art: "tiles/floor", opts: { stone: STONE.heart, rune: "#6a5026", void: ["#7a5a14", "#ffd060"] }, variants: { variant: [0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 2, 3, 7, 6, 15] } },
+  { name: "floor_heart_2", art: "tiles/floor", opts: { stone: ["#1a1410", "#281e16", "#36291c", "#463424", "#5e4830"], soot: "#0e0806", rune: "#5a4020", void: ["#8a3a0a", "#ffa040"] }, variants: { variant: [0, 0, 0, 1, 1, 2, 2, 11, 11, 3, 15, 7] } },
+  { name: "floor_heart_3", art: "tiles/floor", opts: { stone: ["#2a2218", "#3a3020", "#4c402a", "#625438", "#86744e"], rune: "#7a6030", void: ["#8a6a1a", "#fff0a0"] }, variants: { variant: [0, 0, 0, 0, 0, 0, 0, 1, 1, 2, 7, 6, 15] } },
+  { name: "wall_heart", art: "tiles/wall", opts: { stone: WALL.heart, void: ["#3a2a10", "#c89a30", "#fff0a0"] }, variants: { variant: [0, 0, 0, 1, 4, 8] } },
+  { name: "wall_heart_2", art: "tiles/wall", opts: { stone: ["#100c08", "#1c1610", "#2a2016", "#382c1e", "#4e3e28"] }, variants: { variant: [0, 0, 1, 6, 6, 6] } },
+  { name: "wall_heart_3", art: "tiles/wall", opts: { stone: WALL.heart, void: ["#3a2a10", "#c89a30", "#fff0a0"] }, variants: { variant: [0, 0, 8, 8, 8, 1, 4] } },
   { name: "wall_frost_3", art: "tiles/wall", opts: { stone: ["#0e0c18", "#181426", "#241e38", "#30284a", "#463c66"] }, variants: { variant: [0, 1, 8, 8, 8, 8, 3] } },
   { name: "ledge", art: "tiles/ledge", variants: { variant: [0, 1] } },
   { name: "pillar_crypt", art: "props/pillar", opts: { stone: ["#0e0c14", "#221e2e", "#363046", "#4e4660", "#6e6688"] } },
   { name: "pillar_garden", art: "props/pillar", opts: { stone: ["#0c100c", "#1e261c", "#2e3a2a", "#465640", "#647a58"], decor: 1 } },
+  { name: "pillar_heart", art: "props/pillar", opts: { stone: ["#120e0a", "#2a2216", "#42361f", "#62522e", "#8a7444"] } },
   { name: "pillar_frost", art: "props/pillar", opts: { stone: ["#0c121c", "#1c2a3c", "#2e4058", "#46607e", "#6a8ab0"], decor: 2 } },
   { name: "bones", art: "props/bones", variants: { variant: [0, 1, 2] } },
   // things to break, a chest that bites, an altar of curses
@@ -165,11 +185,22 @@ export const ANIMS = [
   { name: "gate_crypt", art: "tiles/gate", opts: { stone: WALL.crypt }, variants: { variant: [0, 1] } },
   { name: "gate_garden", art: "tiles/gate", opts: { stone: WALL.garden }, variants: { variant: [0, 1] } },
   { name: "gate_frost", art: "tiles/gate", opts: { stone: WALL.frost }, variants: { variant: [0, 1] } },
+  { name: "gate_heart", art: "tiles/gate", opts: { stone: WALL.heart }, variants: { variant: [0, 1] } },
+  // beyond the light: its floor and walls, cold and pale, its candles' pale fire, and its three sealed doors
+  { name: "floor_beyond", art: "tiles/floor", opts: { stone: STONE.beyond, rune: "#2a2638", void: ["#3a2a6a", "#b8a0ff"] }, variants: { variant: [0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 2, 7, 6, 15] } },
+  { name: "wall_beyond", art: "tiles/wall", opts: { stone: WALL.beyond, void: ["#24143e", "#7a4ac8", "#c8a8ff"] }, variants: { variant: [0, 0, 0, 1, 8] } },
+  { name: "pillar_beyond", art: "props/pillar", opts: { stone: ["#0a0910", "#1c1a24", "#2e2a3a", "#46405a", "#6a6480"] } },
+  { name: "torch_pale", fx: "fire/torch", fps: 10, light: { thr: 10, k: 0.9 }, opts: { palette: PAL.arcane } },
+  { name: "door_gifts", art: "tiles/gate", opts: { stone: WALL.beyond, rune: ["#5a3a08", "#c88a1a", "#ffd04a", "#fff6c0"] }, variants: { variant: [2] } },
+  { name: "door_seals", art: "tiles/gate", opts: { stone: WALL.beyond, rune: ["#4a0a0a", "#b8282a", "#ff6a5a", "#ffd0c8"] }, variants: { variant: [2] } },
+  { name: "door_deep", art: "tiles/gate", opts: { stone: WALL.beyond, rune: ["#24143e", "#6a3ac8", "#b58cff", "#efe2ff"] }, variants: { variant: [2] } },
+  { name: "secret_heart", art: "tiles/secret-wall", opts: { stone: WALL.heart }, variants: { variant: [0, 1] } },
   { name: "mushrooms", art: "props/mushrooms", fps: 8 },
   { name: "grass", art: "props/grass", fps: 8 },
   { name: "crystal", fx: "ice/ice-crystal", fps: 8, light: { thr: 10, k: 0.8 }, opts: { height: 22 } },
   { name: "torch", fx: "fire/torch", fps: 10, light: { thr: 10, k: 0.9 } },
   { name: "torch_blue", fx: "fire/torch", fps: 10, light: { thr: 10, k: 0.9 }, opts: { palette: ICE_FIRE } },
+  { name: "torch_gold", fx: "fire/torch", fps: 10, light: { thr: 10, k: 0.9 }, opts: { palette: PAL.holy } },
   { name: "candle", fx: "fire/candle", fps: 8, light: { thr: 5, k: 1 } },
   { name: "brazier_cold", art: "props/brazier-cold", fps: 12 },
   { name: "brazier", fx: "fire/brazier", fps: 10, light: { thr: 10, k: 1 } },

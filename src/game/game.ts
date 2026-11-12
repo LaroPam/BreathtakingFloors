@@ -8,7 +8,7 @@ import { anim, FONTS, frameAt, icon, type Anim, type Rect } from "../engine/atla
 import { heroSprites, initHeroSprites, lookId, type HeroAnim, type HeroSprites } from "./heroSprites";
 import { fitScale, measure, text, wrap } from "../engine/text";
 import { dayNumber, weekNumber, type Board, type BoardName, type Platform, type Product } from "../platform/platform";
-import { ACHIEVEMENTS, heroDef, combine, DEPTH, floorText, PLACE_FLOORS, EL_COLOR, LEGENDS, legendDesc, type WeaponId, EL_NAME, ENEMIES, EVOLUTIONS, evolutionOf, FORGE, questDef, TASK_BONUS, TASKS, type TaskId, type ForgeId, SHOP, type ShopItem, HEROES, WEAPONS, weaponName, MODIFIERS, MUTATORS, NO_MODIFIER, REACTIONS, RELIC_MAX, RELIC_SLOTS, ARTIFACT_SLOTS, RELICS, STATS, El, fullWeaponName, STAIR_EVENTS, type Outcome, type StairEvent, MYTHIC, PERK_TEXT, RARITIES, UNIQUES, type Modifier, type PlaceId, type GiftId, giftDef, giftFor, giftFrom, UNLOCKS, arsenalName, ARSENAL, unlockOf, type Reaction, type RelicKind, type StatId } from "./defs";
+import { ACHIEVEMENTS, heroDef, combine, DEPTH, floorText, PLACE_FLOORS, EL_COLOR, LEGENDS, legendDesc, type WeaponId, EL_NAME, ENEMIES, EVOLUTIONS, evolutionOf, FORGE, questDef, TASK_BONUS, TASKS, type TaskId, type ForgeId, SHOP, type ShopItem, HEROES, WEAPONS, weaponName, MODIFIERS, MUTATORS, NO_MODIFIER, REACTIONS, RELIC_MAX, RELIC_SLOTS, ARTIFACT_SLOTS, RELICS, STATS, El, fullWeaponName, STAIR_EVENTS, type Outcome, type StairEvent, MYTHIC, PERK_TEXT, RARITIES, UNIQUES, type Modifier, type PlaceId, type GiftId, giftDef, giftFor, giftFrom, DOORS, GIFTS_IN_TOWER, PLACES, UNLOCKS, arsenalName, ARSENAL, unlockOf, type Reaction, type RelicKind, type StatId } from "./defs";
 import { drawWorld, Scene } from "./draw";
 import { ascent } from "./ascent";
 import { getLang, langFor, setLang, t, tx, type Lang } from "./i18n";
@@ -19,7 +19,7 @@ import { button, slider, C, divider, glow as glowUi, drawHud, drawPointers, draw
 import { CINE_DUR, LUNGE_DASH, SRC_ABILITY, SRC_DASH, SRC_ELS, SRC_N, SRC_PARRY, SRC_REACT, SRC_RELIC, SRC_STATUS, SRC_WAVE, SRC_WEAPON, World } from "./world";
 
 type StatRow = { ic: Rect; name: string; col: number; sum: number; segs: [number, number][] };
-type State = "title" | "heroes" | "forge" | "shop" | "daily" | "records" | "tasks" | "settings" | "card" | "play" | "spin" | "pick" | "pause" | "book" | "stairs" | "dead" | "won" | "stats" | "gift" | "arsenal";
+type State = "title" | "heroes" | "forge" | "shop" | "daily" | "records" | "tasks" | "settings" | "card" | "play" | "spin" | "pick" | "pause" | "book" | "stairs" | "dead" | "won" | "stats" | "gift" | "arsenal" | "credits";
 type Choice = { type: "relic"; kind: RelicKind; level: number } | { type: "stat"; id: StatId } | { type: "evo"; kind: RelicKind } | { type: "legend"; weapon: WeaponId } | { type: "rest" };
 
 /**
@@ -199,6 +199,8 @@ export class Game {
   private platformPaused = false;
   private runRng = new Rng(Date.now() & 0xffffff);
   /** The run just ended: what it reached, the embers it earned (`base`, and `embers` shown: doubled for an ad), its score. */
+  /** How long the closing words have been rolling. */
+  private creditsT = 0;
   /** The arsenal's tile shown in its panel (the one tapped last; with keys, the one in focus). */
   private arsenalSel = 0;
   /** A gift just won, waiting for the boss's fall to play out; and the gift on its screen now. */
@@ -457,6 +459,12 @@ export class Game {
           this.showBanner(t("curseTaken"), rgba("#ff5a5a"), t("curseTakenSub"));
         } else this.showBanner(t("curseLifted"), C.gold, t("curseLiftedSub"));
       },
+      door: (kind) => {
+        // a sealed door says what it waits for, and how far the player has come towards it
+        const d = DOORS.find((q) => q.kind === kind)!, bosses = PLACES.filter((p) => p.boss >= 0);
+        const [have, all] = kind === "gifts" ? [this.save.gifts.length, GIFTS_IN_TOWER] : kind === "seals" ? [bosses.filter((p) => this.fell(p.id)).length, bosses.length] : [0, 0];
+        this.showBanner(tx(d.name), rgba(d.color), tx(d.need).replace("{have}", String(have)).replace("{all}", String(all)));
+      },
       gate: (kind, state) => {
         const gift = giftFor(kind);
         if (state === "locked") {
@@ -532,6 +540,7 @@ export class Game {
 
   /** A place's boss has fallen: the first time, its gift is the player's for good, shown a moment later. */
   private bossFell(): void {
+    this.stat(`fell_${this.world.place.id}`);
     const gift = this.world.place.gift;
     if (!gift || this.save.gifts.includes(gift)) return;
     this.save.gifts.push(gift);
@@ -655,8 +664,22 @@ export class Game {
     this.startSpins = this.save.runs === 1 && !this.daily ? 0 : spins;
   }
 
+  /** Has this place's boss ever fallen (its seal, for the door beyond the light)? Saves from before count too. */
+  private fell(place: string): boolean {
+    const old: Record<string, string> = { crypt: "eye", garden: "toad", frost: "victory" };
+    return (this.save.stats[`fell_${place}`] ?? 0) > 0 || (!!old[place] && this.save.ach.includes(old[place]));
+  }
+
   private onVictory(): void {
     this.unlock("victory");
+    // down the pit beyond the light: the closing words roll first, then the run's end
+    if (this.world.place.single) {
+      setTimeout(() => {
+        this.creditsT = 0;
+        this.setState("credits");
+      }, 700);
+      return;
+    }
     setTimeout(() => this.finishRun(true), 2200);
   }
 
@@ -1173,6 +1196,7 @@ export class Game {
       }
     }
     if (this.state === "gift" && this.giftShow) this.giftShow.t += dt;
+    if (this.state === "credits") this.creditsT += dt;
     if (this.state === "book" && this.card) {
       const c = this.card;
       c.t += dt * c.dir;
@@ -1318,6 +1342,7 @@ export class Game {
       case "stats": this.drawStats(); break;
       case "gift": this.drawGift(); break;
       case "arsenal": this.drawArsenal(); break;
+      case "credits": this.drawCredits(); break;
     }
     if (this.state !== "heroes") this.menu.end(this.state === "stairs" || (this.state === "pick" && this.pickRow), this.state !== "settings");
     // a screen comes up out of the dark
@@ -1718,7 +1743,7 @@ export class Game {
     if (w.floor >= 3 && !this.r.laterReady && this.cardT > 1.9) text(ui, t("loading"), W / 2, H - 20, { font: "mini", align: "center", color: withAlpha(C.dim, 0.6 + 0.4 * Math.sin(this.now * 4)) });
     const cy = Math.round(H * 0.36);
     if (this.daily) text(ui, t(this.weekly ? "weekly" : "daily"), W / 2, cy - 44, { font: "mini", align: "center", color: withAlpha(rgba("#ff9a8a"), a) });
-    const th = this.heading(`${t("floor")} ${w.floor}`, cy - 32, 2, C.gold, a);
+    const th = this.heading(w.place.single ? tx(w.place.name) : `${t("floor")} ${w.floor}`, cy - 32, 2, C.gold, a);
     // the floor's own name, the place it belongs to (and which of its three floors), and its line
     const info = floorText(w.stop), stage = w.stage;
     text(ui, tx(info.name), W / 2, cy - 32 + th + 4, { font: "title", align: "center", color: withAlpha(C.text, a), shadow: withAlpha(C.ink, a), outline: true });
@@ -1780,6 +1805,10 @@ export class Game {
         x = (h0 * W + now * (8 + h1 * 10) + Math.sin(now + k) * 6) % W;
         y = (h1 * H + now * (14 + h0 * 16)) % H;
         col = rgbaf(0.85, 0.92, 1, 0.5 + 0.3 * h0);
+      } else if (B.motes === "sparks") {
+        x = (h0 * W + Math.sin(now * 0.5 + k) * 10) % W;
+        y = (h1 * H - now * (10 + h0 * 12) + H * 8) % H;
+        col = rgbaf(1, 0.88, 0.5, 0.35 + 0.45 * Math.max(0, Math.sin(now * 1.7 + k)));
       } else if (B.motes === "fireflies") {
         x = h0 * W + Math.sin(now * 0.6 + k) * 30;
         y = h1 * H + Math.cos(now * 0.5 + k * 2) * 20;
@@ -1986,6 +2015,46 @@ export class Game {
     text(ui, emb, W - 8, 8, { align: "right", color: flash > 0 ? rgbaf(1, 1, 0.7 + 0.3 * flash, 1) : C.gold, outline: true, scale: flash > 0.5 ? 2 : 1 });
     ui.image(icon("hud", "ember"), W - 14 - measure(emb, "big", flash > 0.5 ? 2 : 1), 11);
     if (button(ui, this.menu, now, Math.round(W / 2 - 50), H - 24, 100, 18, t("back"), { icon: icon("hud", "back") }) || this.input.pressed("back")) this.setState("title", this.titleSlot("tasks"));
+  }
+
+  /**
+   * The end of the tower: the words roll up over the dark, the run's way through it (its places, its bosses, its hero,
+   * its time), the fonts' makers, a thanks; then the run's results. A press goes on at once.
+   */
+  private drawCredits(): void {
+    const ui = this.ui, W = this.r.w, H = this.r.h, w = this.world, T = this.creditsT, now = this.now;
+    ui.rect(0, 0, W, H, rgba("#07060c", Math.min(1, T * 1.5)));
+    const lines: [string, "title" | "big" | "mini", number][] = [
+      [t("creditsDone"), "title", C.gold],
+      ["", "big", C.text],
+      [tx(w.hero.def.name), "big", C.goldLight],
+      [`${t("time")} ${fmtTime(w.runTime)}   ${t("kills")} ${w.kills}`, "mini", C.dim],
+      ["", "big", C.text],
+      ...w.trail.filter((id) => id !== "beyond").map((id): [string, "big", number] => {
+        const p = PLACES.find((q) => q.id === id)!;
+        return [`${tx(p.name)}  ·  ${tx(ENEMIES[p.boss].name)}`, "big", C.text];
+      }),
+      ["", "big", C.text],
+      [t("creditsDoors"), "big", rgba("#c8b8ff")],
+      ["", "big", C.text],
+      [t("creditsFonts"), "mini", C.dim],
+      ["PIXELOID SANS · GGBOTNET · TINY5 (SIL OFL)", "mini", C.dim],
+      ["", "big", C.text],
+      [t("creditsThanks"), "big", C.gold],
+    ];
+    // rolling up from below the screen; the last line comes to rest in the middle
+    const lh = (f: string) => (f === "title" ? 22 : f === "big" ? 14 : 10), total = lines.reduce((a, [, f]) => a + lh(f), 0);
+    let y = Math.round(Math.max(H / 2 - total + 10, H + 10 - T * 22));
+    for (const [str, font, col] of lines) {
+      if (str && y > -20 && y < H + 20) text(ui, str, W / 2, y, { font, align: "center", color: col, shadow: C.ink, outline: font === "title" });
+      y += lh(font);
+    }
+    const done = H + 10 - T * 22 <= H / 2 - total + 10;
+    if ((T > 1.2 && this.input.pressed("confirm")) || this.input.pressed("back") || (T > 1.2 && this.input.click) || (done && T > total / 22 + 6)) {
+      this.creditsT = -1e9;
+      this.finishRun(true);
+    }
+    if (T > 2) text(ui, t("creditsSkip"), W / 2, H - 12, { font: "mini", align: "center", color: withAlpha(C.dim, 0.5 + 0.3 * Math.sin(now * 3)) });
   }
 
   /**
