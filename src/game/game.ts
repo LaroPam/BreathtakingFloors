@@ -8,7 +8,7 @@ import { anim, FONTS, frameAt, hasAnim, icon, type Anim, type Rect } from "../en
 import { heroSprites, initHeroSprites, lookId, type HeroAnim, type HeroSprites } from "./heroSprites";
 import { fitScale, measure, text, wrap } from "../engine/text";
 import { dayNumber, weekNumber, type Board, type BoardName, type Platform, type Product } from "../platform/platform";
-import { ACHIEVEMENTS, heroDef, combine, DEPTH, floorText, PLACE_FLOORS, EL_COLOR, LEGENDS, legendDesc, type WeaponId, EL_NAME, ENEMIES, EVOLUTIONS, evolutionOf, FORGE, questDef, TASK_BONUS, TASKS, type TaskId, type ForgeId, SHOP, type ShopItem, HEROES, WEAPONS, weaponName, MODIFIERS, MUTATORS, NO_MODIFIER, REACTIONS, RELIC_MAX, RELIC_SLOTS, ARTIFACT_SLOTS, RELICS, STATS, El, fullWeaponName, STAIR_EVENTS, type Outcome, type StairEvent, MYTHIC, PERK_TEXT, RARITIES, UNIQUES, type Modifier, type PlaceId, type GiftId, giftDef, giftFor, giftFrom, GIFTS, DOORS, GIFTS_IN_TOWER, PLACES, UNLOCKS, arsenalName, ARSENAL, unlockOf, TIERS, placeDef, type GateKind, type Reaction, type RelicKind, type StatId } from "./defs";
+import { ACHIEVEMENTS, heroDef, combine, DEPTH, floorText, PLACE_FLOORS, EL_COLOR, LEGENDS, legendDesc, type WeaponId, EL_NAME, ENEMIES, EVOLUTIONS, evolutionOf, FORGE, questDef, TASK_BONUS, TASKS, type TaskId, type ForgeId, SHOP, type ShopItem, HEROES, WEAPONS, weaponName, MODIFIERS, MUTATORS, NO_MODIFIER, REACTIONS, RELIC_MAX, RELIC_SLOTS, ARTIFACT_SLOTS, RELICS, STATS, El, fullWeaponName, STAIR_EVENTS, type Outcome, type StairEvent, MYTHIC, PERK_TEXT, RARITIES, UNIQUES, type Modifier, type PlaceId, type GiftId, giftDef, giftFor, giftFrom, GIFTS, DOORS, GIFTS_IN_TOWER, PLACES, UNLOCKS, arsenalName, ARSENAL, unlockOf, TIERS, placeDef, depthOf, type GateKind, type Reaction, type RelicKind, type StatId } from "./defs";
 import { drawWorld, Scene } from "./draw";
 import { ascent } from "./ascent";
 import { getLang, langFor, setLang, t, tx, type Lang } from "./i18n";
@@ -19,7 +19,7 @@ import { button, slider, C, divider, glow as glowUi, drawHud, drawPointers, draw
 import { CINE_DUR, LUNGE_DASH, SRC_ABILITY, SRC_DASH, SRC_ELS, SRC_N, SRC_PARRY, SRC_REACT, SRC_RELIC, SRC_STATUS, SRC_WAVE, SRC_WEAPON, World } from "./world";
 
 type StatRow = { ic: Rect; name: string; col: number; sum: number; segs: [number, number][] };
-type State = "title" | "heroes" | "forge" | "shop" | "daily" | "records" | "tasks" | "settings" | "card" | "play" | "spin" | "pick" | "pause" | "book" | "stairs" | "dead" | "won" | "stats" | "gift" | "arsenal" | "credits" | "gifts" | "atlas";
+type State = "title" | "heroes" | "forge" | "shop" | "daily" | "records" | "tasks" | "settings" | "card" | "play" | "spin" | "pick" | "pause" | "book" | "stairs" | "dead" | "won" | "stats" | "gift" | "arsenal" | "credits" | "gifts" | "atlas" | "start";
 type Choice = { type: "relic"; kind: RelicKind; level: number } | { type: "stat"; id: StatId } | { type: "evo"; kind: RelicKind } | { type: "legend"; weapon: WeaponId } | { type: "rest" };
 
 /**
@@ -80,6 +80,8 @@ function animBox(a: Anim): { x0: number; x1: number; top: number } {
 const STEP = 1 / 60;
 /** A level reached: the world slows into the choice over this long rather than stopping dead. */
 const LVL_SLOW = 0.45;
+/** A run started on a later tier's place: the levels it is given at once (about what the tiers passed by give). */
+const START_LEVELS = [0, 8, 15];
 /** The first run's lessons, in order (the save's tutStep counts how many are done). */
 const TUTOR = ["move", "fight", "dash", "gems", "ult"] as const;
 /** How long a lesson just learnt shows its tick before the next one comes. */
@@ -207,6 +209,9 @@ export class Game {
   /** The atlas: the place picked, and the screen it was opened from. */
   private atlasSel = 0;
   private atlasFrom: State = "title";
+  /** Where the next run starts (a shortcut to a later tier's place, once reached), and the depth this run began at. */
+  private startAt: PlaceId = "crypt";
+  private runFrom = 1;
   /** Where the atlas's way back stands this frame (under the panel on a low screen), else in the middle. */
   private atlasBackX: number | null = null;
   /** How long the closing words have been rolling. */
@@ -669,8 +674,13 @@ export class Game {
     // same for everyone: no gifts, and everything there)
     w.gifts = new Set(this.daily ? [] : this.save.gifts);
     w.locked = new Set(this.daily ? [] : UNLOCKS.map((u) => u.key).filter((k) => !this.save.opened.includes(k)));
-    w.startFloor(1, combine(this.path), "portal", this.path[0]);
-    this.reached(1);
+    // (a shortcut: a later tier's first floor, with the levels and a relic for each tier passed by; a trial always
+    // from the top)
+    const from = this.daily || !this.starts().includes(this.startAt) ? placeDef("crypt") : placeDef(this.startAt), skip = from.tier - 1;
+    this.runFrom = depthOf({ place: from, stage: 1 });
+    w.startFloor(skip ? { place: from, stage: 1 } : 1, combine(this.path), "portal", this.path[0]);
+    if (skip) (w.pendingLevels += START_LEVELS[skip]), (spins += skip);
+    this.reached(this.runFrom);
     this.revived = false;
     this.save.runs++;
     this.persist();
@@ -706,7 +716,7 @@ export class Game {
     const w = this.world;
     // embers are earned slowly: floors cleared and bosses beaten count most, the embers picked up a little, kills
     // barely; the stairs' reward and the forge's greed multiply it
-    const cleared = w.floor - 1 + (won ? 1 : 0), bosses = Math.floor(cleared / 3), greed = 1 + ((FORGE.find((q) => q.id === "greed")!.step * (this.daily ? 0 : this.save.forge.greed ?? 0)) / 100);
+    const cleared = w.floor - this.runFrom + (won ? 1 : 0), bosses = Math.floor(cleared / 3), greed = 1 + ((FORGE.find((q) => q.id === "greed")!.step * (this.daily ? 0 : this.save.forge.greed ?? 0)) / 100);
     const earned = Math.round((cleared * 6 + bosses * 20 + (won ? 50 : 0) + w.embersBonus * 0.35 + w.kills / 80) * (w.mod.embers ?? 1) * greed * (this.owns("embers_double") ? 2 : 1));
     const embers = Math.max(earned, Math.min(CONSOLATION, Math.floor(w.runTime / CONSOLATION_EVERY)));
     // the first run ever: a gift on top, for the forge
@@ -1363,6 +1373,7 @@ export class Game {
       case "credits": this.drawCredits(); break;
       case "gifts": this.drawGifts(); break;
       case "atlas": this.drawAtlas(); break;
+      case "start": this.drawStart(); break;
     }
     if (this.state !== "heroes") this.menu.end(this.state === "stairs" || (this.state === "pick" && this.pickRow), this.state !== "settings");
     // a screen comes up out of the dark
@@ -1699,7 +1710,9 @@ export class Game {
       if (hero.id === FLOOR_ONE_HERO) text(ui, t("orFloorOne"), bx + bw / 2, by - 9, { font: "mini", align: "center", color: C.green });
       else if (!afford) text(ui, t("notEnough"), bx + bw / 2, by - 9, { font: "mini", align: "center", color: C.red });
     } else if (button(ui, this.menu, now, bx, by, bw, 18, t("start"), { primary: true, icon: icon("hud", "play") })) {
-      this.transition(() => this.startRun());
+      // with a shortcut open, where to start first; else straight up
+      if (this.starts().length > 1) this.setState("start", Math.max(0, this.starts().indexOf(this.startAt)));
+      else (this.startAt = "crypt"), this.transition(() => this.startRun());
     }
     if (button(ui, this.menu, now, Math.round(W / 2 + 6), by, bw, 18, t("back"), { icon: icon("hud", "back") }) || input.pressed("back")) this.setState("title");
   }
@@ -1814,6 +1827,55 @@ export class Game {
       para(ui, t("giftOpens").replace("{gate}", tx(sel.gateName)), tl, y + 2, wid, C.goldLight, "center");
     } else para(ui, giver ? t("gateWhere").replace("{who}", tx(ENEMIES[giver.boss].name)) : t("giftUnknown"), tl, y, wid, C.dim, "center");
     if (button(ui, this.menu, now, Math.round(W / 2 - 50), H - 24, 100, 18, t("back"), { icon: icon("hud", "back") }) || this.input.pressed("back")) this.setState(this.giftsFrom, this.giftsFrom === "pause" ? 3 : 0);
+  }
+
+  // =========================================================================================== shortcuts
+  /** Where a run may start: the top, and the places of tiers II and III the player has reached. */
+  private starts(): PlaceId[] {
+    return ["crypt", ...TIERS.slice(1, 3).flat().filter((id) => this.save.places.includes(id))];
+  }
+  /**
+   * Where to start: the top, or a later tier's place already reached, each with its stone, its name and what a start
+   * there gives (the levels and relics the tiers passed by would have; embers only for the floors climbed).
+   */
+  private drawStart(): void {
+    const ui = this.ui, W = this.r.w, H = this.r.h, now = this.now, list = this.starts();
+    const th = this.heading(t("startFrom"), 8, H >= 320 ? 2 : 1), top = 8 + th + 8, avail = H - 30 - top;
+    const note = (id: PlaceId) => {
+      const p = placeDef(id), skip = p.tier - 1;
+      return `${t("atlasTier").replace("{t}", ROMAN[p.tier])} · ${skip ? t("startGives").replace("{n}", String(START_LEVELS[skip])).replace("{r}", String(skip)) : t("startTop")}`;
+    };
+    // one column, or two on a low wide screen; each row as tall as its words (the note on two lines if it must be)
+    const layout = (cols: number) => {
+      const rw = cols === 1 ? Math.min(320, W - 24) : Math.min(260, Math.floor((W - 30) / 2)), gap = H >= 300 ? 6 : 3;
+      const hs = list.map((id) => 8 + 10 + 8 * wrap(note(id), rw - 40, "mini").slice(0, 2).length);
+      const rowH = (r: number) => Math.max(...hs.slice(r * cols, r * cols + cols));
+      const rows = Math.ceil(list.length / cols), total = Array.from({ length: rows }, (_, r) => rowH(r)).reduce((n, h) => n + h, 0) + (rows - 1) * gap;
+      return { rw, gap, rowH, total };
+    };
+    let cols = 1, L = layout(1);
+    if (L.total > avail && W >= 340) (cols = 2), (L = layout(2));
+    const hint = wrap(t("startHint"), Math.min(320, W - 24), "mini"), withHint = L.total + 8 + hint.length * 8 <= avail;
+    const all = L.total + (withHint ? 8 + hint.length * 8 : 0), x0 = Math.round(W / 2 - (cols * L.rw + (cols - 1) * 6) / 2);
+    let y = Math.round(top + Math.max(0, (avail - all) / 2));
+    list.forEach((id, k) => {
+      const c = k % cols, r = Math.floor(k / cols), rh = L.rowH(r), x = x0 + c * (L.rw + 6);
+      const p = placeDef(id), skip = p.tier - 1, it = this.menu.item(x, y, L.rw, rh, now), sel = it.focused || (this.input.mode !== "kbm" && id === this.startAt);
+      frame(ui, x, y, L.rw, rh, { edge: sel ? C.gold : skip ? rgba(p.torchLight) : undefined });
+      // its first floor's stone, lit by its torches
+      glowUi(ui, x + 16, y + rh / 2, 26, 18, rgba(p.torchLight), sel ? 0.3 : 0.15);
+      const tile = anim(p.floor).frames[0][0];
+      if (tile) ui.image(tile, x + 8, Math.round(y + rh / 2 - 8), 1, 1, 0, sel ? 0xffffffff : rgbaf(0.75, 0.73, 0.8, 1));
+      text(ui, tx(p.name), x + 32, y + 4, { color: sel ? C.goldLight : C.text, shadow: C.ink });
+      wrap(note(id), L.rw - 40, "mini").slice(0, 2).forEach((l, j) => text(ui, l, x + 32, y + 15 + j * 8, { font: "mini", color: skip ? C.goldDim : C.dim }));
+      if (it.hit) {
+        this.startAt = id;
+        this.transition(() => this.startRun());
+      }
+      if (c === cols - 1 || k === list.length - 1) y += rh + L.gap;
+    });
+    if (withHint) hint.forEach((l, k) => text(ui, l, W / 2, y + 4 + k * 8, { font: "mini", align: "center", color: C.dim }));
+    if (button(ui, this.menu, now, Math.round(W / 2 - 50), H - 24, 100, 18, t("back"), { icon: icon("hud", "back") }) || this.input.pressed("back")) this.setState("heroes", 2);
   }
 
   // =========================================================================================== the atlas
