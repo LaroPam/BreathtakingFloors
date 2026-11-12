@@ -135,7 +135,7 @@ for (const hero of heroes) {
     // everything the arsenal holds is open to the bot (what a player opens over many runs gets played too)
     G.world.locked.clear();
     // a deeper start: that floor at once, and the levels a hero would have reached by it to choose
-    if (from > 1) (G.world.startFloor(from, G.world.mod), (G.world.pendingLevels += Math.round((from - 1) * 2.5)));
+    if (from > 1) (G.world.startFloor(from, G.world.mod), (G.world.pendingLevels += Math.round((from - 1) * 2.5)), (G.world.hero.level += Math.round((from - 1) * 2.5)));
     window.__bot.takeWay = takeWay;
   }, { hero, seed, gifts, from, takeWay });
 

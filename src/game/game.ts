@@ -681,7 +681,9 @@ export class Game {
     const from = this.daily || !this.starts().includes(this.startAt) ? placeDef("crypt") : placeDef(this.startAt), skip = from.tier - 1;
     this.runFrom = depthOf({ place: from, stage: 1 });
     w.startFloor(skip ? { place: from, stage: 1 } : 1, combine(this.path), "portal", this.path[0]);
-    if (skip) (w.pendingLevels += START_LEVELS[skip]), (spins += skip);
+    // (the hero's level counts those levels too: else the experience pace would take it for one far behind, and
+    // the levels would come twice)
+    if (skip) (w.pendingLevels += START_LEVELS[skip]), (w.hero.level += START_LEVELS[skip]), (spins += skip);
     this.reached(this.runFrom);
     this.revived = false;
     this.save.runs++;
