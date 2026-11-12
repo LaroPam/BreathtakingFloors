@@ -565,12 +565,14 @@ export function drawHud(b: Batch, w: World, W: number, H: number, time: number, 
 
   // ---- the boss: its name in blackletter over a framed bar in quarters, the hit it just took fading pale
   if (bi >= 0) {
-    const E = w.enemies, d = ENEMIES[E.type[bi]], bw = Math.min(280, W - 70), bx = Math.round(W / 2 - bw / 2), by = H - 16, k = E.hp[bi] / E.maxHp[bi];
+    // (on a touch screen it ends short of the dash button on the right)
+    const R = touch ? W - 62 : W - 22, bw = Math.min(280, R - 30), bx = Math.round((22 + R - bw) / 2);
+    const E = w.enemies, d = ENEMIES[E.type[bi]], by = H - 16, k = E.hp[bi] / E.maxHp[bi];
     bossLag = Math.max(k, bossLag - 0.25 / 60);
     if (bossLag > 1) bossLag = 1;
     const col = rgba(d.glow || "#f53cd1");
     plate(b, bx - 18, by - 17, bw + 26, 27, withAlpha(col, 0.8));
-    text(b, tx(d.name), W / 2, by - 13, { font: "title", align: "center", color: col, shadow: C.ink });
+    text(b, tx(d.name), Math.round(bx + bw / 2 - 5), by - 13, { font: "title", align: "center", color: col, shadow: C.ink });
     inset(b, bx - 16, by - 4, 13, 13, withAlpha(col, 0.9));
     b.image(icon("hud", "boss"), bx - 10, by + 2);
     // in thirds, a phase each; grey and marked while it cannot be touched
@@ -581,10 +583,11 @@ export function drawHud(b: Batch, w: World, W: number, H: number, time: number, 
   // ---- a miniboss: its name over a smaller bar, above the boss's if both are up
   const mi = w.miniIndex();
   if (mi >= 0) {
-    const E = w.enemies, d = ENEMIES[E.type[mi]], bw = Math.min(200, W - 90), bx = Math.round(W / 2 - bw / 2), by = bi >= 0 ? H - 48 : H - 14, k = E.hp[mi] / E.maxHp[mi];
+    const R = touch ? W - 62 : W - 22, bw = Math.min(200, R - 40), bx = Math.round((22 + R - bw) / 2);
+    const E = w.enemies, d = ENEMIES[E.type[mi]], by = bi >= 0 ? H - 48 : H - 14, k = E.hp[mi] / E.maxHp[mi];
     const col = rgba(d.glow || "#ffd27a");
     plate(b, bx - 6, by - 13, bw + 12, 21, withAlpha(col, 0.7));
-    text(b, tx(d.name), W / 2, by - 10, { font: "mini", align: "center", color: col, shadow: C.ink });
+    text(b, tx(d.name), Math.round(bx + bw / 2), by - 10, { font: "mini", align: "center", color: col, shadow: C.ink });
     bar(b, bx, by, bw, 4, k, rgba("#7a4a18"), col, { well: rgba("#1a120a"), ticks: 2 });
   }
 

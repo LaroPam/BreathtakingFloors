@@ -39,6 +39,18 @@ const BLADE = ["#3a1a0a", "#8a3a12", "#d8701c", "#ffb43a", "#ffe08a", "#fff6d0",
 const STEEL = ["#1a2030", "#34405a", "#5a6a8a", "#8aa0c4", "#c4d4ec", "#eef4ff", "#ffffff"];
 const SOUL = ["#0c1e14", "#14402a", "#1f6a3e", "#3aa060", "#7ee88a", "#c8ffc4", "#ffffff"];
 
+// the crossbow: aimed level at the shoulder in both hands; loosed, it kicks up and back, then settles
+const XB_AIM = { ...READY, weapon: "crossbow", two: true, fx: 9, fy: -22, sa: 0.02, turn: 0.3, crouch: 3, lean: 1 };
+const XBOW = {
+  poses: [
+    [-0.3, XB_AIM],
+    [-0.06, { ...XB_AIM, crouch: 4, lean: 2, fy: -21.5 }],
+    [0, { ...XB_AIM, fx: 6.5, fy: -23, sa: -0.24, lean: -2, crouch: 3 }, "snap"],
+    [0.12, { ...XB_AIM, fx: 7.5, fy: -22.5, sa: -0.12, lean: -1 }],
+    [0.42, XB_AIM],
+  ],
+};
+
 /**
  * Each weapon: its stance (`guard`, what the hands hold), whether the far hand is free for a lantern, and its blows.
  * A blow: act and sample times, hit frames, its effect (pixelfx id, options, how long to bake it).
@@ -126,9 +138,10 @@ export const WEAPONS = {
     ],
   },
   crossbow: {
-    guard: { ...READY, weapon: "crossbow", fx: 12, fy: -20, bx: 9, by: -19, sa: -0.12, turn: 0.3 },
+    guard: XB_AIM,
     oneHand: false,
-    attacks: [{ act: THRUST, times: [-0.24, -0.12, -0.04, 0, 0.07, 0.3, 0.55], hits: [3], weapon: "crossbow", extra: { sa: -0.12 } }],
+    // the bolt goes on the third frame; the string stays forward until it is drawn back again at the end
+    attacks: [{ act: XBOW, times: [-0.2, -0.08, 0, 0.05, 0.12, 0.24, 0.42], hits: [2], weapon: "crossbow", frames: [{}, {}, { loaded: false }, { loaded: false }, { loaded: false }, { loaded: false }, {}] }],
   },
   staff: {
     guard: { ...READY, weapon: "staff", fx: 11, fy: -22, bx: 7, by: -16, sa: -1.3, turn: 0.3 },
@@ -176,6 +189,7 @@ function attackPoses(w, a, legs) {
     if (a.weapon) p.weapon = a.weapon;
     else if (w.guard.weapon && !p.weapon) p.weapon = w.guard.weapon;
     if (a.extra) Object.assign(p, a.extra);
+    if (a.frames?.[f]) Object.assign(p, a.frames[f]);
     // the spellbook stays open in the off hand, its runes in the spell's element, a page turning as it goes off
     // and it is the book that is thrust at the foe: the hands trade places, the free one drawing the spell back
     if (w.book) [p.fx, p.fy, p.bx, p.by] = [p.bx ?? w.guard.bx, p.by ?? w.guard.by, p.fx ?? w.guard.fx, p.fy ?? w.guard.fy];

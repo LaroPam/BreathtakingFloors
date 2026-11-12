@@ -1753,10 +1753,12 @@ export class World {
       const base = goal && Math.hypot(goal.x - hx, goal.y - hy) > 10 ? Math.atan2(goal.y - hy, goal.x - hx) : dir, speed = bolt ? 430 : 320;
       for (let q = 0; q < n; q++) {
         const a = base + (q - (n - 1) / 2) * spread;
-        this.bullets.add(TEAM_HERO, bolt ? B_BOLT : B_CHAKRAM, hx + Math.cos(a) * 7, hy + Math.sin(a) * 7, Math.cos(a) * speed, Math.sin(a) * speed, bolt ? 1 : 3, dmg, bolt ? 4 : 6.5, wel, bolt ? 4 + (h.legend ? 2 : 0) : 99);
+        // (a bolt leaves from the crossbow's head, well past the hand that holds its stock)
+        const out = bolt ? 22 : 7;
+        this.bullets.add(TEAM_HERO, bolt ? B_BOLT : B_CHAKRAM, hx + Math.cos(a) * out, hy + Math.sin(a) * out, Math.cos(a) * speed, Math.sin(a) * speed, bolt ? 1 : 3, dmg, bolt ? 4 : 6.5, wel, bolt ? 4 + (h.legend ? 2 : 0) : 99);
       }
       this.audio.play(bolt ? "shoot" : "dash", bolt ? 0.45 : 1.6);
-      this.addFx("hit_spark", hx + Math.cos(dir) * 4, hy + Math.sin(dir) * 4 + 8, { rot: dir + Math.PI, sx: 0.45, sy: 0.45, glow: 0.9, key: 4, tint: wel ? rgba(EL_COLOR[wel]) : 0xffffffff });
+      this.addFx("hit_spark", hx + Math.cos(dir) * (bolt ? 20 : 4), hy + Math.sin(dir) * (bolt ? 20 : 4) + 8, { rot: dir + Math.PI, sx: 0.45, sy: 0.45, glow: 0.9, key: 4, tint: wel ? rgba(EL_COLOR[wel]) : 0xffffffff });
       if (bolt) this.shake = Math.max(this.shake, 0.12);
       return;
     }

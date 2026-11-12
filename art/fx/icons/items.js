@@ -1069,17 +1069,23 @@ SYM.w_glaive = (p) => {
 
 SYM.w_crossbow = (p) => {
   const a = new Art();
-  // a wooden stock, a short steel prod across its head, the string drawn back to the nut, a bolt laid in
-  a.add(S.seg(-15, 15, 8, -8, 4.2), "wood", T.cyl(-15, 15, 8, -8, 2.1));
-  a.add(S.arc(2, -2, 11, 2.6, -Math.PI / 4 - 1.05, -Math.PI / 4 + 1.05), "steel", (x, y) => (x - y < 18 ? 0.95 : 0.55));
-  const ea = [-Math.PI / 4 - 1.05, -Math.PI / 4 + 1.05].map((an) => [2 + Math.cos(an) * 10, -2 + Math.sin(an) * 10]);
-  for (const [x, y] of ea) a.add(S.seg(x, y, -3, 3, 0.8), "paper", 0.9);
-  a.add(S.seg(-3, 3, 13, -13, 1.4), "steel", 0.75);
-  a.add(S.poly([[12, -15], [15, -15], [15, -12]]), "steel", 1);
-  a.add(S.seg(-12, 12, -9, 9, 4.8), "iron", 0.55);
-  a.add(S.seg(8, -8, 10, -10, 4.4), "iron", 0.6);
+  // seen from above, as a crossbow is known: a wooden stock from its butt to its head, a broad steel prod bent across
+  // the head (its tips swept back), the string drawn back to the nut in a V, a bolt laid along the groove, the iron
+  // lever under it and the stirrup at the front
+  const R = 17, cx = -5, cy = 5, C = [cx + R * Math.SQRT1_2, cy - R * Math.SQRT1_2];
+  a.add(S.poly([[-17, 13], [-13, 17], [-7, 11], [-11, 7]]), "wood", 0.6);
+  a.add(S.seg(-11, 11, 12, -12, 4.4, 3.4), "wood", T.cyl(-11, 11, 12, -12, 2.2));
+  a.add(S.seg(-7, 9, -4, 12, 1.6), "iron", 0.6);
+  a.add(S.oring(13.5, -13.5, 2.6, 2.6, 1.3), "iron", 0.8);
+  const tips = [-0.82, 0.82].map((d) => [cx + Math.cos(-Math.PI / 4 + d) * R, cy + Math.sin(-Math.PI / 4 + d) * R]);
+  for (const [x, y] of tips) a.add(S.seg(x, y, -3, 3, 0.9), "paper", 0.85);
+  a.add(S.arc(cx, cy, R, (u) => 1.2 + 2.2 * Math.sin(u * Math.PI), -Math.PI / 4 - 0.86, -Math.PI / 4 + 0.86), "steel", (x, y) => (Math.hypot(x - cx, y - cy) > R ? 0.95 : 0.55));
+  a.add(S.seg(-3, 3, C[0] + 5, C[1] - 5, 1.2), "wood", 0.95);
+  a.add(S.poly([[C[0] + 4, C[1] - 7], [C[0] + 8, C[1] - 8], [C[0] + 7, C[1] - 4]]), "steel", 1);
+  a.add(S.disc(C[0], C[1], 2.2), "gold", 0.75);
+  a.add(S.disc(-3, 3, 1.6), "iron", 0.85);
   a.draw(p);
-  glint(p, 14, -14, 1);
+  glint(p, tips[0][0], tips[0][1], 1);
 };
 
 SYM.w_staff = (p) => {

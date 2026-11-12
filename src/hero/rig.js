@@ -401,12 +401,13 @@ function along(H, axis, side, part) {
     plot(i2, z + 0.05, 2, glow ? -1 : 0, part, -1, c);
   };
   T.at = (i, k) => [H[0] + axis[0] * i + side[0] * k, H[1] + axis[1] * i + side[1] * k, H[2] + axis[2] * i + side[2] * k];
+  T.at3 = (i, k, l) => [H[0] + axis[0] * i + side[0] * k + n[0] * l, H[1] + axis[1] * i + side[1] * k + n[1] * l, H[2] + axis[2] * i + side[2] * k + n[2] * l];
   return T;
 }
 const STEEL = Object.fromEntries(Object.entries({ hi: "#ffffff", a: "#e8edf6", b: "#a4afc6", d: "#68748f", gold: "#ffd84a", goldD: "#b8862a", grip: "#7a3a2a", gripD: "#4a2018", wood: "#8a5a32", woodD: "#5a3820", dark: "#3a3448", darkD: "#262033" }).map(([k, v]) => [k, hex(v)]));
 const WHIP = Object.fromEntries(Object.entries({ grip: "#6a3a24", gripD: "#42200f", wrapD: "#2a140a", lash: "#8a5432", lashH: "#b07a4c", lashD: "#4e2a16", tuft: "#ece0c0" }).map(([k, v]) => [k, hex(v)]));
 // the new arms' own colours: iron and bronze, the storm's light
-const ARMS = Object.fromEntries(Object.entries({ iron: "#5a5c6a", ironH: "#9a9cac", ironD: "#2e2e3a", bronze: "#c08a3a", bronzeH: "#f0c870", bronzeD: "#7a5020", storm: "#fff08a", stormD: "#c8a020", stormH: "#ffffff", haft: "#3a2a22", haftD: "#22180f" }).map(([k, v]) => [k, hex(v)]));
+const ARMS = Object.fromEntries(Object.entries({ string: "#4a4658", woodH: "#b07a48", rope: "#c8b080", ropeD: "#8a7048", feather: "#f0e8d8", featherR: "#c83a2a", iron: "#5a5c6a", ironH: "#9a9cac", ironD: "#2e2e3a", bronze: "#c08a3a", bronzeH: "#f0c870", bronzeD: "#7a5020", storm: "#fff08a", stormD: "#c8a020", stormH: "#ffffff", haft: "#3a2a22", haftD: "#22180f" }).map(([k, v]) => [k, hex(v)]));
 const BOOK = Object.fromEntries(Object.entries({ leather: "#5a2a6a", leatherD: "#341640", gold: "#ffd84a", goldD: "#b8862a", page: "#f4ead0", pageE: "#d8c8a0", pageD: "#b8a47c", spine: "#4a2a1a", ink: "#7a6448", ribbon: "#c0302a" }).map(([k, v]) => [k, hex(v)]));
 // the gifts' own colours: shadow glass and silver, gold and ember, ice, lantern light, iron and fire
 const GIFT = Object.fromEntries(Object.entries({
@@ -709,26 +710,53 @@ const WEAPONS = {
     }
     for (let j = 0; j <= 3; j += 0.35) T(33 + j * 0.4, -1.2 - j, STEEL.b);
   } },
-  // a crossbow: a wooden stock along the arm, a steel prod across its end, the string drawn back, a bolt on it
-  crossbow: { draw(T, q) {
-    for (let i = -4; i <= 16; i += 0.35) for (let k = -1; k <= 1.01; k += 0.35) T(i, k, k > 0.3 ? STEEL.woodD : STEEL.wood, i < 2 ? -0.6 : 0);
-    for (let i = 13.6; i <= 15; i += 0.35) for (let k = -1.4; k <= 1.41; k += 0.35) T(i, k, ARMS.iron, 0.3);
-    for (let u = -1; u <= 1.001; u += 0.03) {
-      const k = u * 11, i = 15 - 2.4 * u * u;
-      T(i, k, Math.abs(u) > 0.85 ? ARMS.ironD : ARMS.ironH, 0.4);
-      T(i - 0.5, k, ARMS.iron, 0.4);
+  // a crossbow, held level at the shoulder in both hands: a wooden stock (its butt deep, against the shoulder), an
+  // iron lever under it, a steel prod bound across its fore end and an iron stirrup past it, the string drawn back to
+  // the nut and a bolt lying in the groove. The prod lies across the stock, so from the side it goes off into the
+  // depth: its near limb comes toward us and down the picture, its far one away and up, as seen from above the floor.
+  // (Loosed, `q.loaded` false: no bolt, the string forward against the prod.)
+  crossbow: { two: 7, draw(T, q) {
+    const P = (i, k, l) => T.at3(i, k, l), F = 20.5;
+    // the stock: the butt deepening toward the shoulder, the tiller straight on to the prod
+    for (let i = -10; i <= F + 1.5; i += 0.3) {
+      const u = Math.max(0, Math.min(1, (0 - i) / 10)), lo = 1.2 + u * 2.8, hi = -1.2 - u * 0.3;
+      for (let k = hi; k <= lo + 0.01; k += 0.3) {
+        const edge = k > lo - 0.35 || i < -9.7;
+        T(i, k, edge ? STEEL.woodD : k < hi + 0.7 ? ARMS.woodH : STEEL.wood, k > 0 ? 0.3 : -0.3);
+      }
     }
-    const tipA = T.at(12.6, -11), tipB = T.at(12.6, 11), nock = T.at(q.loaded === false ? 12 : 5, 0);
+    // the lever hanging under it, the nut on top that holds the string
+    for (let i = 0.5; i <= 6.5; i += 0.3) T(i, 1.5 + (6.5 - i) * 0.55, i < 1.4 ? ARMS.ironD : ARMS.iron, 0.9);
+    for (let a = 0; a < Math.PI * 2; a += 0.4) T(5 + Math.cos(a) * 0.8, -1.7 + Math.sin(a) * 0.6, ARMS.ironH, -0.2);
+    // the prod: two thick limbs of steel, their tips swept forward
+    for (let u = -1; u <= 1.001; u += 0.02) {
+      const w = Math.abs(u), i = F - 0.5 + 2.2 * w * w, k = u * 6.5, l = -u * 11, th = 1.7 - w * 0.8;
+      for (let o = -th; o <= th + 0.01; o += 0.3) {
+        const c = w > 0.9 ? ARMS.ironD : o < -th * 0.35 ? STEEL.hi : o > th * 0.35 ? ARMS.iron : ARMS.ironH;
+        T(i + o, k, c, l);
+      }
+    }
+    // bound to the stock with cord
+    for (let i = F - 2; i <= F + 0.4; i += 0.3) for (let k = -1.8; k <= 1.81; k += 0.3) T(i, k, Math.floor(i * 3.3) % 2 ? ARMS.rope : ARMS.ropeD, -0.6);
+    // the stirrup past it, a loop of iron to put a foot in
+    for (let a = 0; a < Math.PI * 2; a += 0.1) T(F + 3.4 + Math.cos(a) * 1.8, Math.sin(a) * 2.4, a < Math.PI ? ARMS.ironH : ARMS.iron, 0);
+    // the string, dark and thin, from the limbs' tips back to the nut (or forward against the prod, loosed)
+    const tip = (u) => P(F + 1.7, u * 6.5, -u * 11), nock = P(q.loaded === false ? F - 1 : 5, -1.6, 0);
     const line = (A, B2) => {
       const n = Math.max(2, Math.ceil(len(sub(B2, A)) / 0.4));
       for (let k = 0; k <= n; k++) {
-        const P = lerp3(A, B2, k / n);
-        plot(idx(Math.round(P[0]), Math.round(P[1])), P[2] + 0.05, 2, 0, PART.weapon, -1, STEEL.a);
+        const Q = lerp3(A, B2, k / n);
+        plot(idx(Math.round(Q[0]), Math.round(Q[1])), Q[2] + 0.05, 2, 0, PART.weapon, -1, ARMS.string);
       }
     };
-    line(tipA, nock);
-    line(tipB, nock);
-    for (let i = 5; i <= 19; i += 0.35) T(i, 0, i > 17.6 ? STEEL.hi : i < 6.4 ? STEEL.gold : STEEL.b, 1.1);
+    line(tip(-1), nock);
+    line(tip(1), nock);
+    // the bolt in its groove: fletched at the back, a broad steel head
+    if (q.loaded !== false) {
+      for (let i = 5.4; i <= F + 2.6; i += 0.3) T(i, -1.8, i > F + 1 ? STEEL.hi : ARMS.haft, -0.4);
+      for (let i = F + 0.8; i <= F + 3.2; i += 0.3) for (const s2 of [-1, 1]) T(i, -1.8 + s2 * (F + 3.2 - i) * 0.5, i > F + 2.4 ? STEEL.hi : STEEL.b, -0.4);
+      for (let i = 5.4; i <= 7.8; i += 0.3) for (let j = 0.4; j <= 1.9 - (i - 5.4) * 0.45; j += 0.3) T(i, -1.8 - j, j > 1 ? ARMS.feather : ARMS.featherR, -0.4);
+    }
   } },
   // the storm staff: a dark haft banded in silver, three prongs at its head holding a stone full of lightning
   staff: { two: -9, draw(T) {

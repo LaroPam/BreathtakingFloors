@@ -80,6 +80,8 @@ function animBox(a: Anim): { x0: number; x1: number; top: number } {
 const STEP = 1 / 60;
 /** A level reached: the world slows into the choice over this long rather than stopping dead. */
 const LVL_SLOW = 0.45;
+/** On a touch screen, how far above the bottom edge the in-game bars and buttons stay (a phone's own controls). */
+const TOUCH_INSET = 14;
 /** A run started on a later tier's place: the levels it is given at once (about what the tiers passed by give). */
 const START_LEVELS = [0, 8, 15];
 /** The first run's lessons, in order (the save's tutStep counts how many are done). */
@@ -1352,8 +1354,11 @@ export class Game {
           break;
         }
         drawPointers(ui, w, cx, cy, W, H, this.now);
-        drawHud(ui, w, W, H, this.now, this.banner, this.touch, this.weekly ? "trophy" : this.daily ? "daily" : "", this.save.tutorial && !this.daily);
-        if (this.touch) drawTouch(ui, this.input, w, W, H, this.now);
+        // (on a touch screen the bars and buttons along the bottom keep clear of its edge, where a phone or the page
+        // around the game may have its own controls)
+        const hudH = this.touch ? H - TOUCH_INSET : H;
+        drawHud(ui, w, W, hudH, this.now, this.banner, this.touch, this.weekly ? "trophy" : this.daily ? "daily" : "", this.save.tutorial && !this.daily);
+        if (this.touch) drawTouch(ui, this.input, w, W, hudH, this.now);
         else this.input.zones = [];
         this.drawLevelRing(cx, cy);
         this.drawTutorial();
@@ -1511,7 +1516,7 @@ export class Game {
     const head = `${t("tutStep")} ${sv.tutStep + 1}/${TUTOR.length}`, tag = done ? t("tutDone") : head;
     const lw = Math.min(room, Math.max(measure(tag, "mini"), ...lines.map((l) => measure(l))) + 24), lh = lines.length * 11 + 17;
     const cxT = this.touch ? Math.min(W / 2, 8 + room / 2) : W / 2;
-    const x = Math.round(cxT - lw / 2), y = Math.round(H - (this.touch ? 74 : 26) - lh + rise);
+    const x = Math.round(cxT - lw / 2), y = Math.round(H - (this.touch ? 74 + TOUCH_INSET : 26) - lh + rise);
     const green = rgbaf(0.55, 1, 0.6, 1), gold = rgba("#ffd84a");
     // a step learnt: the plate flares green for an instant
     if (done) glowUi(ui, cxT, y + lh / 2, lw * 0.6, lh, green, 0.35 * Math.max(0, 1 - u / 0.5));
