@@ -1130,8 +1130,8 @@ export class World {
    */
   xpPace(): number {
     const want = 1 + 3.2 * this.floor, L = this.hero.level;
-    if (L > want + 2) return Math.max(0.35, 1 - 0.08 * (L - want - 2));
-    if (L < want - 3) return Math.min(1.5, 1 + 0.05 * (want - 3 - L));
+    if (L > want + 2) return Math.max(0.15, 1 - 0.12 * (L - want - 2));
+    if (L < want - 3) return Math.min(1.6, 1 + 0.07 * (want - 3 - L));
     return 1;
   }
 
