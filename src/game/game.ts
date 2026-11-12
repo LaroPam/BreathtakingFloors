@@ -1810,9 +1810,10 @@ export class Game {
     const info = floorText(w.stop), stage = w.stage;
     text(ui, tx(info.name), W / 2, cy - 32 + th + 4, { font: "title", align: "center", color: withAlpha(C.text, a), shadow: withAlpha(C.ink, a), outline: true });
     text(ui, `${tx(B.name)} · ${stage}/${PLACE_FLOORS}${stage === 1 && w.floor > 1 ? ` · ${t("newPlace")}` : ""}`, W / 2, cy - 32 + th + 19, { font: "mini", align: "center", color: withAlpha(stage === PLACE_FLOORS ? rgba("#ff9a8a") : C.goldDim, a) });
-    para(ui, tx(info.lore), Math.round(W / 2 - 150), cy - 32 + th + 30, 300, withAlpha(C.dim, a), "center");
+    // (a narrow screen wraps the line onto more rows, and the road down moves below them)
+    const lw = Math.min(300, W - 16), lh = para(ui, tx(info.lore), Math.round(W / 2 - lw / 2), cy - 32 + th + 30, lw, withAlpha(C.dim, a), "center");
     // the road down: the tower's floors on a thread, the bosses' marked, those behind lit, ours ringed
-    const my = cy - 32 + th + 52, step = Math.min(18, Math.floor((W - 40) / DEPTH));
+    const my = cy - 32 + th + 30 + Math.max(22, lh + 12), step = Math.min(18, Math.floor((W - 40) / DEPTH));
     const x0 = Math.round(W / 2 - ((DEPTH - 1) / 2) * step);
     ui.rect(x0, my, (DEPTH - 1) * step, 1, withAlpha(rgba("#2a2438"), a));
     ui.rect(x0, my, Math.max(0, (w.floor - 1) * step), 1, withAlpha(C.goldDim, a));
@@ -2344,9 +2345,14 @@ export class Game {
     if (this.forgeSel < this.forgeScroll) this.forgeScroll = this.forgeSel;
     if (this.forgeSel >= this.forgeScroll + rows) this.forgeScroll = this.forgeSel - rows + 1;
     frame(ui, listX, top, listW, rows * rowH + 6);
+    // (each item's higher levels open as the tower is gone down: the first two from the start, the third with tier II
+    // reached, the fourth with tier III, the fifth with tier IV)
+    const reached = Math.min(4, Math.ceil(Math.max(1, this.save.bestFloor) / 3));
+    const tierOf = (lv: number) => [1, 1, 2, 3, 4][Math.min(4, lv)], shut = (lv: number) => tierOf(lv) > reached;
+    const ROMAN = ["", "I", "II", "III", "IV"];
     const buyItem = (k: number) => {
       const item = FORGE[k], lv = f[item.id] ?? 0, cost = item.costs[lv];
-      if (lv >= item.costs.length || this.save.embers < cost) return void this.audio.play("deny");
+      if (lv >= item.costs.length || this.save.embers < cost || shut(lv)) return void this.audio.play("deny");
       this.save.embers -= cost;
       f[item.id] = lv + 1;
       this.audio.play("chest");
@@ -2373,7 +2379,10 @@ export class Game {
         ui.rect(px, y + 13, pw, 3, rgba("#14121c"));
         if (q < lv) ui.rect(px, y + 13, pw, 3, maxed ? C.gold : rgba("#e8a848"));
       }
-      if (!maxed) {
+      if (!maxed && shut(lv)) {
+        ui.image(icon("hud", "lock"), listX + listW - 22, y + rowH / 2, 0.6, 0.6, 0, rgbaf(0.75, 0.7, 0.85, 0.9));
+        text(ui, ROMAN[tierOf(lv)], listX + listW - 8, y + 4, { align: "right", font: "mini", color: C.dim });
+      } else if (!maxed) {
         const cost = String(item.costs[lv]), afford = this.save.embers >= item.costs[lv];
         text(ui, cost, listX + listW - 8, y + 4, { align: "right", font: "mini", color: afford ? C.gold : C.dim });
       }
@@ -2405,6 +2414,7 @@ export class Game {
     // the price and the button, at the foot of the card
     const bw = Math.min(150, cardW - 24), bxx = Math.round(cardX + cardW / 2 - bw / 2), byy = cardY + cardH - 24;
     if (maxed) text(ui, t("forgeMax"), cardX + cardW / 2, byy + 4, { align: "center", color: C.gold, shadow: C.ink });
+    else if (shut(lv)) text(ui, t("forgeTier").replace("{t}", ROMAN[tierOf(lv)]), cardX + cardW / 2, byy + 4, { align: "center", color: C.dim, shadow: C.ink });
     else if (button(ui, this.menu, now, bxx, byy, bw, 18, `${t("forgeBuy")} · ${cost}`, { primary: true, disabled: this.save.embers < cost, icon: icon("hud", "ember") })) buyItem(this.forgeSel);
     if (button(ui, this.menu, now, Math.round(W / 2 - 50), H - 24, 100, 18, t("back"), { icon: icon("hud", "back") }) || this.input.pressed("back")) this.setState("title", this.titleSlot("forge"));
   }

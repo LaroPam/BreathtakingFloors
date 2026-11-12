@@ -16,7 +16,7 @@
 // player: it walks the way the guide arrow points, fights what comes, lights the braziers, picks upgrades at
 // random, opens chests, takes the stairs and the portals. It starts with no gifts (`--gifts=shade` to hold some) and
 // wins them from the bosses as a player does; on a floor with a gate it can open, it goes to the gate and sees it
-// open onto its vault.
+// open onto its vault. Every weapon, relic and artifact is open to it (a player opens them over many runs).
 
 import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
@@ -132,6 +132,8 @@ for (const hero of heroes) {
     };
     window.__seedClock(seed * 7919 + hero.length);
     G.startRun();
+    // everything the arsenal holds is open to the bot (what a player opens over many runs gets played too)
+    G.world.locked.clear();
     // a deeper start: that floor at once, and the levels a hero would have reached by it to choose
     if (from > 1) (G.world.startFloor(from, G.world.mod), (G.world.pendingLevels += Math.round((from - 1) * 2.5)));
     window.__bot.takeWay = takeWay;
@@ -221,6 +223,18 @@ for (const hero of heroes) {
         // (where a report says it happened: the depth, the place and its floor)
         const at = `floor ${w.floor} (${w.place.id} ${w.stage})`;
         const here = `${w.floor} ${w.place.id} ${w.stage}`;
+        // the measures of balance: each floor's time, the hero's level at its end, the hits he took, the damage done
+        if (B.frames % 30 === 0 || here !== B.floor) {
+          let dmg = 0;
+          for (let q = 0; q < w.dmgStat.length; q++) dmg += w.dmgStat[q];
+          if (here !== B.floor && B.floor && B.floorT > 1) {
+            const done = B.last ?? { dmg: 0, hits: 0, level: h.level, tier: w.place.tier };
+            (B.tiers ??= []).push({ tier: B.lastTier, t: B.floorT, level: done.level, hits: done.hits, dmg: Math.max(0, done.dmg - (B.dmg0 ?? 0)) });
+            B.dmg0 = dmg < (B.last?.dmg ?? 0) ? 0 : done.dmg;
+          }
+          B.last = { dmg, hits: w.floorHits, level: h.level };
+          B.lastTier = w.place.tier;
+        }
         if (here !== B.floor) (B.floor = here), (B.floorT = 0), (B.descending = false), (B.bossKilled = false), (B.wasBoss = false), (B.vanished = false), (B.bossWallSaid = false);
         if (G.state === "play") B.floorT += 1 / 60;
         // a boss that is gone without its death
@@ -270,6 +284,18 @@ for (const hero of heroes) {
       if (slow.length) console.log(`  slow  ${hero}: ${slow.slice(0, 3).join("; ")}${slow.length > 3 ? ` (+${slow.length - 3})` : ""}`);
       const played = await page.evaluate(() => (window.__bot.frames / 3600).toFixed(1));
       const extra = await page.evaluate(() => `gifts ${window.__game.save.gifts.join(",") || "none"}, ${window.__bot.gates ?? 0} gate(s) opened, bosses ${(window.__bot.fights ?? []).join(", ") || "-"}`);
+      // per tier: its floors' mean time, the hero's level at its end, the hits taken a floor, damage a second
+      const tiers = await page.evaluate(() => {
+        const R = ["", "I", "II", "III", "IV", "✦"], by = new Map();
+        for (const f of window.__bot.tiers ?? []) {
+          const a = by.get(f.tier) ?? { n: 0, t: 0, level: 0, hits: 0, dmg: 0 };
+          (a.n += 1), (a.t += f.t), (a.level = Math.max(a.level, f.level)), (a.hits += f.hits), (a.dmg += f.dmg);
+          by.set(f.tier, a);
+        }
+        const mmss = (s) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, "0")}`;
+        return [...by.entries()].sort((a, b) => a[0] - b[0]).map(([k, a]) => `${R[k] ?? k} ${mmss(a.t / a.n)} L${a.level} ${(a.hits / a.n).toFixed(1)} hits ${Math.round(a.dmg / a.t)} dps`).join(" | ");
+      });
+      if (tiers) console.log(`  tiers ${hero}: ${tiers}`);
       if (st.won && !seen.length && !errors.length) console.log(`  ok    ${hero}: through floor ${st.floor} (${st.trail.join(" > ")}), ${extra}, ${played} min of play (${mins} min to check)`);
       else console.log(`        ${hero}: ${played} min of play, seed ${seed}`);
       break;
