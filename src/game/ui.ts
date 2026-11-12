@@ -100,6 +100,32 @@ export class Menu {
     if (i.pressed("three") && n >= 3) this.focus = 2;
     this.focus = Math.min(this.focus, n - 1);
   }
+  /**
+   * Move focus over items laid out as `lead` rows of one item each and then a grid of `cols` columns, row by row: up
+   * and down go a row, left and right the next item in order.
+   */
+  grid(cols: number, lead = 0): void {
+    if (!this.count) return;
+    const i = this.input, n = this.count, k = Math.min(this.focus, n - 1);
+    let to = k;
+    if (i.pressed("right")) to = (k + 1) % n;
+    else if (i.pressed("left")) to = (k - 1 + n) % n;
+    else if (i.pressed("down")) {
+      if (k < lead) to = k + 1 < n ? k + 1 : 0;
+      else if (k + cols < n) to = k + cols;
+      // (from a row short of the last, to the last item; from the last row, round to the top)
+      else to = Math.floor((k - lead) / cols) < Math.floor((n - 1 - lead) / cols) ? n - 1 : 0;
+    } else if (i.pressed("up")) {
+      if (k < lead) to = k > 0 ? k - 1 : n - 1;
+      else if (k - cols >= lead) to = k - cols;
+      else to = lead > 0 ? lead - 1 : n - 1;
+    }
+    if (to !== k) (this.focus = to), this.audio.play("hover");
+    if (i.pressed("one") && n >= 1) this.focus = 0;
+    if (i.pressed("two") && n >= 2) this.focus = 1;
+    if (i.pressed("three") && n >= 3) this.focus = 2;
+    this.focus = Math.min(this.focus, n - 1);
+  }
 }
 
 // ------------------------------------------------------------------------------------------------ the kit
@@ -156,6 +182,21 @@ export function frame(b: Batch, x: number, y: number, w: number, h: number, o: F
       b.rect(cx, sy > 0 ? cy : cy - 2, 1, 3, g);
     }
   }
+}
+
+/**
+ * A bronze medallion about r across from its centre with an icon set in its middle (gold when lit). Its centre follows
+ * the icon's own box, half a pixel either way, so whatever the icon's width the icon sits in it exactly.
+ */
+export function medallion(b: Batch, cx: number, cy: number, r: number, ic: Rect, lit = false): void {
+  const w = ic[3], h = ic[4], left = Math.round(cx) - Math.floor(w / 2), top = Math.round(cy) - Math.floor(h / 2);
+  const mx = left + w / 2, my = top + h / 2, ox = (w % 2) / 2, oy = (h % 2) / 2;
+  b.disc(mx, my, r + 1 + ox, r + 1 + oy, C.ink);
+  b.disc(mx, my, r + ox, r + oy, lit ? rgba("#ecc070") : rgba("#9a6228"));
+  b.disc(mx, my, r - 1 + ox, r - 1 + oy, lit ? rgba("#c88c3c") : rgba("#6a3e1a"));
+  b.disc(mx, my, r - 2 + ox, r - 2 + oy, rgba("#1a1424"));
+  b.disc(mx, my, r - 3 + ox, r - 3 + oy, lit ? rgba("#3a2c3a") : rgba("#26202f"));
+  b.image(ic, left - ic[5], top - ic[6], 1, 1);
 }
 
 /** The old name for a plain panel: a gold rim when the edge is gold, a flat fill when one is given. */

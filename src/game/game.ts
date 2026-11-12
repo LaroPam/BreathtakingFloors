@@ -15,7 +15,7 @@ import { getLang, langFor, setLang, t, tx, type Lang } from "./i18n";
 import { Rng } from "./rng";
 import { TEAM_FOE } from "./pools";
 import { defaultSave, sanitize, type RunSave, type SaveData } from "./save";
-import { button, slider, C, divider, glow as glowUi, drawHud, drawPointers, drawTouch, fmtTime, frame, header , Menu, panel, para, plate , slot, type ButtonOpts } from "./ui";
+import { button, slider, C, divider, glow as glowUi, drawHud, drawPointers, drawTouch, fmtTime, frame, header , medallion, Menu, panel, para, plate , slot, type ButtonOpts } from "./ui";
 import { CINE_DUR, LUNGE_DASH, SRC_ABILITY, SRC_DASH, SRC_ELS, SRC_N, SRC_PARRY, SRC_REACT, SRC_RELIC, SRC_STATUS, SRC_WAVE, SRC_WEAPON, World } from "./world";
 
 type StatRow = { ic: Rect; name: string; col: number; sum: number; segs: [number, number][] };
@@ -138,6 +138,8 @@ const TITLE_ITEMS: Record<TitleItem, { label: Parameters<typeof t>[0]; icon: str
 /** The atlas's places in the order the keys go through them: tier by tier, the main way first, then beyond the light. */
 const ATLAS_ORDER: PlaceId[] = [...TIERS.flat(), ...PLACES.filter((p) => p.tier > TIERS.length).map((p) => p.id)];
 const ROMAN = ["", "I", "II", "III", "IV"];
+/** The tier of the tower that opens a forge item's next level, by the level it has: two from the start, then II, III, IV. */
+const FORGE_TIER = (lv: number): number => [1, 1, 2, 3, 4][Math.min(4, lv)];
 /** Height of the title font's capitals. */
 const FONT_H = FONTS.title.h;
 
@@ -184,6 +186,8 @@ export class Game {
   private wipe: { t: number; dur: number; out: boolean; then?: () => void } | null = null;
   private cardT = 0;
   private heroIdx = 0;
+  /** The title menu's columns under its first plaque, as last laid out (for the keys). */
+  private titleCols = 1;
   /** The pause's books: which is open, the card opened from it (growing out of its tile) and its live demo. */
   private bookKind: "evo" | "el" = "el";
   private card: { idx: number; t: number; dir: 1 | -1; from: [number, number, number, number] } | null = null;
@@ -373,6 +377,35 @@ export class Game {
   /** Opened lately and not yet tried: it carries a NEW (only in a newcomer's first runs). */
   private titleFresh(id: TitleItem): boolean {
     return TITLE_ITEMS[id].after > 0 && this.save.runs < 12 && !this.save.seen.includes(`menu:${id}`);
+  }
+  /** A title plaque's name and the line of its state under it (and whether that state is good news, shown green). */
+  private titleInfo(id: TitleItem): [string, string, boolean] {
+    const sv = this.save, run = sv.run, label = t(TITLE_ITEMS[id].label);
+    switch (id) {
+      case "continue": {
+        const at = run ? PLACES.find((p) => p.id === run.at[0]) : undefined;
+        return [label, at ? t("menuRunAt").replace("{n}", String(depthOf({ place: at, stage: run!.at[1] }))).replace("{place}", tx(at.name)) : "", false];
+      }
+      case "play": return [label, run ? t("menuNewRun") : tx(HEROES[this.heroIdx].name), false];
+      case "trials": return [label, t("menuTrials"), false];
+      case "tasks": {
+        if (this.tasksReady()) return [label, t("menuTasksReady"), true];
+        const T = this.tasks();
+        return [label, t("menuTasks").replace("{n}", String(T.items.filter((q) => q.have >= q.goal).length)).replace("{all}", String(T.items.length)), false];
+      }
+      case "forge": {
+        const n = this.forgeReady();
+        return [label, n ? t("menuForgeBuy").replace("{n}", String(n)) : `${t("embers")}: ${sv.embers}`, n > 0];
+      }
+      case "shop": return [label, t("menuShop"), false];
+      case "arsenal": {
+        const keys = ARSENAL();
+        return [label, `${t("openedOf")} ${keys.filter((k) => !unlockOf(k) || sv.opened.includes(k)).length}/${keys.length}`, false];
+      }
+      case "atlas": return [label, t("atlasExplored").replace("{p}", String(this.explored())), false];
+      case "records": return [label, sv.bestFloor ? t("menuBest").replace("{n}", String(sv.bestFloor)) : t("menuNoBest"), false];
+      default: return [label, t("menuSettings"), false];
+    }
   }
   /** What a title button does; true if the title screen is left for another this frame. */
   private openTitleItem(id: TitleItem): boolean {
@@ -1439,7 +1472,8 @@ export class Game {
       case "atlas": this.drawAtlas(); break;
       case "start": this.drawStart(); break;
     }
-    if (this.state !== "heroes") this.menu.end(this.state === "stairs" || (this.state === "pick" && this.pickRow), this.state !== "settings");
+    if (this.state === "title") this.menu.grid(this.titleCols, 1);
+    else if (this.state !== "heroes") this.menu.end(this.state === "stairs" || (this.state === "pick" && this.pickRow), this.state !== "settings");
     // a screen comes up out of the dark
     const since = this.now - this.menu.openedAt;
     if (this.state !== "play" && this.state !== "card" && !over && since < 0.2) ui.rect(0, 0, W, H, rgba("#07060c", (1 - since / 0.2) * 0.7));
@@ -1620,37 +1654,73 @@ export class Game {
     const short = H < 260;
     const th = this.heading(t("title"), ty, __PLATFORM__ === "pikabu" || short ? 2 : 3);
     text(ui, t("subtitle"), W / 2, ty + th + 2, { align: "center", color: rgba("#c8b8a0"), shadow: C.ink });
-    // (the buttons end above the line of embers and the fonts' authors; if they still do not fit, they grow a little
-    // lower and closer together)
+    // (the plaques end above the line of embers and the fonts' authors)
     const credits = short ? [] : wrap(t("fontCredits"), W - 16, "mini");
-    const items = this.titleItems(), top = ty + th + 16, bottom = H - 26 - credits.length * 8;
-    let bh = H >= 300 ? 20 : 17, gap = H >= 300 ? 6 : 4;
-    const cols = items.length * (bh + gap) > bottom - top && W >= 340 ? 2 : 1, rows = Math.ceil(items.length / cols), bw = cols === 2 ? Math.min(150, Math.floor((W - 40) / 2)) : 160;
-    if (rows * (bh + gap) > bottom - top) (gap = 3), (bh = Math.max(14, Math.floor((bottom - top) / rows) - gap));
-    const x0 = Math.round(W / 2 - (cols * bw + (cols - 1) * 10) / 2);
-    const y0 = Math.round(Math.max(top, Math.min(H * 0.46, bottom - rows * (bh + gap))));
-    for (let k = 0; k < items.length; k++) {
-      const id = items[k], bx = x0 + (cols === 2 ? (k % 2) * (bw + 10) : 0), y = y0 + (cols === 2 ? Math.floor(k / 2) : k) * (bh + gap);
-      const o = TITLE_ITEMS[id], fresh = this.titleFresh(id);
-      // (a saved run: going on with it is the first thing offered, with the floor it stands on)
-      const run = this.save.run, at = id === "continue" && run ? PLACES.find((p) => p.id === run.at[0]) : undefined;
-      const label = at ? `${t(o.label)} · ${t("floor")} ${depthOf({ place: at, stage: run!.at[1] })}` : t(o.label);
-      const hit = button(ui, this.menu, now, bx, y, bw, bh, label, { primary: id === (run ? "continue" : "play"), color: o.color ? rgba(o.color) : undefined, icon: icon("hud", o.icon) });
-      // newly opened: a green NEW at its right end until it is first opened
+    const items = this.titleItems(), top = ty + th + 14, bottom = H - 26 - credits.length * 8;
+    // the first thing offered (going on with a saved run, or a new one) on a wide plaque with a brazier; the rest on
+    // plaques with a bronze medallion each, a line of their state under the name: one column on a phone held upright,
+    // two on a wide screen, three on a short one
+    const main = items[0], rest = items.slice(1), wide = W > H;
+    const pw = wide ? Math.min(460, W - 24) : Math.min(320, W - 16), px = Math.round(W / 2 - pw / 2);
+    const mh = short ? 24 : 34, gap = short ? 3 : 4, cols = Math.max(1, Math.min(rest.length, wide ? (short ? 3 : 2) : 1));
+    const rows = Math.ceil(rest.length / cols), cw = Math.floor((pw - (cols - 1) * 6) / cols);
+    const rh = Math.max(16, Math.min(28, Math.floor((bottom - top - mh - 6 - (rows - 1) * gap) / rows)));
+    const blockH = mh + (rows ? 6 + rows * rh + (rows - 1) * gap : 0);
+    const y0 = Math.round(Math.max(top, Math.min(H * 0.4, bottom - blockH)));
+    this.titleCols = cols;
+    const open = (id: TitleItem, fresh: boolean): boolean => {
+      if (fresh) (this.save.seen.push(`menu:${id}`), this.persist());
+      return this.openTitleItem(id);
+    };
+    // ---- the first plaque
+    {
+      const { focused, hit, pressed, idx } = this.menu.item(px, y0, pw, mh, now);
+      const dy = Math.round((1 - this.menu.appear(now, idx)) * 8) + (pressed ? 1 : 0), y = y0 + dy;
+      let [label, state] = this.titleInfo(main);
+      // (a long place's name: the floor alone)
+      if (measure(state, "mini") > pw - 42) state = state.split(" · ")[0];
+      glowUi(ui, px + pw / 2, y + mh / 2, pw * 0.5, mh, C.gold, (focused ? 0.34 : 0.22) + 0.06 * Math.sin(now * 3));
+      frame(ui, px, y, pw, mh, { edge: focused ? C.goldLight : C.gold });
+      const br = anim("brazier"), bf = br.frames[frameAt(br, now)][0], bs = short ? 0.45 : 0.6;
+      glowUi(ui, px + 18, y + mh / 2, 18, 14, rgbaf(1, 0.6, 0.25, 1), 0.5);
+      if (bf) ui.image(bf, px + 18, y + mh - 3, bs, bs);
+      const font = short || measure(label, "title") > pw - 44 ? "big" : "title", tx0 = px + 36;
+      text(ui, label, tx0, y + (font === "big" ? (state ? 4 : Math.round(mh / 2) - 4) : 6), { font, color: C.goldLight, shadow: C.ink, outline: font === "title" });
+      if (state) text(ui, state, tx0, y + mh - (short ? 9 : 11), { font: "mini", color: C.gold });
+      if (hit && open(main, false)) return;
+    }
+    // ---- the rest
+    for (let k = 0; k < rest.length; k++) {
+      const id = rest[k], c = k % cols, r = Math.floor(k / cols), x = px + c * (cw + 6), yy = y0 + mh + 6 + r * (rh + gap);
+      const { focused, hit, pressed, idx } = this.menu.item(x, yy, cw, rh, now);
+      const y = yy + Math.round((1 - this.menu.appear(now, idx)) * 8) + (pressed ? 1 : 0);
+      const [label, state, good] = this.titleInfo(id), o = TITLE_ITEMS[id], fresh = this.titleFresh(id), seal = id === "tasks" && this.tasksReady();
+      if (focused) glowUi(ui, x + cw / 2, y + rh / 2, cw * 0.56, rh, C.gold, 0.14 + 0.04 * Math.sin(now * 6));
+      frame(ui, x, y, cw, rh, { edge: focused ? C.gold : undefined });
+      const mr = Math.min(9, Math.floor(rh / 2) - 2), cy = y + Math.floor(rh / 2);
+      medallion(ui, x + 8 + mr, cy, mr, icon("hud", o.icon), focused);
+      // the marks at the right end: a green NEW until it is first opened, a red seal with "!" while a task's reward waits
+      let right = x + cw - 6;
       if (fresh) {
-        const p = 0.75 + 0.25 * Math.sin(now * 5);
-        text(ui, t("new"), bx + bw - 6, y + Math.round(bh / 2) - 3, { font: "mini", align: "right", color: withAlpha(C.green, p), shadow: C.ink });
+        text(ui, t("new"), right, cy - 3, { font: "mini", align: "right", color: withAlpha(C.green, 0.75 + 0.25 * Math.sin(now * 5)), shadow: C.ink });
+        right -= measure(t("new"), "mini") + 5;
       }
-      // a daily task's reward waits: a red seal with "!" on the button
-      if (id === "tasks" && this.tasksReady()) {
-        const p = 0.7 + 0.3 * Math.sin(now * 6);
-        ui.disc(bx + bw - 12 - (fresh ? 24 : 0), y + bh / 2, 5, 5, rgbaf(0.9, 0.2, 0.25, p));
-        text(ui, "!", bx + bw - 12 - (fresh ? 24 : 0), y + bh / 2 - 3, { font: "mini", align: "center", color: C.text });
+      if (seal) {
+        ui.disc(right - 4, cy, 5, 5, rgbaf(0.9, 0.2, 0.25, 0.7 + 0.3 * Math.sin(now * 6)));
+        text(ui, "!", right - 4, cy - 3, { font: "mini", align: "center", color: C.text });
+        right -= 13;
       }
-      if (hit) {
-        if (fresh) (this.save.seen.push(`menu:${id}`), this.persist());
-        if (this.openTitleItem(id)) return;
+      const tx0 = x + 14 + mr * 2, room = right - tx0, ink = focused ? C.gold : o.color ? rgba(o.color) : C.text;
+      const font = measure(label) <= room ? "big" : "mini", sc = good ? C.green : C.dim;
+      if (rh >= 22 && state) {
+        text(ui, label, tx0, y + Math.round(rh / 2) - 8, { font, color: ink, shadow: C.ink });
+        if (measure(state, "mini") <= room) text(ui, state, tx0, y + Math.round(rh / 2) + 2, { font: "mini", color: sc });
+      } else {
+        text(ui, label, tx0, cy - (font === "big" ? 4 : 3), { font, color: ink, shadow: C.ink });
+        // (no room for it under the name: at the right end, if it fits there)
+        if (state && measure(label, font) + 10 + measure(state, "mini") <= room) text(ui, state, right, cy - 3, { font: "mini", align: "right", color: sc });
       }
+      if (hit && open(id, fresh)) return;
     }
     const info = `${t("embers")}: ${this.save.embers}    ${t("best")}: ${t("floor")} ${this.save.bestFloor}`;
     // the fonts' authors along the bottom, what you have above them
@@ -2810,6 +2880,18 @@ export class Game {
    * the one picked, in full: its badge large, what it does, the level now and what the next gives, the price and the
    * button. A phone held upright shows the list above and the card below.
    */
+  /** The deepest tier the player has reached, for the forge's levels. */
+  private forgeReach(): number {
+    return Math.min(4, Math.ceil(Math.max(1, this.save.bestFloor) / 3));
+  }
+  /** How many of the forge's items the embers would buy a level of now. */
+  private forgeReady(): number {
+    const sv = this.save, reached = this.forgeReach();
+    return FORGE.filter((f) => {
+      const lv = sv.forge[f.id] ?? 0;
+      return lv < f.costs.length && f.costs[lv] <= sv.embers && FORGE_TIER(lv) <= reached;
+    }).length;
+  }
   private drawForge(): void {
     const ui = this.ui, W = this.r.w, H = this.r.h, now = this.now, f = this.save.forge;
     const th = this.heading(t("forgeTitle"), 6, H >= 300 ? 2 : 1, C.gold, 1, undefined, this.purseRoom());
@@ -2826,8 +2908,7 @@ export class Game {
     frame(ui, listX, top, listW, rows * rowH + 6);
     // (each item's higher levels open as the tower is gone down: the first two from the start, the third with tier II
     // reached, the fourth with tier III, the fifth with tier IV)
-    const reached = Math.min(4, Math.ceil(Math.max(1, this.save.bestFloor) / 3));
-    const tierOf = (lv: number) => [1, 1, 2, 3, 4][Math.min(4, lv)], shut = (lv: number) => tierOf(lv) > reached;
+    const reached = this.forgeReach(), tierOf = FORGE_TIER, shut = (lv: number) => tierOf(lv) > reached;
     const buyItem = (k: number) => {
       const item = FORGE[k], lv = f[item.id] ?? 0, cost = item.costs[lv];
       if (lv >= item.costs.length || this.save.embers < cost || shut(lv)) return void this.audio.play("deny");

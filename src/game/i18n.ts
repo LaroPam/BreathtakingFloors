@@ -313,6 +313,17 @@ const RU = {
   evoHint: "РЕЛИКВИЯ 5 УРОВНЯ + АРТЕФАКТ = ЭВОЛЮЦИЯ. СУНДУК ОТДАЁТ ЕЁ НАВЕРНЯКА",
   soundBlocked: "ЗВУК НЕ ВКЛЮЧИЛСЯ: БРАУЗЕР ИЛИ СТРАНИЦА ЕГО НЕ ДАЛИ. КОСНИТЕСЬ ЭКРАНА ЕЩЁ РАЗ, НА IPHONE ВЫКЛЮЧИТЕ БЕЗЗВУЧНЫЙ РЕЖИМ",
   fontCredits: "ШРИФТЫ: PIXELOID SANS - GGBOTNET, TINY5 - THE TINY5 PROJECT AUTHORS (SIL OFL)",
+  // the title menu's lines of state, one under each name
+  menuRunAt: "ЭТАЖ {n} · {place}",
+  menuNewRun: "НОВЫЙ ЗАБЕГ",
+  menuTrials: "ДНЯ И НЕДЕЛИ",
+  menuTasks: "ВЫПОЛНЕНО {n}/{all}",
+  menuTasksReady: "НАГРАДА ЖДЁТ",
+  menuForgeBuy: "МОЖНО КУПИТЬ: {n}",
+  menuShop: "УГЛИ, ГЕРОИ, БЕЗ РЕКЛАМЫ",
+  menuBest: "ЛУЧШИЙ: ЭТАЖ {n}",
+  menuNoBest: "ПОКА ПУСТО",
+  menuSettings: "ЗВУК, ЯЗЫК, ЭКРАН",
 };
 
 type Strings = typeof RU;
@@ -627,6 +638,16 @@ const EN: Strings = {
   evoHint: "A LEVEL 5 RELIC + ITS ARTIFACT = AN EVOLUTION. A CHEST ALWAYS GIVES IT",
   soundBlocked: "NO SOUND: THE BROWSER OR THE PAGE DID NOT ALLOW IT. TAP AGAIN; ON AN IPHONE, TURN OFF SILENT MODE",
   fontCredits: "FONTS: PIXELOID SANS BY GGBOTNET, TINY5 BY THE TINY5 PROJECT AUTHORS (SIL OFL)",
+  menuRunAt: "FLOOR {n} · {place}",
+  menuNewRun: "A NEW RUN",
+  menuTrials: "DAILY AND WEEKLY",
+  menuTasks: "{n}/{all} DONE",
+  menuTasksReady: "A REWARD WAITS",
+  menuForgeBuy: "CAN BUY: {n}",
+  menuShop: "EMBERS, HEROES, NO ADS",
+  menuBest: "BEST: FLOOR {n}",
+  menuNoBest: "NOTHING YET",
+  menuSettings: "SOUND, LANGUAGE, SCREEN",
 };
 
 let lang: Lang = "ru";
