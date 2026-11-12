@@ -3067,9 +3067,10 @@ export class Game {
     ];
     // one column; on a short screen (a phone on its side) two, three rows each
     const short = acts.length * 26 + 18 + 70 > H && W >= 340, cols = short ? 2 : 1, rows = Math.ceil(acts.length / cols);
-    const bw = short ? Math.min(160, Math.floor((W - 60) / 2)) : 170, bh = short ? 18 : 20, gap = short ? 5 : 6, colGap = 10;
+    const bw = short ? Math.min(160, Math.floor((W - 60) / 2)) : Math.min(170, W - 44), bh = short ? 18 : 20, gap = short ? 5 : 6, colGap = 10;
     const pw = cols * bw + (cols - 1) * colGap, ph = rows * (bh + gap) + 18;
-    const py = short ? Math.round(Math.max(48, H / 2 - ph / 2 + 16)) : Math.round(Math.max(H * 0.2 + 30, H / 2 - ph / 2 + 10));
+    // (on a small phone the panel rises so the line under it stays on the screen)
+    const py = short ? Math.round(Math.max(48, H / 2 - ph / 2 + 16)) : Math.round(Math.max(52, Math.min(Math.max(H * 0.2 + 30, H / 2 - ph / 2 + 10), H - ph - 6)));
     this.heading(t("paused"), py - (short ? 36 : 40), 2);
     frame(ui, W / 2 - pw / 2 - 14, py - 10, pw + 28, ph);
     const x0 = Math.round(W / 2 - pw / 2);
