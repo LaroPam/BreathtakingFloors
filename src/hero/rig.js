@@ -616,15 +616,21 @@ const WEAPONS = {
     for (const [i0, len] of [[-9, 3.2], [-7.4, 2.2], [-5.8, 3]])
       for (let i = i0; i <= i0 + 1.1; i += 0.3) for (let k = 0.6; k <= len; k += 0.3) for (const l of [-0.4, 0, 0.4]) T(i, k, l < 0 ? GIFT.goldD : GIFT.gold, l);
   } },
-  // Rime Path: a star of ice, six arms each branched twice, flat and clear, its tips bright
+  // Rime Path: a star of ice, six arms each branched twice, flat and clear, its tips bright. (Flat, it would turn
+  // edge-on to a line: it keeps its face to us instead, rocking a little and spinning slowly in its own plane.)
   gift_rime: { draw(T0, q) {
-    const T = giftT(T0, q);
+    const T1 = giftT(T0, q), yaw = q.yaw ?? 0, eff = 0.5 * Math.sin(yaw), spin = yaw / 6, turn = yaw - eff;
+    const cs = Math.cos(spin), sn = Math.sin(spin), ct = Math.cos(turn), st = Math.sin(turn);
+    const T = (i, k, c, l = 0, g = false) => {
+      const y = i - 1, ii = 1 + y * cs - k * sn, kk = y * sn + k * cs;
+      T1(ii, kk * ct - l * st, c, kk * st + l * ct, g);
+    };
     for (let arm = 0; arm < 6; arm++) {
       const a = (arm * Math.PI) / 3, ux = Math.cos(a), uy = Math.sin(a);
       for (let d = 0; d <= 8; d += 0.25) {
         const w = 0.7 - d * 0.05;
         for (let o = -w; o <= w; o += 0.3) for (const l of [-0.3, 0.3]) {
-          const lit = giftLit(l > 0 ? -Math.PI / 2 : Math.PI / 2, q.yaw);
+          const lit = giftLit(l > 0 ? -Math.PI / 2 : Math.PI / 2, eff * 2);
           T(1 + uy * d - ux * o, ux * d + uy * o, d > 7.2 ? GIFT.iceH : lit > 0.5 ? GIFT.ice : GIFT.iceD, l, d > 7.2);
         }
         for (const [at, len] of [[3, 2.4], [5.4, 1.6]])

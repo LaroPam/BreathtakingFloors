@@ -215,10 +215,11 @@ for (const hero of heroes) {
         const ms = performance.now() - a;
         // (only frames the GPU did not draw: the drawn ones go through a software GPU here, slow for its own reasons)
         if (B.frames % 30 !== 0 && ms > SLOW_MS && B.slow.length < 20) B.slow.push(`${ms.toFixed(0)} ms on floor ${w.floor} (${G.state}) with ${E.n} enemies`);
-        // the floor's clock, and a new floor
+        // the floor's clock, and a new floor (by its place too: the hall beyond stands at the last boss's depth)
         // (where a report says it happened: the depth, the place and its floor)
         const at = `floor ${w.floor} (${w.place.id} ${w.stage})`;
-        if (w.floor !== B.floor) (B.floor = w.floor), (B.floorT = 0), (B.descending = false), (B.bossKilled = false), (B.wasBoss = false), (B.vanished = false), (B.bossWallSaid = false);
+        const here = `${w.floor} ${w.place.id} ${w.stage}`;
+        if (here !== B.floor) (B.floor = here), (B.floorT = 0), (B.descending = false), (B.bossKilled = false), (B.wasBoss = false), (B.vanished = false), (B.bossWallSaid = false);
         if (G.state === "play") B.floorT += 1 / 60;
         // a boss that is gone without its death
         if (w.bossIndex() >= 0) (B.wasBoss = true), (B.bossT = (B.bossT ?? 0) + 1 / 60);

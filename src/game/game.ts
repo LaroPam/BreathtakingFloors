@@ -1761,7 +1761,7 @@ export class Game {
     const th = this.heading(t("gifts"), 6, H >= 300 ? 2 : 1, C.gold, 1, `${have.length}/${GIFTS.length}`);
     const short = H < 260, sel = GIFTS[Math.min(GIFTS.length - 1, this.giftSel)], own = have.includes(sel.id), col = rgba(sel.color);
     // the row of them at the bottom, above the way back
-    const S = short ? 30 : 38, G = 6, rowW = GIFTS.length * S + (GIFTS.length - 1) * G, rx = Math.round(W / 2 - rowW / 2), ry = H - 30 - S - 6;
+    const G = 6, S = Math.min(short ? 30 : 38, Math.floor((W - 12 - (GIFTS.length - 1) * G) / GIFTS.length)), rowW = GIFTS.length * S + (GIFTS.length - 1) * G, rx = Math.round(W / 2 - rowW / 2), ry = H - 30 - S - 6;
     GIFTS.forEach((g, k) => {
       const x = rx + k * (S + G), it = this.menu.item(x, ry, S, S, now), on = have.includes(g.id), picked = k === this.giftSel;
       if (it.hit || it.focused) this.giftSel = k;
@@ -1771,18 +1771,30 @@ export class Game {
       if (!on) ui.image(icon("hud", "lock"), x + S - 6, ry + S - 6, 0.6, 0.6, 0, rgbaf(0.75, 0.7, 0.85, 0.9));
     });
     // the one picked, large: its words just above the row, the gift above them (as high as there is room for)
-    const sc = short ? 1 : 2, wid = Math.min(320, W - 24), giver = giftFrom(sel.id);
+    const sc = short ? 1 : 2, giver = giftFrom(sel.id), R = short ? 18 : 26;
     const words = own ? [tx(sel.desc), t("giftOpens").replace("{gate}", tx(sel.gateName))] : [giver ? t("gateWhere").replace("{who}", tx(ENEMIES[giver.boss].name)) : t("giftUnknown")];
-    const lines = words.reduce((n, w) => n + wrap(w, wid).length, 0), textH = 18 + lines * 10 + 4;
+    const block = (wid: number) => 18 + words.reduce((n, w) => n + wrap(w, wid).length, 0) * 10 + 4;
+    // the gift above its words where there is the height for it; on a low screen (a phone on its side) beside them
+    let wid = Math.min(320, W - 24), textH = block(wid);
+    const side = ry - 8 - textH - (6 + th) < 2 * 24 * sc + 6 && W >= 300;
+    if (side) (wid = Math.min(260, W - 40 - 2 * R)), (textH = block(wid));
+    const tcx = side ? Math.round(W / 2 + R + 10) : Math.round(W / 2), tl = Math.round(tcx - wid / 2);
     let y = ry - 8 - textH;
-    const cy = Math.max(6 + th + 24 * sc, Math.min(Math.round(6 + th + (y - 6 - th) / 2), y - 24 * sc - 6));
-    this.drawGiftModel(sel.id, Math.round(W / 2), cy, sc, short ? 18 : 26, 1, own);
-    text(ui, own ? tx(sel.name) : "???", W / 2, y, { font: "title", align: "center", color: own ? col : C.dim, shadow: C.ink, outline: true });
+    if (side) {
+      // (just left of the widest line, not of the room the lines were given)
+      const widest = Math.max(measure(own ? tx(sel.name) : "???", "title"), ...words.flatMap((w) => wrap(w, wid).map((l) => measure(l))));
+      this.drawGiftModel(sel.id, Math.max(R + 6, Math.round(tcx - widest / 2 - R - 14)), Math.round(Math.max(6 + th + R, y + textH / 2)), sc, R, 1, own);
+    }
+    else {
+      const cy = Math.max(6 + th + 24 * sc, Math.min(Math.round(6 + th + (y - 6 - th) / 2), y - 24 * sc - 6));
+      this.drawGiftModel(sel.id, tcx, cy, sc, R, 1, own);
+    }
+    text(ui, own ? tx(sel.name) : "???", tcx, y, { font: "title", align: "center", color: own ? col : C.dim, shadow: C.ink, outline: true });
     y += 18;
     if (own) {
-      y += para(ui, tx(sel.desc), Math.round(W / 2 - wid / 2), y, wid, C.text, "center");
-      para(ui, t("giftOpens").replace("{gate}", tx(sel.gateName)), Math.round(W / 2 - wid / 2), y + 2, wid, C.goldLight, "center");
-    } else para(ui, giver ? t("gateWhere").replace("{who}", tx(ENEMIES[giver.boss].name)) : t("giftUnknown"), Math.round(W / 2 - wid / 2), y, wid, C.dim, "center");
+      y += para(ui, tx(sel.desc), tl, y, wid, C.text, "center");
+      para(ui, t("giftOpens").replace("{gate}", tx(sel.gateName)), tl, y + 2, wid, C.goldLight, "center");
+    } else para(ui, giver ? t("gateWhere").replace("{who}", tx(ENEMIES[giver.boss].name)) : t("giftUnknown"), tl, y, wid, C.dim, "center");
     if (button(ui, this.menu, now, Math.round(W / 2 - 50), H - 24, 100, 18, t("back"), { icon: icon("hud", "back") }) || this.input.pressed("back")) this.setState(this.giftsFrom, this.giftsFrom === "pause" ? 3 : 0);
   }
 
