@@ -178,7 +178,7 @@ for (const hero of heroes) {
             B.gateT = -1;
             // a way stone behind it: the heroes take turns at the roads (each gets played)
             if (w.wayStone && !w.wayStone.taken && B.takeWay.includes(w.wayStone.to)) (h.x = w.wayStone.x), (h.y = w.wayStone.y + 4);
-          } else if (B.gateT > 4) (B.log.push(`floor ${w.floor}: the hero at the gate with its gift, and it did not open`), (B.gateT = -1));
+          } else if (B.gateT > 6) (B.log.push(`floor ${w.floor}: the hero at the gate with its gift, and it did not open (${gt.kind}, seen ${gt.seen.toFixed(2)}, opening ${gt.opening}, open ${gt.open.toFixed(2)}, hero ${Math.round(h.x - gt.x - 16)},${Math.round(h.y - gt.y)} from its foot)`), (B.gateT = -1));
         }
         if (G.state === "won") return { done: true, won: true, floor: w.floor, trail: w.trail, log: B.log };
         if (G.state === "dead") return { done: true, won: false, floor: w.floor, log: [...B.log, "the hero died, though the bot keeps them alive"] };
@@ -186,6 +186,11 @@ for (const hero of heroes) {
         let mx = 0, my = 0;
         // (at a gate it is opening: it opens while the hero stands by it, so the bot waits there)
         const atGate = B.gateT >= 0 && B.gateFloor === w.floor && !!gt && gt.open < 1;
+        // (knocked away from it by a blow, it walks back to the gate's foot, as a player would)
+        if (atGate && G.state === "play") {
+          const dx = gt.x + 16 - h.x, dy = gt.y + 10 - h.y, d = Math.hypot(dx, dy);
+          if (d > 8) (mx = dx / d), (my = dy / d);
+        }
         if (G.state === "play" && w.hero.arriveT > 0.6 && !atGate) {
           const [gx, gy] = w.guide;
           if (gx || gy) (mx = gx), (my = gy);
