@@ -291,6 +291,7 @@ else {
   await g.ev(() => window.__game.setState("dead"));
   await g.ev(() => void window.__game.platform.showInterstitial());
   await g.wait(100);
+  ok(!(await g.ev(() => window.__game.platform.adsBetweenPlaces)), "no ads at the portal between places (only between runs)");
   ok(await g.still(200), "an interstitial: the game and its sound stand still (4.7)");
   await g.wait(500);
   ok(!(await g.still(200)), "and go on after it");
@@ -427,6 +428,23 @@ else {
   await page.waitForTimeout(500);
   ok(!(await still(200)), "and goes on after it");
   ok(await fe(() => window.__game.platform.showRewarded()), "a rewarded ad (ad_format reward) gives its reward");
+  {
+    // the portal after a boss: an interstitial while the next place loads, the screen held dark until it is over
+    const shown = async () => (await calls()).filter((x) => x === "VKWebAppShowNativeAds:interstitial").length;
+    await fe(() => { const g = window.__game; g.save.runs = Math.max(1, g.save.runs); g.save.tutorial = false; g.lastAdAt = 0; g.now = Math.max(g.now, 300); g.setState("play"); g.world.startFloor(3, g.world.mod); });
+    const before = await shown(), from = await fe(() => window.__game.world.place);
+    await fe(() => window.__game.onFloorCleared());
+    await page.waitForTimeout(650);
+    const held = await fe(() => window.__game.holdDark && !!window.__game.wipe);
+    ok((await shown()) === before + 1 && held, "the portal between places: an interstitial while the next place loads, the screen held dark");
+    await page.waitForTimeout(900);
+    ok((await fe(() => window.__game.state)) === "card" && (await fe(() => window.__game.world.place)) !== from, "and then the next place comes up");
+    await fe(() => { const g = window.__game; g.setState("play"); g.world.startFloor(3, g.world.mod); });
+    const again = await shown();
+    await fe(() => window.__game.onFloorCleared());
+    await page.waitForTimeout(1500);
+    ok((await shown()) === again, "never two within the gap (the next portal soon after shows none)");
+  }
   ok((await fe(() => window.__game.platform.canShare())) && (await fe(() => window.__game.platform.share())) && (await calls()).includes("share:https://vk.com/app1"), "tell friends: VKWebAppShare with a link to the game");
   {
     const audio = (await readdir(join(vDir, "assets"))).filter((f) => /\.(ogg|mp3|wav|m4a|aac|mp4|webm)$/i.test(f));

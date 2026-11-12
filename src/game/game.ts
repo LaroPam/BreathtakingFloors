@@ -184,6 +184,8 @@ export class Game {
   private pick: Pick | null = null;
   /** A screen-covering wipe of diamonds (out: covering, then `then`; in: uncovering), and the floor's title card. */
   private wipe: { t: number; dur: number; out: boolean; then?: () => void } | null = null;
+  /** The screen stays dark (the wipe holds before it uncovers) while an ad plays between places. */
+  private holdDark = false;
   private cardT = 0;
   private heroIdx = 0;
   /** The title menu's columns under its first plaque, as last laid out (for the keys). */
@@ -849,12 +851,22 @@ export class Game {
       const next = w.next();
       if (!next) return;
       this.transition(() => {
-        this.floorRng = w.rng.state;
-        w.startFloor(next, combine(this.path), "portal");
-        this.reached(w.floor);
-        this.snapRun();
-        this.cardT = 0;
-        this.setState("card");
+        const go = () => {
+          this.floorRng = w.rng.state;
+          w.startFloor(next, combine(this.path), "portal");
+          this.reached(w.floor);
+          this.snapRun();
+          this.cardT = 0;
+          this.setState("card");
+        };
+        // the next place loads behind the dark: where the platform allows an ad there, it plays now, the screen held
+        // dark until it is over
+        if (!this.adBetweenPlaces()) return go();
+        this.holdDark = true;
+        void this.platform.showInterstitial().finally(() => {
+          this.holdDark = false;
+          go();
+        });
       });
       return;
     }
@@ -1277,7 +1289,8 @@ export class Game {
 
     const w = this.world;
     if (this.wipe) {
-      this.wipe.t += dt;
+      // (the dark holds while an ad plays between places)
+      if (!(this.holdDark && !this.wipe.out)) this.wipe.t += dt;
       if (this.wipe.t >= this.wipe.dur) {
         if (this.wipe.out) {
           const then = this.wipe.then;
@@ -1547,6 +1560,16 @@ export class Game {
     }
   }
 
+  /**
+   * An ad at the portal between places, where the platform shows ads there (VK): the same house rules as between runs,
+   * except that a session's first run may have one too, though never the player's very first run.
+   */
+  private adBetweenPlaces(): boolean {
+    if (!this.platform.adsBetweenPlaces || this.owns("no_ads") || this.save.tutorial || this.save.runs < 1) return false;
+    if (this.now < AD_GRACE || (this.lastAdAt > 0 && this.now - this.lastAdAt < AD_GAP)) return false;
+    this.lastAdAt = this.now;
+    return true;
+  }
   /** An ad between runs, if the house rules (AD_GAP and the rest, above) allow one now. */
   private async betweenRuns(): Promise<void> {
     if (this.owns("no_ads") || this.save.tutorial || this.runsHere < 2 || this.now < AD_GRACE || (this.lastAdAt > 0 && this.now - this.lastAdAt < AD_GAP)) return;

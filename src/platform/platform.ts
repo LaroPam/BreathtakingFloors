@@ -64,6 +64,11 @@ export interface Platform {
   onAudioChange(cb: (on: boolean) => void): void;
   /** Ads: an interstitial between runs, and a rewarded one that resolves true when the reward was earned. */
   canShowRewarded(): boolean;
+  /**
+   * Whether an interstitial may also show while the next place loads (the portal after a boss): where the game earns
+   * by ads alone and the platform's rules allow an ad at the loading of a location (VK).
+   */
+  readonly adsBetweenPlaces: boolean;
   showInterstitial(): Promise<void>;
   showRewarded(): Promise<boolean>;
   /** A run's score: the best ever goes to the "score" board (YouTube shows it to the player), a daily try to "daily". */
@@ -90,6 +95,7 @@ export interface Platform {
 /** Shared by all builds: pause on a hidden tab, mobile detection, and browser storage as a fallback. */
 export abstract class BasePlatform implements Platform {
   abstract readonly name: "local" | "yandex" | "youtube" | "vk" | "pikabu";
+  readonly adsBetweenPlaces: boolean = false;
   protected pauseCbs: (() => void)[] = [];
   protected resumeCbs: (() => void)[] = [];
   protected audioCbs: ((on: boolean) => void)[] = [];
