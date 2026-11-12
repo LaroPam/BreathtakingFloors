@@ -1586,8 +1586,13 @@ export class Game {
     const short = H < 260;
     const th = this.heading(t("title"), ty, __PLATFORM__ === "pikabu" || short ? 2 : 3);
     text(ui, t("subtitle"), W / 2, ty + th + 2, { align: "center", color: rgba("#c8b8a0"), shadow: C.ink });
-    const items = this.titleItems(), bh = H >= 300 ? 20 : 17, gap = H >= 300 ? 6 : 4, top = ty + th + 16, bottom = H - (short ? 16 : 34);
+    // (the buttons end above the line of embers and the fonts' authors; if they still do not fit, they grow a little
+    // lower and closer together)
+    const credits = short ? [] : wrap(t("fontCredits"), W - 16, "mini");
+    const items = this.titleItems(), top = ty + th + 16, bottom = H - 26 - credits.length * 8;
+    let bh = H >= 300 ? 20 : 17, gap = H >= 300 ? 6 : 4;
     const cols = items.length * (bh + gap) > bottom - top && W >= 340 ? 2 : 1, rows = Math.ceil(items.length / cols), bw = cols === 2 ? Math.min(150, Math.floor((W - 40) / 2)) : 160;
+    if (rows * (bh + gap) > bottom - top) (gap = 3), (bh = Math.max(14, Math.floor((bottom - top) / rows) - gap));
     const x0 = Math.round(W / 2 - (cols * bw + (cols - 1) * 10) / 2);
     const y0 = Math.round(Math.max(top, Math.min(H * 0.46, bottom - rows * (bh + gap))));
     for (let k = 0; k < items.length; k++) {
@@ -1615,7 +1620,6 @@ export class Game {
     }
     const info = `${t("embers")}: ${this.save.embers}    ${t("best")}: ${t("floor")} ${this.save.bestFloor}`;
     // the fonts' authors along the bottom, what you have above them
-    const credits = short ? [] : wrap(t("fontCredits"), W - 16, "mini");
     credits.forEach((l, k) => text(ui, l, W / 2, H - 9 - (credits.length - 1 - k) * 8, { font: "mini", align: "center", color: rgba("#5a5470") }));
     text(ui, info, W / 2, H - 20 - (credits.length - 1) * 8, { font: "mini", align: "center", color: C.goldDim });
     // touched, and still no sound: say so (the browser or the page around the game kept it off)
