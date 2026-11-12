@@ -90,6 +90,10 @@ const BOSS_EMBERS = [20, 30, 45, 60];
 const TUTOR = ["move", "fight", "dash", "gems", "ult"] as const;
 /** How long a lesson just learnt shows its tick before the next one comes. */
 const TUT_DONE = 1.1;
+/** Foes to fell for the fight lesson (counted from its start, shown on its plate). */
+const TUT_KILLS = 3;
+/** How long the wheel of fate turns before it stops (s). */
+const WHEEL_SPIN = 1.9;
 /**
  * The house rules for ads between runs (each platform adds its own limits on top): none in the first minutes of a
  * session, none before the second run of it, none for the first run's lessons, never two within AD_GAP, none for
@@ -157,6 +161,9 @@ export class Game {
   private tutDoneT = -1;
   private tutMoved = 0;
   private tutOd = 0;
+  /** The kills when the lesson now on began (it counts its own), and the time since a pack was last called to it. */
+  private tutKills = -1;
+  private tutCall = 9;
   /** When the last first-sight hint was shown (this.now). */
   private sightT = -99;
   /** The book's page, where it does not fit the screen at once (a phone). */
@@ -201,7 +208,7 @@ export class Game {
    * (its marker sweeping over the odds and stopping), then what came of it. Its floor modifiers hold for the next
    * floor only; the events met are not met again in the run.
    */
-  private stairEvent: { ev: StairEvent; phase: "ask" | "roll" | "done"; pick: number; t: number; roll: number; win: boolean; applied: boolean; adBusy?: boolean } | null = null;
+  private stairEvent: { ev: StairEvent; phase: "ask" | "roll" | "done"; pick: number; t: number; roll: number; win: boolean; applied: boolean; adBusy?: boolean; tick?: number } | null = null;
   private eventMods: Modifier[] = [];
   private eventsSeen: string[] = [];
   private revived = false;
@@ -633,6 +640,8 @@ export class Game {
     this.tutDoneT = -1;
     this.tutMoved = 0;
     this.tutOd = 0;
+    this.tutKills = -1;
+    this.tutCall = 9;
     // a daily trial plays from the day's seed; any other run from the clock
     if (!this.daily) this.weekly = false;
     const plan = this.dailyPlan(), wplan = this.weeklyPlan();
@@ -1524,6 +1533,7 @@ export class Game {
         this.tutDoneT = -1;
         this.tutT = 0;
         sv.tutStep++;
+        this.tutKills = -1;
         if (sv.tutStep >= TUTOR.length) sv.tutorial = false;
         this.persist();
       }
@@ -1531,11 +1541,18 @@ export class Game {
     }
     if (h.arriveT < 0.6 || h.dead) return;
     this.tutT += dt;
+    if (this.tutKills < 0) this.tutKills = w.kills;
+    // the fight and the crystals need foes to hand: with none near, a pack comes into view (never a crowd)
+    this.tutCall += dt;
+    if ((step === "fight" || step === "gems") && this.tutCall > 3 && w.foesNear(200) === 0) {
+      this.tutCall = 0;
+      w.callPack();
+    }
     let done = false;
     if (step === "move") {
       if (h.moving) this.tutMoved += Math.hypot(h.vx, h.vy) * dt;
       done = this.tutMoved > 80 && this.tutT > 1;
-    } else if (step === "fight") done = w.kills >= 3;
+    } else if (step === "fight") done = w.kills - this.tutKills >= TUT_KILLS;
     else if (step === "dash") done = h.dashT > 0;
     else if (step === "gems") done = h.level >= 2;
     else {
@@ -1559,7 +1576,8 @@ export class Game {
     if (a <= 0) return;
     // (on a touch screen it keeps clear of the dash and ability buttons at the bottom right)
     const room = this.touch ? W - 84 : W - 16;
-    const lines = wrap(t(key as Parameters<typeof t>[0]), Math.min(room - 24, 300));
+    const count = step === "fight" ? ` ${this.tutKills < 0 ? 0 : Math.min(TUT_KILLS, Math.max(0, this.world.kills - this.tutKills))}/${TUT_KILLS}` : "";
+    const lines = wrap(t(key as Parameters<typeof t>[0]) + count, Math.min(room - 24, 300));
     const head = `${t("tutStep")} ${sv.tutStep + 1}/${TUTOR.length}`, tag = done ? t("tutDone") : head;
     const lw = Math.min(room, Math.max(measure(tag, "mini"), ...lines.map((l) => measure(l))) + 24), lh = lines.length * 11 + 17;
     const cxT = this.touch ? Math.min(W / 2, 8 + room / 2) : W / 2;
@@ -1941,6 +1959,7 @@ export class Game {
       this.lvlArmed = false;
       this.tutT = 0;
       this.tutDoneT = -1;
+      this.tutKills = -1;
       this.daily = this.weekly = false;
       this.runRng = new Rng(1);
       this.runRng.state = r.runRng;
@@ -3587,75 +3606,105 @@ export class Game {
     if (o.mod) this.eventMods.push({ ...NO_MODIFIER, ...o.mod });
   }
   /**
-   * An event on the climb: its scene in words, and its choices side by side, each with its odds and what follows
-   * if it goes well or badly. A choice taken rolls: a marker sweeps over a bar, green as far as the odds, red past
-   * them, slows and stops; then what came of it, and on to the stairs.
+   * An event on the climb: its scene in words, and its choices as cards (side by side on a wide screen, one over
+   * another on a narrow one), each with its odds and what follows if it goes well or badly. A card taken spins the
+   * wheel of fate: luck green as far as the odds, doom red past them; it slows, clicking over its notches, and stops
+   * under the pointer; then what came of it, the way on beneath. The panel is as tall as what it holds: nothing is
+   * drawn over anything else.
    */
   private drawEvent(): void {
     const ui = this.ui, W = this.r.w, H = this.r.h, now = this.now, se = this.stairEvent!, ev = se.ev;
     se.t += this.dt;
-    const pw = Math.min(460, W - 12), px = Math.round(W / 2 - pw / 2), n = ev.choices.length, gap = 6;
-    const textLines = wrap(tx(ev.text), pw - 20);
-    const colW = se.phase === "ask" ? Math.floor((pw - 16 - (n - 1) * gap) / n) : pw - 16;
-    const descs = ev.choices.map((c) => ({ win: this.outcomeLines(c.win), lose: c.lose ? this.outcomeLines(c.lose) : [] }));
-    const lineCount = (k: number) => [...descs[k].win, ...descs[k].lose].reduce((a, [l]) => a + wrap(l, colW - 6, "mini").length, 0);
-    const choiceH = se.phase === "ask" ? 22 + Math.max(...ev.choices.map((_, k) => lineCount(k))) * 8 + 6 : 64;
-    const ph = 14 + 12 + textLines.length * 10 + 6 + choiceH + 6, py = H - 6 - ph, a = Math.min(1, se.t / 0.25), rise = Math.round((1 - a) * 12);
-    frame(ui, px, py + rise, pw, ph, { edge: C.gold });
-    text(ui, tx(ev.title), W / 2, py + rise + 7, { align: "center", color: C.gold, shadow: C.ink });
-    textLines.forEach((l, k) => text(ui, l, W / 2, py + rise + 21 + k * 10, { align: "center", color: C.text }));
-    const cy = py + rise + 21 + textLines.length * 10 + 6;
-    divider(ui, W / 2, cy - 3, pw - 30, C.goldDeep);
+    const pw = Math.min(480, W - 12), px = Math.round(W / 2 - pw / 2), a = Math.min(1, se.t / 0.25), rise = Math.round((1 - a) * 12);
+    const lines = (list: [string, boolean][], w: number) => list.flatMap(([l, good]) => wrap(l, w, "mini").map((q): [string, boolean] => [q, good]));
+    const oddsColor = (ch: number) => (ch >= 1 ? C.text : ch >= 0.7 ? C.green : ch >= 0.5 ? C.gold : C.red);
     if (se.phase === "ask") {
+      const textLines = wrap(tx(ev.text), pw - 20), n = ev.choices.length, gap = 6;
+      const side = pw >= 340 && n * 110 <= pw - 16, cw = side ? Math.floor((pw - 16 - (n - 1) * gap) / n) : pw - 16;
+      // each card: its label and odds, then what follows (side by side: the good above the bad; stacked: in two columns)
+      const cards = ev.choices.map((c) => {
+        const win = this.outcomeLines(c.win), lose = c.lose ? this.outcomeLines(c.lose) : [];
+        // the label: in the big letters if it fits beside the odds, else small, on two lines if it must
+        const room = cw - 14 - measure(`${Math.round(c.chance * 100)}%`, "mini"), big = measure(tx(c.label)) <= room;
+        const label = big ? [tx(c.label)] : wrap(tx(c.label), room, "mini").slice(0, 2), extra = big ? 0 : (label.length - 1) * 8;
+        if (side) {
+          const L = [...lines(win, cw - 10), ...lines(lose, cw - 10)];
+          return { left: L, right: [] as [string, boolean][], h: 20 + extra + L.length * 8 + 6, label, big, extra };
+        }
+        const half = Math.floor((cw - 16) / 2), Lw = lines(win, half), Ll = lines(lose, half);
+        return { left: Lw, right: Ll, h: 19 + extra + Math.max(Lw.length, Ll.length) * 8 + 5, label, big, extra };
+      });
+      const cardsH = side ? Math.max(...cards.map((c) => c.h)) : cards.reduce((sum, c) => sum + c.h, 0) + (n - 1) * 4;
+      const head = 22 + textLines.length * 10 + 6, ph = head + cardsH + 8, py = Math.max(4, H - 6 - ph);
+      frame(ui, px, py + rise, pw, ph, { edge: C.gold });
+      text(ui, tx(ev.title), W / 2, py + rise + 7, { align: "center", color: C.gold, shadow: C.ink });
+      textLines.forEach((l, k) => text(ui, l, W / 2, py + rise + 20 + k * 10, { align: "center", color: C.text }));
+      divider(ui, W / 2, py + rise + head - 4, pw - 30, C.goldDeep);
+      let y = py + rise + head;
       ev.choices.forEach((c, k) => {
-        const x = px + 8 + k * (colW + gap), pct = `${Math.round(c.chance * 100)}%`;
-        if (button(ui, this.menu, now, x, cy + 2, colW, 18, `${tx(c.label)} · ${pct}`, { primary: k === 0, color: c.chance >= 1 ? C.text : c.chance >= 0.7 ? C.green : c.chance >= 0.5 ? C.gold : C.red })) {
+        const card = cards[k], x = side ? px + 8 + k * (cw + gap) : px + 8, ch = side ? cardsH : card.h, cy = y;
+        const it = this.menu.item(x, cy, cw, ch, now), on = it.focused || (it.pressed && this.input.mode !== "kbm");
+        if (on) glowUi(ui, x + cw / 2, cy + ch / 2, cw * 0.6, ch * 0.7, C.gold, 0.22);
+        frame(ui, x, cy - (on ? 1 : 0), cw, ch, { edge: on ? C.gold : undefined });
+        // the label (smaller, and on two lines, if it would crowd the odds); the odds in their colour at the right
+        const pct = `${Math.round(c.chance * 100)}%`;
+        card.label.forEach((l, j) => text(ui, l, x + 6, cy + (card.big ? 5 : 7) + j * 8 - (on ? 1 : 0), { font: card.big ? "big" : "mini", color: on ? C.goldLight : C.gold, shadow: C.ink }));
+        text(ui, pct, x + cw - 6, cy + 6 - (on ? 1 : 0), { font: "mini", align: "right", color: oddsColor(c.chance), shadow: C.ink });
+        const ly = cy + (side ? 19 : 18) + card.extra - (on ? 1 : 0);
+        if (side) card.left.forEach(([l, good], j) => text(ui, l, x + cw / 2, ly + j * 8, { font: "mini", align: "center", color: good ? C.green : C.red }));
+        else {
+          const half = Math.floor((cw - 16) / 2);
+          card.left.forEach(([l, good], j) => text(ui, l, x + 6 + half / 2, ly + j * 8, { font: "mini", align: "center", color: good ? C.green : C.red }));
+          card.right.forEach(([l, good], j) => text(ui, l, x + cw - 6 - half / 2, ly + j * 8, { font: "mini", align: "center", color: good ? C.green : C.red }));
+        }
+        if (it.hit) {
           se.pick = k;
           se.roll = this.runRng.next();
           se.win = se.roll < c.chance;
           se.phase = "roll";
           se.t = 0;
+          se.tick = 0;
           this.audio.play("click");
           this.menu.open(now, 0);
         }
-        let y = cy + 24;
-        // what follows if it goes well, then (after "or") if it goes badly
-        const put = (lines: [string, boolean][]) => lines.forEach(([l, good]) => wrap(l, colW - 6, "mini").forEach((q) => (text(ui, q, x + colW / 2, y, { font: "mini", align: "center", color: good ? C.green : C.red }), (y += 8))));
-        put(descs[k].win);
-        put(descs[k].lose);
+        if (!side) y += card.h + 4;
       });
       return;
     }
-    // the roll: the marker sweeps fast, slows and stops on the number drawn
-    const c = ev.choices[se.pick], sure = c.chance >= 1, rollT = sure ? 0 : 1.1, u = Math.min(1, se.t / Math.max(0.01, rollT));
-    const bw = Math.min(260, pw - 40), bx = Math.round(W / 2 - bw / 2), by = cy + 16;
-    text(ui, tx(c.label), W / 2, cy + 3, { align: "center", color: C.goldLight, shadow: C.ink });
+    // ---- the wheel: it turns, slows and stops; then what came of it
+    const c = ev.choices[se.pick], sure = c.chance >= 1, u = sure ? 1 : Math.min(1, se.t / WHEEL_SPIN);
+    const second = !se.win && !sure && this.platform.canShowRewarded();
+    const res = se.win ? c.win : c.lose ?? {}, small = H < 300 || W < 330, Rf = small ? 22 : 32, Rr = small ? 28 : 40;
+    const wide = pw >= 330, resW = wide ? pw - 16 - (2 * Rr + 16) : pw - 16, resLines = lines(this.outcomeLines(res), resW - 8);
+    const btnH = second ? (resW >= 260 ? 22 : 44) : 22, resH = 14 + resLines.length * 9 + 6 + btnH;
+    const wheelH = sure ? 0 : 2 * Rr + 12, body = wide ? Math.max(wheelH, resH) : wheelH + resH;
+    const ph = 24 + body + 8, py = Math.max(4, H - 6 - ph), top = py + rise;
+    frame(ui, px, top, pw, ph, { edge: C.gold });
+    text(ui, tx(ev.title), W / 2, top + 7, { align: "center", color: C.gold, shadow: C.ink });
+    text(ui, tx(c.label), W / 2, top + 17, { font: "mini", align: "center", color: C.goldLight });
+    const wx = wide ? px + 8 + Rr + 6 : Math.round(W / 2), wy = top + 26 + Rr + 4;
     if (!sure) {
-      ui.rect(bx - 1, by - 1, bw + 2, 8, C.ink);
-      ui.rect(bx, by, Math.round(bw * c.chance), 6, rgba("#2e7a3a"));
-      ui.rect(bx + Math.round(bw * c.chance), by, bw - Math.round(bw * c.chance), 6, rgba("#7a2a2e"));
-      text(ui, `${Math.round(c.chance * 100)}%`, bx + Math.round(bw * c.chance), by + 8, { font: "mini", align: "center", color: C.dim });
-      // the sweep: several passes, easing out onto the roll
-      const e = 1 - (1 - u) ** 3, sweep = e * (4 + se.roll), pos = sweep % 2 < 1 ? sweep % 1 : 1 - (sweep % 1), mx = bx + Math.round(bw * (u >= 1 ? se.roll : pos));
-      ui.rect(mx - 1, by - 4, 3, 14, C.ink);
-      ui.rect(mx, by - 3, 1, 12, rgba("#fff6d0"));
-      if (u < 1 && Math.floor(sweep * 6) !== Math.floor((sweep - this.dt * 3) * 6)) this.audio.play("click", 1.4 + pos * 0.4);
+      // the turn: several, easing out onto the roll (the pointer at the top, luck from the wheel's zero on round)
+      const end = -Math.PI / 2 - se.roll * Math.PI * 2, e = 1 - (1 - u) ** 3, phi = end - Math.PI * 2 * 3.5 * (1 - e);
+      const notch = Math.floor((phi * 12) / (Math.PI * 2));
+      if (u < 1 && notch !== se.tick) (se.tick = notch), this.audio.play("click", 1.2 + 0.4 * (1 - u));
+      this.drawWheel(wx, wy, Rf, small, c.chance, phi, u >= 1 ? Math.max(0, 1 - (se.t - WHEEL_SPIN) / 0.6) : 0, se.win);
     }
     if (u < 1) return;
-    // what came of it (once, as the marker stops); a failure waits, the player may turn it with a rewarded ad
-    const second = !se.win && !sure && this.platform.canShowRewarded();
+    // what came of it (once, as the wheel stops); a failure waits, the player may turn it with a rewarded ad
     const apply = () => {
       se.applied = true;
       this.applyOutcome(se.win ? c.win : c.lose ?? {});
       this.audio.play(se.win ? "levelup" : "hurt", se.win ? 1.3 : 0.8);
     };
     if (!se.applied && !second) apply();
-    const res = se.win ? c.win : c.lose ?? {}, ry = by + (sure ? -2 : 20);
-    if (!sure) text(ui, se.win ? t("evWin") : t("evLose"), W / 2, ry, { align: "center", color: se.win ? C.green : C.red, shadow: C.ink });
-    this.outcomeLines(res).forEach(([l, good], k) => text(ui, l, W / 2, ry + 11 + k * 9, { font: "mini", align: "center", color: good ? C.green : C.red }));
-    const bY = py + ph - 24 + rise;
+    const rx = wide && !sure ? px + 8 + 2 * Rr + 16 : px + 8, ry = wide || sure ? top + 26 + Math.max(0, Math.round((body - resH) / 2)) : wy + Rr + 8, rc = rx + resW / 2;
+    if (!sure) text(ui, se.win ? t("evWin") : t("evLose"), rc, ry, { align: "center", color: se.win ? C.green : C.red, shadow: C.ink, outline: true });
+    resLines.forEach(([l, good], k) => text(ui, l, rc, ry + 13 + k * 9, { font: "mini", align: "center", color: good ? C.green : C.red }));
+    const by = ry + 14 + resLines.length * 9 + 4;
     if (second && !se.applied) {
-      if (button(ui, this.menu, now, Math.round(W / 2 - 152), bY, 170, 18, t("evAdWin"), { color: C.green, icon: icon("hud", "play") }) && !se.adBusy) {
+      const two = resW >= 260, bw = two ? Math.floor((resW - 8) / 2) : Math.min(200, resW);
+      if (button(ui, this.menu, now, two ? rx : Math.round(rc - bw / 2), by, bw, 18, t("evAdWin"), { color: C.green, icon: icon("hud", "play") }) && !se.adBusy) {
         se.adBusy = true;
         void this.platform.showRewarded().then((ok) => {
           se.adBusy = false;
@@ -3663,17 +3712,58 @@ export class Game {
           apply();
         });
       }
-      if (button(ui, this.menu, now, Math.round(W / 2 + 26), bY, 110, 18, t("onward"), { primary: true }) && !se.adBusy) {
+      if (button(ui, this.menu, now, two ? rx + bw + 8 : Math.round(rc - bw / 2), two ? by : by + 22, bw, 18, t("onward"), { primary: true }) && !se.adBusy) {
         apply();
         se.phase = "done";
         this.menu.open(now, 0);
       }
       return;
     }
-    if (button(ui, this.menu, now, Math.round(W / 2 - 60), bY, 120, 18, t("onward"), { primary: true, icon: icon("hud", "play") })) {
+    if (button(ui, this.menu, now, Math.round(rc - 60), by, 120, 18, t("onward"), { primary: true, icon: icon("hud", "play") })) {
       se.phase = "done";
       this.menu.open(now, 0);
     }
+  }
+
+  /**
+   * The wheel of fate at (cx, cy): its face of radius R turned by phi, luck (green, the star) over the first `luck` of
+   * it and doom (red, the skull) over the rest, a grain in the stone and a gold seam between them; the bronze rim,
+   * the hub and the pointer over it (the art's "fate" parts). `flash` lights it in the colour of what it gave.
+   */
+  private drawWheel(cx: number, cy: number, R: number, small: boolean, luck: number, phi: number, flash: number, won: boolean): void {
+    const ui = this.ui, TAU = Math.PI * 2, cos = Math.cos(phi), sin = Math.sin(phi);
+    const GOOD = [rgba("#123a1c"), rgba("#1c5228"), rgba("#286a34"), rgba("#388a42")], BAD = [rgba("#300c12"), rgba("#4a141c"), rgba("#661c26"), rgba("#842632")];
+    const SEAM = rgba("#c8963c"), hash = (i: number, j: number) => {
+      const h = Math.imul(i * 374761393 + j * 668265263, 1274126177) >>> 0;
+      return ((h ^ (h >>> 13)) & 1023) / 1023;
+    };
+    glowUi(ui, cx, cy, R * 1.9, R * 1.9, won ? C.green : C.red, 0.5 * flash);
+    for (let y = -R; y < R; y++)
+      for (let x = -R; x < R; x++) {
+        const fx = x + 0.5, fy = y + 0.5, d = Math.hypot(fx, fy);
+        if (d > R + 0.5) continue;
+        // where this pixel is on the wheel itself, turned back by phi
+        const wu = fx * cos + fy * sin, wv = -fx * sin + fy * cos, f = (((Math.atan2(wv, wu) / TAU) % 1) + 1) % 1;
+        const arc = (q: number) => Math.abs(q) * TAU * d;
+        if (d > 3 && luck > 0 && luck < 1 && (arc(f) < 0.7 || arc(1 - f) < 0.7 || arc(f - luck) < 0.7)) {
+          ui.rect(cx + x, cy + y, 1, 1, SEAM);
+          continue;
+        }
+        const ramp = f < luck ? GOOD : BAD, g = hash(Math.floor(wu / 2), Math.floor(wv / 2));
+        // darker toward the rim and the hub, a grain of lighter and darker stones
+        const v = 2.4 - (d / R) * 1.2 + (g > 0.8 ? 0.8 : g < 0.15 ? -0.8 : 0);
+        ui.rect(cx + x, cy + y, 1, 1, ramp[Math.max(0, Math.min(3, Math.round(v)))]);
+      }
+    // the sigils ride round in the middle of their sides
+    const sigil = (mid: number, img: Rect, k: number) => {
+      const an = mid * TAU + phi, r = R * 0.58;
+      ui.image(img, Math.round(cx + Math.cos(an) * r), Math.round(cy + Math.sin(an) * r), k, k);
+    };
+    if (luck >= 0.12) sigil(luck / 2, icon("fate", "luck"), 1);
+    if (luck <= 0.88) sigil(luck + (1 - luck) / 2, icon("hud", "skull"), 1);
+    ui.image(icon("fate", small ? "rim_s" : "rim"), cx, cy);
+    ui.image(icon("fate", small ? "hub_s" : "hub"), cx, cy);
+    ui.image(icon("fate", "pointer"), cx, cy - R - 4);
   }
 
   private drawStairs(): void {
@@ -3692,11 +3782,13 @@ export class Game {
       wrapped.forEach(([l, c], k) => text(ui, l, W / 2, y0 + 9 + k * 8, { font: "mini", align: "center", color: c, shadow: C.ink }));
       th += 9 + wrapped.length * 8 + 4;
     }
-    const vertical = W < 420, n = this.stairs.length;
+    // (one over the other only on a narrow upright screen: on its side a phone has the width for two)
+    const vertical = W < 340 || (W < 420 && H > W), n = this.stairs.length;
     const cw = vertical ? Math.min(300, W - 24) : Math.min(210, Math.floor((W - 40) / 2)), inner = cw - 20;
     const ch = Math.max(...this.stairs.map((m) => 22 + (wrap(tx(m.name), inner).length + wrap(tx(m.risk), inner - 10).length + wrap(tx(m.reward), inner - 10).length) * 10 + 26));
-    // the cards low on the screen, leaving the climb in view above them
-    const total = vertical ? n * ch + 8 : ch, top = Math.max(8 + th + 8, H - 30 - total);
+    // the cards low on the screen, leaving the climb in view above them; the damage button under them, or at the top
+    // left where they leave no room for it
+    const total = vertical ? n * ch + 8 : ch, top = Math.max(8 + th + 8, H - 30 - total), statsUp = top + total > H - 28;
     this.stairs.forEach((m, k) => {
       const x = vertical ? Math.round(W / 2 - cw / 2) : Math.round(W / 2 - (n * cw + 12) / 2 + k * (cw + 12));
       const { focused, hit, idx } = this.menu.item(x, vertical ? top + k * (ch + 8) : top, cw, ch, now);
@@ -3722,7 +3814,7 @@ export class Game {
       if (hit) this.descend(m);
     });
     // the run's damage so far
-    if (button(ui, this.menu, now, Math.round(W / 2 - 60), H - 24, 120, 18, t("stats"), { icon: icon("hud", "trophy") })) this.openStats("stairs", n);
+    if (button(ui, this.menu, now, statsUp ? 6 : Math.round(W / 2 - 60), statsUp ? 6 : H - 24, statsUp ? 96 : 120, statsUp ? 16 : 18, t("stats"), { icon: icon("hud", "trophy") })) this.openStats("stairs", n);
   }
 
 

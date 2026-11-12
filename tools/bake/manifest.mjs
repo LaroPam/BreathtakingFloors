@@ -12,6 +12,7 @@ import { PAL } from "../../pixelfx/src/core/color.js";
 import { weaponAnims, MODEL_WEAPONS } from "./weapons.mjs";
 import { IDS as UPGRADE_ICONS } from "../../art/fx/icons/upgrades.js";
 import { IDS as HUD_ICONS } from "../../art/fx/icons/hud.js";
+import { IDS as FATE_PARTS } from "../../art/fx/icons/fate.js";
 import { IDS as ITEM_ICONS } from "../../art/fx/icons/items.js";
 
 // ---- the heroes are not here: src/hero draws them in the game, each in its own build and costume, from the poses
@@ -269,6 +270,8 @@ export const ANIMS = [
   // ---- interface: upgrade badges and HUD icons, one frame per id (the game looks them up by name)
   { name: "icons", art: "icons/upgrades", light: false, variants: { id: UPGRADE_ICONS } },
   { name: "hud", art: "icons/hud", light: false, variants: { id: HUD_ICONS } },
+  // the wheel of fate on the stairs: its rim, hub, pointer and luck sigil
+  { name: "fate", art: "icons/fate", light: false, variants: { id: FATE_PARTS } },
   // the big detailed badges for cards, the chest's reel, the forge, the shop and the books
   { name: "items", art: "icons/items", light: false, variants: { id: ITEM_ICONS } },
 

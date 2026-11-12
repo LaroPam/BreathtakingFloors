@@ -5715,6 +5715,17 @@ export class World {
    * line abreast, snakes in a file, ghosts out of the dark just past the lantern, toads and jellies in pairs,
    * wisps from different edges, watchers and moths alone. `far`: well off screen (the wanderers between waves).
    */
+  /** A pack of this floor's first foes, close enough to come into view (the first run's lesson calls it). */
+  callPack(): void {
+    this.spawnPack(this.pickEnemy(0), false);
+  }
+  /** How many foes are within `r` of the hero. */
+  foesNear(r: number): number {
+    const E = this.enemies, h = this.hero;
+    let n = 0;
+    for (let i = 0; i < E.n; i++) if ((E.x[i] - h.x) ** 2 + (E.y[i] - h.y) ** 2 < r * r) n++;
+    return n;
+  }
   private spawnPack(type: number, far: boolean): void {
     const d = ENEMIES[type], h = this.hero, R = this.rng, f = this.floor, dist = far ? 280 : 190, TAU = Math.PI * 2;
     // between waves the wanderers come one or two at a time, never a whole pack
