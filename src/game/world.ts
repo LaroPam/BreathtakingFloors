@@ -1130,7 +1130,7 @@ export class World {
    */
   xpPace(): number {
     const want = 1 + 3.2 * this.floor, L = this.hero.level;
-    if (L > want + 2) return Math.max(0.15, 1 - 0.12 * (L - want - 2));
+    if (L > want + 2) return Math.max(0.25, 1 - 0.1 * (L - want - 2));
     if (L < want - 3) return Math.min(1.6, 1 + 0.07 * (want - 3 - L));
     return 1;
   }
@@ -1217,7 +1217,7 @@ export class World {
     const tough = d.ai >= AI.Boss ? 1.7 : 2.5;
     // (the horde thickens the longer a floor goes on; a boss does not: its health is its tier's, not how long the
     // hero took to reach it, and the last one is the test of the whole build)
-    const boss = d.ai >= AI.Boss && d.ai !== AI.Mini, late = boss ? (d.ai === AI.LastLight ? 1.75 : 1.6) : 1 + Math.min(1.2, this.time / 180);
+    const boss = d.ai >= AI.Boss && d.ai !== AI.Mini, late = boss ? (d.ai === AI.LastLight ? 1.65 : 1.6) : 1 + Math.min(1.2, this.time / 180);
     const hp = d.hp * tough * (1 + 0.4 * (f - 1)) * late * curse;
     const i = this.enemies.add(type, x, y, hp, this.rng.next(), this.mod.speed * (1.08 + Math.min(9, f - 1) * 0.04) * this.rng.range(0.9, 1.1) * (this.curse ? 1.2 : 1) * (this.mutator === "haste" ? 1.25 : 1));
     if (i >= 0) {
@@ -1529,7 +1529,7 @@ export class World {
         if (d.ai === AI.Healer || (E.age[i] < SPAWN_T && d.ai < AI.Boss)) return;
         this.body(i);
         if (this.touches(h.x, h.y - 12, 5)) {
-          this.hurtHero(d.elite || this.floor >= 7 ? 2 : 1);
+          this.hurtHero(d.elite || this.floor >= 10 ? 2 : 1);
           return true;
         }
       });
@@ -1863,7 +1863,7 @@ export class World {
       this.damage(i, dmg * (crit ? 2 : 1), wel, { crit });
       if (echoed) {
         const j = this.indexOf(uidE);
-        if (j >= 0) (this.damage(j, dmg * 0.6, wel, { quiet: true }), this.popup(ex, ey - 14, "≈", rgba("#c8d8ff")));
+        if (j >= 0) (this.damage(j, dmg * 0.6, wel, { quiet: true }), this.popup(ex, ey - 14, "~", rgba("#c8d8ff")));
       }
       if (hits < 6) {
         this.addFx(crit ? "crit" : "hit_spark", ex, ey + 10, { rot: Math.atan2(ey - cy, ex - cx), sx: 0.55, sy: 0.55, glow: 0.7, key: 2 });
@@ -1899,16 +1899,8 @@ export class World {
       }
       cut++;
       if (cut <= 3) this.addFx("parry", Bu.x[i], Bu.y[i] + 6, { sx: 0.5, sy: 0.5, glow: 0.8, key: 4 });
-      if (s.parry) {
-        const sp = Math.hypot(Bu.vx[i], Bu.vy[i]) * 1.6 + 60, a = Math.atan2(dy, dx);
-        Bu.team[i] = TEAM_HERO;
-        Bu.src[i] = SRC_PARRY;
-        Bu.vx[i] = Math.cos(a) * sp;
-        Bu.vy[i] = Math.sin(a) * sp;
-        Bu.dmg[i] = 14 * s.might;
-        Bu.life[i] = 1.2;
-        Bu.pierce[i] = 1;
-      } else Bu.remove(i);
+      if (s.parry) this.turnBack(i, Math.atan2(dy, dx));
+      else Bu.remove(i);
     }
     if (cut) {
       this.gainOd(2.5 * cut);
@@ -2032,6 +2024,22 @@ export class World {
     // with a boss up the ability fills at half the pace: a boss is fought, not skipped
     h.od = Math.min(100, h.od + v * this.stats.odGain * (this.bossIndex() >= 0 ? 0.5 : 1));
     if (was < 100 && h.od >= 100) this.audio.play("levelup", 1.5);
+  }
+
+  /**
+   * Deflect: an enemy bullet becomes the hero's own, flying at angle `a`, faster than it came; harder and piercing
+   * more for each level taken.
+   */
+  private turnBack(i: number, a: number): void {
+    const Bu = this.bullets, s = this.stats, sp = Math.hypot(Bu.vx[i], Bu.vy[i]) * 1.6 + 60;
+    Bu.team[i] = TEAM_HERO;
+    Bu.src[i] = SRC_PARRY;
+    Bu.vx[i] = Math.cos(a) * sp;
+    Bu.vy[i] = Math.sin(a) * sp;
+    Bu.dmg[i] = 14 * s.might * (1 + 0.5 * (s.parry - 1));
+    Bu.life[i] = 1.2;
+    Bu.pierce[i] = s.parry;
+    Bu.grazed[i] = 1;
   }
 
   /** The hero is hit: `dmg` hearts (the forge's tempering may turn a blow aside). */
@@ -2370,7 +2378,7 @@ export class World {
     const br = this.brain;
     if (br && br.uid === E.uid[i]) {
       if (br.invuln) {
-        if (this.rng.chance(0.15)) this.popup(E.x[i] + this.rng.range(-16, 16), E.y[i] - 60, "✕", rgba("#9ab0d8"));
+        if (this.rng.chance(0.15)) this.popup(E.x[i] + this.rng.range(-16, 16), E.y[i] - 60, "×", rgba("#9ab0d8"));
         return false;
       }
       const gate = br.phase === 0 ? 0.66 : br.phase === 1 ? 0.33 : -1;
@@ -2647,6 +2655,11 @@ export class World {
       for (let k = 0; k < 5; k++) this.addFx("explosion", x + this.rng.range(-30, 30), y + this.rng.range(-20, 10), { delay: k * 0.15 });
       this.embersBonus += 25 * (this.floor / 3);
       this.pendingLevels += 1;
+      // a guardian's heart: one more for the climb ahead, and it is full
+      const h = this.hero;
+      h.maxHp += 1;
+      h.hp = Math.min(h.maxHp, h.hp + 1);
+      this.popup(h.x, h.y - 44, "+1", rgba("#ff8a9a"), true);
       E.remove(i);
       if (!this.next()) {
         this.won = true;
@@ -4850,6 +4863,15 @@ export class World {
               this.audio.play("graze", 1.3);
               this.burst(x, y, 5, rgba("#fff09a"), 70, 0.3);
               this.popup(x, y - 6, "+", rgba("#fff09a"));
+              // Deflect: what the dash passes through flies at the nearest foe
+              if (this.stats.parry) {
+                let best = -1, bd = 260 * 260;
+                for (let j = 0; j < this.enemies.n; j++) {
+                  const d2 = (this.enemies.x[j] - x) ** 2 + (this.enemies.y[j] - y) ** 2;
+                  if (d2 < bd) (bd = d2), (best = j);
+                }
+                this.turnBack(i, best >= 0 ? Math.atan2(this.enemies.y[best] - 16 - y, this.enemies.x[best] - x) : Math.atan2(-B.vy[i], -B.vx[i]));
+              }
             }
             continue;
           }
@@ -5781,7 +5803,7 @@ export class World {
       case "haste": s.haste += 0.12; break;
       case "reach": s.reach += 0.15; break;
       case "wave": s.wave += 1; break;
-      case "parry": s.parry = 1; break;
+      case "parry": s.parry += 1; break;
       case "speed": s.speed += 0.08; break;
       case "maxhp": h.maxHp += 1; h.hp = Math.min(h.maxHp, h.hp + 2); break;
       case "magnet": s.magnet *= 1.35; break;

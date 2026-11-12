@@ -84,6 +84,8 @@ const LVL_SLOW = 0.45;
 const TOUCH_INSET = 14;
 /** A run started on a later tier's place: the levels it is given at once (about what the tiers passed by give). */
 const START_LEVELS = [0, 8, 15];
+/** Embers for each guardian beaten, by its tier. */
+const BOSS_EMBERS = [20, 30, 45, 60];
 /** The first run's lessons, in order (the save's tutStep counts how many are done). */
 const TUTOR = ["move", "fight", "dash", "gems", "ult"] as const;
 /** How long a lesson just learnt shows its tick before the next one comes. */
@@ -694,7 +696,14 @@ export class Game {
     w.startFloor(skip ? { place: from, stage: 1 } : 1, combine(this.path), "portal", this.path[0]);
     // (the hero's level counts those levels too: else the experience pace would take it for one far behind, and
     // the levels would come twice)
-    if (skip) (w.pendingLevels += START_LEVELS[skip]), (w.hero.level += START_LEVELS[skip]), (spins += skip);
+    if (skip) {
+      w.hero.level += START_LEVELS[skip];
+      spins += skip;
+      // half of those levels chosen at once, by the dice, so the start is not a long row of cards; the rest are picks
+      const auto = Math.floor(START_LEVELS[skip] / 2);
+      for (let k = 0; k < auto; k++) this.apply(this.roll(this.pool(false)), true);
+      w.pendingLevels += START_LEVELS[skip] - auto;
+    }
     this.reached(this.runFrom);
     this.revived = false;
     this.save.runs++;
@@ -732,8 +741,12 @@ export class Game {
     const w = this.world;
     // embers are earned slowly: floors cleared and bosses beaten count most, the embers picked up a little, kills
     // barely; the stairs' reward and the forge's greed multiply it
-    const cleared = w.floor - this.runFrom + (won ? 1 : 0), bosses = Math.floor(cleared / 3), greed = 1 + ((FORGE.find((q) => q.id === "greed")!.step * (this.daily ? 0 : this.save.forge.greed ?? 0)) / 100);
-    const earned = Math.round((cleared * 6 + bosses * 20 + (won ? 50 : 0) + w.embersBonus * 0.35 + w.kills / 80) * (w.mod.embers ?? 1) * greed * (this.owns("embers_double") ? 2 : 1));
+    // (the guardians pay more the higher their tier: 20, 30, 45, 60)
+    const cleared = w.floor - this.runFrom + (won ? 1 : 0), bosses = Math.floor(cleared / 3), tier0 = Math.floor((this.runFrom - 1) / 3);
+    let bossEmbers = 0;
+    for (let k = 0; k < bosses; k++) bossEmbers += BOSS_EMBERS[Math.min(BOSS_EMBERS.length - 1, tier0 + k)];
+    const greed = 1 + ((FORGE.find((q) => q.id === "greed")!.step * (this.daily ? 0 : this.save.forge.greed ?? 0)) / 100);
+    const earned = Math.round((cleared * 6 + bossEmbers + (won ? 50 : 0) + w.embersBonus * 0.35 + w.kills / 80) * (w.mod.embers ?? 1) * greed * (this.owns("embers_double") ? 2 : 1));
     const embers = Math.max(earned, Math.min(CONSOLATION, Math.floor(w.runTime / CONSOLATION_EVERY)));
     // the first run ever: a gift on top, for the forge
     const gift = !this.daily && !this.save.stats.firstGift ? FIRST_GIFT : 0;
@@ -1066,8 +1079,6 @@ export class Game {
     if (!relicsOnly) {
       const artFree = w.artifacts.length < ARTIFACT_SLOTS;
       for (const s of STATS) {
-        // deflecting bullets is a blade's trick: no use to a bow or a spellbook
-        if (s.id === "parry" && WEAPONS[w.hero.weapon].ranged) continue;
         const lv = w.statLevels[s.id] ?? 0;
         if (lv === 0 && w.locked.has(`stat:${s.id}`)) continue;
         if (lv === 0 ? artFree : lv < s.max) out.push([{ type: "stat", id: s.id }, lv ? s.weight * 1.3 : s.weight]);
@@ -1130,20 +1141,25 @@ export class Game {
   }
   private take(c: Choice, kind: Spin["kind"] | Pick["kind"]): void {
     const w = this.world;
-    if (c.type === "relic") (w.addRelic(c.kind), this.markSeen(`r${c.kind}`));
-    else if (c.type === "evo") (w.evolve(c.kind), (this.save.stats[`evo_${c.kind}`] = 1), this.bump("evolve"));
-    else if (c.type === "legend") {
-      w.makeLegend();
-      this.unlock("legend");
-      this.showBanner(tx(LEGENDS[c.weapon]), C.gold, t("legendary"));
-    }
-    else if (c.type === "rest") w.hero.hp = Math.min(w.hero.maxHp, w.hero.hp + 2);
-    else (w.addStat(c.id), this.markSeen(`a:${c.id}`));
+    this.apply(c);
     if (kind === "chest") this.bump("chests");
     if (kind === "level") w.pendingLevels = Math.max(0, w.pendingLevels - 1);
     else if (kind === "chest") w.pendingChests = Math.max(0, w.pendingChests - 1);
     this.spin = null;
     this.setState("play");
+  }
+  /** An upgrade is had: a relic or its next level, an evolution, a legend, a breather, an artifact. */
+  private apply(c: Choice, quiet = false): void {
+    const w = this.world;
+    if (c.type === "relic") (w.addRelic(c.kind), this.markSeen(`r${c.kind}`));
+    else if (c.type === "evo") (w.evolve(c.kind), (this.save.stats[`evo_${c.kind}`] = 1), this.bump("evolve"));
+    else if (c.type === "legend") {
+      w.makeLegend();
+      this.unlock("legend");
+      if (!quiet) this.showBanner(tx(LEGENDS[c.weapon]), C.gold, t("legendary"));
+    }
+    else if (c.type === "rest") w.hero.hp = Math.min(w.hero.maxHp, w.hero.hp + 2);
+    else (w.addStat(c.id), this.markSeen(`a:${c.id}`));
   }
   /** Start the next roulette if the world has one waiting. */
   private nextSpin(): void {
