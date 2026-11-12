@@ -171,19 +171,20 @@ const DEFS: Def[] = [
   E({ key: "eye_ash", name: { ru: "ОКО ПЛАВИЛЬНИ", en: "SMELTER'S EYE" }, anim: "eye_ash", ai: AI.Turret, hp: 86, speed: 16, xp: 6, glow: "#ff6a1a", every: 3.3, scale: 0.6 }),
   E({ key: "wisp_ash", name: { ru: "ЖАРОВАЯ ИСКРА", en: "FORGE SPARK" }, anim: "wisp_ash", ai: AI.Bomber, hp: 22, speed: 62, xp: 3, glow: "#ff8a3a", scale: 0.7 }),
   E({ key: "moth_ash", name: { ru: "ПЕПЕЛЬНИЦА", en: "ASH MOTH" }, anim: "moth_ash", ai: AI.Healer, hp: 30, speed: 46, xp: 5, glow: "#ffb070", scale: 0.7 }),
-  // the minibosses: creatures of each place grown huge (see MINIS)
-  E({ key: "mini_slime", name: { ru: "СЛИЗЕНЬ-ГРОМАДА", en: "THE GREAT SLIME" }, anim: "slime", ai: AI.Mini, hp: 520, speed: 28, xp: 40, glow: "#3ad050", scale: 1.6, elite: true }),
-  E({ key: "mini_skull", name: { ru: "ЧЕРЕП-ПРОРОК", en: "THE SEER SKULL" }, anim: "skull_elite", ai: AI.Mini, hp: 440, speed: 38, xp: 40, glow: "#c684ff", scale: 1.3, elite: true }),
-  E({ key: "mini_frog", name: { ru: "ЖАБИЙ КОРОЛЬ", en: "THE TOAD KING" }, anim: "frog_king", ai: AI.Mini, hp: 600, speed: 30, xp: 50, glow: "#ffb040", scale: 1.5, elite: true }),
-  E({ key: "mini_moth", name: { ru: "МАТЬ МОТЫЛЬКОВ", en: "THE MOTH MOTHER" }, anim: "moth", ai: AI.Mini, hp: 520, speed: 36, xp: 50, glow: "#7ee88a", scale: 1.7, elite: true }),
-  E({ key: "mini_eye", name: { ru: "ЛЕДЯНОЙ СОГЛЯДАТАЙ", en: "THE ICE WATCHER" }, anim: "eye_frost", ai: AI.Mini, hp: 700, speed: 22, xp: 60, glow: "#78ccf4", scale: 1.5, elite: true }),
-  E({ key: "mini_ghost", name: { ru: "ВЬЮЖНЫЙ ДУХ", en: "THE BLIZZARD SPIRIT" }, anim: "ghost_ice", ai: AI.Mini, hp: 620, speed: 40, xp: 60, glow: "#d8f4ff", scale: 1.6, elite: true }),
-  E({ key: "mini_sunskull", name: { ru: "СОЛНЕЧНЫЙ ЧЕРЕП", en: "THE SUN SKULL" }, anim: "skull_sun", ai: AI.Mini, hp: 760, speed: 40, xp: 70, glow: "#ffd04a", scale: 1.4, elite: true }),
-  E({ key: "mini_jelly", name: { ru: "ГРОЗОВАЯ ПРАМАТЕРЬ", en: "THE STORM MATRIARCH" }, anim: "jelly", ai: AI.Mini, hp: 560, speed: 26, xp: 50, glow: "#c684ff", scale: 1.8, elite: true }),
-  E({ key: "mini_eel", name: { ru: "ВЕЛИКИЙ УГОРЬ", en: "THE GREAT EEL" }, anim: "snake_tide", ai: AI.Mini, hp: 580, speed: 44, xp: 50, glow: "#3ab0bc", scale: 1.7, elite: true }),
-  E({ key: "mini_slag", name: { ru: "ПЛАВИЛЬНАЯ ГРОМАДА", en: "THE SLAG HEAP" }, anim: "slime_ash", ai: AI.Mini, hp: 720, speed: 26, xp: 60, glow: "#ff6a1a", scale: 1.7, elite: true }),
-  E({ key: "mini_cinder", name: { ru: "ПЕПЕЛЬНЫЙ ВОЖАК", en: "THE ASH ALPHA" }, anim: "bat_ash", ai: AI.Mini, hp: 640, speed: 44, xp: 60, glow: "#ff8a3a", scale: 1.8, elite: true }),
-  E({ key: "mini_spark", name: { ru: "МАТЬ ИСКР", en: "THE SPARK MOTHER" }, anim: "wisp_sun", ai: AI.Mini, hp: 700, speed: 34, xp: 70, glow: "#ffe08a", scale: 1.8, elite: true }),
+  // the minibosses: creatures of each place grown huge (see MINIS), each a model of its own (art/fx/minis), drawn
+  // at half its size and shown a little under twice that (a little smaller than the bosses)
+  E({ key: "mini_slime", name: { ru: "СЛИЗЕНЬ-ГРОМАДА", en: "THE GREAT SLIME" }, anim: "mini_slime_0_idle", ai: AI.Mini, hp: 520, speed: 28, xp: 40, glow: "#3ad050", scale: 1.6, elite: true }),
+  E({ key: "mini_skull", name: { ru: "ЧЕРЕП-ПРОРОК", en: "THE SEER SKULL" }, anim: "mini_skull_0_idle", ai: AI.Mini, hp: 440, speed: 38, xp: 40, glow: "#c684ff", scale: 1.6, elite: true }),
+  E({ key: "mini_frog", name: { ru: "ЖАБИЙ КОРОЛЬ", en: "THE TOAD KING" }, anim: "mini_frog_0_idle", ai: AI.Mini, hp: 600, speed: 30, xp: 50, glow: "#ffb040", scale: 1.6, elite: true }),
+  E({ key: "mini_moth", name: { ru: "МАТЬ МОТЫЛЬКОВ", en: "THE MOTH MOTHER" }, anim: "mini_moth_0_idle", ai: AI.Mini, hp: 520, speed: 36, xp: 50, glow: "#7ee88a", scale: 1.6, elite: true }),
+  E({ key: "mini_eye", name: { ru: "ЛЕДЯНОЙ СОГЛЯДАТАЙ", en: "THE ICE WATCHER" }, anim: "mini_eye_0_idle", ai: AI.Mini, hp: 700, speed: 22, xp: 60, glow: "#78ccf4", scale: 1.6, elite: true }),
+  E({ key: "mini_ghost", name: { ru: "ВЬЮЖНЫЙ ДУХ", en: "THE BLIZZARD SPIRIT" }, anim: "mini_ghost_0_idle", ai: AI.Mini, hp: 620, speed: 40, xp: 60, glow: "#d8f4ff", scale: 1.6, elite: true }),
+  E({ key: "mini_sunskull", name: { ru: "СОЛНЕЧНЫЙ ЧЕРЕП", en: "THE SUN SKULL" }, anim: "mini_sunskull_0_idle", ai: AI.Mini, hp: 760, speed: 40, xp: 70, glow: "#ffd04a", scale: 1.6, elite: true }),
+  E({ key: "mini_jelly", name: { ru: "ГРОЗОВАЯ ПРАМАТЕРЬ", en: "THE STORM MATRIARCH" }, anim: "mini_jelly_0_idle", ai: AI.Mini, hp: 560, speed: 26, xp: 50, glow: "#c684ff", scale: 1.6, elite: true }),
+  E({ key: "mini_eel", name: { ru: "ВЕЛИКИЙ УГОРЬ", en: "THE GREAT EEL" }, anim: "mini_eel_0_idle", ai: AI.Mini, hp: 580, speed: 44, xp: 50, glow: "#3ab0bc", scale: 1.6, elite: true }),
+  E({ key: "mini_slag", name: { ru: "ПЛАВИЛЬНАЯ ГРОМАДА", en: "THE SLAG HEAP" }, anim: "mini_slag_0_idle", ai: AI.Mini, hp: 720, speed: 26, xp: 60, glow: "#ff6a1a", scale: 1.6, elite: true }),
+  E({ key: "mini_cinder", name: { ru: "ПЕПЕЛЬНЫЙ ВОЖАК", en: "THE ASH ALPHA" }, anim: "mini_cinder_0_idle", ai: AI.Mini, hp: 640, speed: 44, xp: 60, glow: "#ff8a3a", scale: 1.6, elite: true }),
+  E({ key: "mini_spark", name: { ru: "МАТЬ ИСКР", en: "THE SPARK MOTHER" }, anim: "mini_spark_0_idle", ai: AI.Mini, hp: 700, speed: 34, xp: 70, glow: "#ffe08a", scale: 1.6, elite: true }),
   // the tower's heart: everything there gone to light
   E({ key: "slime_sun", name: { ru: "ЗОЛОТОЙ СЛИЗЕНЬ", en: "GILDED SLIME" }, anim: "slime_sun", ai: AI.Chase, hp: 40, speed: 34, xp: 3, glow: "#ffd04a", scale: 0.65, hops: true }),
   E({ key: "snake_sun", name: { ru: "СОЛНЕЧНЫЙ ПОЛОЗ", en: "SUN ADDER" }, anim: "snake_sun", ai: AI.Slither, hp: 30, speed: 82, xp: 3, scale: 0.75 }),
@@ -436,23 +437,26 @@ export const giftFor = (gate: GateKind): GiftDef => GIFTS.find((g) => g.gate ===
 export const giftFrom = (id: GiftId): PlaceDef | undefined => PLACES.find((p) => p.gift === id);
 
 /**
- * How each miniboss fights: the moves it takes in turn (a leap with a ring of bolts where it lands, a fan of bolts,
- * a ring, a rush along a lane, a call for its kind, a spiral), and what it calls.
+ * How each miniboss fights: the moves it takes in turn: the shared ones (a leap with a ring of bolts where it lands,
+ * a fan of bolts, a ring, a rush along a lane, a call for its kind, a spiral) and one of its very own: globs of slime
+ * that land and live, a seer's beam, a toad's tongue that drags the hero in, clouds of pollen, falling icicles, a blink
+ * behind the hero, two sunbeams turning, a nova of three rings, chain lightning, geysers in a line, slag bursting
+ * round it in two rings, a swoop through the hero from on high.
  */
-export type MiniMove = "hop" | "fan" | "ring" | "charge" | "summon" | "spiral";
+export type MiniMove = "hop" | "fan" | "ring" | "charge" | "summon" | "spiral" | "lob" | "beam" | "tongue" | "dust" | "icicles" | "blink" | "sunbeam" | "nova" | "chain" | "geyser" | "pools" | "swoop";
 export const MINIS: Record<string, { moves: MiniMove[]; summon?: string }> = {
-  mini_slime: { moves: ["hop", "summon", "ring"], summon: "slime" },
-  mini_skull: { moves: ["fan", "charge", "ring"] },
-  mini_frog: { moves: ["hop", "fan", "summon"], summon: "frog" },
-  mini_moth: { moves: ["ring", "summon", "spiral"], summon: "moth" },
-  mini_eye: { moves: ["spiral", "fan", "ring"] },
-  mini_ghost: { moves: ["charge", "fan", "summon"], summon: "ghost_ice" },
-  mini_sunskull: { moves: ["fan", "charge", "spiral"] },
-  mini_spark: { moves: ["ring", "summon", "hop"], summon: "wisp_sun" },
-  mini_jelly: { moves: ["ring", "spiral", "summon"], summon: "jelly" },
-  mini_eel: { moves: ["charge", "fan", "charge", "ring"] },
-  mini_slag: { moves: ["hop", "ring", "summon"], summon: "slime_ash" },
-  mini_cinder: { moves: ["charge", "fan", "summon"], summon: "bat_ash" },
+  mini_slime: { moves: ["hop", "lob", "summon", "ring"], summon: "slime" },
+  mini_skull: { moves: ["fan", "beam", "charge", "ring"] },
+  mini_frog: { moves: ["hop", "tongue", "fan", "summon"], summon: "frog" },
+  mini_moth: { moves: ["ring", "dust", "summon", "spiral"], summon: "moth" },
+  mini_eye: { moves: ["spiral", "icicles", "fan", "ring"] },
+  mini_ghost: { moves: ["charge", "blink", "fan", "summon"], summon: "ghost_ice" },
+  mini_sunskull: { moves: ["fan", "sunbeam", "charge", "spiral"] },
+  mini_spark: { moves: ["ring", "nova", "summon", "hop"], summon: "wisp_sun" },
+  mini_jelly: { moves: ["ring", "chain", "spiral", "summon"], summon: "jelly" },
+  mini_eel: { moves: ["charge", "geyser", "fan", "ring"] },
+  mini_slag: { moves: ["hop", "pools", "ring", "summon"], summon: "slime_ash" },
+  mini_cinder: { moves: ["charge", "swoop", "fan", "summon"], summon: "bat_ash" },
 };
 
 /** The tiers, top down: the places in each, the main one first. */

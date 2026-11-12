@@ -590,14 +590,24 @@ export function drawWorld(s: Scene, w: World, camX: number, camY: number, viewW:
         s.back.rect(Math.round(x + Math.cos(a) * r), Math.round(y + Math.sin(a) * r * 0.36), 2, 1, withAlpha(col, q % 3 ? 0.35 : 0.8));
       }
       s.illum.light(x, y - w.bry, 34 * d.scale, 28 * d.scale, withAlpha(col, mb?.enraged ? 0.5 + 0.15 * Math.sin(time * 9) : 0.32));
-      if (mb) yy -= mb.lift;
+      // (and a plain light on it, so its own colours read even far from the lantern)
+      s.illum.light(x, y - w.bry * 0.7, 26 * d.scale, 22 * d.scale, rgbaf(1, 0.97, 0.92, 0.3));
+      if (mb) yy -= Math.max(0, mb.lift);
     }
     if (hit && born >= 1) {
       const dx = x - h.x, dy = y - h.y, dd = Math.hypot(dx, dy) || 1, k = 2 * Math.min(1, E.flash[i] / 0.07);
       x += (dx / dd) * k;
       yy += (dy / dd) * k * 0.6;
     }
-    drawAnim(s, anim(d.anim), E.t[i], x, yy, { sx: E.face[i] * d.scale * (1 + 0.14 * hit + 0.06 * tk) * g2, sy: d.scale * (1 - 0.12 * hit + 0.06 * tk) * g2, tint, alpha, flash: born < 1 ? -Math.max(0.002, born) : Math.max(hit, tellFlash), key: y, glow: 0.55 * alpha * born * born });
+    // (a miniboss in the middle of a move takes its pose for it, and its look changes when it rages)
+    let ea = anim(d.anim);
+    if (d.ai === AI.Mini && w.mini && w.mini.uid === E.uid[i]) {
+      const mb = w.mini, name = `${d.key}_${mb.enraged ? 1 : 0}_${mb.act === "idle" || mb.act === "recover" ? "idle" : "cast"}`;
+      if (hasAnim(name)) ea = anim(name);
+      // gone in a blink: a faint shimmer where it was
+      if (mb.lift < 0) alpha = 0.25 + 0.1 * Math.sin(time * 30);
+    }
+    drawAnim(s, ea, E.t[i], x, yy, { sx: E.face[i] * d.scale * (1 + 0.14 * hit + 0.06 * tk) * g2, sy: d.scale * (1 - 0.12 * hit + 0.06 * tk) * g2, tint, alpha, flash: born < 1 ? -Math.max(0.002, born) : d.ai === AI.Mini ? hit * 0.3 : Math.max(hit, tellFlash), key: y, glow: 0.55 * alpha * born * born });
     if (d.glow) s.illum.light(w.bx, w.by, 20 * d.scale, 16 * d.scale, withAlpha(rgba(d.glow), 0.22));
     if (winding) {
       // a red mark over its head, swelling as the rush comes

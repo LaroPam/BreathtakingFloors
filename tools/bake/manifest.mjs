@@ -47,7 +47,7 @@ const WALL = {
  * pages of their own at the end of the atlas, which the game loads in the background once it has started (the menu,
  * the heroes' gear, the crypt and every effect come first).
  */
-const LATE = /garden|frost|heart|beyond|cistern|ashen|_ash\b|forgemaster|torch_ember|gatew_|gater_|gateh_|gatex_|_tide\b|wellmistress|^splash$|^geyser$|^whirl$|door_|_pale\b|_ice\b|_ice_|_moss|_spore|_bog|_void|_sun\b|treant|voideye|warden|lastlight|crystal|mushroom|grass/;
+const LATE = /mini_(frog|moth|eye|ghost|sunskull|spark|jelly|eel|slag|cinder)|garden|frost|heart|beyond|cistern|ashen|_ash\b|forgemaster|torch_ember|gatew_|gater_|gateh_|gatex_|_tide\b|wellmistress|^splash$|^geyser$|^whirl$|door_|_pale\b|_ice\b|_ice_|_moss|_spore|_bog|_void|_sun\b|treant|voideye|warden|lastlight|crystal|mushroom|grass/;
 export const isLate = (name) => LATE.test(name);
 
 export const ANIMS = [
@@ -93,6 +93,9 @@ export const ANIMS = [
   // the bosses at their own size, a set of poses for each of their three phases: name_phase_pose
   ...Object.entries({ warden: ["idle", "walk", "windup", "strike", "dash", "kneel"], treant: ["idle", "cast", "slam", "cocoon"], voideye: ["idle", "charge", "closed", "iris"], lastlight: ["idle", "cast", "slam", "rise"], wellmistress: ["idle", "cast", "slam", "sink"], forgemaster: ["idle", "walk", "windup", "strike", "cast", "kneel"] }).flatMap(([id, poses]) =>
     [0, 1, 2].flatMap((phase) => poses.map((pose) => ({ name: `${id}_${phase}_${pose}`, art: `bosses/${id}`, fps: pose === "idle" || pose === "walk" ? 8 : 4, light: { thr: 8, k: 0.9 }, body: pose === "idle", opts: { phase, pose } })))),
+  // the minibosses: each its own model, calm and enraged, idle and in the middle of a move: name_rage_pose
+  ...["mini_slime", "mini_skull", "mini_frog", "mini_moth", "mini_eye", "mini_ghost", "mini_sunskull", "mini_spark", "mini_jelly", "mini_eel", "mini_slag", "mini_cinder"].flatMap((id) =>
+    [0, 1].flatMap((rage) => ["idle", "cast"].map((pose) => ({ name: `${id}_${rage}_${pose}`, art: `minis/${id}`, fps: 8, light: { thr: 8, k: 0.9 }, body: pose === "idle" && rage === 0, opts: { rage, pose } })))),
   { name: "frog_king", fx: "critters/frog", fps: 12, light: CRITTER_LIGHT, body: true, opts: { palette: PAL.lava, belly: PAL.gold } },
   { name: "snake", fx: "critters/snake", fps: 12, light: CRITTER_LIGHT, body: true },
   { name: "snake_ice", fx: "critters/snake", fps: 12, light: CRITTER_LIGHT, body: true, opts: { palette: PAL.ice, belly: PAL.metal } },

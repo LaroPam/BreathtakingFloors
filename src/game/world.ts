@@ -119,6 +119,8 @@ export interface Beam {
   dur: number;
   spin: number;
   col: number;
+  /** How high over its owner's feet it comes from (the Void Eye's eye unless said). */
+  dy?: number;
 }
 /** Something bursting out of the floor where a warning was: stone spikes, roots, a rift of void (draw.ts). */
 export interface Erupt {
@@ -3511,7 +3513,9 @@ export class World {
               let mended = 0;
               this.grid.query(E.x[i], E.y[i], 64, (j) => {
                 if (j === i || E.hp[j] >= E.maxHp[j]) return;
-                E.hp[j] = Math.min(E.maxHp[j], E.hp[j] + E.maxHp[j] * 0.12);
+                // (a share of a small one's health, but no more than a little of a boss's: a few moths by a boss
+                // once undid all the hero did to it)
+                E.hp[j] = Math.min(E.maxHp[j], E.hp[j] + Math.min(E.maxHp[j] * 0.12, 30 + 6 * this.floor));
                 this.parts.add(E.x[j] + this.rng.range(-5, 5), E.y[j] - 10, 0, -25, 0.6, rgba("#7ee88a"), 2, 0, 1);
                 mended++;
               });
@@ -3777,7 +3781,7 @@ export class World {
         continue;
       }
       bm.x = E.x[j];
-      bm.y = E.y[j] - EYE_H;
+      bm.y = E.y[j] - (bm.dy ?? EYE_H);
       bm.ang += bm.spin * dt;
       // the beam stops at the first wall it meets
       let len = 0;
@@ -4809,7 +4813,9 @@ export class World {
     const E = this.enemies, h = this.hero, d = ENEMIES[E.type[i]], def = MINIS[d.key], col = rgba(d.glow || "#ffd27a");
     if (!this.mini || this.mini.uid !== E.uid[i]) this.mini = { uid: E.uid[i], act: "idle", t: 0, cd: 1.2, n: 0, plan: 0, init: false, sx: E.x[i], sy: E.y[i], ax: E.x[i], ay: E.y[i], lift: 0, enraged: false };
     const m = this.mini, k = m.enraged ? 1.3 : 1, orb = MINI_ORB[this.place.id] ?? B_ORB_RED;
-    const ex = E.x[i], ey = E.y[i] - 12 * d.scale, ang = Math.atan2(h.y - HERO_HIT_Y - ey, h.x - ex);
+    // (its bolts and beams come from the middle of its body: a floating skull's well above its shadow)
+    this.body(i);
+    const ex = E.x[i], ey = this.by, ang = Math.atan2(h.y - HERO_HIT_Y - ey, h.x - ex);
     E.face[i] = h.x < E.x[i] ? -1 : 1;
     if (!m.enraged && E.hp[i] < E.maxHp[i] * 0.5) {
       // enraged: a flare of its light and a roar
@@ -4917,6 +4923,245 @@ export class World {
           for (let a = 0; a < (m.enraged ? 3 : 2); a++) this.shoot(ex, ey, m.t * 2.2 + (a * Math.PI * 2) / (m.enraged ? 3 : 2), 64 * k, orb, 3);
         }
         if (m.t >= 2.2) go("recover");
+        return [0, 0];
+      }
+      // ---- each one's own move
+      case "lob": {
+        // globs of itself flung high: they land on rings about the hero, and each that lands becomes one of its kind
+        if (!m.init) {
+          m.init = true;
+          const side = Math.atan2(h.y - E.y[i], h.x - E.x[i]) + Math.PI / 2, type = def.summon ? ENEMIES.findIndex((q) => q.key === def.summon) : -1;
+          for (let q = 0; q < (m.enraged ? 4 : 3); q++) {
+            const off = (q - 1) * 42, x = h.x + Math.cos(side) * off + this.rng.range(-8, 8), y = h.y + Math.sin(side) * off * FLOOR_SQ + this.rng.range(-6, 6);
+            if (this.map.wall(x, y)) continue;
+            this.warnCircle(x, y, 20, 0.75 + q * 0.15, col, () => {
+              this.addFx("slam", x, y, { sx: 0.55, sy: 0.55, glow: 0.7, tint: col });
+              this.burst(x, y - 4, 10, col, 70, 0.4);
+              if (this.heroIn(x, y, 20)) this.hurtHero(2);
+              if (type >= 0 && E.n < 140 && this.free(x, y, 8)) this.spawnAt(type, x, y);
+              this.audio.play("boom", 1.6);
+            });
+          }
+          this.burst(ex, ey - 10, 14, col, 120, 0.4);
+          this.audio.play("dash", 0.8);
+        }
+        if (m.t >= 1.3) go("recover");
+        return [0, 0];
+      }
+      case "beam": {
+        // a thin line first, then its gaze burns down it, turning a little after the hero
+        const dy = E.y[i] - ey;
+        if (!m.init) {
+          m.init = true;
+          m.ax = ang;
+          this.warn({ kind: "beam", x: ex, y: ey, x2: ex + Math.cos(ang) * 300, y2: ey + Math.sin(ang) * 300, r: 2, dur: 0.8 / k, col, fire: () => {
+            const j = this.indexOf(m.uid);
+            if (j < 0) return;
+            const a2 = Math.atan2(h.y - HERO_HIT_Y - (E.y[j] - dy), h.x - E.x[j]), turn = Math.atan2(Math.sin(a2 - m.ax), Math.cos(a2 - m.ax));
+            this.beams.push({ uid: m.uid, x: E.x[j], y: E.y[j] - dy, ang: m.ax, len: 300, w: 10, t: 1.3, dur: 1.3, spin: Math.sign(turn) * 0.35 * k, col, dy });
+          } });
+          this.audio.play("portal", 2);
+        }
+        if (m.t >= 0.8 / k + 1.5) go("recover");
+        return [0, 0];
+      }
+      case "tongue": {
+        // its tongue lashes out along a line: caught on it, the hero is hurt and dragged in toward it
+        if (!m.init) {
+          m.init = true;
+          let len = 40;
+          while (len < 170 && !this.map.wall(E.x[i] + Math.cos(ang) * len, E.y[i] + Math.sin(ang) * len)) len += 10;
+          (m.ax = ang), (m.ay = len);
+          this.warn({ kind: "line", x: E.x[i], y: E.y[i], x2: E.x[i] + Math.cos(ang) * len, y2: E.y[i] + Math.sin(ang) * len, r: 14, dur: 0.6 / k, col, fire: () => {
+            const j = this.indexOf(m.uid);
+            if (j < 0) return;
+            this.beams.push({ uid: m.uid, x: E.x[j], y: E.y[j] - 10, ang: m.ax, len: m.ay, w: 6, t: 0.22, dur: 0.22, spin: 0, col: rgba("#ff7a9a"), dy: 10 });
+            if (this.heroOnLine(E.x[j], E.y[j], E.x[j] + Math.cos(m.ax) * m.ay, E.y[j] + Math.sin(m.ax) * m.ay, 14)) {
+              this.hurtHero(2);
+              const tx = h.x - Math.cos(m.ax) * 50, ty = h.y - Math.sin(m.ax) * 50;
+              if (this.free(tx, ty, 8)) (h.x = tx), (h.y = ty);
+            }
+            this.audio.play("dash", 1.5);
+          } });
+        }
+        if (m.t >= 0.6 / k + 0.6) go("recover");
+        return [0, 0];
+      }
+      case "dust": {
+        // clouds of pollen shaken from its wings settle about the hero, then burst
+        if (!m.init) {
+          m.init = true;
+          for (let q = 0; q < (m.enraged ? 5 : 4); q++) {
+            const a = (q / 4) * Math.PI * 2 + this.rng.range(0, 0.8), r = q === 0 ? 0 : this.rng.range(34, 70), x = h.x + Math.cos(a) * r, y = h.y + Math.sin(a) * r * FLOOR_SQ;
+            if (this.map.wall(x, y)) continue;
+            this.warnCircle(x, y, 24, 0.9 + q * 0.1, col, () => {
+              this.addFx("heal_ring", x, y, { tint: col, glow: 0.6, sx: 0.6, sy: 0.5 });
+              for (let s2 = 0; s2 < 12; s2++) this.parts.add(x + this.rng.range(-18, 18), y + this.rng.range(-10, 6), this.rng.range(-12, 12), -this.rng.range(8, 24), 0.9, col, 1, -6, 1);
+              if (this.heroIn(x, y, 24)) this.hurtHero(2);
+            });
+          }
+          this.audio.play("venom", 1);
+        }
+        if (m.t >= 1.5) go("recover");
+        return [0, 0];
+      }
+      case "icicles": {
+        // icicles dropping on the hero one after another, each shown by a small ring a moment before
+        const n = m.enraged ? 8 : 6, every = 0.22 / k;
+        if (m.t >= m.n * every && m.n < n) {
+          m.n++;
+          const x = h.x + h.vx * 0.3 + this.rng.range(-10, 10), y = h.y + h.vy * 0.3 + this.rng.range(-8, 8);
+          if (!this.map.wall(x, y))
+            this.warnCircle(x, y, 14, 0.6, col, () => {
+              this.addFx("frost_nova_s", x, y, { glow: 0.7, sx: 0.6, sy: 0.6 });
+              this.burst(x, y - 10, 6, rgba("#d8f4ff"), 60, 0.3);
+              if (this.heroIn(x, y, 14)) this.hurtHero(2);
+              this.audio.play("freeze", 1.4);
+            });
+        }
+        if (m.t >= n * every + 0.8) go("recover");
+        return [0, 0];
+      }
+      case "blink": {
+        // gone in a gust of snow, and back behind the hero with a ring of shards
+        if (!m.init) {
+          m.init = true;
+          const a = Math.atan2(h.y - E.y[i], h.x - E.x[i]);
+          (m.ax = h.x + Math.cos(a) * 54), (m.ay = h.y + Math.sin(a) * 54 * FLOOR_SQ);
+          if (this.map.wall(m.ax, m.ay) || !this.free(m.ax, m.ay, 12)) (m.ax = h.x - Math.cos(a) * 54), (m.ay = h.y - Math.sin(a) * 54 * FLOOR_SQ);
+          this.burst(ex, ey, 20, col, 90, 0.5);
+          this.warnCircle(m.ax, m.ay, 26, 0.7 / k, col, () => {
+            const j = this.indexOf(m.uid);
+            if (j < 0 || !this.free(m.ax, m.ay, 12)) return;
+            (E.x[j] = m.ax), (E.y[j] = m.ay);
+            this.addFx("frost_nova", m.ax, m.ay, { glow: 0.8, sx: 0.7, sy: 0.7, tint: col });
+            if (this.heroIn(m.ax, m.ay, 26)) this.hurtHero(2);
+            for (let q = 0, n = m.enraged ? 14 : 10; q < n; q++) this.shoot(m.ax, m.ay - 14, (q / n) * Math.PI * 2, 72 * k, orb, 4);
+            this.audio.play("freeze", 0.8);
+          });
+          this.audio.play("dash", 1.2);
+        }
+        // (while it is gone, it is a shimmer: drawn faint, it stays where it was)
+        m.lift = m.t < 0.7 / k ? -1 : 0;
+        if (m.t >= 0.7 / k + 0.5) (m.lift = 0), go("recover");
+        return [0, 0];
+      }
+      case "sunbeam": {
+        // two beams out of it, opposite, turning slowly round it
+        const dy = E.y[i] - ey;
+        if (!m.init) {
+          m.init = true;
+          const spin = (this.rng.chance(0.5) ? 1 : -1) * 0.55 * k;
+          for (const off of [0, Math.PI]) {
+            const a = ang + off + 0.6;
+            this.warn({ kind: "beam", x: ex, y: ey, x2: ex + Math.cos(a) * 280, y2: ey + Math.sin(a) * 280, r: 2, dur: 0.9, col, fire: () => {
+              const j = this.indexOf(m.uid);
+              if (j >= 0) this.beams.push({ uid: m.uid, x: E.x[j], y: E.y[j] - dy, ang: a, len: 280, w: 11, t: 2.2, dur: 2.2, spin, col, dy });
+            } });
+          }
+          this.audio.play("portal", 1.6);
+        }
+        if (m.t >= 3.3) go("recover");
+        return [0, 0];
+      }
+      case "nova": {
+        // three rings of sparks, each a little later and turned half a step
+        const rings = m.enraged ? 4 : 3;
+        if (m.t >= 0.4 + m.n * 0.3 && m.n < rings) {
+          const n = 14;
+          for (let q = 0; q < n; q++) this.shoot(ex, ey, ((q + m.n * 0.5) / n) * Math.PI * 2, (60 + m.n * 10) * k, orb, 4);
+          this.addFx("heal_ring", ex, ey, { tint: col, glow: 0.9, sx: 0.5 + m.n * 0.15, sy: 0.5 + m.n * 0.15 });
+          this.audio.play("enemyShot");
+          m.n++;
+        }
+        if (m.t >= 0.4 + rings * 0.3 + 0.4) go("recover");
+        return [0, 0];
+      }
+      case "chain": {
+        // bolts of lightning from it to where the hero stands, one after another, each line shown first
+        const n = m.enraged ? 4 : 3, every = 0.5 / k;
+        if (m.t >= m.n * every && m.n < n) {
+          m.n++;
+          const x2 = h.x + h.vx * 0.25, y2 = h.y + h.vy * 0.25, dyc = E.y[i] - ey;
+          this.warn({ kind: "beam", x: ex, y: ey, x2, y2, r: 2, dur: 0.55, col, fire: () => {
+            const j = this.indexOf(m.uid);
+            if (j < 0) return;
+            const sx2 = E.x[j], sy2 = E.y[j] - dyc;
+            this.beams.push({ uid: m.uid, x: sx2, y: sy2, ang: Math.atan2(y2 - sy2, x2 - sx2), len: Math.hypot(x2 - sx2, y2 - sy2), w: 5, t: 0.18, dur: 0.18, spin: 0, col: rgba("#e8d8ff"), dy: E.y[j] - sy2 });
+            this.addFx("lightning", x2, y2, { glow: 1, sx: 0.6, sy: 0.6 });
+            if (this.heroOnLine(E.x[j], E.y[j], x2, y2, 12) || this.heroIn(x2, y2, 14)) this.hurtHero(2);
+            this.audio.play("zap", 1.1);
+          } });
+        }
+        if (m.t >= n * every + 0.9) go("recover");
+        return [0, 0];
+      }
+      case "geyser": {
+        // water bursting up one jet after another along a line out to the hero (the line first)
+        if (!m.init) {
+          m.init = true;
+          const a = Math.atan2(h.y - E.y[i], h.x - E.x[i]);
+          let len = 40;
+          while (len < 260 && !this.map.wall(E.x[i] + Math.cos(a) * len, E.y[i] + Math.sin(a) * len)) len += 10;
+          const x0 = E.x[i] + Math.cos(a) * 24, y0 = E.y[i] + Math.sin(a) * 24, x2 = E.x[i] + Math.cos(a) * len, y2 = E.y[i] + Math.sin(a) * len;
+          this.warn({ kind: "line", x: x0, y: y0, x2, y2, r: 20, dur: 0.75 / k, col, fire: () => {
+            for (let s2 = 0; s2 < len - 24; s2 += 22) this.addFx("geyser", x0 + Math.cos(a) * s2, y0 + Math.sin(a) * s2, { glow: 0.5, sx: 0.3, sy: 0.3, delay: s2 / 700 });
+            if (this.heroOnLine(x0, y0, x2, y2, 20)) this.hurtHero(2);
+            this.shake = Math.max(this.shake, 0.3);
+            this.audio.play("boom", 1.3);
+          } });
+        }
+        if (m.t >= 0.75 / k + 0.6) go("recover");
+        return [0, 0];
+      }
+      case "pools": {
+        // slag bursting out of the floor round it, a near ring and then a far one
+        if (!m.init) {
+          m.init = true;
+          for (const [r, n, dur] of [[46, 7, 0.75], [92, 11, 1.15]] as const)
+            for (let q = 0; q < n; q++) {
+              const a = (q / n) * Math.PI * 2 + (r > 50 ? Math.PI / n : 0), x = E.x[i] + Math.cos(a) * r, y = E.y[i] + Math.sin(a) * r * FLOOR_SQ;
+              if (this.map.wall(x, y)) continue;
+              this.warnCircle(x, y, 15, dur / k, col, () => {
+                this.addFx("explosion", x, y - 4, { glow: 0.8, sx: 0.4, sy: 0.4 });
+                if (this.heroIn(x, y, 15)) this.hurtHero(2);
+              });
+            }
+          this.audio.play("ignite", 0.8);
+        }
+        if (m.t >= 1.7) go("recover");
+        return [0, 0];
+      }
+      case "swoop": {
+        // up into the smoke, then down through the hero along a line and out the far side, embers falling behind
+        if (!m.init) {
+          m.init = true;
+          const a = Math.atan2(h.y - E.y[i], h.x - E.x[i]);
+          let len = Math.hypot(h.x - E.x[i], h.y - E.y[i]) + 70;
+          while (len > 40 && this.map.wall(E.x[i] + Math.cos(a) * len, E.y[i] + Math.sin(a) * len)) len -= 10;
+          (m.sx = E.x[i]), (m.sy = E.y[i]), (m.ax = E.x[i] + Math.cos(a) * len), (m.ay = E.y[i] + Math.sin(a) * len);
+          this.warn({ kind: "line", x: m.sx, y: m.sy, x2: m.ax, y2: m.ay, r: 22, dur: 0.75 / k, col, fire: () => {} });
+          this.audio.play("roar", 1.6);
+        }
+        const up = 0.75 / k, T = 0.45;
+        if (m.t < up) {
+          m.lift = (m.t / up) * 30;
+          return [0, 0];
+        }
+        const u = Math.min(1, (m.t - up) / T);
+        E.x[i] = m.sx + (m.ax - m.sx) * u;
+        E.y[i] = m.sy + (m.ay - m.sy) * u;
+        m.lift = 30 * (1 - u) * (1 - u);
+        if (u < 1) {
+          if (this.heroIn(E.x[i], E.y[i], 22)) this.hurtHero(2);
+          if (this.rng.chance(dt * 40)) this.parts.add(E.x[i] + this.rng.range(-8, 8), E.y[i] - 10, this.rng.range(-20, 20), this.rng.range(10, 40), 0.5, col, 1, 60, 1);
+        } else if (m.n === 0) {
+          m.n = 1;
+          this.addFx("slam", E.x[i], E.y[i], { sx: 0.7, sy: 0.7, glow: 0.7, tint: col });
+          for (let q = 0, n = m.enraged ? 12 : 8; q < n; q++) this.shoot(E.x[i], E.y[i] - 8, (q / n) * Math.PI * 2, 66 * k, orb, 4);
+          this.audio.play("boom", 1.2);
+        }
+        if (m.t >= up + T + 0.4) (m.lift = 0), go("recover");
         return [0, 0];
       }
       case "recover":
