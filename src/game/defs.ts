@@ -637,7 +637,7 @@ export interface UnlockDef {
 export const UNLOCKS: UnlockDef[] = [
   { key: "weapon:hammer", stat: "bestFloor", goal: 3, need: { ru: "ДОЙДИ ДО 3-ГО ЭТАЖА", en: "REACH FLOOR 3" } },
   { key: "weapon:greatsword", stat: "boss", goal: 1, need: { ru: "ПОБЕДИ БОССА", en: "DEFEAT A BOSS" } },
-  { key: "weapon:whip", stat: "braziers", goal: 30, need: { ru: "ЗАЖГИ 30 ЖАРОВЕН", en: "LIGHT 30 BRAZIERS" } },
+  { key: "weapon:whip", stat: "braziers", goal: 12, need: { ru: "ЗАЖГИ 12 ЖАРОВЕН", en: "LIGHT 12 BRAZIERS" } },
   { key: "weapon:claws", stat: "secrets", goal: 3, need: { ru: "ОТКРОЙ 3 ТАЙНЫЕ КОМНАТЫ", en: "OPEN 3 SECRET ROOMS" } },
   { key: "weapon:spell", stat: "reactionsKnown", goal: 3, need: { ru: "ОТКРОЙ 3 РЕАКЦИИ СТИХИЙ", en: "DISCOVER 3 REACTIONS" } },
   { key: "weapon:scythe", stat: "kills", goal: 1500, need: { ru: "УБЕЙ 1500 ВРАГОВ", en: "SLAY 1500 FOES" } },
@@ -954,7 +954,7 @@ export interface TaskDef {
 }
 export const TASKS: TaskDef[] = [
   { id: "kills", name: { ru: "УБЕЙ {n} ВРАГОВ", en: "SLAY {n} FOES" }, goals: [250, 350, 450], reward: 40 },
-  { id: "braziers", name: { ru: "ЗАЖГИ {n} ЖАРОВЕН", en: "LIGHT {n} BRAZIERS" }, goals: [9, 12, 15], reward: 35 },
+  { id: "braziers", name: { ru: "ЗАЖГИ {n} ЖАРОВНИ", en: "LIGHT {n} BRAZIERS" }, goals: [3, 4, 4], reward: 35 },
   { id: "floor", name: { ru: "ДОЙДИ ДО {n} ЭТАЖА", en: "REACH FLOOR {n}" }, goals: [3, 4, 5], reward: 50 },
   { id: "boss", name: { ru: "ПОБЕДИ БОССА", en: "DEFEAT A BOSS" }, goals: [1], reward: 60 },
   { id: "reactions", name: { ru: "ВЫЗОВИ {n} РЕАКЦИЙ", en: "SET OFF {n} REACTIONS" }, goals: [15, 25], reward: 40 },

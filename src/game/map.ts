@@ -1,37 +1,35 @@
-// The floor's map: a grid of 16 px tiles, each floor, wall or pit, laid out by one of four builders (rooms joined by
-// corridors, a lattice of galleries, caves, islands joined by bridges), and the walking distances that lead the
-// horde to the hero around the walls. Nothing here draws; draw.ts reads the grid, world.ts walks on it.
+// The floor's map: a grid of 16 px tiles, each floor, wall or pit. A floor is one room about two screens big with
+// the brazier in its middle (cut square, faceted, round or rough, with columns, hedges, ponds, a moat round the fire,
+// ice or glowing cracks as its place has them), niches in its walls for what is worth a step aside, the stairs down
+// in a recess in its back wall, and solid stone behind that wall for a gate's vault or a cracked wall's secret room.
+// Also the walking distances that lead the horde to the hero around the walls. Nothing here draws; draw.ts reads the
+// grid, world.ts walks on it.
 
 /** What a tile is: something to stand on, a wall, or a drop (a chasm, water, the void) that only flyers cross. */
 export const FLOOR = 0, WALL = 1, PIT = 2;
 /** What a floor tile looks like beyond its stone: planks of a bridge, a sheet of ice, a glowing crack. */
 export const LOOK_PLAIN = 0, LOOK_BRIDGE = 1, LOOK_ICE = 2, LOOK_VEIN = 3;
 
-/** How a floor's chambers are cut: square halls, halls with their corners cut, round clearings, rough hollows, islands. */
-export type Shape = "rect" | "facet" | "round" | "cave" | "isle";
+/** How the room is cut: square, its corners cut, round, a rough hollow. */
+export type Shape = "rect" | "facet" | "round" | "cave";
 export interface MapPlan {
-  cols: number;
-  rows: number;
+  /** The room's size in tiles (16 px): about two screens. */
+  w: number;
+  h: number;
   shape: Shape;
-  /** Rows of chambers the way snakes through, and chambers in each row. */
-  lanes: number;
-  per: number;
-  /** The passages: straight (square-on, with a dogleg where they must), winding (a garden walk), and how wide. */
-  link: "straight" | "winding";
-  wide: number;
-  /** The middle chamber has a chasm (or a pond) in it, crossed by a bridge. */
-  pit?: boolean;
-  /** A sheet of ice in each chamber. */
+  /** Drops in the room: a moat round the fire, crossed by four bridges, or a pair of ponds to its sides. */
+  pit?: "moat" | "ponds";
+  /** A sheet of ice round the fire (the brazier itself stands on stone). */
   ice?: boolean;
   /** Glowing cracks wandering across the floor. */
   veins?: boolean;
-  /** Hedges or boulders in mirrored pairs in the open chambers. */
+  /** Hedges or boulders in mirrored pairs about the fire. */
   clumps?: boolean;
-  /** Columns in pairs down the big halls. */
+  /** A ring of columns round the fire. */
   columns?: boolean;
-  /** Recesses along the halls' back walls (the ossuary). */
+  /** Recesses along the back wall (the ossuary). */
   niches?: boolean;
-  /** A boss's floor: the way ends in a great hall, where the last brazier stands and the boss comes. */
+  /** A boss's floor: the whole room is the boss's arena (kept clear of drops, ice and clumps). */
   arena?: boolean;
 }
 
@@ -61,10 +59,14 @@ export class TileMap {
   start: [number, number] = [0, 0];
   /** Every chamber and side room (tiles). */
   areas: Area[] = [];
-  /** The chambers in the order the way goes through them, from the way in to the way out. */
+  /** The room (one area; the old maps' chain of chambers had more). */
   route: Area[] = [];
-  /** Side rooms off the way. */
+  /** Niches in the room's walls, for what is worth a step aside (a weapon altar, a spirit, a curse, a chest). */
   nooks: Area[] = [];
+  /** The recess in the back wall where the stairs down are. */
+  exit: Area | null = null;
+  /** The middle of the room (a tile), where the brazier stands. */
+  fire: [number, number] = [0, 0];
   /** The boss's arena (tiles), on a boss's floor. */
   arena: Area | null = null;
   /** Where the builder wants columns (tile centres, in px). */
@@ -335,125 +337,110 @@ function lane(m: TileMap, pts: [number, number][], wd: number, look: number, ove
     }
   }
 }
-/** A path that winds gently from one point to another (a garden walk): round brushes along an S. */
-function wind(m: TileMap, a: [number, number], b: [number, number], wd: number, R: Rnd): void {
-  const n = Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1]) * 1.5), amp = R.range(1.5, 3) * (R.chance(0.5) ? 1 : -1), rad = wd / 2;
-  const dx = b[0] - a[0], dy = b[1] - a[1], len = Math.hypot(dx, dy) || 1, nx = -dy / len, ny = dx / len;
-  for (let s = 0; s <= n; s++) {
-    const u = s / n, bend = Math.sin(u * Math.PI * 2) * amp * Math.sin(u * Math.PI), x = a[0] + dx * u + nx * bend, y = a[1] + dy * u + ny * bend;
-    for (let r = Math.floor(y - rad); r <= y + rad; r++) for (let c = Math.floor(x - rad); c <= x + rad; c++) if (Math.hypot(c + 0.5 - x - 0.5, r + 0.5 - y - 0.5) <= rad && c >= 2 && r >= 4 && c < m.cols - 2 && r < m.rows - 2 && m.at(c, r) === WALL) m.set(c, r, FLOOR);
-  }
-}
+/** Margins round the room, in tiles: stone at the sides and below for niches, above for a vault or a secret room. */
+const SIDE = 13, ABOVE = 16, BELOW = 11;
+/** The map's size in tiles for a room of w x h. */
+export const mapSize = (w: number, h: number): [number, number] => [w + 2 * SIDE, h + ABOVE + BELOW];
 
 /**
- * The way through a floor: chambers in two or three rows across the map, the way snaking through them (along the
- * first row, down at its end, back along the next), each joined only to the one before and the one after; small
- * side rooms off some of them for what is worth a detour. One way on, nowhere to get lost: the floor is a journey.
+ * The floor: one room with the fire in its middle. The hero comes in at the bottom, the stairs down wait in a recess
+ * in the back wall, niches open off the sides and the bottom; what the place has (columns, hedges, ponds, a moat,
+ * ice, niches in the back wall) is set out about the fire, mirrored, so the fight can go round it.
  */
-function journey(m: TileMap, R: Rnd, plan: MapPlan): void {
-  const { cols, rows } = m, isle = plan.shape === "isle", fill = isle ? PIT : WALL;
-  if (isle) for (let r = 4; r < rows - 2; r++) for (let c = 2; c < cols - 2; c++) m.set(c, r, PIT);
-  // (islands start lower: the rock behind the first row of them needs the height for a vault or a secret room)
-  const lanes = plan.lanes, gap = isle ? 7 : 10, top = isle ? 11 : 6, bottom = rows - 4;
-  const laneH = Math.floor((bottom - top - gap * (lanes - 1)) / lanes), slot = (cols - 8) / plan.per;
-  const fromLeft = R.chance(0.5), chain: Area[] = [], laneOf: number[] = [];
-  for (let L = 0; L < lanes; L++) {
-    const y0 = top + L * (laneH + gap), row: Area[] = [];
-    for (let k = 0; k < plan.per; k++) {
-      const w = Math.max(10, Math.round(slot * R.range(0.5, 0.7))), h = Math.max(8, Math.min(laneH, Math.round(laneH * R.range(0.65, 0.95))));
-      const cx = 4 + slot * (k + 0.5) + R.range(-slot * 0.07, slot * 0.07);
-      row.push({ x: Math.round(cx - w / 2), y: Math.round(y0 + (laneH - h) * R.range(0.25, 0.75)), w, h });
-    }
-    // every other row runs back the other way
-    if ((L % 2 === 0) !== fromLeft) row.reverse();
-    for (const a of row) (chain.push(a), laneOf.push(L));
+function room(m: TileMap, R: Rnd, plan: MapPlan): void {
+  const a: Area = { x: SIDE, y: ABOVE, w: plan.w, h: plan.h }, [cx, cy] = mid(a);
+  chamber(m, a, plan.shape, R);
+  m.fire = [cx, cy];
+  // the stairs' recess: the back wall's middle, a little to one side of the fire's line so the way past it bends
+  const ex = cx + R.int(-3, 3), exit: Area = { x: ex - 3, y: a.y - 4, w: 6, h: 4 };
+  carve(m, exit.x, exit.y, exit.w, exit.h + 2);
+  m.exit = exit;
+  // niches: off the left and right walls, and off the bottom wall to each side of the way in, each by a short door
+  const nooks: Area[] = [];
+  const side = (left: boolean): void => {
+    const w = 7, h = 6, y = cy - 3 + R.int(-3, 3), x = left ? a.x - w - 2 : a.x + a.w + 2, box = { x, y, w, h };
+    if (!solid(m, box, WALL)) return;
+    chamber(m, box, plan.shape === "facet" ? "rect" : plan.shape, R);
+    const dy = y + Math.floor(h / 2);
+    lane(m, left ? [[x + w - 1, dy], [a.x + 3, dy]] : [[a.x + a.w - 4, dy], [x, dy]], 3, LOOK_PLAIN, WALL);
+    nooks.push(box);
+  };
+  const below = (k: -1 | 1): void => {
+    const w = 8, h = 5, x = cx + k * Math.round(a.w * 0.3) - w / 2, y = a.y + a.h + 2, box = { x, y, w, h };
+    if (!solid(m, box, WALL)) return;
+    chamber(m, box, plan.shape === "facet" ? "rect" : plan.shape, R);
+    const dx = Math.round(x + w / 2);
+    lane(m, [[dx, a.y + a.h - 3], [dx, y + 1]], 3, LOOK_PLAIN, WALL);
+    nooks.push(box);
+  };
+  side(true);
+  side(false);
+  below(-1);
+  below(1);
+  // (shuffled: which niche holds the altar, the spirit, the curse or the chest changes from floor to floor)
+  for (let i = nooks.length - 1; i > 0; i--) {
+    const j = R.int(0, i);
+    [nooks[i], nooks[j]] = [nooks[j], nooks[i]];
   }
-  // a boss's floor ends in its arena: the last chamber, grown to a great hall as tall as its row allows
-  if (plan.arena) {
-    const a = chain[chain.length - 1], L = laneOf[chain.length - 1], y0 = top + L * (laneH + gap), [cx] = mid(a);
-    const w = Math.min(28, Math.round(slot * 0.95)), h = Math.min(18, laneH);
-    Object.assign(a, { x: Math.max(3, Math.min(cols - 3 - w, Math.round(cx - w / 2))), y: Math.round(y0 + (laneH - h) / 2), w, h });
-    m.arena = { ...a };
-  }
-  // the chasm (or pond) chamber: the middle one, grown, a drop in it crossed by the way
-  const deep = plan.pit ? Math.floor(chain.length / 2) - (chain.length % 2 === 0 ? 1 : 0) : -1;
-  if (deep >= 0) {
-    const a = chain[deep], L = laneOf[deep], y0 = top + L * (laneH + gap), [cx] = mid(a), w = Math.min(Math.round(slot * 0.9), 26);
-    Object.assign(a, { x: Math.round(cx - w / 2), y: y0, w, h: laneH });
-  }
-  for (const a of chain) chamber(m, a, plan.shape, R);
-  // the way: each chamber to the next, across a row or down between rows
-  for (let k = 1; k < chain.length; k++) {
-    const A = mid(chain[k - 1]), B = mid(chain[k]), turn = laneOf[k] !== laneOf[k - 1];
-    if (plan.link === "winding") wind(m, A, B, plan.wide, R);
-    else {
-      const mx = Math.round((A[0] + B[0]) / 2), my = Math.round((A[1] + B[1]) / 2);
-      const pts: [number, number][] = turn ? [A, [A[0], my], [B[0], my], B] : Math.abs(A[1] - B[1]) < 2 ? [A, [B[0], A[1]]] : [A, [mx, A[1]], [mx, B[1]], B];
-      lane(m, pts, plan.wide, isle ? LOOK_BRIDGE : LOOK_PLAIN, fill);
-    }
-  }
-  // islands: the first row stands against the rock, a cliff from the top of the map down to each island's edge (it
-  // gives their back walls, and stone behind them for a gate's vault or a cracked wall's room)
-  if (isle)
-    for (let k = 0; k < chain.length; k++) {
-      if (laneOf[k] !== 0) continue;
-      const a = chain[k];
-      for (let c = a.x - 1; c <= a.x + a.w; c++) for (let r = 4; r < a.y + a.h / 2 && m.at(c, r) === PIT; r++) m.set(c, r, WALL);
-    }
-  // the drop in the chasm chamber, a rim of floor round it, and the way across it on a bridge
-  if (deep >= 0) {
-    const a = chain[deep], [cx, cy] = mid(a), rx = a.w * 0.3, ry = a.h * 0.32, ph = R.range(0, 6.3);
+  // drops: a moat round the fire with four bridges, or two ponds mirrored to its sides; never on a boss's floor
+  if (plan.pit && !plan.arena) {
     m.measure();
+    const ph = R.range(0, 6.3);
+    if (plan.pit === "moat") {
+      // a ring round an island of stone the fire stands on
+      const r0 = Math.min(a.w, a.h) * 0.17, r1 = Math.min(a.w, a.h) * 0.3;
+      for (let r = a.y; r < a.y + a.h; r++)
+        for (let c = a.x; c < a.x + a.w; c++) {
+          const t = Math.atan2(r - cy, c - cx), d = Math.hypot((c - cx) * (a.h / a.w) * 1.2, r - cy) * (1 + 0.08 * Math.sin(t * 5 + ph));
+          if (d > r0 && d < r1 && m.at(c, r) === FLOOR) m.set(c, r, PIT);
+        }
+      const reach = Math.ceil(r1 * 1.6) + 2;
+      lane(m, [[cx - reach, cy], [cx + reach, cy]], 3, LOOK_BRIDGE, PIT);
+      lane(m, [[cx, cy - reach], [cx, cy + reach]], 3, LOOK_BRIDGE, PIT);
+    } else {
+      const dx = Math.round(a.w * 0.3), rx = a.w * 0.11, ry = a.h * 0.16;
+      for (const s of [-1, 1])
+        for (let r = a.y; r < a.y + a.h; r++)
+          for (let c = a.x; c < a.x + a.w; c++) {
+            const t = Math.atan2(r - cy, c - (cx + s * dx)), k = 1 + 0.12 * Math.sin(t * 3 + ph) + 0.06 * Math.sin(t * 7 + ph);
+            if (Math.hypot((c - cx - s * dx) / rx, (r - cy) / ry) < k && m.at(c, r) === FLOOR && m.open[r * m.cols + c] >= 3) m.set(c, r, PIT);
+          }
+    }
+  }
+  // a ring of columns round the fire
+  if (plan.columns) {
+    const rx = a.w * 0.3, ry = a.h * 0.3, n = 8, off = R.chance(0.5) ? Math.PI / 8 : 0;
+    for (let k = 0; k < n; k++) {
+      const t = off + (k * Math.PI * 2) / n, c = Math.round(cx + Math.cos(t) * rx), r = Math.round(cy + Math.sin(t) * ry);
+      if (m.at(c, r) === FLOOR) m.columns.push([c * 16 + 8, r * 16 + 8]);
+    }
+  }
+  // the ossuary's niches: a recess every few steps along the back wall
+  if (plan.niches) for (let c = a.x + 2; c < a.x + a.w - 2; c += 4) if (c < exit.x - 1 || c > exit.x + exit.w) if (m.at(c, a.y - 1) === WALL && m.at(c, a.y - 2) === WALL) m.set(c, a.y - 1, FLOOR);
+  // hedges or boulders in mirrored pairs about the fire, its middle and the ways in and out kept clear
+  if (plan.clumps && !plan.arena) {
+    const dx = Math.round(a.w * 0.24), dy = Math.round(a.h * 0.26), rad = R.range(1.6, 2.2);
+    for (const [sx, sy] of [[-1, -1], [1, -1], [-1, 1], [1, 1], [-2, 0], [2, 0]]) {
+      if (!R.chance(0.8)) continue;
+      const bx = cx + Math.round((sx * dx) / (Math.abs(sx) === 2 ? 1.25 : 1)), by = cy + sy * dy;
+      for (let r = -2; r <= 2; r++) for (let c = -2; c <= 2; c++) if (Math.hypot(c, r * 1.2) < rad && m.at(bx + c, by + r) === FLOOR) m.set(bx + c, by + r, WALL);
+    }
+  }
+  // ice: a sheet round the fire to slide across; the brazier stands on stone
+  if (plan.ice && !plan.arena) {
+    const rx = a.w * R.range(0.26, 0.32), ry = a.h * R.range(0.26, 0.32);
     for (let r = a.y; r < a.y + a.h; r++)
       for (let c = a.x; c < a.x + a.w; c++) {
-        const t = Math.atan2(r - cy, c - cx), k = 1 + 0.12 * Math.sin(t * 3 + ph) + 0.06 * Math.sin(t * 7 + ph);
-        if (Math.hypot((c - cx) / rx, (r - cy) / ry) < k && m.at(c, r) === FLOOR && m.open[r * cols + c] >= 2) m.set(c, r, PIT);
+        const e = Math.hypot((c - cx) / rx, (r - cy) / ry);
+        if (e < 1 && Math.hypot(c - cx, r - cy) > 3 && m.at(c, r) === FLOOR) m.set(c, r, FLOOR, LOOK_ICE);
       }
-    const P = mid(chain[deep - 1] ?? a), N = mid(chain[deep + 1] ?? a), C: [number, number] = [cx, cy];
-    lane(m, [P, C, N], 4, LOOK_BRIDGE, PIT);
   }
-  // side rooms: into the rock below a chamber (never past the next row's), joined by a short door
-  const nooks: Area[] = [];
-  for (let k = 1; k < chain.length; k++) {
-    const a = chain[k], L = laneOf[k];
-    if (L >= lanes - 1 || a === m.arena || k === deep || !R.chance(0.55)) continue;
-    const w = R.int(6, 8), h = isle ? 5 : 4, x = Math.round(a.x + a.w / 2 - w / 2 + R.range(-a.w * 0.2, a.w * 0.2)), y = a.y + a.h + 2;
-    const box = { x, y, w, h };
-    if (!solid(m, box, fill)) continue;
-    chamber(m, box, isle ? "isle" : plan.shape === "facet" ? "rect" : plan.shape, R);
-    const door = Math.round(x + w / 2);
-    lane(m, [[door, a.y + a.h - 2], [door, y + 1]], 3, isle ? LOOK_BRIDGE : LOOK_PLAIN, fill);
-    nooks.push(box);
-  }
-  // columns in pairs down the long sides of the big square halls
-  if (plan.columns)
-    for (const a of chain) {
-      if (a === m.arena || a.w < 13 || a.h < 10) continue;
-      for (let c = a.x + 3; c <= a.x + a.w - 4; c += Math.max(4, Math.floor((a.w - 7) / 2))) (m.columns.push([c * 16 + 8, (a.y + 2) * 16 + 8]), m.columns.push([c * 16 + 8, (a.y + a.h - 3) * 16 + 8]));
-    }
-  // the ossuary's niches: a recess every few steps along each hall's back wall
-  if (plan.niches) for (const a of chain) for (let c = a.x + 2; c < a.x + a.w - 2; c += 4) if (m.at(c, a.y - 1) === WALL && m.at(c, a.y - 2) === WALL) m.set(c, a.y - 1, FLOOR);
-  // hedges or boulders in the open chambers, set in mirrored pairs about the middle, the way through kept clear
-  if (plan.clumps)
-    for (const a of chain) {
-      if (a === m.arena || chain.indexOf(a) === deep || a.w < 12 || a.h < 9) continue;
-      const [cx, cy] = mid(a), dx = Math.round(a.w * 0.27), dy = Math.round(a.h * 0.25), rad = R.range(1.5, 2.1);
-      for (const [sx, sy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
-        if (!R.chance(0.75)) continue;
-        for (let r = -2; r <= 2; r++) for (let c = -2; c <= 2; c++) if (Math.hypot(c, r * 1.2) < rad && m.at(cx + sx * dx + c, cy + sy * dy + r) === FLOOR) m.set(cx + sx * dx + c, cy + sy * dy + r, WALL);
-      }
-    }
-  // ice: one sheet in the middle of each chamber after the first, to slide across on the way
-  if (plan.ice)
-    for (const a of chain.slice(1)) {
-      if (a === m.arena) continue;
-      const [cx, cy] = mid(a), rx = a.w * R.range(0.22, 0.32), ry = a.h * R.range(0.2, 0.3);
-      for (let r = a.y; r < a.y + a.h; r++) for (let c = a.x; c < a.x + a.w; c++) if (Math.hypot((c - cx) / rx, (r - cy) / ry) < 1 && m.at(c, r) === FLOOR) m.set(c, r, FLOOR, LOOK_ICE);
-    }
-  m.route = chain;
+  if (plan.arena) m.arena = { ...a };
+  m.route = [a];
   m.nooks = nooks;
-  m.areas = [...chain, ...nooks];
-  m.start = mid(chain[0]);
+  m.areas = [a, ...nooks];
+  // the way in: below the fire, near enough that the fire is on the screen from the first moment
+  m.start = [cx, Math.min(a.y + a.h - 4, cy + Math.max(5, Math.round(a.h * 0.2)))];
 }
 
 /** Flood the floor from a tile; returns the region's tiles. */
@@ -521,8 +508,8 @@ function veins(m: TileMap, R: Rnd): void {
 
 /** Make the floor's map. The frame (four rows of wall on top, two around) is always there. */
 export function buildMap(plan: MapPlan, R: Rnd): TileMap {
-  const m = new TileMap(plan.cols, plan.rows);
-  journey(m, R, plan);
+  const [cols, rows] = mapSize(plan.w, plan.h), m = new TileMap(cols, rows);
+  room(m, R, plan);
   m.measure();
   // the way in: the open tile nearest the first chamber's middle
   let best = -1, bd = Infinity;
@@ -536,7 +523,7 @@ export function buildMap(plan: MapPlan, R: Rnd): TileMap {
   if (best < 0) best = m.t.findIndex((v) => v === FLOOR);
   m.start = [best % m.cols, Math.floor(best / m.cols)];
   joinUp(m, R);
-  if (plan.shape !== "isle") keepLargest(m, WALL);
+  keepLargest(m, WALL);
   if (plan.veins) veins(m, R);
   // columns only where they leave the way open
   m.measure();
@@ -569,50 +556,50 @@ export function buildBeyond(): TileMap {
 }
 
 /**
- * Each place's three maps, built three different ways: the first its plain self, the second changed, the third at
- * the height of the change (and the boss). Sizes grow as the tower goes down.
+ * Each place's three rooms, cut three different ways: the first its plain self, the second changed, the third (the
+ * boss's) a clean arena. About two screens each, growing a little as the tower goes down.
  */
 export const MAP_PLANS: Record<string, MapPlan[]> = {
-  // the crypt: square halls joined straight, columns down them; the ossuary, longer, niches in its walls; the
-  // catacombs' heart, rough hollows round a chasm, its arena at the end
+  // the crypt: a square hall, columns round the fire; the ossuary, faceted, niches in its back wall; the catacombs'
+  // heart, a rough hollow veined with light, the boss's arena
   crypt: [
-    { cols: 84, rows: 52, shape: "rect", lanes: 2, per: 3, link: "straight", wide: 5, columns: true },
-    { cols: 90, rows: 62, shape: "rect", lanes: 3, per: 3, link: "straight", wide: 5, columns: true, niches: true },
-    { cols: 96, rows: 60, shape: "cave", lanes: 2, per: 3, link: "straight", wide: 4, pit: true, veins: true, arena: true },
+    { w: 48, h: 30, shape: "rect", columns: true },
+    { w: 52, h: 31, shape: "facet", columns: true, niches: true },
+    { w: 54, h: 32, shape: "cave", veins: true, arena: true },
   ],
-  // the garden: round clearings on winding walks, hedges about; the drowned garden, islands on bridges; its heart,
-  // clearings round a pond, the arena at the end
+  // the garden: a round clearing, hedges about; the drowned garden, the fire on an island in a moat; its heart, a
+  // clearing round which the boss comes
   garden: [
-    { cols: 90, rows: 54, shape: "round", lanes: 2, per: 3, link: "winding", wide: 5, clumps: true },
-    { cols: 96, rows: 69, shape: "isle", lanes: 3, per: 3, link: "straight", wide: 4 },
-    { cols: 100, rows: 60, shape: "round", lanes: 2, per: 3, link: "winding", wide: 5, pit: true, clumps: true, arena: true },
+    { w: 50, h: 30, shape: "round", clumps: true },
+    { w: 54, h: 32, shape: "round", pit: "moat" },
+    { w: 56, h: 33, shape: "round", arena: true },
   ],
-  // the tower's heart: tall halls of mirrors, columns down them; the foundry, rough and veined with molten light;
-  // the crucible, faceted halls round a chasm of light to the arena
+  // the tower's heart: a hall of mirrors, columns round the fire; the foundry, rough, veined with molten light,
+  // boulders about; the crucible, faceted, the boss's arena
   heart: [
-    { cols: 100, rows: 64, shape: "rect", lanes: 3, per: 3, link: "straight", wide: 5, columns: true },
-    { cols: 104, rows: 66, shape: "cave", lanes: 3, per: 3, link: "winding", wide: 5, veins: true, clumps: true },
-    { cols: 108, rows: 62, shape: "facet", lanes: 2, per: 3, link: "straight", wide: 5, pit: true, veins: true, arena: true },
+    { w: 54, h: 32, shape: "rect", columns: true },
+    { w: 56, h: 33, shape: "cave", veins: true, clumps: true },
+    { w: 58, h: 34, shape: "facet", veins: true, arena: true },
   ],
-  // the drowned catacombs: halls whose middles have gone under, crossed on planks; cisterns, islands of stone in
-  // black water; the old well's hall, rough, a pool in its middle and the arena at the end
+  // the drowned catacombs: a hall whose sides have gone under; the cistern, the fire on an island of stone in black
+  // water; the old well's hall, rough, the boss's arena
   cistern: [
-    { cols: 92, rows: 58, shape: "rect", lanes: 2, per: 3, link: "straight", wide: 5, pit: true, columns: true },
-    { cols: 98, rows: 69, shape: "isle", lanes: 3, per: 3, link: "straight", wide: 4 },
-    { cols: 100, rows: 60, shape: "cave", lanes: 2, per: 3, link: "winding", wide: 5, pit: true, arena: true },
+    { w: 50, h: 31, shape: "rect", pit: "ponds", columns: true },
+    { w: 54, h: 32, shape: "rect", pit: "moat" },
+    { w: 56, h: 33, shape: "cave", arena: true },
   ],
-  // the ashen forge: smelting halls in rows, iron columns, the floor veined with fire; the slag rivers, islands of
-  // stone in the melt joined by iron walks; the great hearth, rough, pools of melt in it, the arena at the end
+  // the ashen forge: a smelting hall, iron columns, the floor veined with fire; the slag river round the fire on its
+  // island; the great hearth, rough, the boss's arena
   ashen: [
-    { cols: 96, rows: 62, shape: "rect", lanes: 3, per: 3, link: "straight", wide: 5, columns: true, veins: true },
-    { cols: 100, rows: 71, shape: "isle", lanes: 3, per: 3, link: "straight", wide: 4, veins: true },
-    { cols: 104, rows: 60, shape: "cave", lanes: 2, per: 3, link: "winding", wide: 5, pit: true, veins: true, arena: true },
+    { w: 52, h: 31, shape: "rect", columns: true, veins: true },
+    { w: 54, h: 32, shape: "cave", pit: "moat", veins: true },
+    { w: 56, h: 33, shape: "cave", veins: true, arena: true },
   ],
-  // the frost: faceted halls of rime; ice caves, a sheet to slide on in each; the throne of the void, islands over
-  // nothing to the arena
+  // the frost: a faceted hall of rime, columns; an ice cave, a sheet round the fire, boulders; the throne of the
+  // void, the boss's arena
   frost: [
-    { cols: 96, rows: 64, shape: "facet", lanes: 3, per: 3, link: "straight", wide: 5, columns: true },
-    { cols: 102, rows: 66, shape: "cave", lanes: 3, per: 3, link: "winding", wide: 5, ice: true, clumps: true },
-    { cols: 104, rows: 65, shape: "isle", lanes: 2, per: 3, link: "straight", wide: 4, arena: true },
+    { w: 54, h: 32, shape: "facet", columns: true },
+    { w: 56, h: 33, shape: "cave", ice: true, clumps: true },
+    { w: 58, h: 34, shape: "facet", arena: true },
   ],
 };
