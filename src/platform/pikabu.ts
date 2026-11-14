@@ -56,7 +56,7 @@ declare const PkbSDK: { init(): Promise<PkbSDKInstance> } | undefined;
 
 const SDK_URL = "https://games.pikabu.ru/sdk/sdk.js";
 /** How long the rewarded-ad buttons stay hidden after a try that found no ad (ms). */
-const REWARDED_PAUSE = 5 * 60_000;
+const REWARDED_PAUSE = 30_000;
 /** Explicit flushes: at most 100 in 5 minutes; the SDK also saves by itself shortly after each change. */
 const FLUSH_EVERY = 4000;
 
