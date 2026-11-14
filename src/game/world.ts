@@ -662,6 +662,13 @@ export class World {
   kills = 0;
   /** The first run's lessons are on (game.ts): the first floor's crowds come thinner, none at all while the first is learnt. */
   gentle = false;
+  /**
+   * A newcomer's first runs show what the game becomes (game.ts): the first level-up offers a relic that fills the
+   * screen, and the second floor always has a cracked wall with a secret room behind it.
+   */
+  showcase = false;
+  /** No boss beaten yet (game.ts): the first ones come a quarter weaker, so a first session can end in a win. */
+  firstBoss = false;
   holdSpawns = false;
   pendingLevels = 0;
   pendingChests = 0;
@@ -994,8 +1001,9 @@ export class World {
       }
     }
     // now and then a stretch of wall is cracked, and behind it a secret room
-    if (R.chance(0.6 + 0.03 * this.floor)) {
-      const spot = wallRoom(order, 120, this.gate?.room ?? null);
+    // (a newcomer's second floor always has one: the secret rooms are among the best of the game)
+    if (R.chance(0.6 + 0.03 * this.floor) || (this.showcase && this.floor === 2)) {
+      const spot = wallRoom(order, 120, this.gate?.room ?? null) ?? (this.showcase && this.floor === 2 ? wallRoom(order, 60, this.gate?.room ?? null, false) : null);
       const kinds = ["treasure", "treasure", "guardian", "guardian", "fountain", "armory"] as const;
       if (spot) this.secret = { x: spot.x, y: spot.y, hp: 3, seen: 0, found: false, hitT: 9, room: { ...spot.room, kind: R.pick(kinds) } };
     }
@@ -1224,7 +1232,7 @@ export class World {
     // hero took to reach it, and the last one is the test of the whole build. A floor being one room and one wave, the
     // hero comes to a boss with less behind him than when floors were long: its health is cut to match)
     const boss = d.ai >= AI.Boss && d.ai !== AI.Mini, late = boss ? (d.ai === AI.LastLight ? 1.2 : 1.15) : 1 + Math.min(1.2, this.time / 180);
-    const hp = d.hp * tough * (1 + 0.4 * (f - 1)) * late * curse;
+    const hp = d.hp * tough * (1 + 0.4 * (f - 1)) * late * curse * (boss && this.firstBoss ? 0.75 : 1);
     const i = this.enemies.add(type, x, y, hp, this.rng.next(), this.mod.speed * (1.08 + Math.min(9, f - 1) * 0.04) * this.rng.range(0.9, 1.1) * (this.curse ? 1.2 : 1) * (this.mutator === "haste" ? 1.25 : 1));
     if (i >= 0) {
       this.enemies.face[i] = this.hero.x < x ? -1 : 1;
@@ -2673,6 +2681,7 @@ export class World {
       this.beams = [];
       this.brain = null;
       this.ev.count("boss");
+      this.firstBoss = false;
       this.hitstop = 0.25;
       this.shake = 1.2;
       this.flash = 1;

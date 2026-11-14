@@ -8,7 +8,7 @@ import { anim, FONTS, frameAt, hasAnim, icon, type Anim, type Rect } from "../en
 import { heroSprites, initHeroSprites, lookId, type HeroAnim, type HeroSprites } from "./heroSprites";
 import { fitScale, measure, text, wrap, type FontName } from "../engine/text";
 import { dayNumber, weekNumber, type Board, type BoardName, type Platform, type Product } from "../platform/platform";
-import { ACHIEVEMENTS, heroDef, combine, DEPTH, floorText, PLACE_FLOORS, EL_COLOR, LEGENDS, legendDesc, type WeaponId, EL_NAME, ENEMIES, EVOLUTIONS, evolutionOf, FORGE, questDef, TASK_BONUS, TASKS, type TaskId, type ForgeId, SHOP, type ShopItem, HEROES, WEAPONS, weaponName, MODIFIERS, MUTATORS, NO_MODIFIER, REACTIONS, RELIC_MAX, RELIC_SLOTS, ARTIFACT_SLOTS, RELICS, STATS, El, fullWeaponName, STAIR_EVENTS, type Outcome, type StairEvent, MYTHIC, PERK_TEXT, RARITIES, UNIQUES, type Modifier, type PlaceId, type GiftId, giftDef, giftFor, giftFrom, GIFTS, DOORS, GIFTS_IN_TOWER, PLACES, UNLOCKS, arsenalName, ARSENAL, unlockOf, TIERS, placeDef, depthOf, type GateKind, type Reaction, type RelicKind, type StatId } from "./defs";
+import { ACHIEVEMENTS, heroDef, combine, DEPTH, floorText, PLACE_FLOORS, EL_COLOR, LEGENDS, legendDesc, type WeaponId, EL_NAME, ENEMIES, EVOLUTIONS, evolutionOf, FORGE, questDef, TASK_BONUS, TASKS, type TaskId, type ForgeId, SHOP, type ShopItem, HEROES, WEAPONS, weaponName, MODIFIERS, MUTATORS, NO_MODIFIER, REACTIONS, RELIC_MAX, RELIC_SLOTS, ARTIFACT_SLOTS, RELICS, STATS, El, fullWeaponName, STAIR_EVENTS, type Outcome, type StairEvent, MYTHIC, PERK_TEXT, RARITIES, UNIQUES, type Modifier, type PlaceId, type GiftId, giftDef, giftFor, giftFrom, GIFTS, DOORS, GIFTS_IN_TOWER, PLACES, UNLOCKS, arsenalName, ARSENAL, unlockOf, TIERS, placeDef, depthOf, type GateKind, type Reaction, RelicKind, type StatId } from "./defs";
 import { drawWorld, Scene } from "./draw";
 import { ascent } from "./ascent";
 import { getLang, langFor, setLang, t, tx, type Lang } from "./i18n";
@@ -111,7 +111,7 @@ const AD_GAP = 150;
 const SUPPORT = String(import.meta.env.VITE_SUPPORT ?? "").trim();
 const AD_GRACE = 120;
 /** First sights worth a word, once in the player's life each, one at a time and never over another hint. */
-const SIGHTS = ["spirit", "altar", "bolts", "elite", "crack"] as const;
+const SIGHTS = ["spirit", "altar", "bolts", "elite", "crack", "evo"] as const;
 /** The least time between two first-sight hints (s): never a stream of them. */
 const SIGHT_GAP = 10;
 /**
@@ -761,6 +761,9 @@ export class Game {
     this.eventsSeen = [];
     // the first run's lessons: a gentler first floor, and its long word about the braziers (veterans get the short one)
     w.gentle = this.save.tutorial && !this.daily && !this.weekly;
+    // a newcomer's first three runs show the best of the game early; the bosses come weaker until one has been beaten
+    w.showcase = this.save.runs < 3 && !this.daily && !this.weekly;
+    w.firstBoss = !this.daily && !this.weekly && !(this.save.stats.boss > 0);
     // the gifts held work in every ordinary run, and only what the player has opened comes up in it (a trial is the
     // same for everyone: no gifts, and everything there)
     w.gifts = new Set(this.daily ? [] : this.save.gifts);
@@ -1287,6 +1290,13 @@ export class Game {
     }
     // the sure thing goes in the middle, where the eye lands
     if (ready.length && out.length === 3) [out[0], out[1]] = [out[1], out[0]];
+    // a newcomer's first level-up of a run offers a relic that fills the screen (the ember orbit or the ice lance),
+    // in the middle: the game shows early what it becomes
+    const w = this.world;
+    if (kind === "level" && w.showcase && !w.relics.length && !ready.length && out.length) {
+      const showy = [RelicKind.Orbit, RelicKind.Lance].filter((k) => !w.locked.has(`relic:${k}`));
+      if (showy.length && !out.some((c) => c.type === "relic" && showy.includes(c.kind))) out[out.length === 3 ? 1 : 0] = { type: "relic", kind: showy[this.runRng.int(0, showy.length - 1)], level: 1 };
+    }
     return out;
   }
   private startPick(kind: Pick["kind"]): void {
@@ -1585,11 +1595,18 @@ export class Game {
       } else if (id === "elite") {
         const E = w.enemies;
         for (let i = 0; i < E.n && !now; i++) now = E.lunge[i] > LUNGE_DASH && near(E.x[i], E.y[i], 220);
-      } else now = !!w.secret?.found && w.secret.hp > 0;
+      } else if (id === "evo") now = w.relics.some((r) => r.level >= 3 && !r.evo);
+      else now = !!w.secret?.found && w.secret.hp > 0;
       if (!now) continue;
       sv.seen.push(`sight:${id}`);
       this.persist();
       this.sightT = this.now;
+      // a relic halfway up: what it becomes, and with which artifact
+      if (id === "evo") {
+        const r = w.relics.find((q) => q.level >= 3 && !q.evo)!, e = evolutionOf(r.kind), st = STATS.find((q) => q.id === e.stat)!;
+        w.say(t("sightEvo").replace("{relic}", tx(RELICS[r.kind].name)).replace("{stat}", tx(st.name)).replace("{evo}", tx(e.name)), 6);
+        return;
+      }
       w.say(t(id === "spirit" ? "spiritHint" : (`sight${id[0].toUpperCase()}${id.slice(1)}` as Parameters<typeof t>[0])), 4.5);
       return;
     }
