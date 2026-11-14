@@ -46,6 +46,8 @@ export default defineConfig(({ mode }) => {
       // VK's hosting takes no audio files: there the music goes inside the code (a data URL the audio decodes as is)
       assetsInlineLimit: single ? 64 * 1024 * 1024 : target === "vk" ? (file: string) => (file.endsWith(".ogg") ? true : undefined) : 0,
       chunkSizeWarningLimit: single ? 8192 : 600,
+      // (one page, one script: the platform layer, loaded on its own elsewhere, goes inside it)
+      ...(single ? { rolldownOptions: { output: { codeSplitting: false } } } : {}),
       reportCompressedSize: true,
     },
     server: { host: true, port: 5173 },
