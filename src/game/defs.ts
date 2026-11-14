@@ -1333,7 +1333,7 @@ export const HEROES: HeroDef[] = [
   },
   {
     id: "ranger", cost: 300, name: { ru: "СЛЕДОПЫТ", en: "RANGER" }, title: { ru: "ЛУК, КОЖА И ЛЁГКИЙ ШАГ", en: "BOW, LEATHER, A LIGHT STEP" },
-    perk: { ru: "ДВА РЫВКА ПОДРЯД, БЕГАЕТ БЫСТРЕЕ, СТРЕЛЫ ПРОБИВАЮТ +1", en: "TWO DASHES, FASTER FEET, ARROWS PIERCE +1" },
+    perk: { ru: "ДВА РЫВКА ПОДРЯД, БЕГАЕТ БЫСТРЕЕ, СТРЕЛЫ ПРОБИВАЮТ +1, КАЖДЫЙ ВТОРОЙ ВЫСТРЕЛ В БОССА", en: "TWO DASHES, FASTER FEET, ARROWS PIERCE +1, EVERY OTHER SHOT AT THE BOSS" },
     weapon: "bow", hearts: 4, speed: 1.12, dashCd: 3.2, dashes: 2, lantern: 1, light: "lantern", lightColor: [1, 0.85, 0.6],
     might: 0.9, haste: 1.15, crit: 0.1,
     ability: { name: { ru: "ГРАД СТРЕЛ", en: "ARROW RAIN" }, desc: { ru: "ДВАДЦАТЬ СТРЕЛ ПАДАЮТ С НЕБА НА БЛИЖАЙШИХ ВРАГОВ, КАЖДАЯ СИЛЬНЕЕ ВЫСТРЕЛА", en: "TWENTY ARROWS FALL FROM THE SKY ON THE NEAREST FOES, EACH HARDER THAN A SHOT" } },

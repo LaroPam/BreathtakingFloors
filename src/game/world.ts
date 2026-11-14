@@ -1731,6 +1731,24 @@ export class World {
     return [h.x + hand[0] * h.face, h.y + hand[1]];
   }
 
+  /**
+   * Where a shot goes: the nearest foe with auto-aim, else where the player aims. The ranger has an eye for the great:
+   * with auto-aim, every other shot of his goes at a boss in reach (whatever it has called round it would otherwise
+   * take his arrows), the rest at the nearest foe as before.
+   */
+  private shotGoal(): { x: number; y: number } | null {
+    const goal = this.autoAim ? (this.target.r > 0 ? this.target : null) : this.aimTarget;
+    const h = this.hero, bi = this.autoAim && h.def.id === "ranger" ? this.bossIndex() : -1;
+    if (bi < 0) return goal;
+    this.rangerAtBoss = !this.rangerAtBoss;
+    if (!this.rangerAtBoss) return goal;
+    this.body(bi);
+    const r = Math.max(this.brx, this.bry), reach = Math.max(240, WEAPONS[h.weapon].range) + r;
+    return (this.bx - h.x) ** 2 + (this.by - h.y + 18) ** 2 < reach * reach ? { x: this.bx, y: this.by } : goal;
+  }
+  /** Whether the ranger's last shot went at the boss (they take turns, see shotGoal). */
+  private rangerAtBoss = false;
+
   /** A blow lands. Melee hits what is in its shape and cuts bullets; shots and spells leave the hand. */
   private land(B: Blow, k: number, hit: number, of: number): void {
     this.setSrc(SRC_WEAPON);
@@ -1745,7 +1763,7 @@ export class World {
       const pierce = B.kind === "arrow" ? 1 + (h.def.id === "ranger" ? 1 : 0) : B.kind === "frost" ? 2 : 0;
       // aimed from where it leaves, not from the chest: the hand is higher and ahead, and a shot parallel to the
       // chest's line would pass over a low target (a slime)
-      const goal = this.autoAim ? (this.target.r > 0 ? this.target : null) : this.aimTarget;
+      const goal = this.shotGoal();
       const base = goal && Math.hypot(goal.x - hx, goal.y - hy) > 10 ? Math.atan2(goal.y - hy, goal.x - hx) : dir;
       for (let q = 0; q < n; q++) {
         // it leaves from just past the hand, small, and grows to its size in flight (draw.ts), rather than appearing
@@ -1766,7 +1784,7 @@ export class World {
     if (B.kind === "bolt" || B.kind === "chakram") {
       // a crossbow's bolt, heavy and straight through; a chakram thrown out to come back
       const [hx, hy] = this.handPos(), bolt = B.kind === "bolt", n = 1 + s.wave + (h.legend && !bolt ? 1 : 0), spread = bolt ? 0.08 : 0.35;
-      const goal = this.autoAim ? (this.target.r > 0 ? this.target : null) : this.aimTarget;
+      const goal = this.shotGoal();
       const base = goal && Math.hypot(goal.x - hx, goal.y - hy) > 10 ? Math.atan2(goal.y - hy, goal.x - hx) : dir, speed = bolt ? 430 : 320;
       for (let q = 0; q < n; q++) {
         const a = base + (q - (n - 1) / 2) * spread;
