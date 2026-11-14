@@ -217,7 +217,7 @@ export class Game {
   private newSkin = "";
   /** Achievements earned and waiting to be shown. */
   /** The plates at the top right waiting their turn: achievements, and things opened for the runs (`open`). */
-  private toasts: { id: string; t: number; open?: boolean; porch?: { streak: number; gift: number } }[] = [];
+  private toasts: { id: string; t: number; open?: boolean; porch?: { streak: number; gift: number }; note?: string }[] = [];
   private startSpins = 0;
   /** The forge's rerolls left this run, and its second wind (unused). */
   private rerolls = 0;
@@ -1021,7 +1021,8 @@ export class Game {
     if (res.doubled || res.base <= 0 || this.adBusy) return;
     this.adBusy = true;
     try {
-      if (!(await this.platform.showRewarded()) || res.doubled) return;
+      if (!(await this.platform.showRewarded())) return this.adMissed();
+      if (res.doubled) return;
       res.doubled = true;
       res.embers = res.base * 2;
       this.save.embers += res.base;
@@ -1043,11 +1044,15 @@ export class Game {
     if (gap > 0) (this.reviveOffered = true), (this.reviveOfferAt = this.now);
     return true;
   }
+  /** A rewarded ad the player asked for did not come: where the platform now has none to offer, say so. */
+  private adMissed(): void {
+    if (!this.platform.canShowRewarded() && !this.toasts.some((q) => q.note)) this.toasts.push({ id: "noad", t: 0, note: t("adUnavailable") });
+  }
   private async revive(): Promise<void> {
     if (this.revived || this.adBusy || !this.platform.canShowRewarded()) return;
     this.adBusy = true;
     const ok = await this.platform.showRewarded().finally(() => (this.adBusy = false));
-    if (!ok) return;
+    if (!ok) return this.adMissed();
     this.revived = true;
     const w = this.world, h = w.hero;
     // give back what the death screen took (the run goes on and pays again at its end; an ad's doubling, already
@@ -1168,6 +1173,13 @@ export class Game {
       text(ui, name, x + 29, y + 14, { color: C.goldLight, shadow: C.ink });
       const gx = x + ((tst.t * 260) % (w + 40)) - 20;
       if (tst.t < 1.2) ui.rect(Math.max(x + 2, gx), y + 2, 3, 24, rgba("#d8ffc4", 0.25));
+      return;
+    }
+    if (tst.note) {
+      // a plain word from the game (an ad that did not come)
+      const w = measure(tst.note, "mini") + 16, x = Math.round(W - 4 - w * e), y = this.state === "play" ? 38 : 6;
+      frame(ui, x, y, w, 15, { edge: C.edge });
+      text(ui, tst.note, x + w / 2, y + 4, { font: "mini", align: "center", color: C.text });
       return;
     }
     if (tst.porch) {
@@ -4040,6 +4052,7 @@ export class Game {
         void this.platform.showRewarded().then((ok) => {
           se.adBusy = false;
           if (ok) se.win = true;
+          else this.adMissed();
           apply();
         });
       }

@@ -97,7 +97,7 @@ const PIKABU = `(function () {
   // the purchases, kept across reloads as the real store keeps them (one left unhandled from before)
   let pending = JSON.parse(localStorage.getItem("__pkb_purchases") || "null") ?? [{ productId: "embers_500", purchaseId: "p-pending", isConsumable: true }], n = 0;
   const keep = () => localStorage.setItem("__pkb_purchases", JSON.stringify(pending));
-  const ad = (name, rewarded) => ({ isSupported: true, canShow: async () => true,
+  const ad = (name, rewarded) => ({ isSupported: true, canShow: async () => (log(name + ".canShow"), !window.__pkbNoAds),
     show: () => (log(name), new Promise((ok) => setTimeout(() => ok(rewarded ? { rendered: true, reward: true } : { rendered: true }), 400))) });
   window.PkbSDK = { init: async () => (log("init"), {
     gameStarted: () => log("gameStarted"),
@@ -422,6 +422,15 @@ else {
   await g.wait(500);
   ok(!(await g.still(200)), "and go on after it");
   ok(await g.ev(() => window.__game.platform.showRewarded()), "a rewarded ad gives its reward only when the SDK says reward: true");
+  {
+    // no ad to be had (an ad blocker, no fill): canShow() says no, nothing is shown, and the reward buttons go for a while
+    await g.ev(() => (window.__pkbNoAds = true));
+    const before = (await g.calls()).filter((x) => x === "rewarded").length;
+    const got = await g.ev(() => window.__game.platform.showRewarded());
+    const shown = (await g.calls()).filter((x) => x === "rewarded").length - before;
+    ok(!got && !shown && !(await g.ev(() => window.__game.platform.canShowRewarded())), "no rewarded ad to be had (canShow() says no): no reward, nothing shown, and the reward buttons hide rather than stay pressable to no effect");
+    await g.ev(() => (window.__pkbNoAds = false));
+  }
   await g.ev(() => window.__game.persist());
   await g.wait(4500);
   ok((await g.calls()).includes("storage.set:save"), "progress goes to sdk.storage");
