@@ -9,6 +9,7 @@ export async function createPlatform(): Promise<Platform> {
   if (__PLATFORM__ === "youtube") return new (await import("./youtube")).YouTubePlatform();
   if (__PLATFORM__ === "vk") return new (await import("./vk")).VKPlatform();
   if (__PLATFORM__ === "pikabu") return new (await import("./pikabu")).PikabuPlatform();
+  if (__PLATFORM__ === "crazygames") return new (await import("./crazygames")).CrazyGamesPlatform();
   return new (await import("./local")).LocalPlatform();
 }
 export type { Platform };

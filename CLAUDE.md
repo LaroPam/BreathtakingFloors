@@ -7,7 +7,8 @@ The user writes in Russian; docs and in-game text are Russian-first (English is 
 ## Commands
 
 - `npm run dev`: bake the atlas, then the Vite dev server on :5173. `window.__game` exposes the game for tests.
-- `npm run typecheck`, `npm run build`, `npm run build:yandex`, `npm run build:youtube` (the last two write zips).
+- `npm run typecheck`, `npm run build`, `npm run build:yandex`, `npm run build:youtube`, `npm run build:vk`,
+  `npm run build:pikabu`, `npm run build:crazygames` (the platform builds write zips; `docs/RELEASE.md` per platform).
 - `npm run bake -- --preview`: rebuild `src/generated/` (gitignored) and write atlas pages to `records/`.
 - `npm run art -- <category>/<name>`: contact sheet of a game effect from `art/fx`.
 - `npm run check:play` (after `npm run build:web`): a bot plays every hero through the whole tower in headless Chromium,

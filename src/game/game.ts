@@ -255,6 +255,10 @@ export class Game {
   private lastResult = { floor: 0, kills: 0, time: 0, embers: 0, base: 0, gift: 0, doubled: false, score: 0, best: false, daily: false, weekly: false };
   /** A rewarded ad asked for and not yet answered: its button does nothing meanwhile. */
   private adBusy = false;
+  /** This death offered a revive for an ad (where the platform spaces them: then no ad on the way to the next run). */
+  private reviveOffered = false;
+  /** When the last revive for an ad was offered (this.now), for the platform's gap; -1 none yet. */
+  private reviveOfferAt = -1;
   /** A hero just opened by playing (not bought): the hero select shows them first, marked NEW. */
   private newHero = "";
   /** This run is a trial (the same seed, hero and first floor for everyone today, or this week). */
@@ -652,6 +656,8 @@ export class Game {
 
   /** A place's boss has fallen: the first time, its gift is the player's for good, shown a moment later. */
   private bossFell(): void {
+    // the first time this boss falls: the site celebrates with the player (CrazyGames)
+    if (!this.save.stats[`fell_${this.world.place.id}`]) this.platform.happyTime();
     this.stat(`fell_${this.world.place.id}`);
     const gift = this.world.place.gift;
     if (!gift || this.save.gifts.includes(gift)) return;
@@ -701,6 +707,7 @@ export class Game {
 
   private startRun(): void {
     this.newHero = "";
+    this.reviveOffered = false;
     this.runsHere++;
     this.lvlT = 0;
     this.lvlArmed = false;
@@ -807,6 +814,8 @@ export class Game {
 
   private onVictory(): void {
     this.unlock("victory");
+    this.platform.happyTime();
+    this.platform.progress(100);
     // down the pit beyond the light: the closing words roll first, then the run's end
     if (this.world.place.single) {
       setTimeout(() => {
@@ -863,7 +872,9 @@ export class Game {
     this.boards = {};
     this.audio.stopMusic();
     // the focus on the way on ("again"), not on an ad's button above it: an ad only by the player's clear choice
-    const ads = this.platform.canShowRewarded() ? (embers > 0 ? 1 : 0) + (won || this.revived ? 0 : 1) : 0;
+    // (the revive's offer is decided here, as the screen opens: where the platform spaces them it may not come)
+    const revive = !won && !this.revived && this.platform.canShowRewarded() && this.reviveAllowed();
+    const ads = this.platform.canShowRewarded() ? (embers > 0 ? 1 : 0) + (revive ? 1 : 0) : 0;
     this.setState(won ? "won" : "dead", ads);
   }
 
@@ -994,9 +1005,21 @@ export class Game {
     }
   }
 
+  /**
+   * Whether this death may offer a revive for an ad: once a run, where ads are, and where the platform asks it not to
+   * come on every death (CrazyGames) not within its gap of the last offer. Noted as offered when it is.
+   */
+  private reviveAllowed(): boolean {
+    if (this.revived || !this.platform.canShowRewarded()) return false;
+    const gap = this.platform.reviveGap;
+    if (gap > 0 && this.reviveOfferAt >= 0 && this.now - this.reviveOfferAt < gap) return false;
+    if (gap > 0) (this.reviveOffered = true), (this.reviveOfferAt = this.now);
+    return true;
+  }
   private async revive(): Promise<void> {
-    if (this.revived) return;
-    const ok = await this.platform.showRewarded();
+    if (this.revived || this.adBusy || !this.platform.canShowRewarded()) return;
+    this.adBusy = true;
+    const ok = await this.platform.showRewarded().finally(() => (this.adBusy = false));
     if (!ok) return;
     this.revived = true;
     const w = this.world, h = w.hero;
@@ -1142,6 +1165,8 @@ export class Game {
   /** A new floor: the tasks that count how deep you got. */
   private reached(floor: number): void {
     if (floor >= 2 && floor <= 4) this.step(`floor${floor}`);
+    // how far down the tower, for the platform's progress (the win is 100)
+    if (floor > this.save.bestFloor && !this.daily) this.platform.progress(Math.min(99, ((floor - 1) / DEPTH) * 100));
     // (the day's task counts the floors climbed in this run: a run started on a shortcut does not get them free)
     this.bump("floor", floor - this.runFrom + 1, true);
     // the places the player has been to stay known (the atlas, the ways opened from them)
@@ -1622,8 +1647,23 @@ export class Game {
     this.lastAdAt = this.now;
     return true;
   }
+  /**
+   * One more run from an end screen: an ad between runs first where one is due, the end screen kept meanwhile with
+   * its buttons inert (nothing to press while the ad is asked for and plays), then the run.
+   */
+  private again(): void {
+    if (this.adBusy) return;
+    this.adBusy = true;
+    void this.betweenRuns().finally(() => {
+      this.adBusy = false;
+      this.setState("title");
+      this.startRun();
+    });
+  }
   /** An ad between runs, if the house rules (AD_GAP and the rest, above) allow one now. */
   private async betweenRuns(): Promise<void> {
+    // (where a revive for an ad was offered at this death, the way on carries no ad: never the two together)
+    if (this.reviveOffered) return;
     if (this.owns("no_ads") || this.save.tutorial || this.runsHere < 2 || this.now < AD_GRACE || (this.lastAdAt > 0 && this.now - this.lastAdAt < AD_GAP)) return;
     this.lastAdAt = this.now;
     await this.platform.showInterstitial();
@@ -3926,7 +3966,7 @@ export class Game {
     const by = ry + 14 + resLines.length * 9 + 4;
     if (second && !se.applied) {
       const two = resW >= 260, bw = two ? Math.floor((resW - 8) / 2) : Math.min(200, resW);
-      if (button(ui, this.menu, now, two ? rx : Math.round(rc - bw / 2), by, bw, 18, t("evAdWin"), { color: C.green, icon: icon("hud", "play") }) && !se.adBusy) {
+      if (button(ui, this.menu, now, two ? rx : Math.round(rc - bw / 2), by, bw, 18, t("evAdWin"), { color: C.green, icon: icon("hud", "play"), disabled: !!se.adBusy }) && !se.adBusy) {
         se.adBusy = true;
         void this.platform.showRewarded().then((ok) => {
           se.adBusy = false;
@@ -3934,7 +3974,7 @@ export class Game {
           apply();
         });
       }
-      if (button(ui, this.menu, now, two ? rx + bw + 8 : Math.round(rc - bw / 2), two ? by : by + 22, bw, 18, t("onward"), { primary: true }) && !se.adBusy) {
+      if (button(ui, this.menu, now, two ? rx + bw + 8 : Math.round(rc - bw / 2), two ? by : by + 22, bw, 18, t("onward"), { primary: true, disabled: !!se.adBusy }) && !se.adBusy) {
         apply();
         se.phase = "done";
         this.menu.open(now, 0);
@@ -4050,8 +4090,7 @@ export class Game {
     if (!res.doubled && res.base > 0 && this.platform.canShowRewarded()) acts.push({ label: t("doubleEmbers"), opts: { color: C.gold, icon: icon("hud", "ember") }, go: () => void this.doubleEmbers() });
     acts.push({ label: t("again"), opts: { primary: true, icon: icon("hud", "play") }, go: () => {
       this.newSkin = "";
-      void this.betweenRuns().then(() => this.startRun());
-      this.setState("title");
+      this.again();
       return true;
     } });
     acts.push({ label: t("stats"), opts: { icon: icon("hud", "trophy") }, go: () => void this.openStats("won", 1) });
@@ -4103,7 +4142,7 @@ export class Game {
   private endButtons(acts: EndAct[], L: ReturnType<Game["endPlan"]>, y: number): number {
     let at = L.top >= 0 ? L.top : y;
     for (const a of acts) {
-      if (button(this.ui, this.menu, this.now, L.bx, at, L.bw, L.bh, a.label, a.opts) && a.go()) return -1;
+      if (button(this.ui, this.menu, this.now, L.bx, at, L.bw, L.bh, a.label, this.adBusy ? { ...a.opts, disabled: true } : a.opts) && !this.adBusy && a.go()) return -1;
       at += L.bh + L.gap;
     }
     return at;
@@ -4145,10 +4184,9 @@ export class Game {
     const acts: EndAct[] = [];
     // the embers twice over, for an ad of the player's choosing; a second life, likewise
     if (!res.doubled && res.base > 0 && this.platform.canShowRewarded()) acts.push({ label: t("doubleEmbers"), opts: { color: C.gold, icon: icon("hud", "ember") }, go: () => void this.doubleEmbers() });
-    if (!this.revived && this.platform.canShowRewarded()) acts.push({ label: t("revive"), opts: { color: C.green, icon: icon("hud", "heart") }, go: () => void this.revive() });
+    if (!this.revived && this.platform.canShowRewarded() && (this.reviveOffered || this.reviveAllowed())) acts.push({ label: t("revive"), opts: { color: C.green, icon: icon("hud", "heart") }, go: () => void this.revive() });
     acts.push({ label: t("again"), opts: { primary: true, icon: icon("hud", "play") }, go: () => {
-      void this.betweenRuns().then(() => this.startRun());
-      this.setState("title");
+      this.again();
       return true;
     } });
     // the embers buy something in the forge now: straight there (it was what the run was for)

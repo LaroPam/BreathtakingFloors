@@ -147,6 +147,52 @@ const VK_PARENT = `<!doctype html><meta charset="utf-8"><style>html,body{margin:
 // A platform's page with the game in a frame (Pikabu shows games this way; its SDK answers only there).
 const FRAME_PARENT = `<!doctype html><meta charset="utf-8"><style>html,body{margin:0;height:100%;background:#000}iframe{border:0;width:100%;height:100%}</style><iframe id="g" src="/"></iframe>`;
 
+// CrazyGames: the HTML5 SDK v3's surface as docs.crazygames.com/sdk/ describes it (game, ad, data, user.systemInfo),
+// served in place of their crazygames-sdk-v3.js. Ads: adStarted, then adFinished; window.__cgAd.mode set to an error
+// code ("unfilled", "adsDisabled", "adblock") answers with adError instead.
+const CRAZY = `(function () {
+  const calls = (window.__sdk = []), log = (n) => calls.push(n);
+  const store = JSON.parse(localStorage.getItem("__cg_data") || "{}"), listeners = [];
+  const settings = { disableChat: false, muteAudio: false };
+  let ready = false;
+  const need = (n) => { if (!ready) throw new Error("CrazyGames SDK used before init: " + n); };
+  window.__cgFire = (s) => { Object.assign(settings, s); listeners.forEach((f) => f({ ...settings })); };
+  window.__cgAd = { mode: "ok" };
+  window.CrazyGames = { SDK: {
+    init: async () => { log("init"); await new Promise((r) => setTimeout(r, 30)); ready = true; },
+    environment: "crazygames",
+    game: {
+      gameplayStart: () => (need("gameplayStart"), log("gameplayStart")),
+      gameplayStop: () => (need("gameplayStop"), log("gameplayStop")),
+      loadingStart: () => (need("loadingStart"), log("loadingStart")),
+      loadingStop: () => (need("loadingStop"), log("loadingStop")),
+      happytime: () => (need("happytime"), log("happytime")),
+      reportGameCompletedPercentage: (p) => (need("progress"), log("progress:" + p)),
+      settings,
+      addSettingsChangeListener: (f) => (log("addSettingsChangeListener"), listeners.push(f)),
+      removeSettingsChangeListener: (f) => { const k = listeners.indexOf(f); if (k >= 0) listeners.splice(k, 1); },
+    },
+    ad: {
+      requestAd: (type, cb) => {
+        need("requestAd");
+        log("requestAd:" + type);
+        const m = window.__cgAd.mode;
+        if (m !== "ok") return setTimeout(() => cb && cb.adError && cb.adError({ code: m, message: m }), 60);
+        setTimeout(() => (log("adStarted"), cb && cb.adStarted && cb.adStarted()), 400);
+        setTimeout(() => (log("adFinished"), cb && cb.adFinished && cb.adFinished()), 1400);
+      },
+      hasAdblock: async () => (log("hasAdblock"), ADBLOCK),
+    },
+    data: {
+      getItem: (k) => (need("data"), k in store ? store[k] : null),
+      setItem: (k, v) => { need("data"); log("data.setItem:" + k); store[k] = String(v); localStorage.setItem("__cg_data", JSON.stringify(store)); },
+      removeItem: (k) => { need("data"); delete store[k]; localStorage.setItem("__cg_data", JSON.stringify(store)); },
+      clear: () => { need("data"); for (const k in store) delete store[k]; localStorage.setItem("__cg_data", "{}"); },
+    },
+    user: { systemInfo: { countryCode: "US", locale: "en-US", device: { type: "desktop" }, os: { name: "Windows", version: "10" }, browser: { name: "Chrome", version: "120.0.0.0" }, applicationType: "web" } },
+  } };
+})();`;
+
 // ------------------------------------------------------------------------------------------ helpers
 const TYPES = { ".html": "text/html", ".js": "text/javascript", ".png": "image/png", ".json": "application/json", ".css": "text/css" };
 function serve(dir, sdk) {
@@ -458,6 +504,106 @@ else {
   ok(!errors.length, `no errors on the page${errors.length ? ": " + errors.join("; ") : ""}`);
   await page.close();
   server.close();
+}
+
+const cDir = join(ROOT, "dist-crazygames"), CG_SDK = "https://sdk.crazygames.com/crazygames-sdk-v3.js";
+console.log("\ncrazygames");
+if (!existsSync(cDir)) ok(false, "not built: run npm run build:crazygames");
+else {
+  const g = await open(browser, cDir, CRAZY.replace("ADBLOCK", "false"), CG_SDK, { width: 907, height: 510 });
+  let c = await g.calls();
+  ok(c[0] === "init" && c.filter((x) => x === "init").length === 1, "SDK.init() once, before anything else");
+  ok(c.includes("loadingStart") && c.indexOf("loadingStop") > c.indexOf("loadingStart"), "loadingStart, then loadingStop when the game is up");
+  ok((await g.ev(() => window.__game.platform.language())) === "en" && (await g.ev(() => window.__game.platform.isMobile())) === false, "the language from systemInfo.locale (en-US: English), the device from systemInfo (desktop)");
+  ok(c.includes("addSettingsChangeListener"), "the game listens to the platform's settings");
+  await g.ev(() => window.__cgFire({ muteAudio: true }));
+  await g.wait(100);
+  const mutedNow = await g.ev(() => !window.__game.audio.enabled);
+  await g.ev(() => window.__cgFire({ muteAudio: false }));
+  await g.wait(100);
+  ok(mutedNow && (await g.ev(() => window.__game.audio.enabled)), "muteAudio silences the game, and its sound comes back when it is lifted");
+  await g.play();
+  c = await g.calls();
+  ok(c.includes("gameplayStart"), "gameplayStart when the run is under way");
+  await g.ev(() => window.__game.setState("pause"));
+  ok((await g.calls()).slice(-3).includes("gameplayStop"), "gameplayStop on a break (the pause)");
+  await g.ev(() => window.__game.setState("play"));
+  {
+    const before = (await g.calls()).length;
+    await g.ev(() => window.__game.persist());
+    await g.wait(300);
+    c = (await g.calls()).slice(before);
+    ok(c.includes("data.setItem:bf-save") && !(await g.ev(() => localStorage.getItem("bf-save"))), "progress goes to the data module, not to the browser's own storage");
+  }
+  // a boss's first fall and the way down: happytime and the progress
+  {
+    const before = (await g.calls()).length;
+    await g.ev(() => { window.__game.bossFell(); window.__game.bossFell(); window.__game.reached(4); });
+    c = (await g.calls()).slice(before);
+    ok(c.filter((x) => x === "happytime").length === 1, "happytime() when a boss falls for the first time (and only then)");
+    ok(c.includes("progress:25"), "reportGameCompletedPercentage() as the player gets deeper (floor 4 of 12: 25)");
+  }
+  // a midgame ad: nothing stops on the request, everything stops when it starts, and goes on after
+  await g.ev(() => window.__game.setState("dead"));
+  await g.wait(200);
+  await g.ev(() => void window.__game.platform.showInterstitial());
+  const onRequest = !(await g.still(120));
+  await g.wait(450);
+  const stopped = await g.still(200), quiet = await g.ev(() => window.__game.audio.ctx?.state !== "running");
+  ok(onRequest && stopped && quiet, `a midgame ad: the game and its sound stop when the ad starts, not on the request (${onRequest}, ${stopped}, ${quiet})`);
+  await g.wait(900);
+  ok(!(await g.still(200)), "and go on when it finishes");
+  ok(await g.ev(() => window.__game.platform.showRewarded()), "a rewarded ad gives its reward on adFinished");
+  await g.ev(() => (window.__cgAd.mode = "unfilled"));
+  ok(!(await g.ev(() => window.__game.platform.showRewarded())) && !(await g.still(200)), "adError (unfilled): no reward, and the game goes on");
+  await g.ev(() => (window.__cgAd.mode = "adsDisabled"));
+  await g.ev(() => window.__game.platform.showRewarded());
+  ok(!(await g.ev(() => window.__game.platform.canShowRewarded())), "ads off for the session (adsDisabled): the reward buttons go");
+  await g.ev(() => (window.__cgAd.mode = "ok"));
+  // the end screen's buttons are inert while an ad between runs is asked for
+  {
+    const busy = await g.ev(() => { const gm = window.__game; gm.lastAdAt = 0; gm.now = Math.max(gm.now, 400); gm.runsHere = 3; gm.save.tutorial = false; gm.setState("dead"); gm.again(); return gm.adBusy; });
+    ok(busy, "One more run: the end screen's buttons stand inert while the ad between runs is asked for");
+    for (let k = 0; k < 30 && (await g.state()) === "dead"; k++) await g.wait(150);
+    ok(["card", "play", "title"].includes(await g.state()), "and the run starts after it");
+  }
+  const embers = await g.ev(() => window.__game.save.embers);
+  await g.ev(() => window.__game.persist());
+  await g.wait(200);
+  await g.page.reload();
+  await g.ready();
+  ok((await g.ev(() => window.__game.save.embers)) === embers, `after a reload the progress comes back from the data module (${embers} embers)`);
+  ok(!g.errors.length, `no errors on the page${g.errors.length ? ": " + g.errors.join("; ") : ""}`);
+  await g.close();
+  // a revive for an ad: never on every death; a death that offers one has no ad on the way to the next run
+  {
+    const r = await open(browser, cDir, CRAZY.replace("ADBLOCK", "false"), CG_SDK, { width: 907, height: 510 });
+    await r.ev(() => { window.__game.save.tutorial = false; });
+    await r.play();
+    await r.die();
+    const first = await r.ev(() => window.__game.reviveOffered);
+    const before = (await r.calls()).length;
+    await r.ev(() => { const gm = window.__game; gm.lastAdAt = 0; gm.now = Math.max(gm.now, 400); gm.runsHere = 3; gm.again(); });
+    for (let k = 0; k < 30 && (await r.state()) === "dead"; k++) await r.wait(150);
+    const midgame = (await r.calls()).slice(before).includes("requestAd:midgame");
+    await r.play();
+    await r.die();
+    const second = await r.ev(() => window.__game.reviveOffered);
+    ok(first && !midgame && !second, "a revive is offered at most once in ten minutes, and a death that offers one has no midgame after it");
+    await r.close();
+  }
+  // an ad blocker: no reward buttons at all, and the game plays
+  {
+    const a = await open(browser, cDir, CRAZY.replace("ADBLOCK", "true"), CG_SDK, { width: 907, height: 510 });
+    ok(!(await a.ev(() => window.__game.platform.canShowRewarded())), "an ad blocker (hasAdblock): no reward buttons, the game plays as ever");
+    await a.close();
+  }
+  // the SDK blocked or absent: the game runs on its own
+  {
+    const n = await open(browser, cDir, "/* blocked */", CG_SDK, { width: 821, height: 462 });
+    ok((await n.ev(() => window.__game.state)) !== undefined && !n.errors.length, "without the SDK (blocked): the game runs on its own");
+    await n.close();
+  }
 }
 
 await browser.close();

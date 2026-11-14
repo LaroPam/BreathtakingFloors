@@ -3,8 +3,8 @@ import { defineConfig, loadEnv, type Plugin } from "vite";
 // One codebase, several targets. `vite build --mode yandex | youtube | vk | pikabu` swap the platform layer
 // (src/platform) at compile time and put the right SDK <script> in index.html; everything else is shared. The
 // plain build (no mode) is the game's own site.
-type Target = "local" | "yandex" | "youtube" | "vk" | "pikabu";
-const TARGETS: Target[] = ["yandex", "youtube", "vk", "pikabu"];
+type Target = "local" | "yandex" | "youtube" | "vk" | "pikabu" | "crazygames";
+const TARGETS: Target[] = ["yandex", "youtube", "vk", "pikabu", "crazygames"];
 
 const SDK: Record<Target, string> = {
   local: "",
@@ -15,6 +15,8 @@ const SDK: Record<Target, string> = {
   // VK Bridge is bundled from its npm package; Pikabu's SDK is loaded by the platform layer, the documented dynamic way.
   vk: "",
   pikabu: "",
+  // CrazyGames: their SDK v3 in the head, before the game's code (docs.crazygames.com/sdk/intro)
+  crazygames: `<script src="https://sdk.crazygames.com/crazygames-sdk-v3.js"></script>`,
 };
 
 function platformHtml(target: Target): Plugin {
@@ -24,7 +26,9 @@ function platformHtml(target: Target): Plugin {
       // Pikabu asks for Russian on launch, whatever the browser's language: the loader too
       const out = html.replace("<!-- PLATFORM_SDK -->", SDK[target]);
       // ...and takes no foreign words in a game's name: there it is called in Russian
-      return target === "pikabu" ? out.replace('<html lang="ru">', '<html lang="ru" data-ru="1">').replace("<title>Breathtaking Floors</title>", "<title>Этажи бездны</title>") : out;
+      if (target === "pikabu") return out.replace('<html lang="ru">', '<html lang="ru" data-ru="1">').replace("<title>Breathtaking Floors</title>", "<title>Этажи бездны</title>");
+      // CrazyGames' players are worldwide: the page is English unless the platform says otherwise
+      return target === "crazygames" ? out.replace('<html lang="ru">', '<html lang="en">') : out;
     },
   };
 }
