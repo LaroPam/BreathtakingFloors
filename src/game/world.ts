@@ -1221,8 +1221,9 @@ export class World {
     // tougher than they look: blows must land several times (bosses carry their own numbers)
     const tough = d.ai >= AI.Boss ? 1.7 : 2.5;
     // (the horde thickens the longer a floor goes on; a boss does not: its health is its tier's, not how long the
-    // hero took to reach it, and the last one is the test of the whole build)
-    const boss = d.ai >= AI.Boss && d.ai !== AI.Mini, late = boss ? (d.ai === AI.LastLight ? 1.65 : 1.6) : 1 + Math.min(1.2, this.time / 180);
+    // hero took to reach it, and the last one is the test of the whole build. A floor being one room and one wave, the
+    // hero comes to a boss with less behind him than when floors were long: its health is cut to match)
+    const boss = d.ai >= AI.Boss && d.ai !== AI.Mini, late = boss ? (d.ai === AI.LastLight ? 1.2 : 1.15) : 1 + Math.min(1.2, this.time / 180);
     const hp = d.hp * tough * (1 + 0.4 * (f - 1)) * late * curse;
     const i = this.enemies.add(type, x, y, hp, this.rng.next(), this.mod.speed * (1.08 + Math.min(9, f - 1) * 0.04) * this.rng.range(0.9, 1.1) * (this.curse ? 1.2 : 1) * (this.mutator === "haste" ? 1.25 : 1));
     if (i >= 0) {
