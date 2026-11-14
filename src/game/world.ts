@@ -190,6 +190,14 @@ const MINI_ORB: Partial<Record<PlaceId, number>> = { crypt: 3, garden: 4, frost:
  * has gone by then, in seconds at full speed (the drawing crops them by it).
  */
 export const LANCE_EASE = 0.22;
+/**
+ * Nor do they blink out: over their last LANCE_FADE seconds of life they thin and melt away (draw.ts), shedding frost.
+ * One that has struck its last foe flies on spent (it hurts no one) for its short fade; one that meets a wall sticks
+ * in it and melts there. Both are marked in `grazed`, which a hero's lance has no other use for.
+ */
+export const LANCE_FADE = 0.25;
+const LANCE_SPENT = 2;
+export const LANCE_STUCK = 3;
 const LANCE_V0 = 0.12;
 const lanceRamp = (t: number): number => (t >= LANCE_EASE ? 1 : LANCE_V0 + (1 - LANCE_V0) * (t / LANCE_EASE) ** 2);
 export const lanceTravel = (t: number): number => (t >= LANCE_EASE ? LANCE_EASE * (LANCE_V0 + (1 - LANCE_V0) / 3) + (t - LANCE_EASE) : LANCE_V0 * t + ((1 - LANCE_V0) * t ** 3) / (3 * LANCE_EASE ** 2));
@@ -4768,7 +4776,8 @@ export class World {
           B.vy[i] *= 1 - dt * 1.8;
         }
       }
-      const ease = B.kind[i] === B_LANCE && B.team[i] === TEAM_HERO ? lanceRamp(B.t[i]) : 1;
+      const lance = B.kind[i] === B_LANCE && B.team[i] === TEAM_HERO, spent = lance && B.grazed[i] >= LANCE_SPENT;
+      const ease = lance ? (B.grazed[i] === LANCE_STUCK ? 0 : lanceRamp(B.t[i])) : 1;
       B.x[i] += B.vx[i] * dt * ease;
       B.y[i] += B.vy[i] * dt * ease;
       const x = B.x[i], y = B.y[i];
@@ -4779,7 +4788,7 @@ export class World {
       // trails: fire sheds embers, ice sheds frost, arrows and crescents a thin wake, enemy orbs a faint glimmer
       const kind = B.kind[i], R = this.rng;
       if (B.team[i] === TEAM_HERO) {
-        const rate = kind === B_FIREBALL ? 70 : kind === B_LANCE ? (B.t[i] < LANCE_EASE ? 0 : 40) : kind === B_ARROW ? 30 : 22;
+        const rate = kind === B_FIREBALL ? 70 : kind === B_LANCE ? (B.t[i] < LANCE_EASE ? 0 : B.life[i] < LANCE_FADE ? 150 : 40) : kind === B_ARROW ? 30 : 22;
         if (R.chance(dt * rate)) {
           const col = kind === B_FIREBALL ? R.pick(FIRE_TRAIL) : kind === B_LANCE ? R.pick(ICE_TRAIL) : B.el[i] ? rgba(EL_COLOR[B.el[i] as El]) : kind === B_ARROW ? rgba("#d8d0e8", 0.8) : rgba("#ffe08a");
           this.parts.add(x + R.range(-1.5, 1.5), y + R.range(-1.5, 1.5), -B.vx[i] * 0.08 + R.range(-6, 6), -B.vy[i] * 0.08 + (kind === B_FIREBALL ? -14 : R.range(-6, 6)), R.range(0.15, kind === B_FIREBALL ? 0.4 : 0.28), col, kind === B_FIREBALL && R.chance(0.4) ? 2 : 1, 0, 1);
@@ -4789,11 +4798,22 @@ export class World {
       if (B.kind[i] === B_CHAKRAM && B.team[i] === TEAM_HERO) {
         // (a wall only turns a chakram home; coming home it passes over everything)
         if (!B.grazed[i] && this.map.wall(x, y + 14)) (B.grazed[i] = 1), B.hits.fill(0, i * 4, i * 4 + 4), this.burst(x, y, 4, rgba("#e8edf6"), 40, 0.2);
-      } else if (this.map.wall(x, y + 14) || (B.kind[i] !== B_CRESCENT && this.pillars.some((p) => (x - p.x) ** 2 + (y + 14 - p.y) ** 2 < (p.r + 2) ** 2))) {
-        this.burst(x, y, 4, B.team[i] === TEAM_FOE ? rgba("#ff8a9a") : rgba("#c4ecff"), 40, 0.25);
-        B.remove(i);
-        continue;
+      } else if (B.grazed[i] !== LANCE_STUCK || !lance) {
+        if (this.map.wall(x, y + 14) || (B.kind[i] !== B_CRESCENT && this.pillars.some((p) => (x - p.x) ** 2 + (y + 14 - p.y) ** 2 < (p.r + 2) ** 2))) {
+          if (lance) {
+            // the lance sticks where it struck, chips frost off the stone and melts away there
+            if (!spent) this.addFx("hit_frost", x, y + 10, { rot: Math.atan2(-B.vy[i], -B.vx[i]), sx: 0.5, sy: 0.5, glow: 0.6 });
+            this.burst(x, y, 3, rgba("#c4ecff"), 30, 0.25);
+            B.grazed[i] = LANCE_STUCK;
+            B.life[i] = Math.min(B.life[i], LANCE_FADE);
+            continue;
+          }
+          this.burst(x, y, 4, B.team[i] === TEAM_FOE ? rgba("#ff8a9a") : rgba("#c4ecff"), 40, 0.25);
+          B.remove(i);
+          continue;
+        }
       }
+      if (spent) continue;
       if (B.team[i] === TEAM_HERO) {
         if (this.urns.length) this.smashUrns(x, y + 6, 3);
         this.setSrc(B.src[i]);
@@ -4846,7 +4866,9 @@ export class World {
             return true;
           }
         });
-        if (gone) B.remove(i);
+        // a lance that has struck its last flies on through, spent, and melts over a short fade
+        if (gone && lance) (B.grazed[i] = LANCE_SPENT), (B.life[i] = Math.min(B.life[i], LANCE_FADE * 0.6));
+        else if (gone) B.remove(i);
       } else {
         const dx = x - hx, dy = y - hy, dd = dx * dx + dy * dy, hitR = HERO_R + B.r[i];
         if (dd < 90 * 90) near = true;
