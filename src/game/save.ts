@@ -64,6 +64,13 @@ export interface SaveData {
   secrets: string[];
   /** The run in progress, as it stood when its floor began (a closed tab goes on from there). Not the trials'. */
   run?: RunSave;
+  /**
+   * The first session's funnel: the steps already sent (each once per player; game.ts `step`). A save from before
+   * the funnel that has played holds "legacy", and sends none: the funnel is for new players.
+   */
+  funnel: string[];
+  /** The day (days since 1970, UTC) this player first came, for the funnel's "came back another day". */
+  born?: number;
 }
 
 /**
@@ -137,6 +144,7 @@ export const defaultSave = (): SaveData => ({
   opened: [],
   vaults: [],
   secrets: [],
+  funnel: [],
 });
 
 /** The places a version-1 save could have reached, one for each three floors of its deepest. */
@@ -219,6 +227,8 @@ export function sanitize(raw: unknown): SaveData {
     opened: old ? seen.filter((k) => /^(weapon|relic|stat):/.test(k)) : strs(r.opened),
     vaults: strs(r.vaults, 500),
     secrets: strs(r.secrets, 500),
+    funnel: Array.isArray(r.funnel) ? strs(r.funnel, 50) : typeof r.runs === "number" && r.runs > 0 ? ["legacy"] : [],
+    born: typeof r.born === "number" && isFinite(r.born) ? r.born : undefined,
     // (the game checks it again as it puts the run back together, and drops it if anything is amiss)
     run: r.run && typeof r.run === "object" && r.run.v === 1 && Array.isArray(r.run.at) && r.run.hero && typeof r.run.hero === "object" ? (r.run as RunSave) : undefined,
   };

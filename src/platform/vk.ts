@@ -160,6 +160,13 @@ export class VKPlatform extends BasePlatform {
     return this.cloudChain;
   }
 
+  // ---- the first session's funnel: VKWebAppTrackEvent (dev.vk.com/ru/bridge/VKWebAppTrackEvent) takes any event
+  // name and sends it to VK Ads, and to MyTracker where the game is linked to it
+  override track(step: string, params?: Record<string, string | number>): void {
+    if (!this.ok) return;
+    bridge.send("VKWebAppTrackEvent", params ? { event_name: step, event_params: params } : { event_name: step }).catch(() => {});
+  }
+
   // ---- telling friends: VK's share dialog with a link to the game
   override canShare(): boolean {
     return this.ok && this.appId > 0;

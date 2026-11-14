@@ -6,7 +6,7 @@ import type { Input } from "../engine/input";
 import { Batch, rgba, rgbaf, withAlpha, type Lighting, type Renderer } from "../engine/renderer";
 import { anim, FONTS, frameAt, hasAnim, icon, type Anim, type Rect } from "../engine/atlas";
 import { heroSprites, initHeroSprites, lookId, type HeroAnim, type HeroSprites } from "./heroSprites";
-import { fitScale, measure, text, wrap } from "../engine/text";
+import { fitScale, measure, text, wrap, type FontName } from "../engine/text";
 import { dayNumber, weekNumber, type Board, type BoardName, type Platform, type Product } from "../platform/platform";
 import { ACHIEVEMENTS, heroDef, combine, DEPTH, floorText, PLACE_FLOORS, EL_COLOR, LEGENDS, legendDesc, type WeaponId, EL_NAME, ENEMIES, EVOLUTIONS, evolutionOf, FORGE, questDef, TASK_BONUS, TASKS, type TaskId, type ForgeId, SHOP, type ShopItem, HEROES, WEAPONS, weaponName, MODIFIERS, MUTATORS, NO_MODIFIER, REACTIONS, RELIC_MAX, RELIC_SLOTS, ARTIFACT_SLOTS, RELICS, STATS, El, fullWeaponName, STAIR_EVENTS, type Outcome, type StairEvent, MYTHIC, PERK_TEXT, RARITIES, UNIQUES, type Modifier, type PlaceId, type GiftId, giftDef, giftFor, giftFrom, GIFTS, DOORS, GIFTS_IN_TOWER, PLACES, UNLOCKS, arsenalName, ARSENAL, unlockOf, TIERS, placeDef, depthOf, type GateKind, type Reaction, type RelicKind, type StatId } from "./defs";
 import { drawWorld, Scene } from "./draw";
@@ -15,7 +15,7 @@ import { getLang, langFor, setLang, t, tx, type Lang } from "./i18n";
 import { Rng } from "./rng";
 import { TEAM_FOE } from "./pools";
 import { defaultSave, sanitize, type RunSave, type SaveData } from "./save";
-import { button, slider, C, divider, glow as glowUi, drawHud, drawPointers, drawTouch, fmtTime, frame, header , medallion, Menu, panel, para, plate , slot, type ButtonOpts } from "./ui";
+import { bar, button, slider, C, divider, glow as glowUi, drawHud, drawPointers, drawTouch, fmtTime, frame, header , medallion, Menu, panel, para, plate , slot, type ButtonOpts } from "./ui";
 import { CINE_DUR, LUNGE_DASH, SRC_ABILITY, SRC_DASH, SRC_ELS, SRC_N, SRC_PARRY, SRC_REACT, SRC_RELIC, SRC_STATUS, SRC_WAVE, SRC_WEAPON, World } from "./world";
 
 type StatRow = { ic: Rect; name: string; col: number; sum: number; segs: [number, number][] };
@@ -53,6 +53,13 @@ const RELIC_ICON = ["orbit", "lance", "coil", "flask", "halo", "void", "roots", 
 /** A big number short: 950, 12.3K, 4.1M (К and М in Russian). */
 const fmtNum = (n: number): string => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}${t("mega")}` : n >= 1e4 ? `${(n / 1e3).toFixed(n >= 1e5 ? 0 : 1)}${t("kilo")}` : String(Math.round(n)));
 /** An arsenal key's badge in the icons: a weapon's, a relic's, an artifact's. */
+/** A line cut to fit a width, with dots where it was cut. */
+const fit = (str: string, w: number, font: FontName): string => {
+  if (measure(str, font) <= w) return str;
+  let k = str.length;
+  while (k > 1 && measure(str.slice(0, k) + "...", font) > w) k--;
+  return str.slice(0, k).trimEnd() + "...";
+};
 const arsenalIcon = (key: string): string => {
   const [kind, id] = key.split(":");
   return kind === "weapon" ? `w_${id}` : kind === "relic" ? RELIC_ICON[+id] : id;
@@ -263,6 +270,8 @@ export class Game {
   private gameplayOn = false;
   private touch = false;
   private savePending = false;
+  /** The first frame has been played (the funnel's first step is sent then). */
+  private booted = false;
 
   /** The heroes' frames, drawn as the game runs (also for tests: heroes.stats). */
   readonly heroes: HeroSprites;
@@ -499,6 +508,26 @@ export class Game {
     return a.frames[frameAt(a, t)][0]!;
   }
 
+  /**
+   * A step of the first session's funnel: sent once per player to whatever the platform counts with (VK's events,
+   * Yandex Metrica's goals where the build has a counter), so we can see where new players leave. The steps and what
+   * each means are listed in docs/RELEASE.md.
+   */
+  private step(id: string, params?: Record<string, string | number>): void {
+    const f = this.save.funnel;
+    if (f.includes(id) || f.includes("legacy")) return;
+    f.push(id);
+    this.platform.track(id, params);
+    this.persist();
+  }
+  /** The game is up: the funnel's first step, and "came back another day" for one who was here before. */
+  private boot(): void {
+    const today = dayNumber();
+    if (this.save.born === undefined) (this.save.born = today), this.persist();
+    this.step("boot");
+    if (today > this.save.born) this.step("day2");
+  }
+
   private persist(): void {
     if (this.savePending) return;
     this.savePending = true;
@@ -528,6 +557,7 @@ export class Game {
         this.bump(id, n ?? 1);
         // the bosses each have their own
         if (id === "boss") {
+          this.step("boss1", { place: this.world.place.id });
           this.unlock(BOSS_FEAT[this.world.place.id] ?? "");
           this.bossFell();
         }
@@ -754,6 +784,8 @@ export class Game {
     this.reached(this.runFrom);
     this.revived = false;
     this.save.runs++;
+    const nth = this.save.funnel.filter((q) => /^run\d$/.test(q)).length + 1;
+    if (nth <= 3) this.step(`run${nth}`, { hero: hero.id });
     this.persist();
     this.audio.playMusic();
     this.cardT = 0;
@@ -812,6 +844,7 @@ export class Game {
       if (best) this.platform.submitScore(score, "score");
     }
     this.lastResult = { floor: w.floor, kills: w.kills, time: w.runTime, embers, base: embers, gift, doubled: false, score, best, daily: this.daily, weekly: this.weekly };
+    this.step(won ? "win1" : "end1", { floor: w.floor, sec: Math.round(w.runTime), level: w.hero.level });
     this.save.embers += embers + gift;
     // the run is over: nothing to go on with
     if (!this.daily) this.save.run = undefined;
@@ -1105,6 +1138,7 @@ export class Game {
   }
   /** A new floor: the tasks that count how deep you got. */
   private reached(floor: number): void {
+    if (floor >= 2 && floor <= 4) this.step(`floor${floor}`);
     // (the day's task counts the floors climbed in this run: a run started on a shortcut does not get them free)
     this.bump("floor", floor - this.runFrom + 1, true);
     // the places the player has been to stay known (the atlas, the ways opened from them)
@@ -1278,6 +1312,7 @@ export class Game {
   frame(dt: number): void {
     this.now += dt;
     this.dt = dt;
+    if (!this.booted) (this.booted = true), this.boot();
     // the heroes' frames not yet drawn: a little each frame, more while nothing is being played
     heroSprites().update(this.state === "play" ? 2.5 : 7);
     const input = this.input;
@@ -1599,6 +1634,7 @@ export class Game {
         this.tutDoneT = -1;
         this.tutT = 0;
         sv.tutStep++;
+        this.step(`lesson${sv.tutStep}`, { lesson: TUTOR[sv.tutStep - 1] });
         this.tutKills = -1;
         if (sv.tutStep >= TUTOR.length) sv.tutorial = false;
         this.persist();
@@ -2937,6 +2973,7 @@ export class Game {
       if (lv >= item.costs.length || this.save.embers < cost || shut(lv)) return void this.audio.play("deny");
       this.save.embers -= cost;
       f[item.id] = lv + 1;
+      this.step("forge1", { item: item.id });
       this.audio.play("chest");
       this.audio.play("levelup", 1.2);
       this.forgeFlash = now;
@@ -3330,6 +3367,54 @@ export class Game {
   }
 
   /** The damage of the run in short at the end of it, in a frame of height h: the main sources, then the elements. */
+  /**
+   * What is nearest to open, for the end of a run (a reason for one more): the two things of the arsenal closest to
+   * done, and what the embers do: a forge level they buy now, else the next hero they save towards, else the forge.
+   * The forge first when it can be bought now (something to do at once).
+   */
+  private nextGoals(): { icon: [string, string]; name: string; need: string; have: number; goal: number; color: number; now?: boolean }[] {
+    const sv = this.save, opened = new Set(sv.opened);
+    const near = UNLOCKS.filter((u) => !opened.has(u.key))
+      .map((u) => ({ u, have: Math.min(u.goal, this.statValue(u.stat)) }))
+      .sort((a, b) => b.have / b.u.goal - a.have / a.u.goal || a.u.goal - b.u.goal)
+      .slice(0, 2)
+      .map(({ u, have }) => ({ icon: ["icons", arsenalIcon(u.key)] as [string, string], name: tx(arsenalName(u.key)), need: tx(u.need), have, goal: u.goal, color: rgba("#9ad4ff") }));
+    const reached = this.forgeReach(), next = FORGE.map((f) => ({ f, lv: sv.forge[f.id] ?? 0 })).filter(({ f, lv }) => lv < f.costs.length && FORGE_TIER(lv) <= reached).sort((a, b) => a.f.costs[a.lv] - b.f.costs[b.lv])[0];
+    const hero = HEROES.filter((q) => !sv.unlocked.includes(q.id)).sort((a, b) => a.cost - b.cost)[0];
+    let embers: ReturnType<Game["nextGoals"]>[number] | null = null;
+    if (next && next.f.costs[next.lv] <= sv.embers)
+      embers = { icon: next.f.icon as [string, string], name: tx(next.f.name), need: t("goalForge"), have: next.f.costs[next.lv], goal: next.f.costs[next.lv], color: C.gold, now: true };
+    else if (hero) embers = { icon: ["hud", "ember"], name: tx(hero.name), need: t("goalHero"), have: Math.min(sv.embers, hero.cost), goal: hero.cost, color: C.gold };
+    else if (next) embers = { icon: next.f.icon as [string, string], name: tx(next.f.name), need: t("goalForgeSave"), have: sv.embers, goal: next.f.costs[next.lv], color: C.gold };
+    return embers?.now ? [embers, ...near] : embers ? [...near, embers] : near;
+  }
+  /** The nearest goals on a panel: each with its icon, its name, what to do and how far along. */
+  private goalsPanel(x: number, y: number, w: number, h: number): void {
+    const ui = this.ui, goals = this.nextGoals(), rowH = 30, n = Math.min(goals.length, Math.floor((h - 22) / rowH));
+    if (n <= 0) {
+      // too low for the panel (a phone held wide): the nearest one on a single strip
+      const g = goals[0];
+      if (!g || h < 24) return;
+      frame(ui, x, y, w, 24);
+      ui.image(icon(g.icon[0], g.icon[1]), x + 12, y + 12, 0.45, 0.45);
+      text(ui, fit(`${t("nextGoals")}: ${g.name}`, w - 24 - 44, "mini"), x + 22, y + 5, { font: "mini", color: g.now ? C.goldLight : C.text });
+      text(ui, `${fmtNum(g.have)}/${fmtNum(g.goal)}`, x + w - 7, y + 5, { font: "mini", align: "right", color: g.have >= g.goal ? C.green : C.dim });
+      bar(ui, x + 22, y + 15, w - 22 - 7, 3, g.have / g.goal, g.color, C.goldLight);
+      return;
+    }
+    frame(ui, x, y, w, 20 + n * rowH);
+    text(ui, t("nextGoals"), x + 8, y + 6, { color: C.gold, shadow: C.ink });
+    for (let k = 0; k < n; k++) {
+      const g = goals[k], ry = y + 19 + k * rowH, tx0 = x + 30, room = w - 30 - 8;
+      slot(ui, x + 5, ry + 2, 22, g.now ? C.gold : C.edge);
+      ui.image(icon(g.icon[0], g.icon[1]), x + 16, ry + 13, 0.6, 0.6);
+      text(ui, fit(g.name, room - 34, "mini"), tx0, ry + 2, { font: "mini", color: g.now ? C.goldLight : C.text });
+      text(ui, `${fmtNum(g.have)}/${fmtNum(g.goal)}`, x + w - 8, ry + 2, { font: "mini", align: "right", color: g.have >= g.goal ? C.green : C.dim });
+      text(ui, fit(g.need, room, "mini"), tx0, ry + 11, { font: "mini", color: g.now ? C.green : C.dim });
+      bar(ui, tx0, ry + 21, room, 3, g.have / g.goal, g.color, C.goldLight, { shimmer: g.now ? this.now * 0.6 : undefined });
+    }
+  }
+
   private statsPanel(x: number, y: number, w: number, h: number): void {
     const ui = this.ui, { total, sources, els } = this.statData();
     // as many sources as leave the elements room; elements trimmed only if even three sources do not fit
@@ -4049,6 +4134,14 @@ export class Game {
       this.setState("title");
       return true;
     } });
+    // the embers buy something in the forge now: straight there (it was what the run was for)
+    if (!res.daily && this.forgeReady() > 0 && this.titleItems().includes("forge"))
+      acts.push({ label: t("toForge"), opts: { color: C.gold, icon: icon("hud", "anvil") }, go: () => {
+        this.newWorld();
+        this.attract();
+        this.setState("forge");
+        return true;
+      } });
     acts.push({ label: t("stats"), opts: { icon: icon("hud", "trophy") }, go: () => void this.openStats("dead", 0) });
     acts.push({ label: t("menu"), opts: { icon: icon("hud", "back") }, go: () => {
       this.daily = this.weekly = false;
@@ -4059,12 +4152,16 @@ export class Game {
     } });
     // where the platform can (VK), telling friends about the game: the player's own choice, from a button
     if (this.platform.canShare()) acts.push({ label: t("share"), opts: { color: C.green }, go: () => void this.platform.share() });
-    const L = this.endPlan(cy, rows.length, acts.length);
-    if (L.side >= 0) this.statsPanel(L.side, cy, L.sw, H - 22 - cy);
+    // beside it the nearest goals (a reason for one more run); a trial's end keeps the run's damage instead
+    const L = this.endPlan(cy, rows.length, acts.length), goals = !res.daily;
+    if (L.side >= 0) (goals ? this.goalsPanel(L.side, cy, L.sw, H - 22 - cy) : this.statsPanel(L.side, cy, L.sw, H - 22 - cy));
     const cardEnd = this.resultCard(cy, rows, res.score, L.cx) + 10;
     const y = this.endButtons(acts, L, cardEnd);
     if (y < 0) return;
-    if (L.side < 0 && !L.split && H - 28 - (y + 8) >= 110) this.statsPanel(Math.round(W / 2 - Math.min(250, W - 24) / 2), y + 8, Math.min(250, W - 24), H - 28 - (y + 8));
+    const pw = Math.min(250, W - 24), room = H - 28 - (y + 8);
+    if (L.side < 0 && !L.split && room >= (goals ? 50 : 110)) (goals ? this.goalsPanel(Math.round(W / 2 - pw / 2), y + 8, pw, room) : this.statsPanel(Math.round(W / 2 - pw / 2), y + 8, pw, room));
+    // (a wide, low screen: the buttons stand at the right, the goals go under the card)
+    if (L.split && goals) this.goalsPanel(Math.round(L.cx - 115), cardEnd - 4, 230, H - 24 - (cardEnd - 4));
     // a new best gleams under it all; a task reward waiting says so
     let fy = H - 12;
     if (res.best) {

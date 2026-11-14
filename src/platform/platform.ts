@@ -2,6 +2,7 @@
 // language to speak, and ads. Three builds share one game: local (a plain web page), Yandex Games, YouTube Playables.
 
 import type { SaveData } from "../game/save";
+import { metrikaGoal } from "./metrika";
 
 /** The boards: the best runs ever, today's daily trial, this week's weekly trial. */
 export type BoardName = "score" | "daily" | "weekly";
@@ -78,6 +79,12 @@ export interface Platform {
   /** Whether the player could sign in to get on the boards (a guest on Yandex), and doing it. */
   canSignIn(): boolean;
   signIn(): Promise<boolean>;
+  /**
+   * A step of the first session's funnel (the game sends each once per player), where there is a way to count it:
+   * VK's VKWebAppTrackEvent (to VK Ads and MyTracker), Yandex Metrica on the game's own site and Pikabu (only if the
+   * build has a counter), nothing elsewhere.
+   */
+  track(step: string, params?: Record<string, string | number>): void;
   /** Telling friends about the game (VK's share dialog), where the platform has it; true if it was shared. */
   canShare(): boolean;
   share(): Promise<boolean>;
@@ -202,6 +209,9 @@ export abstract class BasePlatform implements Platform {
   }
   async signIn(): Promise<boolean> {
     return false;
+  }
+  track(step: string, params?: Record<string, string | number>): void {
+    metrikaGoal(step, params);
   }
   canShare(): boolean {
     return false;

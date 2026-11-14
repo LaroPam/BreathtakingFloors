@@ -137,6 +137,7 @@ const VK_PARENT = `<!doctype html><meta charset="utf-8"><style>html,body{margin:
       case "VKWebAppStorageGet": return ok({ keys: p.keys.map((k) => ({ key: k, value: storage[k] || "" })) });
       case "VKWebAppCheckNativeAds": return ok({ result: true });
       case "VKWebAppShowNativeAds": return ok({ result: true });
+      case "VKWebAppTrackEvent": calls.push("track:" + p.event_name); return ok({ result: true });
       case "VKWebAppShare": calls.push("share:" + (p.link || "")); return setTimeout(() => reply("VKWebAppShareResult", Object.assign([{ type: "message", users: [] }], { request_id: id })), 5);
       default: return setTimeout(() => reply(m.handler + "Failed", { error_type: "client_error", error_data: {}, request_id: id }), 5);
     }
@@ -414,6 +415,10 @@ else {
     await fe(() => { const s = window.__game.spin; if (s) (s.t = 99), s.held < 0 ? null : (s.held = 9); });
     await page.waitForTimeout(150);
   }
+  // the first session's funnel goes out by VKWebAppTrackEvent, each step once
+  await page.waitForTimeout(100);
+  c = await calls();
+  ok(c.includes("track:run1") && c.filter((x) => x === "track:run1").length === 1, "the funnel: a new player's first run sent once by VKWebAppTrackEvent");
   await page.evaluate(() => window.__fire("VKWebAppViewHide"));
   await page.waitForTimeout(150);
   ok(await still(), "VKWebAppViewHide: the game stops");

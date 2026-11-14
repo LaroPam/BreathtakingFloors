@@ -1,4 +1,4 @@
-import { defineConfig, type Plugin } from "vite";
+import { defineConfig, loadEnv, type Plugin } from "vite";
 
 // One codebase, several targets. `vite build --mode yandex | youtube | vk | pikabu` swap the platform layer
 // (src/platform) at compile time and put the right SDK <script> in index.html; everything else is shared. The
@@ -35,7 +35,10 @@ export default defineConfig(({ mode }) => {
   const single = mode === "single";
   return {
     base: "./",
-    define: { __PLATFORM__: JSON.stringify(target) },
+    // Yandex Metrica's counter for the first session's funnel (src/platform/metrika.ts), only where the game is on its
+    // own site (Pikabu, the plain web build) and only if a counter is given: VITE_METRIKA in .env.pikabu or .env.
+    // Without one the code that would load it is cut out of the build.
+    define: { __PLATFORM__: JSON.stringify(target), __METRIKA__: JSON.stringify(target === "pikabu" || target === "local" ? String(loadEnv(mode, ".", "VITE_").VITE_METRIKA ?? "").trim() : "") },
     plugins: [platformHtml(target)],
     build: {
       outDir: single ? "dist-single-tmp" : target === "local" ? "dist" : `dist-${target}`,
