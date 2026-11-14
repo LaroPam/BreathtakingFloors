@@ -606,6 +606,28 @@ else {
   }
 }
 
+// the Basic Launch build: the same SDK, no ads asked for and no button offering one
+const bDir = join(ROOT, "dist-crazygames-basic");
+console.log("\ncrazygames-basic");
+if (!existsSync(bDir)) ok(false, "not built: run npm run build:crazygames-basic");
+else {
+  const g = await open(browser, bDir, CRAZY.replace("ADBLOCK", "false"), CG_SDK, { width: 907, height: 510 });
+  await g.ev(() => { window.__game.save.tutorial = false; });
+  await g.play();
+  ok((await g.calls()).includes("gameplayStart"), "gameplayStart when the run is under way (the initial download is measured by it)");
+  await g.die();
+  ok(!(await g.ev(() => window.__game.platform.canShowRewarded())) && !(await g.ev(() => window.__game.reviveOffered)), "no reward buttons on the end screen (ads are off in Basic Launch)");
+  await g.ev(() => { const gm = window.__game; gm.lastAdAt = 0; gm.now = Math.max(gm.now, 400); gm.runsHere = 3; gm.again(); });
+  for (let k = 0; k < 30 && (await g.state()) === "dead"; k++) await g.wait(150);
+  const c = await g.calls();
+  ok(!c.some((x) => x.startsWith("requestAd") || x === "hasAdblock") && ["card", "play", "title"].includes(await g.state()), "no ad is ever asked for: one more run starts at once");
+  await g.ev(() => window.__game.persist());
+  await g.wait(200);
+  ok((await g.calls()).includes("data.setItem:bf-save"), "progress goes to the data module");
+  ok(!g.errors.length, `no errors on the page${g.errors.length ? ": " + g.errors.join("; ") : ""}`);
+  await g.close();
+}
+
 await browser.close();
 console.log(failed ? `\n${failed} problem(s)` : "\nthe builds behave as the stores ask");
 process.exit(failed ? 1 : 0);

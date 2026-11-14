@@ -122,6 +122,12 @@ const SIGHT_GAP = 10;
 const CONSOLATION = 25;
 const CONSOLATION_EVERY = 4;
 const FIRST_GIFT = 120;
+/**
+ * The fire at the threshold: the first visit of each day brings embers, more for each day in a row up to the seventh,
+ * which every day after it in the row gives again; a day missed starts it over (the platforms' advice for coming
+ * back: a daily hook).
+ */
+const PORCH = [20, 30, 40, 50, 60, 80, 150];
 const FLOOR_ONE_HERO = "ranger";
 /** The achievement for beating each place's boss (the last one's is the victory itself). */
 const BOSS_FEAT: Partial<Record<PlaceId, string>> = { crypt: "eye", garden: "toad" };
@@ -211,7 +217,7 @@ export class Game {
   private newSkin = "";
   /** Achievements earned and waiting to be shown. */
   /** The plates at the top right waiting their turn: achievements, and things opened for the runs (`open`). */
-  private toasts: { id: string; t: number; open?: boolean }[] = [];
+  private toasts: { id: string; t: number; open?: boolean; porch?: { streak: number; gift: number } }[] = [];
   private startSpins = 0;
   /** The forge's rerolls left this run, and its second wind (unused). */
   private rerolls = 0;
@@ -530,6 +536,26 @@ export class Game {
     if (this.save.born === undefined) (this.save.born = today), this.persist();
     this.step("boot");
     if (today > this.save.born) this.step("day2");
+    this.porch();
+  }
+  /**
+   * The first visit of a day (UTC): the fire at the threshold gives its embers, with a plate and a fanfare. Not on the
+   * player's very first day (it waits for them tomorrow, and the title says so); nothing if the clock went back.
+   */
+  private porch(): void {
+    const sv = this.save, today = dayNumber(), p = sv.porch;
+    if (sv.born === undefined || sv.born >= today || (p && p.day >= today)) return;
+    const streak = p && p.day === today - 1 ? p.streak + 1 : 1, gift = PORCH[Math.min(streak, PORCH.length) - 1];
+    sv.porch = { day: today, streak };
+    sv.embers += gift;
+    this.persist();
+    this.toasts.push({ id: "porch", t: 0, porch: { streak, gift } });
+    this.audio.play("achieve");
+  }
+  /** What the fire at the threshold gives tomorrow if the player comes (the day after this one in the row). */
+  private porchTomorrow(): number {
+    const p = this.save.porch, today = dayNumber();
+    return PORCH[p && p.day === today ? Math.min(p.streak, PORCH.length - 1) : 0];
   }
 
   private persist(): void {
@@ -634,6 +660,7 @@ export class Game {
   }
 
   private setState(s: State, focus = 0): void {
+    if (s === "title" && this.booted) this.porch();
     this.state = s;
     this.menu.open(this.now, focus);
     const playing = s === "play";
@@ -1141,6 +1168,26 @@ export class Game {
       text(ui, name, x + 29, y + 14, { color: C.goldLight, shadow: C.ink });
       const gx = x + ((tst.t * 260) % (w + 40)) - 20;
       if (tst.t < 1.2) ui.rect(Math.max(x + 2, gx), y + 2, 3, 24, rgba("#d8ffc4", 0.25));
+      return;
+    }
+    if (tst.porch) {
+      // the fire at the threshold: its day in the row as seven embers, the lit ones up to today, and the gift
+      const { streak, gift } = tst.porch, head = t("porchDay").replace("{n}", String(streak));
+      const w = Math.max(170, 35 + measure(t("porch")) + 10 + measure(`+${gift}`) + 18, 35 + measure(head, "mini") + 8), x = Math.round(W - 4 - w * e), y = this.state === "play" ? 38 : 6;
+      frame(ui, x, y, w, 34, { edge: C.gold });
+      slot(ui, x + 4, y + 4, 26, C.goldDim);
+      ui.image(icon("hud", "brazier"), x + 17, y + 17, 2, 2);
+      text(ui, t("porch"), x + 35, y + 4, { color: C.goldLight, shadow: C.ink });
+      text(ui, head, x + 35, y + 14, { font: "mini", color: C.goldDim });
+      for (let d = 0; d < PORCH.length; d++) {
+        const on = d < Math.min(streak, PORCH.length), px = x + 35 + d * 9, py = y + 24;
+        ui.rect(px, py, 7, 5, on ? rgba("#ffb347") : rgba("#2a2638"));
+        if (on) ui.rect(px + 1, py, 5, 1, rgba("#fff3c4"));
+      }
+      text(ui, `+${gift}`, x + w - 16, y + 5, { align: "right", color: C.gold, shadow: C.ink });
+      ui.image(icon("hud", "ember"), x + w - 9, y + 9);
+      const gx = x + ((tst.t * 260) % (w + 40)) - 20;
+      if (tst.t < 1.2) ui.rect(Math.max(x + 2, gx), y + 2, 3, 30, rgba("#fff6c4", 0.25));
       return;
     }
     const a = ACHIEVEMENTS.find((q) => q.id === tst.id)!;
@@ -1759,6 +1806,26 @@ export class Game {
       const lit = k < sv.tutStep || (k === sv.tutStep && done);
       ui.rect(Math.round(cxT - TUTOR.length * 4 + k * 8 + 1), y + lh - 3, 5, 1, withAlpha(lit ? green : rgba("#5a5068"), a));
     }
+    // the lessons can be skipped (a click or a tap on the word beside the plate, or above it where there is no room)
+    if (done) return;
+    const sk = t("tutSkip"), sw = measure(sk, "mini") + 8, side = x + lw + 6 + sw <= W - 4;
+    const sx = side ? x + lw + 6 : x + lw - sw, sy = side ? y + 3 : y - 12;
+    frame(ui, sx, sy, sw, 11, { edge: rgba("#5a5068") });
+    text(ui, sk, sx + sw / 2, sy + 2, { font: "mini", align: "center", color: withAlpha(rgba("#c8b8a0"), a) });
+    const c = this.input.click;
+    if (c && c.x >= sx - 4 && c.x <= sx + sw + 4 && c.y >= sy - 4 && c.y <= sy + 15) this.skipTutorial();
+  }
+  /** The player skips the first run's lessons: the run goes on as any other (the funnel notes at which lesson). */
+  private skipTutorial(): void {
+    const sv = this.save;
+    if (!sv.tutorial) return;
+    this.step("tutskip", { lesson: TUTOR[sv.tutStep] ?? "" });
+    sv.tutorial = false;
+    sv.tutStep = TUTOR.length;
+    this.tutDoneT = -1;
+    this.world.holdSpawns = false;
+    this.persist();
+    this.audio.play("click");
   }
 
   private drawTitle(): void {
@@ -1842,6 +1909,8 @@ export class Game {
     // the fonts' authors along the bottom, what you have above them
     credits.forEach((l, k) => text(ui, l, W / 2, H - 9 - (credits.length - 1 - k) * 8, { font: "mini", align: "center", color: rgba("#5a5470") }));
     text(ui, info, W / 2, H - 20 - (credits.length - 1) * 8, { font: "mini", align: "center", color: C.goldDim });
+    // tomorrow's fire at the threshold, once the player has played (a reason to come back)
+    if (this.save.runs >= 1) text(ui, t("porchTomorrow").replace("{n}", String(this.porchTomorrow())), W / 2, H - 29 - (credits.length - 1) * 8, { font: "mini", align: "center", color: rgba("#ffb347") });
     // touched, and still no sound: say so (the browser or the page around the game kept it off)
     if (this.audio.blocked) {
       const lines = wrap(t("soundBlocked"), Math.min(W - 24, 360), "mini"), y0 = H - 32 - (credits.length - 1) * 8 - lines.length * 8;

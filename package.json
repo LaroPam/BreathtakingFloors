@@ -18,6 +18,7 @@
     "deploy:vk": "npm run build:vk && npx @vkontakte/vk-miniapps-deploy",
     "build:pikabu": "npm run bake && tsc --noEmit && vite build --mode pikabu && node tools/zip.mjs dist-pikabu",
     "build:crazygames": "npm run bake && tsc --noEmit && vite build --mode crazygames && node tools/zip.mjs dist-crazygames",
+    "build:crazygames-basic": "npm run bake && tsc --noEmit && vite build --mode crazygames-basic && node tools/zip.mjs dist-crazygames-basic",
     "build:web": "npm run bake && tsc --noEmit && vite build && node tools/zip.mjs dist",
     "build:single": "npm run bake && tsc --noEmit && vite build --mode single && node tools/single.mjs",
     "preview": "vite preview",

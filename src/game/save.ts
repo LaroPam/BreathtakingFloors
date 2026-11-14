@@ -71,6 +71,8 @@ export interface SaveData {
   funnel: string[];
   /** The day (days since 1970, UTC) this player first came, for the funnel's "came back another day". */
   born?: number;
+  /** The fire at the threshold (game.ts): the last day its gift was taken and that day's place in the row (1-7). */
+  porch?: { day: number; streak: number };
 }
 
 /**
@@ -229,6 +231,7 @@ export function sanitize(raw: unknown): SaveData {
     secrets: strs(r.secrets, 500),
     funnel: Array.isArray(r.funnel) ? strs(r.funnel, 50) : typeof r.runs === "number" && r.runs > 0 ? ["legacy"] : [],
     born: typeof r.born === "number" && isFinite(r.born) ? r.born : undefined,
+    porch: r.porch && typeof r.porch === "object" && typeof r.porch.day === "number" && typeof r.porch.streak === "number" ? { day: r.porch.day, streak: Math.max(1, Math.min(100000, Math.round(r.porch.streak))) } : undefined,
     // (the game checks it again as it puts the run back together, and drops it if anything is amiss)
     run: r.run && typeof r.run === "object" && r.run.v === 1 && Array.isArray(r.run.at) && r.run.hero && typeof r.run.hero === "object" ? (r.run as RunSave) : undefined,
   };

@@ -79,7 +79,7 @@ function within<T>(p: Promise<T>, ms: number): Promise<T | null> {
 export class CrazyGamesPlatform extends BasePlatform {
   readonly name = "crazygames" as const;
   /** A map change is a fit moment for a midgame ad (the portal between places; the SDK keeps the pace itself). */
-  override readonly adsBetweenPlaces = true;
+  override readonly adsBetweenPlaces = !__NO_ADS__;
   /** A revive for an ad: never on every death (their rule), at most once in ten minutes. */
   override readonly reviveGap = 600;
   private sdk: CGSDK | null = null;
@@ -104,7 +104,8 @@ export class CrazyGamesPlatform extends BasePlatform {
         this.muted = !!s.muteAudio;
         this.audioCbs.forEach((f) => f(!this.muted));
       });
-      this.noAds = !!(await within(sdk.ad.hasAdblock().catch(() => false), 3000));
+      // (the Basic Launch build has no ads at all: nothing to ask)
+      this.noAds = __NO_ADS__ || !!(await within(sdk.ad.hasAdblock().catch(() => false), 3000));
     } catch (e) {
       console.warn("CrazyGames SDK unavailable, running without it", e);
       this.sdk = null;
@@ -171,6 +172,7 @@ export class CrazyGamesPlatform extends BasePlatform {
 
   // ---- video ads: the game stops when the ad starts (not on the request: often none comes), goes on after
   private ad(type: "midgame" | "rewarded"): Promise<boolean> {
+    if (__NO_ADS__) return Promise.resolve(false);
     const sdk = this.sdk;
     if (!sdk) return Promise.resolve(false);
     return new Promise((done) => {
@@ -204,7 +206,7 @@ export class CrazyGamesPlatform extends BasePlatform {
     });
   }
   override canShowRewarded(): boolean {
-    return !!this.sdk && !this.noAds;
+    return !__NO_ADS__ && !!this.sdk && !this.noAds;
   }
   override async showInterstitial(): Promise<void> {
     await this.ad("midgame");

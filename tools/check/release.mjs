@@ -112,7 +112,7 @@ audit("youtube", join(ROOT, "dist-youtube"), {
 // CrazyGames (docs.crazygames.com/requirements/technical, /requirements/ads, /sdk/*): at most 1500 files and 250 MB, the
 // initial download within 50 MB (20 MB for the mobile home page: the whole build here is under it), relative paths,
 // the SDK v3 in the head before the game, gameplay start and stop, ads and saves only through the SDK, its mute obeyed
-audit("crazygames", join(ROOT, "dist-crazygames"), {
+const crazy = (basic) => ({
   maxFiles: 1500,
   maxTotal: 20 * 1000 * 1000,
   maxFile: 20 * 1000 * 1000,
@@ -123,7 +123,7 @@ audit("crazygames", join(ROOT, "dist-crazygames"), {
     ["the SDK is initialised (SDK.init)", /\.init\(\)/],
     ["gameplayStart and gameplayStop are called", /gameplayStart\(\)[\s\S]*gameplayStop\(\)|gameplayStop\(\)[\s\S]*gameplayStart\(\)/],
     ["loadingStart and loadingStop are called", /loadingStart\(\)[\s\S]*loadingStop\(\)/],
-    ["video ads only through requestAd (midgame, rewarded)", /requestAd\(/],
+    ...(basic ? [] : [["video ads only through requestAd (midgame, rewarded)", /requestAd\(/]]),
     ["the platform's muteAudio setting is followed", /muteAudio[\s\S]*addSettingsChangeListener|addSettingsChangeListener[\s\S]*muteAudio/],
     ["progress through the data module", /data\.setItem\(/],
     ["the language from systemInfo.locale", /systemInfo[\s\S]{0,40}locale/],
@@ -131,8 +131,12 @@ audit("crazygames", join(ROOT, "dist-crazygames"), {
   mustNotHave: [
     ["no alert() or confirm() pop-ups", /\balert\(|\bconfirm\(/],
     ["no fullscreen button of its own (the site provides one)", /requestFullscreen/],
+    // the Basic Launch build: ads are off there, so none are asked for and no button offers one
+    ...(basic ? [["no ad code at all (Basic Launch: ads off)", /requestAd|hasAdblock/]] : []),
   ],
 });
+audit("crazygames", join(ROOT, "dist-crazygames"), crazy(false));
+audit("crazygames-basic", join(ROOT, "dist-crazygames-basic"), crazy(true));
 
 console.log(out.join("\n"));
 console.log(failed ? `\n${failed} problem(s) to fix before moderation` : "\nready for moderation (the checks a script can make)");

@@ -34,7 +34,9 @@ function platformHtml(target: Target): Plugin {
 }
 
 export default defineConfig(({ mode }) => {
-  const target: Target = (TARGETS as string[]).includes(mode) ? (mode as Target) : "local";
+  // `--mode crazygames-basic`: the CrazyGames build for its Basic Launch, where ads are off: no ad code in it at all
+  const basic = mode === "crazygames-basic";
+  const target: Target = basic ? "crazygames" : (TARGETS as string[]).includes(mode) ? (mode as Target) : "local";
   // `--mode single`: a plain web page with every asset inlined, which tools/single.mjs folds into one HTML file
   const single = mode === "single";
   return {
@@ -42,10 +44,10 @@ export default defineConfig(({ mode }) => {
     // Yandex Metrica's counter for the first session's funnel (src/platform/metrika.ts), only where the game is on its
     // own site (Pikabu, the plain web build) and only if a counter is given: VITE_METRIKA in .env.pikabu or .env.
     // Without one the code that would load it is cut out of the build.
-    define: { __PLATFORM__: JSON.stringify(target), __METRIKA__: JSON.stringify(target === "pikabu" || target === "local" ? String(loadEnv(mode, ".", "VITE_").VITE_METRIKA ?? "").trim() : "") },
+    define: { __NO_ADS__: JSON.stringify(basic), __PLATFORM__: JSON.stringify(target), __METRIKA__: JSON.stringify(target === "pikabu" || target === "local" ? String(loadEnv(mode, ".", "VITE_").VITE_METRIKA ?? "").trim() : "") },
     plugins: [platformHtml(target)],
     build: {
-      outDir: single ? "dist-single-tmp" : target === "local" ? "dist" : `dist-${target}`,
+      outDir: single ? "dist-single-tmp" : basic ? "dist-crazygames-basic" : target === "local" ? "dist" : `dist-${target}`,
       target: "es2022",
       // VK's hosting takes no audio files: there the music goes inside the code (a data URL the audio decodes as is)
       assetsInlineLimit: single ? 64 * 1024 * 1024 : target === "vk" ? (file: string) => (file.endsWith(".ogg") ? true : undefined) : 0,

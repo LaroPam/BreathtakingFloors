@@ -235,6 +235,7 @@ npm run check:play
 | `end1` | закончился первый забег (параметры `floor`, `sec`, `level`) |
 | `win1` | первая победа |
 | `forge1` | первая покупка в кузнице (параметр `item`) |
+| `tutskip` | обучение пропущено (параметр `lesson` — на каком уроке) |
 
 Куда уходят:
 
@@ -261,7 +262,13 @@ npm run check:play
 
 | Сборка | Команда | Архив | SDK |
 |---|---|---|---|
-| CrazyGames | `npm run build:crazygames` | `dist-crazygames.zip` | HTML5 SDK v3: `<script src="https://sdk.crazygames.com/crazygames-sdk-v3.js">` в `<head>` до кода игры ([документация](https://docs.crazygames.com/sdk/intro/)) |
+| CrazyGames, Basic Launch | `npm run build:crazygames-basic` | `dist-crazygames-basic.zip` | тот же SDK v3, но кода рекламы в сборке нет вовсе |
+| CrazyGames, Full Launch | `npm run build:crazygames` | `dist-crazygames.zip` | HTML5 SDK v3: `<script src="https://sdk.crazygames.com/crazygames-sdk-v3.js">` в `<head>` до кода игры ([документация](https://docs.crazygames.com/sdk/intro/)) |
+
+**Какую загружать.** На пробный запуск (Basic Launch: 7–21 день, игру оценивают по среднему времени сессии, удержанию
+первого дня, конверсии и CTR обложки; реклама там выключена) — `dist-crazygames-basic.zip`: в ней нет ни одной кнопки
+«за рекламу» и ни одного запроса рекламы, так что проверка «игра без рекламы работает ровно» проходит сразу. Когда
+игру переведут в Full Launch — загрузить `dist-crazygames.zip` (с рекламой). `check:release` и `check:sdk` проверяют обе.
 
 Код: `src/platform/crazygames.ts`; заменитель SDK с ровно описанной поверхностью и проверки — в `check:sdk`
 (раздел crazygames), правила сборки — в `check:release`. Как выполнены требования
