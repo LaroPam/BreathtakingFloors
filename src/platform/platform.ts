@@ -2,6 +2,7 @@
 // language to speak, and ads. Three builds share one game: local (a plain web page), Yandex Games, YouTube Playables.
 
 import type { SaveData } from "../game/save";
+import { metrikaGoal } from "./metrika";
 
 /** The boards: the best runs ever, today's daily trial, this week's weekly trial. */
 export type BoardName = "score" | "daily" | "weekly";
@@ -37,7 +38,9 @@ export interface Purchase {
 }
 
 export interface Platform {
-  readonly name: "local" | "yandex" | "youtube" | "vk" | "pikabu";
+  readonly name: "local" | "yandex" | "youtube" | "vk" | "pikabu" | "crazygames";
+  /** See BasePlatform.reviveGap. */
+  readonly reviveGap: number;
   /** Connect to the platform's SDK. Never throws: a missing SDK degrades to local behaviour. */
   init(): Promise<void>;
   /** The player's language as a two-letter code. */
@@ -78,6 +81,16 @@ export interface Platform {
   /** Whether the player could sign in to get on the boards (a guest on Yandex), and doing it. */
   canSignIn(): boolean;
   signIn(): Promise<boolean>;
+  /**
+   * A step of the first session's funnel (the game sends each once per player), where there is a way to count it:
+   * VK's VKWebAppTrackEvent (to VK Ads and MyTracker), Yandex Metrica on the game's own site and Pikabu (only if the
+   * build has a counter), nothing elsewhere.
+   */
+  track(step: string, params?: Record<string, string | number>): void;
+  /** A great moment (a boss beaten for the first time, the tower won): where the site can celebrate it (CrazyGames). */
+  happyTime(): void;
+  /** How far through the game the player has come, 0 to 100, where the platform keeps it (CrazyGames). */
+  progress(percent: number): void;
   /** Telling friends about the game (VK's share dialog), where the platform has it; true if it was shared. */
   canShare(): boolean;
   share(): Promise<boolean>;
@@ -94,8 +107,13 @@ export interface Platform {
 
 /** Shared by all builds: pause on a hidden tab, mobile detection, and browser storage as a fallback. */
 export abstract class BasePlatform implements Platform {
-  abstract readonly name: "local" | "yandex" | "youtube" | "vk" | "pikabu";
+  abstract readonly name: "local" | "yandex" | "youtube" | "vk" | "pikabu" | "crazygames";
   readonly adsBetweenPlaces: boolean = false;
+  /**
+   * The least time between two offers of a revive for a rewarded ad (s), where the platform asks that it not come on
+   * every death; 0: one each run. Where it is set, a death that offered one also has no ad on the way to the next run.
+   */
+  readonly reviveGap: number = 0;
   protected pauseCbs: (() => void)[] = [];
   protected resumeCbs: (() => void)[] = [];
   protected audioCbs: ((on: boolean) => void)[] = [];
@@ -203,6 +221,11 @@ export abstract class BasePlatform implements Platform {
   async signIn(): Promise<boolean> {
     return false;
   }
+  track(step: string, params?: Record<string, string | number>): void {
+    metrikaGoal(step, params);
+  }
+  happyTime(): void {}
+  progress(_percent: number): void {}
   canShare(): boolean {
     return false;
   }

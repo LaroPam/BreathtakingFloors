@@ -9,7 +9,7 @@ import { text } from "../engine/text";
 import { AI, DOORS, giftFor, placeDef, EL_COLOR, ENEMIES, fullWeaponName, LEGENDS, questDef, RARITIES, RelicKind, WEAPONS, type GateKind, type PlaceId } from "./defs";
 import { t as tr, tx } from "./i18n";
 import { FLOOR, LOOK_BRIDGE, LOOK_ICE, LOOK_VEIN, PIT, WALL } from "./map";
-import { lanceTravel, B_BOLT, B_CHAKRAM, BULLET_ANIMS, EYE_H, FLOOR_SQ, LUNGE_DASH, SPAWN_T, type BossBrain, poolSpread, HERO_HIT_Y, HERO_R, B_CRESCENT, B_FIREBALL, B_LANCE, CINE_DUR, D_CHEST, D_EMBER, D_GREEN, D_HEART, D_RED, SANCTUARY_R, STAR_EVERY, TILE, type World } from "./world";
+import { lanceTravel, LANCE_FADE, LANCE_STUCK, B_BOLT, B_CHAKRAM, BULLET_ANIMS, EYE_H, FLOOR_SQ, LUNGE_DASH, SPAWN_T, type BossBrain, poolSpread, HERO_HIT_Y, HERO_R, B_CRESCENT, B_FIREBALL, B_LANCE, CINE_DUR, D_CHEST, D_EMBER, D_GREEN, D_HEART, D_RED, SANCTUARY_R, STAR_EVERY, TILE, type World } from "./world";
 
 export class Scene {
   back = new Batch();
@@ -502,19 +502,33 @@ export function drawWorld(s: Scene, w: World, camX: number, camY: number, viewW:
       s.illum.light(b.x, b.y - 24, 125 * f * grow, 105 * f * grow, rgbaf(1, 0.62, 0.3, 0.95));
     } else {
       drawAnim(s, cold, time, b.x, b.y, { key: b.y });
-      if (b.progress > 0) {
-        s.illum.light(b.x, b.y - 24, 30 + 50 * b.progress, 26 + 40 * b.progress, rgbaf(1, 0.6, 0.3, 0.5 * b.progress));
-        // the kindling ring: dots around the base fill up as it catches
-        const n = 24;
-        for (let k = 0; k < n; k++) {
-          const a = -Math.PI / 2 + (k / n) * Math.PI * 2, on = k / n < b.progress;
-          s.back.rect(Math.round(b.x + Math.cos(a) * 30), Math.round(b.y + Math.sin(a) * 12), 1, 1, on ? rgba("#ffc040") : rgba("#3a3448"));
-          if (on) s.glow.rect(Math.round(b.x + Math.cos(a) * 30), Math.round(b.y + Math.sin(a) * 12), 1, 1, rgbaf(1, 0.6, 0.2, 0.8));
+      // a cold brazier must be seen to want lighting: its coals smoulder and breathe, a few sparks climb from them, a
+      // warm pool of light marks it in the dark, a ring on the floor shows where to stand and a mark bobs over it
+      const p = b.progress, pulse = 0.5 + 0.5 * Math.sin(time * 3.2 + b.x);
+      s.glow.light(b.x, b.y - 22, 9, 6, rgbaf(1, 0.5, 0.15, 0.35 + 0.35 * pulse + 0.3 * p));
+      s.illum.light(b.x, b.y - 14, 64 + 30 * p, 52 + 24 * p, rgbaf(1, 0.6, 0.3, 0.45 + 0.2 * pulse + 0.3 * p));
+      for (let k = 0; k < 4; k++) {
+        const u = (time * (0.5 + 0.6 * p) + k / 4 + b.x * 0.013) % 1, sx = Math.round(b.x + (k - 1.5) * 2.5 + Math.sin(u * 9 + k) * 3 * u), sy = Math.round(b.y - 24 - u * 28);
+        s.front.rect(sx, sy, 1, 1, rgbaf(1, 0.75 - 0.35 * u, 0.25, 1 - u));
+        s.glow.rect(sx, sy, 1, 1, rgbaf(1, 0.5, 0.15, 0.8 * (1 - u)));
+      }
+      // the kindling ring: while no one stands in it a bright run chases round it; then its dots fill up as it catches
+      const n = 32, head = (time * 0.7) % 1;
+      for (let k = 0; k < n; k++) {
+        const f = k / n, a = -Math.PI / 2 + f * Math.PI * 2, px = Math.round(b.x + Math.cos(a) * 31), py = Math.round(b.y + Math.sin(a) * 25);
+        const run = p > 0 ? (f < p ? 1 : 0) : Math.max(0, 1 - ((((head - f) % 1) + 1) % 1) / 0.3);
+        s.back.rect(px, py, 1, 1, run > 0 ? rgbaf(1, 0.55 + 0.3 * run, 0.25, 0.5 + 0.5 * run) : rgbaf(0.85, 0.5, 0.3, 0.5));
+        s.glow.rect(px, py, 1, 1, rgbaf(1, 0.55, 0.2, 0.22 + 0.1 * pulse + 0.7 * run));
+      }
+      if (p === 0) {
+        const my = Math.round(b.y - 46 + Math.sin(time * 4 + b.x) * 2.5), glint = 0.75 + 0.25 * pulse;
+        for (let r = 0; r < 5; r++) {
+          s.front.rect(b.x - 4 + r, my + r, 9 - r * 2, 1, rgbaf(1, 0.72 - r * 0.07, 0.3, glint));
+          s.glow.rect(b.x - 4 + r, my + r, 9 - r * 2, 1, rgbaf(1, 0.55, 0.15, 0.6 * glint));
         }
-      } else {
-        // a faint marker so a cold brazier can be found in the dark
-        const pulse = 0.5 + 0.5 * Math.sin(time * 3 + b.x);
-        s.illum.light(b.x, b.y - 20, 26, 20, rgbaf(0.9, 0.5, 0.3, 0.18 + 0.1 * pulse));
+        // (in the glow, so the dark of the room does not swallow it)
+        text(s.front, tr("lightIt"), b.x, my - 11, { font: "mini", align: "center", color: rgba("#0b0a12"), shadow: rgba("#0b0a12") });
+        text(s.glow, tr("lightIt"), b.x, my - 11, { font: "mini", align: "center", color: rgbaf(1, 0.75, 0.4, glint) });
       }
     }
   }
@@ -1104,6 +1118,8 @@ export function drawWorld(s: Scene, w: World, camX: number, camY: number, viewW:
     const x = Bu.x[i], y = Bu.y[i];
     if (!inView(x, y, 20)) continue;
     const k = Bu.kind[i], a = banims[k], orb = k >= 2 && k <= 5;
+    // a lance melts over the end of its life rather than blinking out: it fades and thins towards its point
+    const melt = k === B_LANCE ? Math.min(1, Bu.life[i] / LANCE_FADE) : 1;
     // a lance from the frost orb slides out of it: the part still inside the orb is cut away, so its point comes
     // out of the orb's surface and the rest follows, at full size, rather than the whole of it appearing inside
     if (k === B_LANCE && fo && lance && Bu.t[i] < 0.5) {
@@ -1111,12 +1127,12 @@ export function drawWorld(s: Scene, w: World, camX: number, camY: number, viewW:
       const along = dx * ux + dy * uy, off = Math.abs(dx * uy - dy * ux), R = lance.evo ? 4 : 3;
       if (off < 5 && along > -6) {
         const rot = Math.atan2(Bu.vy[i], Bu.vx[i]), minX = R - along, [c, l] = a.frames[frameAt(a, Bu.t[i])];
-        const fade = 1;
+        const fade = melt;
         if (c) s.color.imageCropLeft(c, x, y, minX, 1, 1, rot, rgbaf(1, 1, 1, fade), 0, y + 14);
         if (l) s.glow.imageCropLeft(l, x, y, minX, 1, 1, rot, rgbaf(1, 1, 1, 0.9 * fade));
         // where it breaks through: a cold glint on the orb's surface while the lance passes it
         if (minX > -12) s.glow.light(fo.x + ux * R, fo.y + uy * R, 3, 3, rgbaf(0.75, 0.95, 1, 0.5 * fade));
-        s.illum.light(x, y, 18, 14, rgbaf(0.45, 0.75, 1, 0.3));
+        s.illum.light(x, y, 18, 14, rgbaf(0.45, 0.75, 1, 0.3 * fade));
         continue;
       }
     }
@@ -1124,13 +1140,13 @@ export function drawWorld(s: Scene, w: World, camX: number, camY: number, viewW:
     // so everything behind the book's face (where it left, LANCE_OUT short of its spawn) is cut away until it is clear
     if (k === B_LANCE && Bu.team[i] === TEAM_HERO && Bu.t[i] < 0.5) {
       const sp = Math.hypot(Bu.vx[i], Bu.vy[i]) || 1, ux = Bu.vx[i] / sp, uy = Bu.vy[i] / sp, minX = -(lanceTravel(Bu.t[i]) * sp + LANCE_OUT);
-      const rot = Math.atan2(Bu.vy[i], Bu.vx[i]), [c, l] = a.frames[frameAt(a, Bu.t[i])], fade = Math.min(1, 0.4 + Bu.t[i] / 0.06);
+      const rot = Math.atan2(Bu.vy[i], Bu.vx[i]), [c, l] = a.frames[frameAt(a, Bu.t[i])], fade = Math.min(1, 0.4 + Bu.t[i] / 0.06) * melt;
       if (c) s.color.imageCropLeft(c, x, y, minX, 1, 1, rot, rgbaf(1, 1, 1, fade), 0, y + 14);
       if (l) s.glow.imageCropLeft(l, x, y, minX, 1, 1, rot, rgbaf(1, 1, 1, 0.9 * fade));
       // the pages flare cold where it breaks out, fading as its tail leaves them
       const bx = x + ux * minX, by = y + uy * minX, out = Math.max(0, 1 - Bu.t[i] / 0.3);
       if (out > 0) (s.glow.light(bx, by, 4, 4, rgbaf(0.75, 0.95, 1, 0.4 * out)), s.illum.light(bx, by, 20, 16, rgbaf(0.45, 0.75, 1, 0.18 * out)));
-      s.illum.light(x, y, 18, 14, rgbaf(0.45, 0.75, 1, 0.3));
+      s.illum.light(x, y, 18, 14, rgbaf(0.45, 0.75, 1, 0.3 * melt));
       continue;
     }
     // a chakram: a ring of steel turning fast, its teeth catching the light, its element's glow on its edge
@@ -1149,16 +1165,17 @@ export function drawWorld(s: Scene, w: World, camX: number, camY: number, viewW:
     // dark so they read against anything
     const grow = (Bu.team[i] === TEAM_HERO ? Math.min(1, 0.3 + (Bu.t[i] / 0.09) * 0.7) : orb ? 1.5 : 1) * (k === B_BOLT ? 1.4 : 1);
     if (orb) s.color.disc(x, y, 6, 6, rgba("#0b0a12", 0.55), y + 13);
-    drawAnim(s, a, Bu.t[i], x, y, { rot: orb ? 0 : Math.atan2(Bu.vy[i], Bu.vx[i]), sx: grow, sy: grow, key: y + 14, glow: 0.9, alpha: k === B_CRESCENT ? Math.min(1, Bu.life[i] * 5) : 1 });
+    drawAnim(s, a, Bu.t[i], x, y, { rot: orb ? 0 : Math.atan2(Bu.vy[i], Bu.vx[i]), sx: grow * (0.55 + 0.45 * melt), sy: grow * (0.7 + 0.3 * melt), key: y + 14, glow: 0.9, alpha: k === B_CRESCENT ? Math.min(1, Bu.life[i] * 5) : melt });
     if (orb) {
       s.back.disc(x, y + 14, 3, 1, rgba("#000000", 0.25));
       s.illum.light(x, y, 16, 14, k === 2 ? rgbaf(1, 0.2, 0.3, 0.35) : k === 3 ? rgbaf(0.6, 0.3, 1, 0.35) : k === 4 ? rgbaf(0.4, 1, 0.3, 0.35) : rgbaf(0.3, 0.6, 1, 0.35));
     } else {
       // a streak behind what the hero throws: the eye reads speed and direction from it
       const len = (k === B_CRESCENT ? 0.025 : 0.045) * grow, el = Bu.el[i];
-      const col = k === B_FIREBALL ? rgbaf(1, 0.55, 0.2, 0.6) : k === B_LANCE ? rgbaf(0.6, 0.85, 1, 0.6) : el ? withAlpha(rgba(EL_COLOR[el as keyof typeof EL_COLOR]), 0.6) : rgbaf(1, 0.9, 0.7, 0.45);
-      s.glow.line(x - Bu.vx[i] * len, y - Bu.vy[i] * len, x, y, k === B_FIREBALL ? 3 : 1, col);
-      s.illum.light(x, y, k === B_FIREBALL ? 34 : 18, k === B_FIREBALL ? 28 : 14, k === B_FIREBALL ? rgbaf(1, 0.55, 0.2, 0.55) : rgbaf(1, 0.75, 0.4, 0.35));
+      const col = k === B_FIREBALL ? rgbaf(1, 0.55, 0.2, 0.6) : k === B_LANCE ? rgbaf(0.6, 0.85, 1, 0.6 * melt) : el ? withAlpha(rgba(EL_COLOR[el as keyof typeof EL_COLOR]), 0.6) : rgbaf(1, 0.9, 0.7, 0.45);
+      // (not behind a lance stuck in a wall)
+      if (!(k === B_LANCE && Bu.grazed[i] === LANCE_STUCK && Bu.team[i] === TEAM_HERO)) s.glow.line(x - Bu.vx[i] * len, y - Bu.vy[i] * len, x, y, k === B_FIREBALL ? 3 : 1, col);
+      s.illum.light(x, y, k === B_FIREBALL ? 34 : 18, k === B_FIREBALL ? 28 : 14, k === B_FIREBALL ? rgbaf(1, 0.55, 0.2, 0.55) : rgbaf(1, 0.75, 0.4, 0.35 * melt));
     }
   }
 

@@ -560,7 +560,7 @@ export function drawHud(b: Batch, w: World, W: number, H: number, time: number, 
   const floorLine = w.place.single ? tx(w.place.name) : narrow ? `${t("floor")} ${w.floor}` : `${t("floor")} ${w.floor}  ·  ${tx(floorText(w.stop).name)}`, bi = w.bossIndex();
   const intro = Math.max(0, Math.min(1, (6.5 - w.time) / 0.5)), e = intro * intro * (3 - 2 * intro);
   const bossName = bi >= 0 ? tx(ENEMIES[w.enemies.type[bi]].name) : "";
-  const small = Math.max(w.portal ? measure(t("portalOpen"), "mini") + 12 : bi >= 0 ? measure(bossName, "mini") + 22 : w.braziers.length * 14 + 10, 48);
+  const small = Math.max(w.portal ? measure(t("portalOpen"), "mini") + 12 : bi >= 0 ? measure(bossName, "mini") + 22 : 3 * 14 + 10, 48);
   const right = W - Math.max(26, timerW), cxF = narrow ? Math.round((100 + right) / 2) : W / 2, roomF = narrow ? right - 100 : W;
   const lineFont = measure(floorLine) + (seal ? 30 : 20) > roomF ? "mini" : undefined;
   const wide = Math.min(roomF, measure(floorLine, lineFont) + (seal ? 30 : 20)), fw = Math.round(small + (Math.max(wide, small) - small) * e), ph = Math.round(16 + 9 * e), ty = Math.round(6 + 3 * e);
@@ -574,10 +574,13 @@ export function drawHud(b: Batch, w: World, W: number, H: number, time: number, 
   let under = ty + ph + 4;
   if (w.wave) {
     const wv = w.wave, left = Math.max(0, Math.ceil(wv.left)), k = wv.left / wv.total, urgent = wv.left < 5;
-    const label = `${t("wave")} ${wv.n}  ·  ${t("hold")} ${fmtTime(left)}`, bw = Math.max(90, measure(label) + 16);
-    plate(b, cxF - bw / 2, under, bw, 18, rgba("#a8402e"));
-    text(b, label, cxF, under + 4, { align: "center", color: urgent ? rgbaf(1, 0.8 + 0.2 * Math.sin(time * 10), 0.5, 1) : rgba("#ffd2b0"), shadow: C.ink });
-    b.rect(Math.round(cxF - bw / 2 + 4), under + 14, Math.round((bw - 8) * k), 2, rgba("#ff7a4a"));
+    // (the fire's stage is the flames above; here only how long to hold)
+    const label = `${t("hold")} ${fmtTime(left)}`, bw = Math.max(70, measure(label) + 16);
+    // (on a phone upright, kept between the vitals and the timer)
+    const px = Math.round(narrow ? Math.max(100, Math.min(right - bw - 2, cxF - bw / 2)) : cxF - bw / 2);
+    plate(b, px, under, bw, 18, rgba("#a8402e"));
+    text(b, label, px + bw / 2, under + 4, { align: "center", color: urgent ? rgbaf(1, 0.8 + 0.2 * Math.sin(time * 10), 0.5, 1) : rgba("#ffd2b0"), shadow: C.ink });
+    b.rect(px + 4, under + 14, Math.round((bw - 8) * k), 2, rgba("#ff7a4a"));
     under += 22;
   }
   // the week's rule, under the plate, for the whole run
@@ -588,11 +591,14 @@ export function drawHud(b: Batch, w: World, W: number, H: number, time: number, 
     b.image(icon("hud", "boss"), cxF - measure(bossName, "mini") / 2 - 8, row);
     text(b, bossName, cxF + 2, row - 3, { font: "mini", align: "center", color: rgba(ENEMIES[w.enemies.type[bi]].glow || "#f53cd1") });
   } else
-    w.braziers.forEach((br, k) => {
-      const x = cxF + (k - (w.braziers.length - 1) / 2) * 14;
-      b.image(icon("hud", br.lit ? "brazier" : "brazier_cold"), x, row);
-      if (!br.lit && br.progress > 0) b.rect(x - 4, row + 5, Math.round(8 * br.progress), 1, rgba("#ffc040"));
-    });
+    // the fire's three stages: one flame lit for each it has reached; under the coming one, how far the wave is to it
+    // (before it is lit, under the first, how far the hero has kindled it)
+    for (let k = 0; k < 3; k++) {
+      const x = cxF + (k - 1) * 14, br = w.braziers[0], lit = k < w.phase;
+      b.image(icon("hud", lit ? "brazier" : "brazier_cold"), x, row);
+      const fill = !lit && k === w.phase ? (w.wave ? (1 - w.wave.left / w.wave.total) * 3 - k : br && !br.lit ? br.progress : 0) : 0;
+      if (fill > 0) b.rect(x - 4, row + 5, Math.round(8 * Math.min(1, fill)), 1, rgba("#ffc040"));
+    }
 
   // ---- how long, how many: a plate at the top right (not while the first run's lessons are on: one thing at a time)
   if (!quiet) {
@@ -646,7 +652,7 @@ export function drawHud(b: Batch, w: World, W: number, H: number, time: number, 
   }
 }
 
-/** Arrows at the edge of the screen pointing to what the player must find: cold braziers, the spirit, the bounty, the portal. */
+/** Arrows at the edge of the screen pointing to what the player must find: the cold brazier, the spirit, the bounty, the portal, the open stairs. */
 export function drawPointers(b: Batch, w: World, camX: number, camY: number, W: number, H: number, time: number): void {
   const targets: [number, number, number][] = [];
   for (const q of w.braziers) if (!q.lit) targets.push([q.x, q.y - 20, rgba("#ffae35")]);
@@ -654,6 +660,7 @@ export function drawPointers(b: Batch, w: World, camX: number, camY: number, W: 
   const bi = w.bountyIndex();
   if (bi >= 0) targets.push([w.enemies.x[bi], w.enemies.y[bi] - 10, rgba("#ff4a3a")]);
   if (w.portal) targets.push([w.portal.x, w.portal.y - 20, rgba("#c684ff")]);
+  if (w.stairs?.open) targets.push([w.stairs.x, w.stairs.y - 10, rgba("#9ae0ff")]);
   const cx = W / 2, cy = H / 2;
   for (const [x, y, col] of targets) {
     const sx = x - camX, sy = y - camY;

@@ -190,6 +190,14 @@ const MINI_ORB: Partial<Record<PlaceId, number>> = { crypt: 3, garden: 4, frost:
  * has gone by then, in seconds at full speed (the drawing crops them by it).
  */
 export const LANCE_EASE = 0.22;
+/**
+ * Nor do they blink out: over their last LANCE_FADE seconds of life they thin and melt away (draw.ts), shedding frost.
+ * One that has struck its last foe flies on spent (it hurts no one) for its short fade; one that meets a wall sticks
+ * in it and melts there. Both are marked in `grazed`, which a hero's lance has no other use for.
+ */
+export const LANCE_FADE = 0.25;
+const LANCE_SPENT = 2;
+export const LANCE_STUCK = 3;
 const LANCE_V0 = 0.12;
 const lanceRamp = (t: number): number => (t >= LANCE_EASE ? 1 : LANCE_V0 + (1 - LANCE_V0) * (t / LANCE_EASE) ** 2);
 export const lanceTravel = (t: number): number => (t >= LANCE_EASE ? LANCE_EASE * (LANCE_V0 + (1 - LANCE_V0) / 3) + (t - LANCE_EASE) : LANCE_V0 * t + ((1 - LANCE_V0) * t ** 3) / (3 * LANCE_EASE ** 2));
@@ -654,6 +662,13 @@ export class World {
   kills = 0;
   /** The first run's lessons are on (game.ts): the first floor's crowds come thinner, none at all while the first is learnt. */
   gentle = false;
+  /**
+   * A newcomer's first runs show what the game becomes (game.ts): the first level-up offers a relic that fills the
+   * screen, and the second floor always has a cracked wall with a secret room behind it.
+   */
+  showcase = false;
+  /** No boss beaten yet (game.ts): the first ones come a quarter weaker, so a first session can end in a win. */
+  firstBoss = false;
   holdSpawns = false;
   pendingLevels = 0;
   pendingChests = 0;
@@ -735,8 +750,10 @@ export class World {
   moveX = 0;
   moveY = 0;
   private spawnAcc = 0;
-  /** The floor's wave: lit at a brazier, it lasts `left` of `total` seconds (survive it); null between waves. */
+  /** The floor's wave: lit at the brazier, it lasts `left` of `total` seconds (survive it), `n` its stage (1-3). */
   wave: { left: number; total: number; n: number } | null = null;
+  /** The fire's stage (see `phase`). */
+  private firePhase = 0;
   /** A word to the player: fades in, holds, fades out (the HUD shows it); t < 0 waits. */
   hint: { text: string; t: number; dur: number } | null = null;
   private waitSaid = false;
@@ -786,9 +803,10 @@ export class World {
     if (this.trail[this.trail.length - 1] !== stop.place.id) this.trail.push(stop.place.id);
     this.arrivedBy = via;
     this.mod = mod;
-    // the floor's own map, built the way its plan says (a narrow stair makes it smaller)
+    // the floor's own room, built the way its plan says (a narrow stair makes it smaller)
     const plan = stop.place.single ? null : MAP_PLANS[stop.place.id][stop.stage - 1];
-    this.map = plan ? buildMap({ ...plan, cols: Math.round(plan.cols * mod.size), rows: Math.round(plan.rows * mod.size) }, this.rng) : buildBeyond();
+    this.map = plan ? buildMap({ ...plan, w: Math.round(plan.w * mod.size), h: Math.round(plan.h * mod.size) }, this.rng) : buildBeyond();
+    this.firePhase = 0;
     this.doors = [];
     this.pit = null;
     this.mini = null;
@@ -907,27 +925,20 @@ export class World {
         }
       return best;
     };
-    const route = m.route, n = route.length;
-    // the stairs down (not on a boss's floor, where a portal comes instead): in the last chamber, the way's end
+    const route = m.route;
+    // the stairs down (not on a boss's floor, where a portal comes instead): in the recess in the back wall
     this.stairs = null;
     const taken: [number, number][] = [[sx, sy]];
     if (!this.bossFloor()) {
-      const g = (n ? centre(route[n - 1], 3) : null) ?? ground[ground.length - 1];
+      const last = ground[ground.length - 1], e = m.exit;
+      const g: [number, number] | null = e ? [(e.x + e.w / 2) * TILE, (e.y + e.h / 2 + 0.5) * TILE] : (centre(route[0], 3) ?? (last ? [last[0], last[1]] : null));
       if (g) (this.stairs = { x: g[0], y: g[1], open: false, t: 0 }), taken.push([g[0], g[1]]);
     }
-    // three braziers along the way, in the chambers it passes through, the last before the stairs; on a boss's
-    // floor the last one stands in the middle of its arena, at the way's end
+    // one brazier, in the middle of the room: the whole floor is the fight round it
     this.braziers = [];
-    const at = m.arena ? [0.35, 0.68].map((u) => Math.round((n - 1) * u)).concat(n - 1) : [0.3, 0.6, 0.85].map((u) => Math.round((n - 1) * u));
-    for (const k of at) {
-      const g = n > 2 ? centre(route[Math.max(1, Math.min(n - 1, k))], 3) : pickFar(taken, far * 0.22);
-      if (!g || taken.some(([x, y]) => (x - g[0]) ** 2 + (y - g[1]) ** 2 < 60 * 60)) continue;
-      this.braziers.push({ x: g[0], y: g[1], lit: false, progress: 0, litT: 0 });
-      taken.push([g[0], g[1]]);
-    }
-    for (let k = this.braziers.length; k < 3; k++) {
-      const g = pickFar(taken, far * 0.22) ?? ground[Math.floor(R.next() * ground.length)];
-      if (!g) break;
+    {
+      const [fc, fr] = m.fire, alt = pickFar(taken, far * 0.4);
+      const g: [number, number] = m.clear(fc * TILE + 8, fr * TILE + 8, 12) ? [fc * TILE + 8, fr * TILE + 8] : (centre(route[0], 3) ?? (alt ? [alt[0], alt[1]] : [sx, sy - 120]));
       this.braziers.push({ x: g[0], y: g[1], lit: false, progress: 0, litT: 0 });
       taken.push([g[0], g[1]]);
     }
@@ -990,8 +1001,9 @@ export class World {
       }
     }
     // now and then a stretch of wall is cracked, and behind it a secret room
-    if (R.chance(0.6 + 0.03 * this.floor)) {
-      const spot = wallRoom(order, 120, this.gate?.room ?? null);
+    // (a newcomer's second floor always has one: the secret rooms are among the best of the game)
+    if (R.chance(0.6 + 0.03 * this.floor) || (this.showcase && this.floor === 2)) {
+      const spot = wallRoom(order, 120, this.gate?.room ?? null) ?? (this.showcase && this.floor === 2 ? wallRoom(order, 60, this.gate?.room ?? null, false) : null);
       const kinds = ["treasure", "treasure", "guardian", "guardian", "fountain", "armory"] as const;
       if (spot) this.secret = { x: spot.x, y: spot.y, hp: 3, seen: 0, found: false, hitT: 9, room: { ...spot.room, kind: R.pick(kinds) } };
     }
@@ -1023,11 +1035,11 @@ export class World {
       if (this.decor.some((d) => (d.x - x) ** 2 + (d.y - y) ** 2 < 100) || (x - sx) ** 2 + (y - sy) ** 2 < 40 * 40) continue;
       this.decor.push({ anim: name, x: Math.round(x), y: Math.round(y), frame: R.int(0, frames - 1), flip: R.chance(0.5) ? -1 : 1, flat, phase: R.range(0, 5) });
     }
-    // the place's own lights (candles, glowing mushrooms, crystals) in pairs, at two opposite corners of each chamber
+    // the place's own lights (candles, glowing mushrooms, crystals) in the room's four corners, and two in each niche
     const glowKind = id === "garden" ? "mushrooms" : id === "frost" ? "crystal" : "candle";
-    for (const a of route) {
-      const flipC = R.chance(0.5);
-      for (const [u, v] of flipC ? [[0, 0], [1, 1]] : [[1, 0], [0, 1]]) {
+    for (const a of [...route, ...m.nooks]) {
+      const flipC = R.chance(0.5), corners = a === route[0] ? [[0, 0], [1, 1], [1, 0], [0, 1]] : flipC ? [[0, 0], [1, 1]] : [[1, 0], [0, 1]];
+      for (const [u, v] of corners) {
         const tx = a.x + 1.5 + u * (a.w - 3), ty = a.y + 1.5 + v * (a.h - 3);
         let best: [number, number] | null = null, bd = Infinity;
         for (const [c, r] of edge) {
@@ -1052,9 +1064,10 @@ export class World {
     }
     // the spirit of one who came before, somewhere away from the start and the altar, with a task fit for this floor
     this.spirit = null;
-    const questKinds = QUESTS.filter((q) => q.from <= this.floor && (q.kind !== "alchemy" || this.elementsAtHand() >= 2)).map((q) => q.kind);
-    // (in the second side room, or else in the second chamber, to one side, where the way passes it early)
-    const early = n > 2 ? centre(route[1], 2, (route[1].w * 0.3) * (R.chance(0.5) ? 1 : -1)) : null;
+    // (one fire a floor: "light every brazier in time" has nothing left to ask)
+    const questKinds = QUESTS.filter((q) => q.from <= this.floor && q.kind !== "swift" && (q.kind !== "alchemy" || this.elementsAtHand() >= 2)).map((q) => q.kind);
+    // (in the second niche, or else in the room, to one side of the way in)
+    const early = centre(route[0], 2, route[0].w * 0.32 * (R.chance(0.5) ? 1 : -1));
     for (let tries = 0; tries < 100 && questKinds.length; tries++) {
       const pre = tries === 0 ? nooks[1] ?? early : null, [x, y] = pre ?? anyGround();
       if (!pre && (!clear(x, y, 12) || this.racks.some((r) => (x - r.x) ** 2 + (y - r.y) ** 2 < 110 * 110))) continue;
@@ -1109,9 +1122,9 @@ export class World {
     // dusk, not pitch dark: the floor reads everywhere, the lights still make the mood
     return 0.46 - this.mod.dark * 0.14 - Math.min(0.04, this.floor * 0.004);
   }
-  /** Lit braziers: 0..3. The floor's roster grows with them. */
+  /** The fire's stage: 0 unlit, then 1, 2, 3 as its one wave burns on. The floor's roster grows with it. */
   get phase(): number {
-    return this.braziers.filter((b) => b.lit).length;
+    return this.firePhase;
   }
   /** Is this point in light (the lantern or a lit brazier)? Ghosts can be hurt only there. */
   inLight(x: number, y: number): boolean {
@@ -1216,9 +1229,10 @@ export class World {
     // tougher than they look: blows must land several times (bosses carry their own numbers)
     const tough = d.ai >= AI.Boss ? 1.7 : 2.5;
     // (the horde thickens the longer a floor goes on; a boss does not: its health is its tier's, not how long the
-    // hero took to reach it, and the last one is the test of the whole build)
-    const boss = d.ai >= AI.Boss && d.ai !== AI.Mini, late = boss ? (d.ai === AI.LastLight ? 1.65 : 1.6) : 1 + Math.min(1.2, this.time / 180);
-    const hp = d.hp * tough * (1 + 0.4 * (f - 1)) * late * curse;
+    // hero took to reach it, and the last one is the test of the whole build. A floor being one room and one wave, the
+    // hero comes to a boss with less behind him than when floors were long: its health is cut to match)
+    const boss = d.ai >= AI.Boss && d.ai !== AI.Mini, late = boss ? (d.ai === AI.LastLight ? 1.2 : 1.15) : 1 + Math.min(1.2, this.time / 180);
+    const hp = d.hp * tough * (1 + 0.4 * (f - 1)) * late * curse * (boss && this.firstBoss ? 0.75 : 1);
     const i = this.enemies.add(type, x, y, hp, this.rng.next(), this.mod.speed * (1.08 + Math.min(9, f - 1) * 0.04) * this.rng.range(0.9, 1.1) * (this.curse ? 1.2 : 1) * (this.mutator === "haste" ? 1.25 : 1));
     if (i >= 0) {
       this.enemies.face[i] = this.hero.x < x ? -1 : 1;
@@ -1725,6 +1739,24 @@ export class World {
     return [h.x + hand[0] * h.face, h.y + hand[1]];
   }
 
+  /**
+   * Where a shot goes: the nearest foe with auto-aim, else where the player aims. The ranger has an eye for the great:
+   * with auto-aim, every other shot of his goes at a boss in reach (whatever it has called round it would otherwise
+   * take his arrows), the rest at the nearest foe as before.
+   */
+  private shotGoal(): { x: number; y: number } | null {
+    const goal = this.autoAim ? (this.target.r > 0 ? this.target : null) : this.aimTarget;
+    const h = this.hero, bi = this.autoAim && h.def.id === "ranger" ? this.bossIndex() : -1;
+    if (bi < 0) return goal;
+    this.rangerAtBoss = !this.rangerAtBoss;
+    if (!this.rangerAtBoss) return goal;
+    this.body(bi);
+    const r = Math.max(this.brx, this.bry), reach = Math.max(240, WEAPONS[h.weapon].range) + r;
+    return (this.bx - h.x) ** 2 + (this.by - h.y + 18) ** 2 < reach * reach ? { x: this.bx, y: this.by } : goal;
+  }
+  /** Whether the ranger's last shot went at the boss (they take turns, see shotGoal). */
+  private rangerAtBoss = false;
+
   /** A blow lands. Melee hits what is in its shape and cuts bullets; shots and spells leave the hand. */
   private land(B: Blow, k: number, hit: number, of: number): void {
     this.setSrc(SRC_WEAPON);
@@ -1739,7 +1771,7 @@ export class World {
       const pierce = B.kind === "arrow" ? 1 + (h.def.id === "ranger" ? 1 : 0) : B.kind === "frost" ? 2 : 0;
       // aimed from where it leaves, not from the chest: the hand is higher and ahead, and a shot parallel to the
       // chest's line would pass over a low target (a slime)
-      const goal = this.autoAim ? (this.target.r > 0 ? this.target : null) : this.aimTarget;
+      const goal = this.shotGoal();
       const base = goal && Math.hypot(goal.x - hx, goal.y - hy) > 10 ? Math.atan2(goal.y - hy, goal.x - hx) : dir;
       for (let q = 0; q < n; q++) {
         // it leaves from just past the hand, small, and grows to its size in flight (draw.ts), rather than appearing
@@ -1760,7 +1792,7 @@ export class World {
     if (B.kind === "bolt" || B.kind === "chakram") {
       // a crossbow's bolt, heavy and straight through; a chakram thrown out to come back
       const [hx, hy] = this.handPos(), bolt = B.kind === "bolt", n = 1 + s.wave + (h.legend && !bolt ? 1 : 0), spread = bolt ? 0.08 : 0.35;
-      const goal = this.autoAim ? (this.target.r > 0 ? this.target : null) : this.aimTarget;
+      const goal = this.shotGoal();
       const base = goal && Math.hypot(goal.x - hx, goal.y - hy) > 10 ? Math.atan2(goal.y - hy, goal.x - hx) : dir, speed = bolt ? 430 : 320;
       for (let q = 0; q < n; q++) {
         const a = base + (q - (n - 1) / 2) * spread;
@@ -2649,6 +2681,7 @@ export class World {
       this.beams = [];
       this.brain = null;
       this.ev.count("boss");
+      this.firstBoss = false;
       this.hitstop = 0.25;
       this.shake = 1.2;
       this.flash = 1;
@@ -3018,7 +3051,7 @@ export class World {
         break;
       }
       case "purge": q.need = 18 + f * 3; q.left = q.total = 45; break;
-      case "swift": q.need = unlit; q.left = q.total = 40 + (this.waveTime(3) + 30) * unlit; break;
+      case "swift": q.need = unlit; q.left = q.total = 40 + (this.waveTime() + 30) * unlit; break;
       case "graze": q.need = 16 + f * 2; break;
       case "alchemy": q.need = 3 + Math.floor(f / 3); break;
       case "bounty": {
@@ -4771,7 +4804,8 @@ export class World {
           B.vy[i] *= 1 - dt * 1.8;
         }
       }
-      const ease = B.kind[i] === B_LANCE && B.team[i] === TEAM_HERO ? lanceRamp(B.t[i]) : 1;
+      const lance = B.kind[i] === B_LANCE && B.team[i] === TEAM_HERO, spent = lance && B.grazed[i] >= LANCE_SPENT;
+      const ease = lance ? (B.grazed[i] === LANCE_STUCK ? 0 : lanceRamp(B.t[i])) : 1;
       B.x[i] += B.vx[i] * dt * ease;
       B.y[i] += B.vy[i] * dt * ease;
       const x = B.x[i], y = B.y[i];
@@ -4782,7 +4816,7 @@ export class World {
       // trails: fire sheds embers, ice sheds frost, arrows and crescents a thin wake, enemy orbs a faint glimmer
       const kind = B.kind[i], R = this.rng;
       if (B.team[i] === TEAM_HERO) {
-        const rate = kind === B_FIREBALL ? 70 : kind === B_LANCE ? (B.t[i] < LANCE_EASE ? 0 : 40) : kind === B_ARROW ? 30 : 22;
+        const rate = kind === B_FIREBALL ? 70 : kind === B_LANCE ? (B.t[i] < LANCE_EASE ? 0 : B.life[i] < LANCE_FADE ? 150 : 40) : kind === B_ARROW ? 30 : 22;
         if (R.chance(dt * rate)) {
           const col = kind === B_FIREBALL ? R.pick(FIRE_TRAIL) : kind === B_LANCE ? R.pick(ICE_TRAIL) : B.el[i] ? rgba(EL_COLOR[B.el[i] as El]) : kind === B_ARROW ? rgba("#d8d0e8", 0.8) : rgba("#ffe08a");
           this.parts.add(x + R.range(-1.5, 1.5), y + R.range(-1.5, 1.5), -B.vx[i] * 0.08 + R.range(-6, 6), -B.vy[i] * 0.08 + (kind === B_FIREBALL ? -14 : R.range(-6, 6)), R.range(0.15, kind === B_FIREBALL ? 0.4 : 0.28), col, kind === B_FIREBALL && R.chance(0.4) ? 2 : 1, 0, 1);
@@ -4792,11 +4826,22 @@ export class World {
       if (B.kind[i] === B_CHAKRAM && B.team[i] === TEAM_HERO) {
         // (a wall only turns a chakram home; coming home it passes over everything)
         if (!B.grazed[i] && this.map.wall(x, y + 14)) (B.grazed[i] = 1), B.hits.fill(0, i * 4, i * 4 + 4), this.burst(x, y, 4, rgba("#e8edf6"), 40, 0.2);
-      } else if (this.map.wall(x, y + 14) || (B.kind[i] !== B_CRESCENT && this.pillars.some((p) => (x - p.x) ** 2 + (y + 14 - p.y) ** 2 < (p.r + 2) ** 2))) {
-        this.burst(x, y, 4, B.team[i] === TEAM_FOE ? rgba("#ff8a9a") : rgba("#c4ecff"), 40, 0.25);
-        B.remove(i);
-        continue;
+      } else if (B.grazed[i] !== LANCE_STUCK || !lance) {
+        if (this.map.wall(x, y + 14) || (B.kind[i] !== B_CRESCENT && this.pillars.some((p) => (x - p.x) ** 2 + (y + 14 - p.y) ** 2 < (p.r + 2) ** 2))) {
+          if (lance) {
+            // the lance sticks where it struck, chips frost off the stone and melts away there
+            if (!spent) this.addFx("hit_frost", x, y + 10, { rot: Math.atan2(-B.vy[i], -B.vx[i]), sx: 0.5, sy: 0.5, glow: 0.6 });
+            this.burst(x, y, 3, rgba("#c4ecff"), 30, 0.25);
+            B.grazed[i] = LANCE_STUCK;
+            B.life[i] = Math.min(B.life[i], LANCE_FADE);
+            continue;
+          }
+          this.burst(x, y, 4, B.team[i] === TEAM_FOE ? rgba("#ff8a9a") : rgba("#c4ecff"), 40, 0.25);
+          B.remove(i);
+          continue;
+        }
       }
+      if (spent) continue;
       if (B.team[i] === TEAM_HERO) {
         if (this.urns.length) this.smashUrns(x, y + 6, 3);
         this.setSrc(B.src[i]);
@@ -4849,7 +4894,9 @@ export class World {
             return true;
           }
         });
-        if (gone) B.remove(i);
+        // a lance that has struck its last flies on through, spent, and melts over a short fade
+        if (gone && lance) (B.grazed[i] = LANCE_SPENT), (B.life[i] = Math.min(B.life[i], LANCE_FADE * 0.6));
+        else if (gone) B.remove(i);
       } else {
         const dx = x - hx, dy = y - hy, dd = dx * dx + dy * dy, hitR = HERO_R + B.r[i];
         if (dd < 90 * 90) near = true;
@@ -4988,15 +5035,16 @@ export class World {
         this.addFx("explosion_s", b.x, b.y - 22, { glow: 0.9 });
         this.shake = 0.35;
         this.gainOd(15);
-        // the last brazier of a boss floor calls the boss; any other starts a wave to be survived
-        if (this.phase >= 3 && this.bossFloor()) this.spawnBoss();
-        else this.startWave();
+        // the fire answers with the floor's one wave (on a boss's floor its height calls the boss)
+        this.startWave();
       }
     }
-    // the wave burns down; when it is out the dark falls back (no new enemies until the next brazier)
+    // the wave burns on, the fire growing at its thirds; when it is out the dark falls back
     if (this.wave && !this.cine && !h.dead) {
       this.wave.left -= dt;
-      if (this.wave.left <= 0) this.endWave();
+      const k = 1 - this.wave.left / this.wave.total, stage = k >= 2 / 3 ? 3 : k >= 1 / 3 ? 2 : 1;
+      if (stage > this.wave.n) this.fireGrows(stage);
+      if (this.wave && this.wave.left <= 0) this.endWave();
     }
     // a boss gone without its death being seen (nothing should do this, but the way on must never be lost)
     if (this.bossSpawned && !this.portal && !this.cine && !this.won && this.bossIndex() < 0) {
@@ -5056,24 +5104,58 @@ export class World {
       if (m.y > H + 10) m.y -= H + 60;
     }
   }
-  /** How long the n-th wave of this floor lasts (s): longer deeper down and for each brazier lit. */
-  waveTime(n: number): number {
-    return Math.round(Math.min(50, 22 + this.floor * 2.5 + (n - 1) * 4));
+  /** How long the floor's wave lasts (s): about a minute, a little longer deeper down. */
+  waveTime(): number {
+    return Math.round(Math.min(78, 48 + this.floor * 2.5));
   }
-  /** A brazier is lit: the dark answers with a wave to be survived, a pack at once and more while it lasts. */
+  /**
+   * The brazier is lit: the dark answers with the floor's one wave, to be survived. It comes in three stages, the fire
+   * growing at each third (fireGrows): new kinds of enemy, thicker packs, an elite, at the height a champion.
+   */
   private startWave(): void {
-    const n = this.phase, total = this.waveTime(n);
-    this.wave = { left: total, total, n };
+    const total = this.waveTime();
+    this.firePhase = 1;
+    this.wave = { left: total, total, n: 1 };
     this.waitSaid = false;
     // the old word gives way: the banner says what matters now
     this.hint = null;
     this.spawnAcc = 0;
-    this.ev.banner(tr("waveStart").replace("{n}", String(n)), rgba("#ff7a6a"), tr("waveSub").replace("{s}", String(total)));
+    this.ev.banner(tr("waveStart"), rgba("#ff7a6a"), tr("waveSub").replace("{s}", String(total)));
+    this.spawnPack(this.pickEnemy(1), false);
+    if (this.floor >= 5 || this.mutator === "champions") this.spawnElite();
+  }
+  /**
+   * The fire grows (stage 2 at a third of the wave, 3 at two thirds): it flares, the floor's roster widens and a pack
+   * comes at once; at the second stage an elite (from the second floor), at the height an elite or, now and then, a
+   * miniboss. On a boss's floor the height of the fire calls the boss instead: its fight takes the wave's place.
+   */
+  private fireGrows(n: number): void {
+    const w = this.wave, b = this.braziers[0];
+    if (!w) return;
+    w.n = n;
+    this.firePhase = n;
+    if (b) {
+      this.addFx("explosion_s", b.x, b.y - 22, { glow: 1, sx: 1.2 + 0.2 * n, sy: 1.2 + 0.2 * n });
+      this.parts.add(b.x, b.y - 30, 0, -60, 0.6, rgba("#ffd27a"), 2, 0, 1);
+    }
+    this.audio.play("ignite", 0.8 + 0.15 * n);
+    this.shake = Math.max(this.shake, 0.3);
+    if (n >= 3 && this.bossFloor()) {
+      this.wave = null;
+      this.spawnAcc = 0;
+      this.spawnBoss();
+      return;
+    }
+    this.ev.banner(tr("fireGrows"), rgba("#ffae35"), tr("fireStage").replace("{n}", String(n)));
     this.spawnPack(this.pickEnemy(n), false);
-    if ((this.floor >= 2 && n === 2) || (this.floor >= 5 && n === 1) || this.mutator === "champions") this.spawnElite();
-    // now and then the fire wakes something bigger: a miniboss (not in a newcomer's first floor, once a floor at the
-    // most, rarer high in the tower)
-    if (!this.miniCalled && !this.gentle && this.place.minis.length && this.rng.chance(MINI_CHANCE + MINI_PER_FLOOR * this.floor)) this.callMini();
+    if (n === 2 && (this.floor >= 2 || this.mutator === "champions")) this.spawnElite();
+    if (n === 3) {
+      // the height of the fire wakes something bigger: a miniboss now and then (never in a newcomer's first floor, once
+      // a floor at the most, rarer high in the tower), else an elite. (Per fire, as often as three braziers' were.)
+      const p = 1 - (1 - (MINI_CHANCE + MINI_PER_FLOOR * this.floor)) ** 3;
+      if (!this.miniCalled && !this.gentle && this.place.minis.length && this.rng.chance(p)) this.callMini();
+      else this.spawnElite();
+    }
   }
   /** A miniboss is called (one of the place's, or the one named): a great ring where it will rise, its name, then it is there. */
   callMini(type = this.rng.pick(this.place.minis)): void {
@@ -5461,32 +5543,30 @@ export class World {
     }
     return [0, 0];
   }
-  /** The wave is survived: a breath, a reward, and the way on (the next brazier, or the portal). */
+  /** The wave is survived: a breath, a reward, and the way on (the stairs, or the portal). */
   private endWave(): void {
     const h = this.hero;
     this.wave = null;
+    this.firePhase = 3;
     this.spawnAcc = 0;
-    this.gainOd(20);
-    this.embersBonus += 2 + this.floor;
-    if (h.hp < h.maxHp && this.rng.chance(0.2)) this.drops.add(D_HEART, h.x + this.rng.range(-30, 30), h.y + this.rng.range(-20, 20), 1, 0, -20);
+    this.gainOd(25);
+    // (the one wave pays what the three braziers' waves paid together)
+    this.embersBonus += 3 * (2 + this.floor);
+    if (h.hp < h.maxHp && this.rng.chance(0.45)) this.drops.add(D_HEART, h.x + this.rng.range(-30, 30), h.y + this.rng.range(-20, 20), 1, 0, -20);
     this.addFx("heal_ring", h.x, h.y, { tint: rgba("#ffd27a"), glow: 0.7, sx: 0.8, sy: 0.8 });
     this.audio.play("levelup", 0.8);
-    if (this.phase >= 3) {
-      if (this.stairs) {
-        this.openStairs();
-        this.say(tr("hintStairs"), 4.5);
-      } else {
-        this.openPortal(...this.portalSpot());
-        this.say(tr("hintPortal"), 4.5);
-      }
+    // the way on: the stairs down in the back wall's recess (on a boss's floor the portal comes after the boss)
+    if (this.stairs) {
+      this.openStairs();
+      this.say(tr("hintStairs"), 4.5);
     } else {
-      this.ev.banner(tr("waveDone"), rgba("#ffd27a"), tr("waveDoneSub").replace("{n}", String(3 - this.phase)));
-      this.say(tr("hintNext"), 4.5);
+      this.openPortal(...this.portalSpot());
+      this.say(tr("hintPortal"), 4.5);
     }
   }
   /**
-   * Where the hero should go now: the portal or the stairs once open, else (between waves, no boss up) the next
-   * unlit brazier along the way.
+   * Where the hero should go now: the portal or the stairs once open, else (no wave, no boss up) the brazier, while
+   * it is unlit.
    */
   objective(): [number, number] | null {
     if (this.pit) return this.pit.fall < 0 ? [this.pit.x, this.pit.y] : null;
@@ -5499,7 +5579,7 @@ export class World {
       return Math.hypot(E.x[bi] - this.hero.x, E.y[bi] - this.hero.y) > 220 ? [E.x[bi], E.y[bi]] : null;
     }
     if (this.wave || this.cine) return null;
-    // the braziers stand along the way in order: the next unlit one is where the way goes on
+    // the fire in the middle of the room, until it is lit
     const next = this.braziers.find((b) => !b.lit);
     return next ? [next.x, next.y] : null;
   }
@@ -5556,7 +5636,7 @@ export class World {
     }
     return [this.w / 2, this.h / 2];
   }
-  /** The third fire is lit and its wave is over: the grate over the stairs down swings away. */
+  /** The fire's wave is over: the grate over the stairs down swings away. */
   private openStairs(): void {
     const st = this.stairs;
     if (!st || st.open) return;

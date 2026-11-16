@@ -55,6 +55,8 @@ interface PkbSDKInstance {
 declare const PkbSDK: { init(): Promise<PkbSDKInstance> } | undefined;
 
 const SDK_URL = "https://games.pikabu.ru/sdk/sdk.js";
+/** How long the rewarded-ad buttons stay hidden after a try that found no ad (ms). */
+const REWARDED_PAUSE = 30_000;
 /** Explicit flushes: at most 100 in 5 minutes; the SDK also saves by itself shortly after each change. */
 const FLUSH_EVERY = 4000;
 
@@ -171,8 +173,14 @@ export class PikabuPlatform extends BasePlatform {
   }
 
   // ---- ads
+  /**
+   * Until when the buttons for a rewarded ad stay hidden (Date.now()): after a try that found no ad (an ad blocker, no
+   * fill), so they do not stay pressable to no effect (the docs: hide them after canShow() says no), every press one
+   * more request; they come back a while later. NOT_SUPPORTED hides them for the session.
+   */
+  private rewardedOffUntil = 0;
   override canShowRewarded(): boolean {
-    return !!this.sdk && this.sdk.ads.rewarded.isSupported;
+    return !!this.sdk && this.sdk.ads.rewarded.isSupported && Date.now() >= this.rewardedOffUntil;
   }
   override async showInterstitial(): Promise<void> {
     const ads = this.sdk?.ads.fullscreen;
@@ -182,9 +190,21 @@ export class PikabuPlatform extends BasePlatform {
   }
   override async showRewarded(): Promise<boolean> {
     const ads = this.sdk?.ads.rewarded;
-    if (!ads || !ads.isSupported || !(await ads.canShow())) return false;
+    if (!ads || !ads.isSupported) return false;
+    if (!(await ads.canShow())) {
+      console.warn("Pikabu rewarded ad: canShow() said no");
+      this.rewardedOffUntil = Date.now() + REWARDED_PAUSE;
+      return false;
+    }
     const res = await this.modal(() => ads.show());
-    return res.rendered && res.reward;
+    if (!res.rendered) {
+      console.warn("Pikabu rewarded ad not shown:", res.reason);
+      this.rewardedOffUntil = res.reason === "NOT_SUPPORTED" ? Infinity : Date.now() + REWARDED_PAUSE;
+      return false;
+    }
+    // (watched to the end: the reward; closed early, or an ad blocker: none, per the docs)
+    if (!res.reward) console.warn("Pikabu rewarded ad: no reward (closed early or blocked)");
+    return res.reward;
   }
 
   // ---- purchases in roubles (the catalog lives in the Studio, with the same ids as the game's shop)
