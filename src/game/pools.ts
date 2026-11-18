@@ -72,6 +72,11 @@ export class Bullets {
   cur = 0;
   /** The last enemies each bullet hit (so a piercing bullet hits each foe once). */
   hits: Int32Array;
+  /** The weapon artifacts a hero's shot carries (bits of WArt), its bounces left, its trail's run since the last
+   * ember dropped; new bullets take `artCur` and `bounceCur`. */
+  art: Uint8Array; bounce: Uint8Array; trail: Float32Array;
+  artCur = 0;
+  bounceCur = 0;
 
   constructor(cap: number) {
     this.cap = cap;
@@ -79,6 +84,7 @@ export class Bullets {
     this.x = F(); this.y = F(); this.vx = F(); this.vy = F(); this.life = F(); this.dmg = F(); this.r = F();
     this.team = U(); this.kind = U(); this.el = U(); this.pierce = U(); this.grazed = U(); this.t = F(); this.src = U();
     this.hits = new Int32Array(cap * 4);
+    this.art = U(); this.bounce = U(); this.trail = F();
   }
 
   add(team: number, kind: number, x: number, y: number, vx: number, vy: number, life: number, dmg: number, r: number, el: number, pierce: number): number {
@@ -86,6 +92,7 @@ export class Bullets {
     const i = this.n++;
     this.x[i] = x; this.y[i] = y; this.vx[i] = vx; this.vy[i] = vy; this.life[i] = life; this.dmg[i] = dmg; this.r[i] = r;
     this.team[i] = team; this.kind[i] = kind; this.el[i] = el; this.pierce[i] = pierce; this.grazed[i] = 0; this.t[i] = 0; this.src[i] = this.cur;
+    this.art[i] = this.artCur; this.bounce[i] = this.bounceCur; this.trail[i] = 0;
     this.hits.fill(0, i * 4, i * 4 + 4);
     return i;
   }
@@ -94,7 +101,7 @@ export class Bullets {
     if (i < 0 || i >= this.n) return;
     const j = --this.n;
     if (i === j) return;
-    for (const a of [this.x, this.y, this.vx, this.vy, this.life, this.dmg, this.r, this.team, this.kind, this.el, this.pierce, this.grazed, this.t, this.src]) a[i] = a[j];
+    for (const a of [this.x, this.y, this.vx, this.vy, this.life, this.dmg, this.r, this.team, this.kind, this.el, this.pierce, this.grazed, this.t, this.src, this.art, this.bounce, this.trail]) a[i] = a[j];
     this.hits.copyWithin(i * 4, j * 4, j * 4 + 4);
   }
 }

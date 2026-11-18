@@ -356,6 +356,17 @@ export function drawWorld(s: Scene, w: World, camX: number, camY: number, viewW:
   for (const f of w.firePools) {
     if (!inView(f.x, f.y, f.r + 10)) continue;
     const k = Math.min(1, f.t / 0.15) * Math.min(1, (f.life - f.t) / 0.5), n = Math.max(10, Math.round(f.r * 0.9));
+    if (f.ember) {
+      // an ember a fiery shot left: a scorch, a few licks of flame in its middle, a warm glow
+      s.back.disc(f.x, f.y, f.r * 0.8, f.r * 0.8 * FLOOR_SQ, rgbaf(0.25, 0.06, 0.02, 0.4 * k));
+      for (let q = 0; q < 4; q++) {
+        const px = Math.round(f.x + (q - 1.5) * 2.5 + Math.sin(f.x + q) * 1.5), fl = Math.round((3 + 3 * Math.abs(Math.sin(time * 10 + q * 2.1 + f.x))) * k);
+        s.glow.rect(px, f.y - fl, 1, fl, rgbaf(1, 0.45 + 0.35 * Math.sin(time * 8 + q), 0.1, 0.9 * k));
+        if (q % 2 === 0) s.glow.rect(px, f.y - fl - 1, 1, 1, rgbaf(1, 0.9, 0.5, 0.7 * k));
+      }
+      s.illum.light(f.x, f.y - 3, f.r + 8, (f.r + 8) * FLOOR_SQ, rgbaf(1, 0.42, 0.12, 0.22 * k));
+      continue;
+    }
     s.back.disc(f.x, f.y, f.r, f.r * FLOOR_SQ, rgbaf(0.35, 0.08, 0.02, 0.35 * k));
     for (let q = 0; q < n; q++) {
       const a = (q / n) * Math.PI * 2 + f.t * 0.6, px = Math.round(f.x + Math.cos(a) * f.r), py = Math.round(f.y + Math.sin(a) * f.r * FLOOR_SQ);
@@ -1137,7 +1148,9 @@ export function drawWorld(s: Scene, w: World, camX: number, camY: number, viewW:
     // dark so they read against anything
     const grow = (Bu.team[i] === TEAM_HERO ? Math.min(1, 0.3 + (Bu.t[i] / 0.09) * 0.7) : orb ? 1.5 : 1) * (k === B_BOLT ? 1.4 : 1);
     if (orb) s.color.disc(x, y, 6, 6, rgba("#0b0a12", 0.55), y + 13);
-    drawAnim(s, a, Bu.t[i], x, y, { rot: orb ? 0 : Math.atan2(Bu.vy[i], Bu.vx[i]), sx: grow * (0.55 + 0.45 * melt), sy: grow * (0.7 + 0.3 * melt), key: y + 14, glow: 0.9, alpha: k === B_CRESCENT ? Math.min(1, Bu.life[i] * 5) : melt });
+    // (a crescent with an element takes its colour: a wave of fire, of frost)
+    const tintC = k === B_CRESCENT && Bu.el[i] ? rgba(EL_COLOR[Bu.el[i] as keyof typeof EL_COLOR]) : undefined;
+    drawAnim(s, a, Bu.t[i], x, y, { rot: orb ? 0 : Math.atan2(Bu.vy[i], Bu.vx[i]), sx: grow * (0.55 + 0.45 * melt), sy: grow * (0.7 + 0.3 * melt), key: y + 14, glow: 0.9, alpha: k === B_CRESCENT ? Math.min(1, Bu.life[i] * 5) : melt, tint: tintC });
     if (orb) {
       s.back.disc(x, y + 14, 3, 1, rgba("#000000", 0.25));
       s.illum.light(x, y, 16, 14, k === 2 ? rgbaf(1, 0.2, 0.3, 0.35) : k === 3 ? rgbaf(0.6, 0.3, 1, 0.35) : k === 4 ? rgbaf(0.4, 1, 0.3, 0.35) : rgbaf(0.3, 0.6, 1, 0.35));

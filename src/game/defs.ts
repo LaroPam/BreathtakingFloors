@@ -609,6 +609,32 @@ export const HORDE = {
   /** Soul shards lying about past this many merge into one near them, so the floor does not turn to gravel. */
   gemsLoose: 260,
 };
+/**
+ * Weapon artifacts: the stage 2 prototype (docs/PLAN-POWER.md), for the owner to judge before the rework; nothing
+ * offers them in play yet. Each changes the weapon in hand, one effect for a blade and one for a shot, stronger by
+ * level (1-5). The prototype's evolution: the Ring of Fire at its last level with the Bright Lantern.
+ */
+export enum WArt {
+  Fire = 0,
+  Ricochet = 1,
+  Storm = 2,
+  Frost = 3,
+}
+export interface WArtDef {
+  kind: WArt;
+  el: El;
+  /** Its badge in the "icons" animation (the relics' for now). */
+  icon: string;
+  name: Text;
+  melee: Text;
+  ranged: Text;
+}
+export const WARTS: WArtDef[] = [
+  { kind: WArt.Fire, el: El.Fire, icon: "orbit", name: { ru: "ОГНЕННОЕ КОЛЬЦО", en: "RING OF FIRE" }, melee: { ru: "УДАР ПУСКАЕТ ОГНЕННЫЕ ВОЛНЫ, ЗА НИМИ ГОРИТ ЗЕМЛЯ", en: "BLOWS SEND OUT WAVES OF FIRE THAT LEAVE THE GROUND BURNING" }, ranged: { ru: "СНАРЯДЫ ОСТАВЛЯЮТ ТЛЕЮЩИЙ ОГНЕННЫЙ СЛЕД", en: "SHOTS LEAVE A SMOULDERING TRAIL OF FIRE" } },
+  { kind: WArt.Ricochet, el: El.None, icon: "mirror", name: { ru: "РИКОШЕТ", en: "RICOCHET" }, melee: { ru: "ВИХРЬ УДАРОВ ПЕРЕСКАКИВАЕТ С ВРАГА НА ВРАГА", en: "A WHIRL OF BLOWS LEAPS FROM FOE TO FOE" }, ranged: { ru: "СНАРЯДЫ ОТСКАКИВАЮТ К СЛЕДУЮЩИМ ВРАГАМ", en: "SHOTS BOUNCE ON TO THE NEXT FOES" } },
+  { kind: WArt.Storm, el: El.Storm, icon: "coil", name: { ru: "ГРОЗОВОЙ КАМЕНЬ", en: "STORM STONE" }, melee: { ru: "УДАР ПУСКАЕТ ЦЕПНУЮ МОЛНИЮ", en: "BLOWS LOOSE CHAIN LIGHTNING" }, ranged: { ru: "ПОПАДАНИЕ ЗОВЁТ МОЛНИЮ С НЕБА", en: "A HIT CALLS LIGHTNING FROM THE SKY" } },
+  { kind: WArt.Frost, el: El.Frost, icon: "lance", name: { ru: "ЛЕДЯНОЙ ОСКОЛОК", en: "ICE SHARD" }, melee: { ru: "УДАР ВЫПУСКАЕТ ВЕЕР ЛЕДЯНЫХ ШИПОВ", en: "BLOWS LOOSE A FAN OF ICE SPIKES" }, ranged: { ru: "СНАРЯДЫ ВЗРЫВАЮТСЯ МОРОЗНЫМ ОБЛАКОМ", en: "SHOTS BURST INTO A FROST CLOUD" } },
+];
 export const RELIC_SLOTS = 5;
 /** Slots for artifacts (the passive upgrades): a new one only while one is free, then only their levels. */
 export const ARTIFACT_SLOTS = 5;

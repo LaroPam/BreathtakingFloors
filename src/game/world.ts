@@ -9,6 +9,7 @@ import {
   AI, depthOf, placeDef, El, EL_COLOR, EN, ENEMIES, evolutionOf, heroDef, mainStop, nextStop, PLACE_FLOORS, QUESTS, RELIC_MAX, RELICS, RelicKind, reactionFor, roster, WEAPON_IDS, WEAPONS,
   type PlaceDef, type PlaceId, type Stop, type GateKind, giftFor, DOORS, type DoorKind, MINIS, type MiniMove, type Blow, type HeroDef, type Modifier, type QuestKind, type Reaction, type StatId, type TaskId, type WeaponId, MYTHIC, RARITIES, rollRarity, UNIQUES, type Perk,
   HORDE,
+  WArt,
 } from "./defs";
 import { getLang, t as tr, tx } from "./i18n";
 import { Bullets, Drops, Enemies, Grid, Particles, TEAM_FOE, TEAM_HERO } from "./pools";
@@ -622,7 +623,17 @@ export class World {
   statLevels: Partial<Record<StatId, number>> = {};
   frostOrb: FrostOrb | null = null;
   /** The Ash Brazier's rings of fire on the floor: each burns what stands in it every so often (`tick`). */
-  firePools: { x: number; y: number; r: number; t: number; life: number; dmg: number; tick: number }[] = [];
+  /** Rings of fire on the floor (the brazier relic's), and embers a fiery shot leaves behind it (`ember`). */
+  firePools: { x: number; y: number; r: number; t: number; life: number; dmg: number; tick: number; ember?: boolean }[] = [];
+  /**
+   * The weapon artifacts held (the stage 2 prototype: see WARTS; nothing offers them in play yet), and whether the
+   * Ring of Fire has evolved with the Bright Lantern.
+   */
+  wArts: { kind: WArt; level: number }[] = [];
+  wArtEvo = false;
+  private wLv(k: WArt): number {
+    return this.wArts.find((a) => a.kind === k)?.level ?? 0;
+  }
   /** When the Ice Crown last froze on a dash (s, the world's time). */
   crownDashT = -9;
   /** Enemy bolts that have reached the Mirror Shield: every so many is turned back. */
@@ -1819,12 +1830,14 @@ export class World {
       // chest's line would pass over a low target (a slime)
       const goal = this.shotGoal();
       const base = goal && Math.hypot(goal.x - hx, goal.y - hy) > 10 ? Math.atan2(goal.y - hy, goal.x - hx) : dir;
+      this.armShots();
       for (let q = 0; q < n; q++) {
         // it leaves from just past the hand, small, and grows to its size in flight (draw.ts), rather than appearing
         // whole inside the hero
         const a = base + (q - (n - 1) / 2) * spread;
         this.bullets.add(TEAM_HERO, kind, hx + Math.cos(a) * 7, hy + Math.sin(a) * 7, Math.cos(a) * speed, Math.sin(a) * speed, 0.95, dmg, B.kind === "fire" ? 5 : 3.5, el, pierce);
       }
+      this.bullets.artCur = this.bullets.bounceCur = 0;
       this.audio.play(B.kind === "arrow" ? "shoot" : B.kind === "fire" ? "ignite" : "freeze", B.kind === "arrow" ? 0.6 : 1.3);
       // the release: a flash at the hand, a puff of sparks thrown forward
       const col = B.kind === "fire" ? "#ffae35" : B.kind === "frost" ? "#9bdcff" : el ? EL_COLOR[el] : "#e8e4f0";
@@ -2011,6 +2024,8 @@ export class World {
       }
       this.setSrc(SRC_WEAPON);
     }
+    // the weapon artifacts' own turn on a blade's blow (once per blow)
+    if (hit === of - 1 && this.wArts.length && !W.ranged) this.meleeArts(cx, cy, dir, R, dmg);
     // an element sings in its own voice when the blow lands
     if (hits && wel) this.audio.play(EL_SFX[wel], 1.1);
     if (hits) {
@@ -2021,6 +2036,105 @@ export class World {
     void W;
   }
 
+  // ============================================================================================ weapon artifacts
+  /** The shots about to leave take the weapon artifacts' marks: a trail of fire, bounces, lightning, frost. */
+  private armShots(): void {
+    let bits = 0;
+    for (const a of this.wArts) bits |= 1 << a.kind;
+    this.bullets.artCur = bits;
+    this.bullets.bounceCur = this.wLv(WArt.Ricochet);
+  }
+  /** A jagged line for lightning between two points. */
+  private jagged(x0: number, y0: number, x1: number, y1: number, amp = 7): number[] {
+    const pts = [x0, y0], nx = -(y1 - y0), ny = x1 - x0, L = Math.hypot(nx, ny) || 1;
+    for (let q = 1; q < 4; q++) {
+      const u = q / 4, o = this.rng.range(-amp, amp);
+      pts.push(x0 + (x1 - x0) * u + (nx / L) * o, y0 + (y1 - y0) * u + (ny / L) * o);
+    }
+    pts.push(x1, y1);
+    return pts;
+  }
+  /**
+   * From a point, on through the nearest foes not yet struck: lightning (jagged, in the storm's colour) or a whirl of
+   * blows (straight white cuts, a cross of light at each).
+   */
+  private chainFrom(x: number, y: number, jumps: number, reach: number, dmg: number, el: El, slash: boolean): void {
+    const hit = new Set<number>(), E = this.enemies;
+    let px = x, py = y, j = this.nearestEnemy(x, y, reach);
+    for (let q = 0; q < jumps && j >= 0; q++) {
+      hit.add(E.uid[j]);
+      this.body(j);
+      const ex = this.bx, ey = this.by;
+      this.arcs.push({ pts: slash ? [px, py, (px + ex) / 2 + this.rng.range(-6, 6), (py + ey) / 2 - 6, ex, ey] : this.jagged(px, py, ex, ey), life: slash ? 0.18 : 0.14, color: slash ? rgba("#ffffff") : q === 0 ? rgba("#ffffff") : rgba(EL_COLOR[El.Storm]) });
+      this.addFx(slash ? "crit" : "hit_spark", ex, ey + 10, { rot: Math.atan2(ey - py, ex - px), sx: slash ? 0.7 : 0.5, sy: slash ? 0.7 : 0.5, glow: 0.9, key: 2, tint: slash ? undefined : rgba(EL_COLOR[El.Storm]) });
+      this.damage(j, dmg, el);
+      (px = ex), (py = ey);
+      j = this.nearestEnemy(ex, ey, reach, hit);
+    }
+    if (hit.size) this.audio.play(slash ? "hit" : "zap", slash ? 1.4 : 1);
+  }
+  /** A blade's blow with the weapon artifacts held: each adds its own on top (see WARTS). */
+  private meleeArts(cx: number, cy: number, dir: number, R: number, dmg: number): void {
+    const B = this.bullets;
+    for (const a of this.wArts) {
+      const L = a.level;
+      switch (a.kind) {
+        case WArt.Fire: {
+          // waves of fire thrown along the blow, the ground burning where they pass; evolved, a whole ring of them
+          const n = this.wArtEvo ? 10 : L >= 5 ? 3 : L >= 3 ? 2 : 1, step = this.wArtEvo ? (Math.PI * 2) / n : 0.34;
+          B.artCur = 1 << WArt.Fire;
+          for (let q = 0; q < n; q++) {
+            const ang = this.wArtEvo ? dir + q * step : dir + (q - (n - 1) / 2) * step;
+            B.add(TEAM_HERO, B_CRESCENT, cx + Math.cos(ang) * 14, cy + Math.sin(ang) * 14, Math.cos(ang) * 210, Math.sin(ang) * 210, 0.5 + 0.06 * L, dmg * (0.35 + 0.08 * L), 9, El.Fire, 4);
+          }
+          B.artCur = 0;
+          if (this.wArtEvo) (this.addFx("explosion_s", cx, cy + 8, { glow: 1, sx: 1.2, sy: 1.2 }), (this.shake = Math.max(this.shake, 0.3)));
+          this.audio.play("ignite", 1.2);
+          break;
+        }
+        case WArt.Ricochet:
+          this.chainFrom(cx + Math.cos(dir) * R * 0.6, cy + Math.sin(dir) * R * 0.6, 1 + L, 70 + 10 * L, dmg * (0.4 + 0.05 * L), El.None, true);
+          break;
+        case WArt.Storm:
+          this.chainFrom(cx + Math.cos(dir) * R * 0.6, cy + Math.sin(dir) * R * 0.6, 1 + L, 80 + 10 * L, dmg * (0.35 + 0.05 * L), El.Storm, false);
+          break;
+        case WArt.Frost: {
+          // a fan of ice spikes out along the blow
+          const n = 3 + L, span = 0.9 + 0.12 * L;
+          for (let q = 0; q < n; q++) {
+            const ang = dir + (q / (n - 1) - 0.5) * span;
+            B.add(TEAM_HERO, B_LANCE, cx + Math.cos(ang) * 16, cy + Math.sin(ang) * 16, Math.cos(ang) * 290, Math.sin(ang) * 290, 0.3 + 0.03 * L, dmg * (0.25 + 0.05 * L), 3, El.Frost, 1);
+          }
+          this.audio.play("freeze", 1.4);
+          break;
+        }
+      }
+    }
+  }
+  /** A hero's shot that carries the weapon artifacts strikes a foe at (x, y): lightning, frost, the evolved fire. */
+  private shotArts(art: number, x: number, y: number, dmg: number): void {
+    if (art & (1 << WArt.Storm)) {
+      const L = this.wLv(WArt.Storm);
+      this.addFx("lightning", x, y + 10, { sx: 0.5 + 0.05 * L, sy: 0.5 + 0.05 * L, glow: 0.9, key: 4 });
+      this.blast(x, y, 14 + 3 * L, dmg * (0.3 + 0.07 * L), El.Storm, 20);
+      if (L >= 5) this.chainFrom(x, y, 2, 90, dmg * 0.4, El.Storm, false);
+      this.audio.play("zap", 1.1);
+    }
+    if (art & (1 << WArt.Frost)) {
+      const L = this.wLv(WArt.Frost);
+      this.addFx("frost_nova", x, y + 8, { sx: 0.3 + 0.07 * L, sy: 0.3 + 0.07 * L, glow: 0.7 });
+      this.blast(x, y, 14 + 5 * L, dmg * (0.2 + 0.05 * L), El.Frost, 10);
+    }
+    if (art & (1 << WArt.Fire) && this.wArtEvo) {
+      // the crown's shot bursts into a ring of fire where it strikes
+      this.addFx("explosion_s", x, y + 8, { glow: 1, sx: 1.1, sy: 1.1 });
+      this.blast(x, y, 34, dmg * 0.8, El.Fire, 60);
+      for (let q = 0; q < 6; q++) {
+        const a = (q / 6) * Math.PI * 2;
+        this.firePools.push({ x: x + Math.cos(a) * 22, y: y + 14 + Math.sin(a) * 16, r: 12, t: 0, life: 2, dmg: 7, tick: 0 });
+      }
+    }
+  }
   /** Damage everything in a circle (spells, fireballs bursting). */
   private blast(x: number, y: number, r: number, dmg: number, el: El, push: number): void {
     const E = this.enemies, hit: number[] = [];
@@ -4889,10 +5003,19 @@ export class World {
         }
       }
       if (spent) continue;
+      // the Ring of Fire: a hero's shot leaves embers burning on the ground behind it
+      if (B.team[i] === TEAM_HERO && B.art[i] & (1 << WArt.Fire)) {
+        B.trail[i] += Math.hypot(B.vx[i], B.vy[i]) * dt;
+        if (B.trail[i] > 26) {
+          const L = this.wLv(WArt.Fire);
+          B.trail[i] = 0;
+          if (this.firePools.length < 90) this.firePools.push({ x, y: y + 14, r: this.wArtEvo ? 11 : 6 + L, t: 0, life: (this.wArtEvo ? 1.8 : 0.7 + 0.25 * L), dmg: (this.wArtEvo ? 6 : 2 + L) * this.stats.might, tick: 0, ember: true });
+        }
+      }
       if (B.team[i] === TEAM_HERO) {
         if (this.urns.length) this.smashUrns(x, y + 6, 3);
         this.setSrc(B.src[i]);
-        let gone = false;
+        let gone = false, artX = 0, artY = 0, artUid = 0;
         this.grid.query(x, y + 16, 40, (j) => {
           this.body(j);
           if (!this.touches(x, y, B.r[i])) return;
@@ -4935,6 +5058,10 @@ export class World {
           this.addFx(B.kind[i] === B_LANCE ? "hit_frost" : crit ? "crit" : "hit_spark", ex, ey + 10, { rot: Math.atan2(-B.vy[i], -B.vx[i]), sx: 0.6, sy: 0.6, glow: 0.7 });
           if (B.el[i] && B.kind[i] !== B_LANCE) this.burst(ex, ey, 4, rgba(EL_COLOR[B.el[i] as El]), 60, 0.3);
           this.audio.play("hit", dead ? 0.8 : 1);
+          // (the weapon artifacts' turn comes when the bullet is done with this pass: see below)
+          if (B.art[i]) (artX = ex), (artY = ey), (artUid = uid);
+          // a ricochet: the shot turns to the next foe instead of spending itself
+          if (B.art[i] & (1 << WArt.Ricochet) && B.bounce[i] > 0) return true;
           if (B.pierce[i] > 0) B.pierce[i]--;
           else {
             gone = true;
@@ -4942,6 +5069,27 @@ export class World {
           }
         });
         // a lance that has struck its last flies on through, spent, and melts over a short fade
+        if (artUid) {
+          this.shotArts(B.art[i], artX, artY, B.dmg[i]);
+          if (B.art[i] & (1 << WArt.Ricochet) && B.bounce[i] > 0 && !gone) {
+            // on to the nearest foe this shot has not struck, at its own speed; it forgets the older ones
+            const skip = new Set<number>();
+            for (let k = 0; k < 4; k++) if (B.hits[i * 4 + k]) skip.add(B.hits[i * 4 + k]);
+            const j = this.nearestEnemy(artX, artY, 150, skip);
+            B.bounce[i]--;
+            if (j >= 0) {
+              this.body(j);
+              const sp = Math.hypot(B.vx[i], B.vy[i]) || 1, a = Math.atan2(this.by - y, this.bx - x);
+              B.vx[i] = Math.cos(a) * sp;
+              B.vy[i] = Math.sin(a) * sp;
+              B.life[i] = Math.max(B.life[i], 0.5);
+              B.hits.fill(0, i * 4, i * 4 + 4);
+              B.hits[i * 4] = artUid;
+              this.burst(artX, artY, 5, rgba("#ffffff"), 70, 0.25);
+            } else if (B.pierce[i] > 0) B.pierce[i]--;
+            else gone = true;
+          }
+        }
         if (gone && lance) (B.grazed[i] = LANCE_SPENT), (B.life[i] = Math.min(B.life[i], LANCE_FADE * 0.6));
         else if (gone) B.remove(i);
       } else {
