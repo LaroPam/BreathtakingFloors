@@ -4817,10 +4817,11 @@ export class World {
         if (!FLYERS.has(d.ai)) this.pushOut(this.tmp, ri * 0.8);
         E.x[i] = this.tmp.x;
         E.y[i] = this.tmp.y;
-      } else {
-        E.x[i] = Math.max(8, Math.min(this.w - 8, E.x[i]));
-        E.y[i] = Math.max(14, Math.min(this.h - 2, E.y[i]));
       }
+      // never off the map: a flyer crosses drops, and a hard shove (a shockwave, a black hole) could carry it past the
+      // edge where nothing can reach it (as a phantom always was)
+      E.x[i] = Math.max(8, Math.min(this.w - 8, E.x[i]));
+      E.y[i] = Math.max(14, Math.min(this.h - 2, E.y[i]));
     }
   }
   private tmp = { x: 0, y: 0 };

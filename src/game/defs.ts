@@ -1576,7 +1576,7 @@ export const HEROES: HeroDef[] = [
     why: { ru: "СТУЖА СЛУШАЕТСЯ МЕНЯ. ПОСМОТРИМ, ПОСЛУШАЕТСЯ ЛИ ТЬМА.", en: "THE FROST OBEYS ME. LET US SEE IF THE DARK WILL." },
     perk: { ru: "ПО ЗАМОРОЖЕННЫМ ВРАГАМ ОНА БЬЁТ НА 25% СИЛЬНЕЕ", en: "SHE HITS FROZEN FOES 25% HARDER" },
     weapon: "spell", hearts: 4, speed: 0.98, dashCd: 3.5, dashes: 1, lantern: 1, light: "wisp", lightColor: [0.55, 0.85, 1],
-    might: 1, haste: 0.95, crit: 0.05,
+    might: 0.88, haste: 0.95, crit: 0.05,
     ability: { name: { ru: "БУРЯ СТИХИЙ", en: "ELEMENTAL STORM" }, desc: { ru: "ОГОНЬ, ЛЁД И МОЛНИЯ ПО ОЧЕРЕДИ БЬЮТ В САМЫЕ ГУСТЫЕ ТОЛПЫ И САМИ ВЫЗЫВАЮТ РЕАКЦИИ", en: "FIRE, ICE AND LIGHTNING STRIKE THE THICKEST CROWDS IN TURN AND SET OFF REACTIONS" } },
 
   },
