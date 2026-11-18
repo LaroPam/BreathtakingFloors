@@ -53,6 +53,43 @@ function posesOf(weapon: string, name: string): Pose[] {
 const fpsOf = (name: string): number => (name === "death" ? HERO_FPS.death : name[0] === "a" ? HERO_FPS.attack : name === "climb" ? HERO_FPS.run * 0.8 : HERO_FPS[name as FpsKey]);
 const loops = (name: string): boolean => name === "idle" || name === "run" || name === "dash" || name === "hurt" || name === "climb";
 
+/**
+ * A blow drawn smooth: SMOOTH poses for each one baked, the in-betweens lerped (numbers between the two, the rest
+ * from the nearer), so the swing runs at 60 frames a second against the art's 20 (on purpose: the pleasure of the
+ * blow). The blow's logic keeps the baked frames' timing (world.ts ATK_FPS).
+ */
+export const SMOOTH = 3;
+function smoothPoses(base: Pose[]): Pose[] {
+  const out: Pose[] = [];
+  for (let k = 0; k < base.length; k++) {
+    const p0 = base[k], p1 = base[k + 1];
+    out.push(p0);
+    if (!p1) break;
+    for (let q = 1; q < SMOOTH; q++) {
+      const u = q / SMOOTH, p: Pose = {};
+      for (const key of new Set([...Object.keys(p0), ...Object.keys(p1)])) {
+        const a = p0[key], b = p1[key];
+        p[key] = typeof a === "number" && typeof b === "number" ? a + (b - a) * u : u < 0.5 ? (a ?? b) : (b ?? a);
+      }
+      out.push(p);
+    }
+  }
+  return out;
+}
+const smoothRuns = new Map<string, Pose[]>();
+/** A smooth blow while running: the smooth blow standing on each of the run's 8 phases of legs (as posesOf). */
+function smoothRun(weapon: string, k: string): Pose[] {
+  const key = `${weapon}|${k}`;
+  let r = smoothRuns.get(key);
+  if (!r) {
+    r = [];
+    for (const p of smoothPoses(posesOf(weapon, k)))
+      for (const L of POSES.legs) r.push({ ...p, ffx: L.ffx, ffy: L.ffy, fbx: L.fbx, fby: L.fby, crouch: Math.max((p.crouch as number) ?? 0, L.crouch), x: 0, wind: Math.max((p.wind as number) ?? 0, L.wind), sway: L.sway });
+    smoothRuns.set(key, r);
+  }
+  return r;
+}
+
 /** How many blows a weapon's combo has, and on which frames each lands. */
 export const attackCount = (weapon: string): number => (POSES.weapons[weapon] ?? POSES.weapons.sword).attacks.length;
 export const attackHits = (weapon: string, k: number): number[] => (POSES.weapons[weapon] ?? POSES.weapons.sword).attacks[k]?.hits ?? [3];
@@ -100,8 +137,11 @@ export class HeroSprites {
     if (!a) {
       // (a weapon id may carry a weapon artifact's steeping: "sword~fire~1", the sword in fire, strongly)
       const [wid, inf, strong] = weapon.split("~");
-      const base = posesOf(wid, name), poses = inf ? base.map((p) => ({ ...p, infuse: inf, infuseStrong: strong === "1" })) : base;
-      const fps = fpsOf(name), n = poses.length;
+      // ("a1+s", "a1_run+s": the blow drawn smooth, see SMOOTH)
+      const smooth = name.endsWith("+s"), nm = smooth ? name.slice(0, -2) : name;
+      const raw = smooth ? (nm.endsWith("_run") ? smoothRun(wid, nm.slice(0, -4)) : smoothPoses(posesOf(wid, nm))) : posesOf(wid, nm);
+      const base = raw, poses = inf ? base.map((p) => ({ ...p, infuse: inf, infuseStrong: strong === "1" })) : base;
+      const fps = fpsOf(nm) * (smooth ? SMOOTH : 1), n = poses.length;
       a = { key, name: key, look: LOOKS[look] ?? LOOKS.knight, poses, fps, loop: loops(name), cut: false, frames: new Array(n).fill(EMPTY), drawn: new Array(n).fill(false), hands: [], dur: n / fps };
       this.anims.set(key, a);
     }
@@ -119,9 +159,9 @@ export class HeroSprites {
   prefetch(look: string, weapon: string): void {
     const names = ["idle", "run", "dash", "hurt"];
     const k = attackCount(weapon);
-    for (let i = 0; i < k; i++) names.push(`a${i}`);
+    for (let i = 0; i < k; i++) names.push(`a${i}+s`);
     names.push("death");
-    for (let i = 0; i < k; i++) names.push(`a${i}_run`);
+    for (let i = 0; i < k; i++) names.push(`a${i}_run+s`);
     for (const n of names) {
       const a = this.anim(look, weapon, n);
       for (let f = 0; f < a.poses.length; f++) if (!a.drawn[f]) this.queue.push([a, f]);

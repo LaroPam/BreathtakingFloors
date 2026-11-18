@@ -1385,7 +1385,7 @@ export class World {
     const c = this.cine!, E = this.enemies;
     const was = c.t;
     c.t += dt;
-    for (let i = 0; i < E.n; i++) (E.t[i] += dt, E.age[i] += dt, E.flash[i] = Math.max(0, E.flash[i] - dt));
+    for (let i = 0; i < E.n; i++) (E.t[i] += dt, E.age[i] += dt, E.flash[i] = Math.max(0, E.flash[i] - dt), (E.struck[i] += dt));
     for (const b of this.braziers) if (b.lit) b.litT += dt;
     if (was < 0.9 && c.t >= 0.9) {
       this.audio.play("roar", 0.8);
@@ -2606,6 +2606,7 @@ export class World {
     else this.dmgStat[row + (o.as ?? el)] += dealt;
     E.hp[i] -= dmg;
     E.flash[i] = 0.07;
+    E.struck[i] = 0;
     // a critical blow of the hero's own lands heavier: a jolt (no catch of the frame: the owner wants the fight to
     // run on unbroken)
     if (o.crit && (this.src === SRC_WEAPON || this.src === SRC_DASH)) {

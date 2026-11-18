@@ -2,7 +2,7 @@
 // sorted by its feet, light into the illumination layer, the baked pixelfx glow into the glow layer, numbers in front.
 
 import { anim, frameAt, hasAnim, icon, type Anim, type Rect } from "../engine/atlas";
-import { heroSprites, lookId, type HeroAnim } from "./heroSprites";
+import { heroSprites, lookId, SMOOTH, type HeroAnim } from "./heroSprites";
 import { TEAM_HERO } from "./pools";
 import { Batch, rgba, rgbaf, SOFT, withAlpha } from "../engine/renderer";
 import { text } from "../engine/text";
@@ -41,10 +41,20 @@ interface AnimOpts {
   frame?: number;
   /** A hero palette (see Renderer.setPalettes). */
   pal?: number;
+  /** Blend each frame into the next (a weapon's swing drawn smooth rather than stepping). */
+  blend?: boolean;
 }
 
 /** Draw one frame of a baked animation: its color image into the chosen layer, its light into the glow layer. */
 export function drawAnim(s: Scene, a: Anim, t: number, x: number, y: number, o: AnimOpts = {}): void {
+  // a blended swing: this frame fading as the next comes up over it, by how far the time is between them
+  if (o.blend && o.frame === undefined && !a.loop && a.frames.length > 1) {
+    const p = Math.max(0, t * a.fps), f0 = Math.min(a.frames.length - 1, Math.floor(p)), f1 = Math.min(a.frames.length - 1, f0 + 1), u = f1 > f0 ? p - f0 : 0;
+    const base = o.alpha ?? 1;
+    drawAnim(s, a, t, x, y, { ...o, blend: false, frame: f0, alpha: base * (1 - u * 0.6) });
+    if (u > 0.05) drawAnim(s, a, t, x, y, { ...o, blend: false, frame: f1, alpha: base * u, key: (o.key ?? y) + 0.01 });
+    return;
+  }
   const [c, l] = a.frames[o.frame ?? frameAt(a, t)];
   let alpha = o.alpha ?? 1;
   if (a.cut && o.frame === undefined) {
@@ -642,10 +652,17 @@ export function drawWorld(s: Scene, w: World, camX: number, camY: number, viewW:
       s.illum.light(x, y - w.bry * 0.7, 26 * d.scale, 22 * d.scale, rgbaf(1, 0.97, 0.92, 0.3));
       if (mb) yy -= Math.max(0, mb.lift);
     }
-    if (hit && born >= 1) {
-      const dx = x - h.x, dy = y - h.y, dd = Math.hypot(dx, dy) || 1, k = 2 * Math.min(1, E.flash[i] / 0.07);
+    // struck: a springy recoil drawn smooth, apart from the rest of the pixel art on purpose (the pleasure of the
+    // blow): knocked back and easing home, squashed and stretched in a dying wobble, tipped away from the hero, the
+    // white of the hit fading rather than blinking out
+    const st = E.struck[i], spring = st < 0.4 && born >= 1 ? Math.exp(-st * 11) : 0, wob = spring * Math.cos(st * 36);
+    const hitW = st < 0.14 ? (1 - st / 0.14) ** 2 : 0;
+    let tip = 0;
+    if (spring > 0.01) {
+      const dx = x - h.x, dy = y - h.y, dd = Math.hypot(dx, dy) || 1, k = 3.5 * spring;
       x += (dx / dd) * k;
       yy += (dy / dd) * k * 0.6;
+      tip = (dx >= 0 ? 1 : -1) * 0.2 * wob;
     }
     // (a miniboss in the middle of a move takes its pose for it, and its look changes when it rages)
     let ea = anim(d.anim);
@@ -655,7 +672,8 @@ export function drawWorld(s: Scene, w: World, camX: number, camY: number, viewW:
       // gone in a blink: a faint shimmer where it was
       if (mb.lift < 0) alpha = 0.25 + 0.1 * Math.sin(time * 30);
     }
-    drawAnim(s, ea, E.t[i], x, yy, { sx: E.face[i] * d.scale * (1 + 0.14 * hit + 0.06 * tk) * g2, sy: d.scale * (1 - 0.12 * hit + 0.06 * tk) * g2, tint, alpha, flash: born < 1 ? -Math.max(0.002, born) : d.ai === AI.Mini ? hit * 0.3 : Math.max(hit, tellFlash), key: y, glow: 0.55 * alpha * born * born });
+    void hit;
+    drawAnim(s, ea, E.t[i], x, yy, { sx: E.face[i] * d.scale * (1 + 0.2 * wob + 0.06 * tk) * g2, sy: d.scale * (1 - 0.16 * wob + 0.06 * tk) * g2, rot: tip, tint, alpha, flash: born < 1 ? -Math.max(0.002, born) : d.ai === AI.Mini ? hitW * 0.3 : Math.max(hitW, tellFlash), key: y, glow: 0.55 * alpha * born * born });
     if (d.glow) s.illum.light(w.bx, w.by, 20 * d.scale, 16 * d.scale, withAlpha(rgba(d.glow), 0.22));
     if (winding) {
       // a red mark over its head, swelling as the rush comes
@@ -774,8 +792,9 @@ export function drawWorld(s: Scene, w: World, camX: number, camY: number, viewW:
     let a: HeroAnim, fi: number;
     const runPhase = frameAt(run, h.runT);
     if (h.atk >= 0) {
-      const base = hs.anim(look, wl, `a${h.atk}`), f = Math.min(base.frames.length - 1, Math.floor(h.atkT * 20));
-      if (h.moving) (a = hs.anim(look, wl, `a${h.atk}_run`), fi = f * 8 + runPhase);
+      // (the blow drawn smooth: SMOOTH in-between poses for each baked one)
+      const base = hs.anim(look, wl, `a${h.atk}+s`), f = Math.min(base.frames.length - 1, Math.floor(h.atkT * 20 * SMOOTH));
+      if (h.moving) (a = hs.anim(look, wl, `a${h.atk}_run+s`), fi = f * 8 + runPhase);
       else (a = base, fi = f);
     } else if (h.dashT > 0) (a = dash, fi = frameAt(dash, time));
     else if (h.hurtT > 0) (a = hurt, fi = 0);
@@ -1171,7 +1190,7 @@ export function drawWorld(s: Scene, w: World, camX: number, camY: number, viewW:
   for (const f of w.fx) {
     if (f.delay > 0) continue;
     const a = anim(f.anim);
-    drawAnim(s, a, f.t, f.x, f.y, { rot: f.rot, sx: f.sx, sy: f.sy, layer: f.front ? "front" : "sorted", key: f.y + f.key, glow: f.glow, tint: f.tint });
+    drawAnim(s, a, f.t, f.x, f.y, { rot: f.rot, sx: f.sx, sy: f.sy, layer: f.front ? "front" : "sorted", key: f.y + f.key, glow: f.glow, tint: f.tint, blend: !!f.follow });
     const L = FX_LIGHT[f.anim];
     if (L) {
       const k = Math.max(0, 1 - f.t / Math.min(a.dur, 0.6)) * L[2], r = L[0] * Math.max(Math.abs(f.sx), 0.5);
