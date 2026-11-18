@@ -11,7 +11,7 @@ import type { Audio } from "../engine/audio";
 import type { Input } from "../engine/input";
 import { Batch, rgba, rgbaf, withAlpha } from "../engine/renderer";
 import { fitScale, measure, text, wrap, type FontName } from "../engine/text";
-import { ARTIFACT_SLOTS, EL_COLOR, ENEMIES, evolutionOf, floorText, MUTATORS, questDef, RARITIES, RELIC_SLOTS, STATS, WARTS } from "./defs";
+import { ARTIFACT_SLOTS, EL_COLOR, ENEMIES, evolutionOf, floorText, MUTATORS, questDef, RARITIES, RELIC_SLOTS, RELICS, STATS } from "./defs";
 import { t, tx } from "./i18n";
 import type { World } from "./world";
 
@@ -431,7 +431,6 @@ export function reticle(b: Batch, x: number, y: number, time: number, hot: boole
 }
 
 // ------------------------------------------------------------------------------------------------ the HUD
-const RELIC_ICON = ["orbit", "lance", "coil", "flask", "halo", "void", "roots", "mirror", "brazier", "crown"];
 /** What the boss's bar showed a moment ago (for the pale strip of the hit it just took). */
 let bossLag = 1;
 
@@ -495,7 +494,7 @@ export function drawHud(b: Batch, w: World, W: number, H: number, time: number, 
       const u = (time * 0.9 + q / 3) % 1, x = Math.round(6 + ((q * 7 + 3) % 16)), y = Math.round(hy + 20 - u * 18);
       b.rect(x, y, 1, 1, withAlpha(ac, 1 - u));
     }
-    w.wArts.forEach((a, k) => b.rect(5 + k * 4, hy + 22, 3, 1, rgba(["#ff7a2a", "#e8edf6", "#ffe36a", "#78ccf4"][a.kind])));
+    w.relics.slice(0, 5).forEach((r, k) => b.rect(5 + k * 3, hy + 22, 2, 1, rgba(RELICS[r.kind].color)));
   }
   if (h.legend) {
     // a small gold star in the top corner
@@ -507,30 +506,17 @@ export function drawHud(b: Batch, w: World, W: number, H: number, time: number, 
     b.rect(20, hy + 17, 3, 5, C.ink), b.rect(19, hy + 18, 5, 3, C.ink);
     b.rect(21, hy + 18, 1, 3, ec), b.rect(20, hy + 19, 3, 1, ec);
   }
-  // the stage 2 prototype's panel: six weapon artifacts above, six boons below (see WARTS)
-  const proto = w.wArts.length > 0;
-  if (proto)
-    for (let k = 0; k < 6; k++) {
-      const a = w.wArts[k], x = 30 + k * 22, evo = !!a && a.kind === 0 && w.wArtEvo;
-      slot(b, x, hy + 1, 21, evo ? C.gold : a ? rgba(EL_COLOR[WARTS[a.kind].el] ?? "#f4d27a") : undefined);
-      if (!a) {
-        b.rect(x + 10, hy + 10, 1, 3, S.wellHi), b.rect(x + 9, hy + 11, 3, 1, S.wellHi);
-        continue;
-      }
-      b.image(icon("icons", evo ? `e_${WARTS[a.kind].icon}` : WARTS[a.kind].icon), x + 10.5, hy + 11.5, 0.9, 0.9);
-      if (evo) b.rect(x + 3, hy + 23, 15, 1, rgbaf(1, 0.85 + 0.15 * Math.sin(time * 6 + k), 0.45, 1));
-      else for (let q = 0; q < 5; q++) b.rect(x + 3 + q * 3, hy + 23, 2, 1, q < a.level ? C.gold : rgba("#2a2438"));
-    }
-  // (no relic yet, as in a newcomer's first minutes: no row of empty slots either; artifacts likewise)
-  for (let k = 0; k < (w.relics.length && !proto ? RELIC_SLOTS : 0); k++) {
+  // ---- the weapon artifacts above (each rimmed in its colour, gold once evolved), the boosts below
+  // (no artifact yet, as in a newcomer's first minutes: no row of empty slots either; boosts likewise)
+  for (let k = 0; k < (w.relics.length ? RELIC_SLOTS : 0); k++) {
     const r = w.relics[k], x = 30 + k * 22;
-    slot(b, x, hy + 1, 21, r?.evo ? C.gold : undefined);
+    slot(b, x, hy + 1, 21, r ? (r.evo ? C.gold : withAlpha(rgba(RELICS[r.kind].color), 0.9)) : undefined);
     if (!r) {
       b.rect(x + 10, hy + 10, 1, 3, S.wellHi), b.rect(x + 9, hy + 11, 3, 1, S.wellHi);
       continue;
     }
-    b.image(icon("icons", r.evo ? `e_${RELIC_ICON[r.kind]}` : RELIC_ICON[r.kind]), x + 10.5, hy + 11.5, 0.9, 0.9);
-    // an evolved relic's pips run together into one bar of light; one ready to evolve blinks its last pip
+    b.image(icon("icons", r.evo ? evolutionOf(r.kind)?.icon ?? RELICS[r.kind].icon : RELICS[r.kind].icon), x + 10.5, hy + 11.5, 0.9, 0.9);
+    // an evolved one's pips run together into one bar of light; one ready to evolve blinks its last pip
     if (r.evo) {
       b.rect(x + 3, hy + 23, 15, 1, rgbaf(1, 0.85 + 0.15 * Math.sin(time * 6 + k), 0.45, 1));
       continue;
@@ -542,9 +528,9 @@ export function drawHud(b: Batch, w: World, W: number, H: number, time: number, 
   // ---- the artifacts under the relics, a slot each, their levels in pips; one that is a relic's key to its
   // evolution has a gold rim while that relic waits for it
   const ay = hy + 26, held = w.artifacts;
-  for (let k = 0; k < (held.length ? (proto ? 6 : ARTIFACT_SLOTS) : 0); k++) {
+  for (let k = 0; k < (held.length ? ARTIFACT_SLOTS : 0); k++) {
     const id = held[k], x = 30 + k * 22;
-    const key = !!id && w.relics.some((r) => !r.evo && evolutionOf(r.kind).stat === id);
+    const key = !!id && w.relics.some((r) => !r.evo && evolutionOf(r.kind)?.stat === id);
     slot(b, x, ay, 21, key ? C.goldDim : undefined);
     if (!id) {
       b.rect(x + 10, ay + 9, 1, 3, S.wellHi), b.rect(x + 9, ay + 10, 3, 1, S.wellHi);

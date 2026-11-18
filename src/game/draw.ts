@@ -9,7 +9,7 @@ import { text } from "../engine/text";
 import { AI, DOORS, giftFor, placeDef, EL_COLOR, ENEMIES, fullWeaponName, LEGENDS, questDef, RARITIES, RelicKind, WEAPONS, type GateKind, type PlaceId } from "./defs";
 import { t as tr, tx } from "./i18n";
 import { FLOOR, LOOK_BRIDGE, LOOK_ICE, LOOK_VEIN, PIT, WALL } from "./map";
-import { lanceTravel, LANCE_FADE, LANCE_STUCK, B_BOLT, B_CHAKRAM, BULLET_ANIMS, EYE_H, FLOOR_SQ, LUNGE_DASH, SPAWN_T, type BossBrain, poolSpread, HERO_HIT_Y, HERO_R, B_CRESCENT, B_FIREBALL, B_LANCE, CINE_DUR, D_CHEST, D_EMBER, D_GREEN, D_HEART, D_RED, SANCTUARY_R, STAR_EVERY, TILE, type World } from "./world";
+import { lanceTravel, LANCE_FADE, LANCE_STUCK, B_BOLT, B_CHAKRAM, BULLET_ANIMS, EYE_H, FLOOR_SQ, LUNGE_DASH, SPAWN_T, type BossBrain, poolSpread, HERO_HIT_Y, HERO_R, B_CRESCENT, B_FIREBALL, B_LANCE, B_SICKLE, B_PETAL, B_SHARD, B_BUBBLE, B_TORNADO, B_BIRD, B_BLADE, B_DRAGON, CINE_DUR, D_CHEST, D_EMBER, D_GREEN, D_HEART, D_RED, STAR_EVERY, TILE, type World } from "./world";
 
 export class Scene {
   back = new Batch();
@@ -1023,95 +1023,109 @@ export function drawWorld(s: Scene, w: World, camX: number, camY: number, viewW:
     drawAnim(s, anim(c.anim), 0, c.x, c.y, { frame: c.frame, sx: c.flip * c.scale * (1 + k * 0.7), sy: c.scale * Math.max(0.05, 1 - k), flash: 1, alpha: 1 - k * 0.6, key: c.y, glow: 0 });
   }
 
-  // ---- relics in the world
-  const orbit = w.relics.find((q) => q.kind === RelicKind.Orbit);
-  if (orbit && !h.dead) {
-    // embers, or (evolved) small suns that swell as they gather for their flare
-    const n = w.orbitCount(orbit), ember = anim("ember"), swell = orbit.evo ? 1.35 + 0.25 * Math.max(0, 1 - orbit.timer / 0.5) : 1;
-    for (let k = 0; k < n; k++) {
-      const [ox, oy] = w.orbitPos(orbit, k, n);
-      drawAnim(s, ember, time + k * 0.2, ox, oy, { key: oy + 12, glow: 0.9, sx: swell, sy: swell });
-      if (orbit.evo) s.glow.light(ox, oy, 6, 6, rgbaf(1, 0.85, 0.4, 0.6));
-      s.illum.light(ox, oy, 28 * swell, 24 * swell, rgbaf(1, 0.55, 0.2, orbit.evo ? 0.65 : 0.5));
+  // ---- the weapon artifacts' things in the world
+  // spectral blades circling the hero: pale swords turning as they go round, fading as they end
+  if (w.blades.length && !h.dead) {
+    const sw = anim("model_sword");
+    for (let k = 0; k < w.blades.length; k++) {
+      const [ox, oy] = w.bladePos(k), left = w.blades[k].t - w.time, al = Math.min(1, left / 0.5) * (0.75 + 0.25 * Math.sin(time * 9 + k));
+      drawAnim(s, sw, time * 1.6 + k * 0.3, ox, oy + 8, { sx: 0.55, sy: 0.55, key: oy + 12, glow: 1, alpha: al, tint: rgba("#b8c8ff") });
+      s.illum.light(ox, oy, 20, 16, rgbaf(0.6, 0.7, 1, 0.3 * al));
     }
   }
-  // the frost orb over the hero's shoulder: a cold core in a ring of turning shards that close in and spin faster as
-  // it gathers for a volley, its shadow on the floor far below
-  const lance = w.relics.find((q) => q.kind === RelicKind.Lance), fo = w.frostOrb;
-  if (lance && fo && !h.dead) {
-    // (it swells only a little as it gathers, and gives a small cold pulse as it lets go: a glare here would hide
-    // the lance sliding out of it)
-    const c = fo.charge, evo = lance.evo, core = anim("ember_blue"), k = (evo ? 1.25 : 1) + c * 0.18 - fo.flash * 0.12;
-    s.color.disc(fo.x, fo.y + 30, 5, 2, rgba("#000000", 0.25), fo.y + 30);
-    drawAnim(s, core, time * (1 + c * 2), fo.x, fo.y + 4, { sx: k, sy: k, key: fo.y + 34, glow: 0.9 });
-    const n = evo ? 8 : 6, R = (evo ? 9 : 7.5) * (1 - c * 0.45), spin = time * (1.6 + c * 7);
-    for (let q = 0; q < n; q++) {
-      const a = spin + (q / n) * Math.PI * 2, x = fo.x + Math.cos(a) * R, y = fo.y + Math.sin(a) * R * 0.55, back = Math.sin(a) < 0;
-      const col = back ? rgba("#4a8ad0") : rgba(q % 2 ? "#d8f4ff" : "#9bdcff");
-      s.color.rect(Math.round(x), Math.round(y) - 1, 1, 3, col, fo.y + 34 + (back ? -1 : 1));
-      if (!back) s.glow.rect(Math.round(x), Math.round(y) - 1, 1, 2, rgbaf(0.6, 0.85, 1, 0.5));
-    }
-    if (c > 0) s.glow.light(fo.x, fo.y, 7 + 3 * c, 7 + 3 * c, rgbaf(0.6, 0.9, 1, 0.3 * c));
-    if (fo.flash > 0) {
-      // a thin ring going out from it as the lance leaves
-      const rr = 6 + (1 - fo.flash) * 10;
-      for (let q = 0; q < 16; q++) {
-        const a = (q / 16) * Math.PI * 2;
-        s.glow.rect(Math.round(fo.x + Math.cos(a) * rr), Math.round(fo.y + Math.sin(a) * rr * 0.6), 1, 1, rgbaf(0.75, 0.95, 1, 0.6 * fo.flash));
-      }
-    }
-    s.illum.light(fo.x, fo.y + 10, 40 + 10 * c, 32 + 8 * c, rgbaf(0.45, 0.75, 1, 0.4 + 0.2 * c + 0.15 * fo.flash));
-  }
-  // the Mirror Shield: a small round mirror hovering at the hero's shoulder, turning to catch the light
+  // the Mirror Blade: a small round mirror hovering at the hero's shoulder, turning to catch the light
   const mirror = w.relics.find((q) => q.kind === RelicKind.Mirror);
   if (mirror && !h.dead) {
     const mx = Math.round(h.x + h.face * 13 + Math.sin(time * 1.3) * 2), my = Math.round(h.y - 26 + Math.sin(time * 2.1) * 1.5), tilt = Math.sin(time * 1.7);
     s.color.disc(mx, my, 3.5 * Math.max(0.35, Math.abs(tilt)), 4, rgba("#c8c8dc"), h.y + 0.5);
-    s.color.disc(mx, my, 2.4 * Math.max(0.3, Math.abs(tilt)), 2.8, rgba(mirror.evo ? "#fff6c0" : "#eef0ff"), h.y + 0.6);
+    s.color.disc(mx, my, 2.4 * Math.max(0.3, Math.abs(tilt)), 2.8, rgba("#eef0ff"), h.y + 0.6);
     if (tilt > 0.6) s.glow.rect(mx - 1, my - 2, 1, 1, rgbaf(1, 1, 1, 1));
-    s.glow.light(mx, my, 6, 6, rgbaf(1, 0.95, 0.7, mirror.evo ? 0.5 : 0.25));
+    s.glow.light(mx, my, 6, 6, rgbaf(0.85, 0.9, 1, 0.3));
   }
-  // the Ice Crown: a ring of pale ice points over the hero's head, glinting
-  const crown = w.relics.find((q) => q.kind === RelicKind.Crown);
-  if (crown && !h.dead && h.exitT < 0) {
-    const cx = Math.round(h.x), cy = Math.round(h.y - 40 + Math.sin(time * 2) * 1);
+  // the Ice Crown (a boost): a ring of pale ice points over the hero's head, glinting
+  if ((w.statLevels.crown ?? 0) > 0 && !h.dead && h.exitT < 0) {
+    const cx = Math.round(h.x), cy = Math.round(h.y - 40 + Math.sin(time * 2) * 1), big = (w.statLevels.crown ?? 0) >= 4 ? 1 : 0;
     for (let q = -2; q <= 2; q++) {
-      const tall = 3 - Math.abs(q) + (crown.evo ? 1 : 0);
+      const tall = 3 - Math.abs(q) + big;
       s.color.rect(cx + q * 2, cy - tall, 1, tall, rgba(q % 2 ? "#9bdcff" : "#e8f8ff"), h.y + 1);
     }
     s.color.rect(cx - 5, cy, 11, 1, rgba("#78ccf4"), h.y + 1);
     s.glow.light(cx, cy - 2, 7, 5, rgbaf(0.6, 0.9, 1, 0.35));
   }
-  // the Sanctuary: a ring of light about the hero, turning, pulsing as it burns
-  const halo = w.relics.find((q) => q.kind === RelicKind.Halo);
-  if (halo?.evo && !h.dead) {
-    const R = SANCTUARY_R, n = 40, pulse = 0.6 + 0.4 * Math.max(0, 1 - halo.timer / 0.2);
-    for (let k = 0; k < n; k++) {
-      const a = (k / n) * Math.PI * 2 + time * 0.6, x = Math.round(h.x + Math.cos(a) * R), y = Math.round(h.y - 4 + Math.sin(a) * R * 0.77);
-      if (k % 4 === 3) continue;
-      s.back.rect(x, y, 1, 1, rgbaf(1, 0.94, 0.6, 0.8));
-      s.glow.rect(x, y, 1, 1, rgbaf(1, 0.9, 0.5, 0.7 * pulse));
+  // stars waiting for their constellation, twinkling; constellations going off, their lines fading
+  for (let k = 0; k < w.stars.length; k++) {
+    const st = w.stars[k], x = Math.round(st.x), y = Math.round(st.y - 4), tw = 0.6 + 0.4 * Math.sin(time * 7 + k * 1.7), arm = tw > 0.8 ? 2 : 1;
+    s.glow.rect(x, y, 1, 1, rgbaf(1, 1, 0.85, 1));
+    s.glow.rect(x - arm, y, arm, 1, rgbaf(1, 0.95, 0.6, 0.8 * tw)), s.glow.rect(x + 1, y, arm, 1, rgbaf(1, 0.95, 0.6, 0.8 * tw));
+    s.glow.rect(x, y - arm, 1, arm, rgbaf(1, 0.95, 0.6, 0.8 * tw)), s.glow.rect(x, y + 1, 1, arm, rgbaf(1, 0.95, 0.6, 0.8 * tw));
+    s.illum.light(x, y, 14, 12, rgbaf(1, 0.95, 0.6, 0.25));
+  }
+  for (const c of w.constellations) {
+    const a = 1 - c.t / 0.7, p = c.pts;
+    for (let q = 0; q + 3 < p.length; q += 2) s.glow.line(p[q], p[q + 1] - 4, p[q + 2], p[q + 3] - 4, 1, rgbaf(1, 0.95, 0.65, 0.9 * a));
+    for (let q = 0; q < p.length; q += 2) s.glow.light(p[q], p[q + 1] - 4, 10, 10, rgbaf(1, 0.95, 0.7, 0.6 * a));
+  }
+  // flowers: a bud that swells on its stem, then opens
+  for (const f of w.flowers) {
+    const u = Math.min(1, f.t / f.open), x = Math.round(f.x), y = Math.round(f.y);
+    s.color.rect(x, y - 3 - Math.round(3 * u), 1, 3 + Math.round(3 * u), rgba("#3a8a3a"), y);
+    const r = 1 + 2 * u, cy = y - 4 - 3 * u;
+    for (let q = 0; q < 5; q++) {
+      const a = (q / 5) * Math.PI * 2 + time, d = r * 0.9 * u;
+      s.color.disc(x + Math.cos(a) * d, cy + Math.sin(a) * d * 0.8, 1.2 + u, 1.2 + u, rgba(q % 2 ? "#ff8ac0" : "#ffb0d8"), y + 0.1);
     }
-    s.illum.light(h.x, h.y - 4, R * 1.05, R * 0.82, rgbaf(1, 0.92, 0.6, 0.18 * pulse));
+    s.color.disc(x, cy, 1, 1, rgba("#fff09a"), y + 0.2);
+    if (u > 0.7) s.glow.light(x, cy, 8, 8, rgbaf(1, 0.5, 0.75, 0.4 * (u - 0.7) / 0.3));
   }
-  // the Black Star: a disc of nothing in a burning ring, swelling before it collapses
-  if (w.star) {
-    const S = w.star, u = S.t / STAR_EVERY, k = 2.2 + 0.8 * u * u, vo2 = anim("void_orb");
-    drawAnim(s, vo2, time * 1.6, S.x, S.y, { sx: k, sy: k, key: S.y + 14, glow: 1 });
-    s.color.disc(S.x, S.y, 5 + 2 * u, 5 + 2 * u, rgba("#05030a"), S.y + 14.5);
-    s.illum.light(S.x, S.y, 60 + 30 * u, 50 + 25 * u, rgbaf(0.6, 0.25, 1, 0.5 + 0.3 * u));
+  // ribbons of the aurora: two strands, green and violet, waving
+  for (const rb of w.ribbons) {
+    const a = Math.min(1, (1 - rb.t / rb.life) * 2), p = rb.pts;
+    for (let q = 0; q + 3 < p.length; q += 2) {
+      const o0 = Math.sin(time * 6 + q) * 1.5, o1 = Math.sin(time * 6 + q + 2) * 1.5;
+      s.glow.line(p[q], p[q + 1] - 6 + o0, p[q + 2], p[q + 3] - 6 + o1, 2, rgbaf(0.45, 1, 0.65, 0.55 * a));
+      s.glow.line(p[q], p[q + 1] - 9 - o0, p[q + 2], p[q + 3] - 9 - o1, 1, rgbaf(0.75, 0.45, 1, 0.5 * a));
+    }
+    if (p.length >= 4) s.illum.light((p[0] + p[p.length - 2]) / 2, (p[1] + p[p.length - 1]) / 2, 30, 20, rgbaf(0.4, 1, 0.7, 0.2 * a));
   }
+  // vortices of the void
   const vo = anim("void_orb");
-  for (const sp of w.spheres) {
-    const k = sp.r / 7;
-    drawAnim(s, vo, time, sp.x, sp.y, { sx: k, sy: k, key: sp.y + 14, alpha: Math.min(1, sp.life * 2) });
-    s.illum.light(sp.x, sp.y, 30, 26, rgbaf(0.6, 0.3, 1, 0.4));
+  for (const v of w.vortices) {
+    const k = (v.r / 7) * Math.min(1, (v.max - v.life) * 6, v.life * 3);
+    drawAnim(s, vo, time * 2, v.x, v.y, { sx: k, sy: k, key: v.y + 14, glow: 1 });
+    s.color.disc(v.x, v.y, 2 + k, 2 + k, rgba("#05030a"), v.y + 14.5);
+    s.illum.light(v.x, v.y, 34, 28, rgbaf(0.6, 0.3, 1, 0.4));
   }
-  for (const f of w.flasks) {
-    const x = f.x0 + (f.x1 - f.x0) * f.t, y = f.y0 + (f.y1 - f.y0) * f.t - Math.sin(f.t * Math.PI) * 40;
-    s.front.rect(x - 1, y - 2, 3, 4, rgba("#6cd02a"));
-    s.front.rect(x, y - 3, 1, 1, rgba("#d0ff8a"));
-    s.glow.light(x, y, 6, 6, rgbaf(0.4, 1, 0.3, 0.6));
+  // the Black Hole: a disc of nothing in a burning ring, swelling before it collapses
+  if (w.star) {
+    const S = w.star, u = S.t / STAR_EVERY, k = 2.6 + 1 * u * u, vo2 = anim("void_orb");
+    drawAnim(s, vo2, time * 1.6, S.x, S.y, { sx: k, sy: k, key: S.y + 14, glow: 1 });
+    s.color.disc(S.x, S.y, 6 + 3 * u, 6 + 3 * u, rgba("#05030a"), S.y + 14.5);
+    s.illum.light(S.x, S.y, 70 + 40 * u, 60 + 30 * u, rgbaf(0.6, 0.25, 1, 0.5 + 0.3 * u));
+  }
+  // meteors coming down out of the dark, their shadows swelling where they will land
+  const fb = anim("fireball");
+  for (const mt of w.meteors) {
+    const u = mt.t * mt.t, x = mt.x + 70 * (1 - u), y = mt.y - 170 * (1 - u);
+    s.back.disc(mt.x, mt.y + 12, 4 + 10 * mt.t, 2 + 5 * mt.t, rgba("#000000", 0.35 * mt.t));
+    drawAnim(s, fb, time, x, y, { rot: Math.atan2(170, -70), sx: 2.2, sy: 2.2, key: mt.y + 30, glow: 1 });
+    s.glow.line(x, y, x + 24, y - 58, 3, rgbaf(1, 0.55, 0.2, 0.5));
+    s.illum.light(x, y, 50, 40, rgbaf(1, 0.55, 0.2, 0.55));
+  }
+  // rays of light the halo's shots leave
+  for (const ry of w.rays) {
+    const a = 1 - ry.t / 0.35;
+    s.glow.line(ry.x0, ry.y0, ry.x1, ry.y1, 3, rgbaf(1, 0.92, 0.55, 0.45 * a));
+    s.glow.line(ry.x0, ry.y0, ry.x1, ry.y1, 1, rgbaf(1, 1, 0.9, 0.9 * a));
+  }
+  // the Rainbow: a ray in every colour sweeping round from the hero to the edge of the screen
+  if (w.rainbow.done >= 0 && !h.dead) {
+    const a = w.rainbow.a, len = Math.hypot(w.viewHW, w.viewHH), ox = h.x, oy = h.y - 18, nx = -Math.sin(a), ny = Math.cos(a);
+    const cols = ["#ff4a4a", "#ff9a2a", "#ffe03c", "#6ad83a", "#4ab8ff", "#6a5aff", "#c070ff"];
+    for (let q = 0; q < cols.length; q++) {
+      const o = q - 3, c = rgba(cols[q]);
+      s.glow.line(ox + nx * o, oy + ny * o, ox + Math.cos(a) * len + nx * o * 3, oy + Math.sin(a) * len + ny * o * 3, 2, withAlpha(c, 0.75));
+    }
+    s.illum.light(ox + Math.cos(a) * 60, oy + Math.sin(a) * 60, 90, 60, rgbaf(1, 0.9, 1, 0.3));
   }
 
   // ---- bullets
@@ -1122,22 +1136,6 @@ export function drawWorld(s: Scene, w: World, camX: number, camY: number, viewW:
     const k = Bu.kind[i], a = banims[k], orb = k >= 2 && k <= 5;
     // a lance melts over the end of its life rather than blinking out: it fades and thins towards its point
     const melt = k === B_LANCE ? Math.min(1, Bu.life[i] / LANCE_FADE) : 1;
-    // a lance from the frost orb slides out of it: the part still inside the orb is cut away, so its point comes
-    // out of the orb's surface and the rest follows, at full size, rather than the whole of it appearing inside
-    if (k === B_LANCE && fo && lance && Bu.t[i] < 0.5) {
-      const sp = Math.hypot(Bu.vx[i], Bu.vy[i]) || 1, ux = Bu.vx[i] / sp, uy = Bu.vy[i] / sp, dx = x - fo.x, dy = y - fo.y;
-      const along = dx * ux + dy * uy, off = Math.abs(dx * uy - dy * ux), R = lance.evo ? 4 : 3;
-      if (off < 5 && along > -6) {
-        const rot = Math.atan2(Bu.vy[i], Bu.vx[i]), minX = R - along, [c, l] = a.frames[frameAt(a, Bu.t[i])];
-        const fade = melt;
-        if (c) s.color.imageCropLeft(c, x, y, minX, 1, 1, rot, rgbaf(1, 1, 1, fade), 0, y + 14);
-        if (l) s.glow.imageCropLeft(l, x, y, minX, 1, 1, rot, rgbaf(1, 1, 1, 0.9 * fade));
-        // where it breaks through: a cold glint on the orb's surface while the lance passes it
-        if (minX > -12) s.glow.light(fo.x + ux * R, fo.y + uy * R, 3, 3, rgbaf(0.75, 0.95, 1, 0.5 * fade));
-        s.illum.light(x, y, 18, 14, rgbaf(0.45, 0.75, 1, 0.3 * fade));
-        continue;
-      }
-    }
     // a lance from the Book of Elements slides out of its pages the same way: the sprite hangs back from its point,
     // so everything behind where it left (LANCE_OUT short of its spawn) is cut away until it is clear
     if (k === B_LANCE && Bu.team[i] === TEAM_HERO && Bu.t[i] < 0.5) {
@@ -1149,6 +1147,45 @@ export function drawWorld(s: Scene, w: World, camX: number, camY: number, viewW:
       const bx = x + ux * minX, by = y + uy * minX, out = Math.max(0, 1 - Bu.t[i] / 0.3);
       if (out > 0) (s.glow.light(bx, by, 4, 4, rgbaf(0.75, 0.95, 1, 0.4 * out)), s.illum.light(bx, by, 20, 16, rgbaf(0.45, 0.75, 1, 0.18 * out)));
       s.illum.light(x, y, 18, 14, rgbaf(0.45, 0.75, 1, 0.3 * melt));
+      continue;
+    }
+    // the weapon artifacts' own shots
+    if (k >= B_SICKLE && Bu.team[i] === TEAM_HERO) {
+      const fade = Math.min(1, Bu.life[i] * 6), rot = Math.atan2(Bu.vy[i], Bu.vx[i]);
+      if (k === B_SICKLE) {
+        // the moon's sickle: a big pale crescent turning end over end
+        const big = Bu.r[i] / 9;
+        drawAnim(s, a, Bu.t[i], x, y, { rot: Bu.t[i] * 15, sx: 1.5 * big, sy: 1.5 * big, key: y + 14, glow: 1, tint: rgba("#d8e4ff"), alpha: fade });
+        s.illum.light(x, y, 26, 22, rgbaf(0.7, 0.8, 1, 0.45 * fade));
+      } else if (k === B_PETAL || k === B_BLADE) {
+        drawAnim(s, a, Bu.t[i], x, y, { rot, sx: k === B_PETAL ? 0.45 : 0.8, sy: k === B_PETAL ? 0.45 : 0.8, key: y + 14, glow: 1, tint: rgba(k === B_PETAL ? "#ff9ac8" : "#b8c8ff"), alpha: fade });
+        s.illum.light(x, y, 10, 8, k === B_PETAL ? rgbaf(1, 0.5, 0.75, 0.3) : rgbaf(0.6, 0.7, 1, 0.35));
+      } else if (k === B_SHARD) {
+        drawAnim(s, a, Bu.t[i], x, y, { rot, sx: 0.5, sy: 0.5, key: y + 14, glow: 1, tint: rgba("#9af6ff"), alpha: fade });
+        s.glow.line(x - Bu.vx[i] * 0.03, y - Bu.vy[i] * 0.03, x, y, 1, rgbaf(0.5, 1, 1, 0.5));
+      } else if (k === B_BUBBLE) {
+        // a bubble: a thin wobbling ring with a glint
+        const R = 4 + Math.sin(Bu.t[i] * 9) * 0.5;
+        for (let q = 0; q < 14; q++) {
+          const an = (q / 14) * Math.PI * 2;
+          s.color.rect(Math.round(x + Math.cos(an) * R), Math.round(y + Math.sin(an) * R * 0.95), 1, 1, rgba(q < 4 ? "#e8fbff" : "#5ac8ff", 0.85), y + 14);
+        }
+        s.glow.rect(Math.round(x - 2), Math.round(y - 2), 1, 1, rgbaf(1, 1, 1, 0.9));
+        s.back.disc(x, y + 14, 3, 1, rgba("#000000", 0.2));
+        s.illum.light(x, y, 14, 12, rgbaf(0.4, 0.8, 1, 0.3));
+      } else if (k === B_TORNADO) {
+        const sc = Bu.r[i] / 22;
+        drawAnim(s, a, Bu.t[i], x, y + 6, { sx: sc, sy: sc * 1.2, key: y + 14, glow: 0.6, alpha: Math.min(1, Bu.life[i] * 4, Bu.t[i] * 8), tint: rgba("#d8fff0") });
+      } else if (k === B_BIRD) {
+        // the firebird: a bird of flame, wings beating, its trail of sparks behind
+        drawAnim(s, a, Bu.t[i] * 2, x, y + 4, { sx: Bu.vx[i] < 0 ? -0.9 : 0.9, sy: 0.9, key: y + 14, glow: 1, tint: rgba("#ffb03a"), flash: 0.35 });
+        s.illum.light(x, y, 28, 24, rgbaf(1, 0.55, 0.2, 0.6));
+      } else if (k === B_DRAGON) {
+        // a fire dragon: a great fireball with a long, roaring tail
+        drawAnim(s, a, Bu.t[i], x, y, { rot, sx: 2.3, sy: 2.3, key: y + 14, glow: 1 });
+        s.glow.line(x - Bu.vx[i] * 0.12, y - Bu.vy[i] * 0.12, x, y, 4, rgbaf(1, 0.45, 0.15, 0.55));
+        s.illum.light(x, y, 52, 44, rgbaf(1, 0.5, 0.2, 0.65));
+      }
       continue;
     }
     // a chakram: a ring of steel turning fast, its teeth catching the light, its element's glow on its edge

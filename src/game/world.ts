@@ -9,7 +9,6 @@ import {
   AI, depthOf, placeDef, El, EL_COLOR, EN, ENEMIES, evolutionOf, heroDef, mainStop, nextStop, PLACE_FLOORS, QUESTS, RELIC_MAX, RELICS, RelicKind, reactionFor, roster, WEAPON_IDS, WEAPONS,
   type PlaceDef, type PlaceId, type Stop, type GateKind, giftFor, DOORS, type DoorKind, MINIS, type MiniMove, type Blow, type HeroDef, type Modifier, type QuestKind, type Reaction, type StatId, type TaskId, type WeaponId, type WeaponDef, MYTHIC, RARITIES, rollRarity, UNIQUES, type Perk,
   HORDE,
-  WArt,
 } from "./defs";
 import { getLang, t as tr, tx } from "./i18n";
 import { Bullets, Drops, Enemies, Grid, Particles, TEAM_FOE, TEAM_HERO } from "./pools";
@@ -32,6 +31,23 @@ export const HERO_R = 4.5, HERO_HIT_Y = 13;
 /** An enemy shot's hit radius. */
 const FOE_SHOT_R = 5;
 BULLET_ANIMS.push("arrow", "fireball", "arrow", "crescent");
+/**
+ * The weapon artifacts' own: the moon's sickle (comes back like a chakram), the bloom's petals, the splitter's shards,
+ * the deep's bubbles (they burst in a wave), the wind's whirlwind (cuts again and again), the phoenix's firebird (it
+ * hunts), a spectral blade let go, a fire dragon (it bursts).
+ */
+export const B_SICKLE = 10, B_PETAL = 11, B_SHARD = 12, B_BUBBLE = 13, B_TORNADO = 14, B_BIRD = 15, B_BLADE = 16, B_DRAGON = 17;
+BULLET_ANIMS.push("crescent", "crescent", "ice_lance", "orb_blue", "whirl", "bird", "crescent", "fireball");
+/** How long a moon sickle flies out before it turns for home (s). */
+const SICKLE_OUT = 0.42;
+/**
+ * Marks on a shot's artifact bits: it has split already; it is a split-off piece (its hits do not set the artifacts
+ * off again); it may split once more (the splitter's last level); it has left its ray of light (the halo); its element
+ * marks a foe but sets off no reaction (the prism's rays: every element at once would set them off without end).
+ */
+const ART_SPLIT = 1 << 30, ART_CHILD = 1 << 27, ART_SPLIT2 = 1 << 29, ART_RAY = 1 << 28, ART_NOREACT = 1 << 26, ART_MARKS = ART_SPLIT | ART_CHILD | ART_SPLIT2 | ART_RAY | ART_NOREACT;
+/** The prism's rays, one element each, round the wheel. */
+const PRISM_ELS = [El.Fire, El.Frost, El.Storm, El.Venom, El.Holy, El.Void, El.None];
 const ATK_FPS = 20;
 const ELEMENTS = [El.Fire, El.Frost, El.Storm, El.Venom, El.Holy, El.Void];
 /** What the floor kicks up under the feet, per biome. */
@@ -62,35 +78,25 @@ export interface Fx {
   follow?: [number, number];
 }
 
+/** A weapon artifact held (defs.ts RELICS; "relic" in the code, the slot it took over). */
 export interface Relic {
   kind: RelicKind;
   level: number;
+  /** A clock of its own (cooldowns, an evolution's beat). */
   timer: number;
   angle: number;
   /** Evolved (defs.ts EVOLUTIONS): the same slot, a new way of working. */
   evo: boolean;
-  /** A second clock for evolved relics (the Sanctuary's healing). */
+  /** A second clock (the evolutions' long beats). */
   clock: number;
+  /** Blows or shots counted, for those that act on every n-th. */
+  count: number;
 }
 /**
- * The ice lance's orb: it hovers over the hero's shoulder, behind him, and follows; before each volley it stops
- * where it is and the cold gathers into it (charge 0 to 1), the lances leave from it, and it rests a moment before
- * it follows again.
+ * Where damage comes from, for the statistics: the weapon, the dash's cut, each weapon artifact (SRC_RELIC + its
+ * kind), reactions, burning and poison, the hero's ability, the wave and deflected shots (boosts), and the rest.
  */
-export interface FrostOrb {
-  x: number;
-  y: number;
-  charge: number;
-  /** After a volley: how long it stays put still. */
-  hold: number;
-  /** The last volley's flash, fading. */
-  flash: number;
-}
-/**
- * Where damage comes from, for the statistics: the weapon, the dash's cut, each relic (SRC_RELIC + its kind),
- * reactions, burning and poison, the hero's ability, the wave and deflected shots (artifacts), and the rest.
- */
-export const SRC_WEAPON = 0, SRC_DASH = 1, SRC_RELIC = 2, SRC_REACT = 12, SRC_STATUS = 13, SRC_ABILITY = 14, SRC_WAVE = 15, SRC_PARRY = 16, SRC_OTHER = 17, SRC_N = 18;
+export const SRC_WEAPON = 0, SRC_DASH = 1, SRC_RELIC = 2, SRC_REACT = 26, SRC_STATUS = 27, SRC_ABILITY = 28, SRC_WAVE = 29, SRC_PARRY = 30, SRC_OTHER = 31, SRC_N = 32;
 /** Elements per source in World.dmgStat. */
 export const SRC_ELS = 7;
 const GREY_MATTER = [rgba("#8a8698"), rgba("#a8a4b8"), rgba("#6a6678"), rgba("#c8c4d4")];
@@ -240,27 +246,12 @@ export const poolSpread = (p: Pool): number => {
   const age = p.max - p.life, u = Math.min(1, age / 0.35), out = 1 - (1 - u) ** 3;
   return out * Math.min(1, p.life / 0.5);
 };
-interface Sphere {
-  x: number;
-  y: number;
-  vx: number;
-  vy: number;
-  life: number;
-  r: number;
-}
 export interface Brazier {
   x: number;
   y: number;
   lit: boolean;
   progress: number;
   litT: number;
-}
-interface Flask {
-  x0: number;
-  y0: number;
-  x1: number;
-  y1: number;
-  t: number;
 }
 export interface Popup {
   x: number;
@@ -602,9 +593,33 @@ export class World {
   fx: Fx[] = [];
   arcs: Arc[] = [];
   pools: Pool[] = [];
-  spheres: Sphere[] = [];
   star: Star | null = null;
-  flasks: Flask[] = [];
+  /** The weapon artifacts' things in the world (see "weapon artifacts"). Spectral blades circling the hero. */
+  blades: { t: number; a: number; dmg: number }[] = [];
+  bladeSpin = 0;
+  /** Stardust: stars where hits landed, and constellations going off (their points, fading). */
+  stars: { x: number; y: number; t: number; dmg: number }[] = [];
+  constellations: { pts: number[]; t: number }[] = [];
+  /** Blooming thorn: flowers where hits landed, opening into bladed petals when `t` reaches `open`. */
+  flowers: { x: number; y: number; t: number; open: number; dmg: number }[] = [];
+  /** Aurora: ribbons of light (a polyline), fading over `life`, hurting what stands in them. */
+  ribbons: { pts: number[]; t: number; life: number; dmg: number; w: number }[] = [];
+  /** The void shard's vortices, drawing foes in. */
+  vortices: { x: number; y: number; r: number; pull: number; life: number; max: number; dmg: number; burst: number }[] = [];
+  /** Meteors on their way down (t 0 to 1), to burst at (x, y). */
+  meteors: { x: number; y: number; t: number; dmg: number; r: number; burn: boolean }[] = [];
+  /** Waves running along the ground (the shockwave; the permafrost's line of ice): a step every `every` s. */
+  quakes: { x: number; y: number; dx: number; dy: number; n: number; t: number; every: number; dmg: number; stun: number; ice: boolean }[] = [];
+  /** The mirror blade's doubles: a blow repeated after `t`. */
+  echoes: { t: number; k: number; dir: number; dmg: number }[] = [];
+  /** Rays of light the halo's shots leave, and runes waiting to go off again. */
+  rays: { x0: number; y0: number; x1: number; y1: number; t: number }[] = [];
+  runes: { x: number; y: number; t: number; dmg: number; r: number }[] = [];
+  /** The rainbow's sweep (the prism's evolution): its angle, how far round it has gone (-1: resting). */
+  rainbow = { a: 0, done: -1, t: 0 };
+  /** The blood fang's string of kills; the phoenix's breath between birds. */
+  fangKills = 0;
+  birdCd = 0;
   popups: Popup[] = [];
   ghosts: Ghost[] = [];
   braziers: Brazier[] = [];
@@ -627,40 +642,32 @@ export class World {
   relics: Relic[] = [];
   stats: Stats = { edge: 1, haste: 1, reach: 1, wave: 0, parry: 0, speed: 1, magnet: 44, dashCd: 3.5, odGain: 1, crit: 0.05, lantern: 1, might: 1, pact: 0, compass: 0, crucible: 0, echo: 0, xp: 0, tread: 0 };
   statLevels: Partial<Record<StatId, number>> = {};
-  frostOrb: FrostOrb | null = null;
-  /** The Ash Brazier's rings of fire on the floor: each burns what stands in it every so often (`tick`). */
-  /** Rings of fire on the floor (the brazier relic's), and embers a fiery shot leaves behind it (`ember`). */
+  /** Rings of fire on the floor, and embers a fiery blow or shot leaves behind it (`ember`, drawn as live flame). */
   firePools: { x: number; y: number; r: number; t: number; life: number; dmg: number; tick: number; ember?: boolean }[] = [];
+  /** The strongest weapon artifact (the highest level; an evolved one first), or none. */
+  topRelic(): Relic | null {
+    let top: Relic | null = null;
+    for (const r of this.relics) if (!top || (r.evo ? 9 : r.level) > (top.evo ? 9 : top.level)) top = r;
+    return top;
+  }
   /**
-   * The weapon artifacts held (the stage 2 prototype: see WARTS; nothing offers them in play yet), and whether the
-   * Ring of Fire has evolved with the Bright Lantern.
-   */
-  wArts: { kind: WArt; level: number }[] = [];
-  wArtEvo = false;
-  /**
-   * How the weapon in hand looks with the weapon artifacts held: steeped in the strongest one's colours ("~fire~0"),
-   * strongly at its last level, white-hot once the Ring of Fire has evolved; "" with none.
+   * How the weapon in hand looks with the weapon artifacts held: steeped in the strongest one's colour
+   * ("~ff7a2a~0", strongly from its last level), white-hot once one has evolved; "" with none.
    */
   weaponLook(): string {
-    if (!this.wArts.length) return "";
-    if (this.wArtEvo) return "~white~1";
-    const top = this.wArts.reduce((a, b) => (b.level > a.level ? b : a));
-    return `~${["fire", "ricochet", "storm", "frost"][top.kind]}~${top.level >= 5 ? 1 : 0}`;
+    const top = this.topRelic();
+    if (!top) return "";
+    if (top.evo) return "~white~1";
+    return `~${RELICS[top.kind].color.slice(1)}~${top.level >= 5 ? 1 : 0}`;
   }
   /** The colour the weapon's own light takes from the strongest weapon artifact (or none). */
   artColor(): string | null {
-    if (!this.wArts.length) return null;
-    if (this.wArtEvo) return "#ffe08a";
-    const top = this.wArts.reduce((a, b) => (b.level > a.level ? b : a));
-    return ["#ff7a2a", "#e8edf6", "#ffe36a", "#78ccf4"][top.kind];
-  }
-  private wLv(k: WArt): number {
-    return this.wArts.find((a) => a.kind === k)?.level ?? 0;
+    const top = this.topRelic();
+    if (!top) return null;
+    return top.evo ? "#ffe08a" : RELICS[top.kind].color;
   }
   /** When the Ice Crown last froze on a dash (s, the world's time). */
   crownDashT = -9;
-  /** Enemy bolts that have reached the Mirror Shield: every so many is turned back. */
-  mirrorCount = 0;
   /** The bell's peals: rings of sound spreading from where it was rung (draw.ts), `r` growing to `R` over `t`. */
   soundRings: { x: number; y: number; r: number; R: number; t: number }[] = [];
   warns: Warn[] = [];
@@ -708,6 +715,8 @@ export class World {
   pendingLevels = 0;
   pendingChests = 0;
   hitstop = 0;
+  /** Seconds of slowed time left (an evolution's moment). */
+  slowmo = 0;
   shake = 0;
   flash = 0;
   portal: { x: number; y: number; t: number } | null = null;
@@ -875,13 +884,22 @@ export class World {
     this.fx = [];
     this.arcs = [];
     this.pools = [];
-    this.spheres = [];
+    this.blades = [];
+    this.stars = [];
+    this.constellations = [];
+    this.flowers = [];
+    this.ribbons = [];
+    this.vortices = [];
+    this.meteors = [];
+    this.quakes = [];
+    this.echoes = [];
+    this.rays = [];
+    this.runes = [];
     this.warns = [];
     this.beams = [];
     this.erupts = [];
     this.brain = null;
     this.star = null;
-    this.flasks = [];
     this.popups = [];
     this.ghosts = [];
     this.strikes = [];
@@ -1362,6 +1380,12 @@ export class World {
       this.hitstop -= dt;
       return;
     }
+    // an evolution's moment: the world slows to a third and eases back
+    if (this.slowmo > 0) {
+      this.slowmo -= dt;
+      const back = this.slowmo < 0.4 ? (1 - this.slowmo / 0.4) ** 2 : 0;
+      dt *= 0.35 + 0.65 * back;
+    }
     if (this.cine) {
       this.updateCine(dt);
       return;
@@ -1371,7 +1395,7 @@ export class World {
     this.grid.build(this.enemies.x, this.enemies.y, this.enemies.n);
     this.updateWays(dt);
     this.updateHero(dt);
-    this.updateRelics(dt);
+    this.updateArts(dt);
     this.updateEnemies(dt);
     this.updateWarns(dt);
     this.updateBullets(dt);
@@ -1695,16 +1719,14 @@ export class World {
     this.dust(h.x, h.y, 10, 60);
     this.addFx("slam", h.x, h.y + 2, { sx: 0.45, sy: 0.45, glow: 0.4 });
   }
-  /** The Ice Crown: a burst of frost out to R from the hero, freezing and hurting what it reaches. */
-  private crownNova(R: number, r: { level: number; evo: boolean }, quiet = false): void {
-    const h = this.hero, E = this.enemies, m = this.stats.might, L = r.level;
-    this.setSrc(SRC_RELIC + RelicKind.Crown);
-    if (r.evo && !quiet) {
-      // sealed in ice a moment: no harm comes through, then it shatters
-      h.invuln = Math.max(h.invuln, 1.6);
-      this.addFx("frost_nova", h.x, h.y - 6, { glow: 1, sx: 1.4, sy: 1.4 });
-    } else this.addFx("frost_nova", h.x, h.y - 6, { glow: 0.9, sx: R / 70, sy: R / 70 });
-    const dmg = 14 * (L >= 4 ? 1.6 : 1) * (r.evo ? 1.4 : 1) * m, hold = (L >= 3 ? 2.2 : 1.5) * (r.evo ? 1.4 : 1) * (1 + this.stats.crucible);
+  /**
+   * The Ice Crown (a boost since the weapon artifacts came): a burst of frost out to R from the hero, freezing and
+   * hurting what it reaches; harder and longer from its 3rd level.
+   */
+  private crownNova(R: number, L: number): void {
+    const h = this.hero, E = this.enemies, m = this.stats.might, was = this.setSrc(SRC_OTHER);
+    this.addFx("frost_nova", h.x, h.y - 6, { glow: 0.9, sx: R / 70, sy: R / 70 });
+    const dmg = 14 * (L >= 3 ? 1.6 : 1) * m, hold = (L >= 3 ? 2.2 : 1.5) * (1 + this.stats.crucible);
     for (let i = E.n - 1; i >= 0; i--) {
       const dx = E.x[i] - h.x, dy = (E.y[i] - h.y) / FLOOR_SQ;
       if (dx * dx + dy * dy > R * R) continue;
@@ -1714,38 +1736,14 @@ export class World {
     }
     this.audio.play("freeze", 0.8);
     this.shake = Math.max(this.shake, 0.3);
+    this.setSrc(was);
   }
   /** The Ice Crown at its last level: a dash freezes what is near, once in six seconds. */
   private crownOnDash(): void {
-    const c = this.relics.find((r) => r.kind === RelicKind.Crown);
-    if (!c || c.level < 5 || this.time - this.crownDashT < 6) return;
+    const L = this.statLevels.crown ?? 0;
+    if (L < 4 || this.time - this.crownDashT < 6) return;
     this.crownDashT = this.time;
-    this.crownNova(c.evo ? 110 : 80, c, true);
-  }
-  /**
-   * The Mirror Shield: an enemy bolt about to strike the hero is, every so many, turned back as the hero's own (split
-   * in three at the last level; the Eternal Mirror turns every one, and the turned one seeks the nearest foe).
-   */
-  private mirrorTurns(i: number): boolean {
-    const r = this.relics.find((q) => q.kind === RelicKind.Mirror);
-    if (!r) return false;
-    const every = r.evo ? 1 : r.level >= 4 ? 2 : r.level >= 2 ? 3 : 4;
-    if (++this.mirrorCount % every !== 0) return false;
-    const B = this.bullets, h = this.hero, x = B.x[i], y = B.y[i], m = this.stats.might;
-    let a = Math.atan2(-B.vy[i], -B.vx[i]);
-    if (r.evo) {
-      const j = this.nearestEnemy(x, y, 260);
-      if (j >= 0) (this.body(j), (a = Math.atan2(this.by - y, this.bx - x)));
-    }
-    const sp = Math.max(160, Math.hypot(B.vx[i], B.vy[i]) * 1.6), dmg = 18 * (r.level >= 3 ? 1.5 : 1) * (r.evo ? 1.5 : 1) * m, kind = B.kind[i];
-    B.remove(i);
-    this.setSrc(SRC_RELIC + RelicKind.Mirror);
-    for (const da of r.level >= 5 || r.evo ? [-0.25, 0, 0.25] : [0]) this.bullets.add(TEAM_HERO, kind, x, y, Math.cos(a + da) * sp, Math.sin(a + da) * sp, 1.2, dmg, 5, El.Holy, 1);
-    this.burst(x, y, 8, rgba("#fff6c0"), 80, 0.3);
-    this.addFx("hit_spark", x, y + 6, { glow: 1, sx: 0.6, sy: 0.6, tint: rgba("#fff6c0") });
-    this.audio.play("holy", 1.5);
-    h.invuln = Math.max(h.invuln, 0.12);
-    return true;
+    this.crownNova(80, L);
   }
 
   /** Keep something (the hero, an enemy) out of the columns. */
@@ -1869,10 +1867,10 @@ export class World {
     const cx = h.x, cy = h.y - 18;
     if (B.kind === "arrow" || B.kind === "fire" || B.kind === "frost") {
       const [hx, hy] = this.handPos(), n = (B.fan ?? 1) + s.wave + (h.legend && B.kind !== "arrow" ? 1 : 0), spread = B.kind === "arrow" ? 0.1 : B.fan ? 0.3 : 0.22;
-      const speed = (B.kind === "arrow" ? 380 : B.kind === "fire" ? 230 : 300) * (0.9 + 0.1 * s.reach);
+      const speed = (B.kind === "arrow" ? 380 : B.kind === "fire" ? 230 : 300) * (0.9 + 0.1 * s.reach) * this.artSpeed();
       const kind = B.kind === "arrow" ? B_ARROW : B.kind === "fire" ? B_FIREBALL : B_LANCE;
       const el = B.kind === "fire" ? El.Fire : B.kind === "frost" ? El.Frost : wel;
-      const pierce = B.kind === "arrow" ? 1 + (h.def.id === "ranger" ? 1 : 0) : B.kind === "frost" ? 2 : 0;
+      const pierce = (B.kind === "arrow" ? 1 + (h.def.id === "ranger" ? 1 : 0) : B.kind === "frost" ? 2 : 0) + this.artPierce();
       // aimed from where it leaves, not from the chest: the hand is higher and ahead, and a shot parallel to the
       // chest's line would pass over a low target (a slime)
       const goal = this.shotGoal();
@@ -1884,6 +1882,7 @@ export class World {
         const a = base + (q - (n - 1) / 2) * spread;
         this.bullets.add(TEAM_HERO, kind, hx + Math.cos(a) * 7, hy + Math.sin(a) * 7, Math.cos(a) * speed, Math.sin(a) * speed, 0.95, dmg, B.kind === "fire" ? 5 : 3.5, el, pierce);
       }
+      if (this.relics.length) this.artsOnShot(hx + Math.cos(base) * 7, hy + Math.sin(base) * 7, base, speed, dmg, kind, el, pierce, goal);
       this.bullets.artCur = this.bullets.bounceCur = 0;
       this.audio.play(B.kind === "arrow" ? "shoot" : B.kind === "fire" ? "ignite" : "freeze", B.kind === "arrow" ? 0.6 : 1.3);
       // the release: a flash at the hand, a puff of sparks thrown forward
@@ -1899,13 +1898,16 @@ export class World {
       // a crossbow's bolt, heavy and straight through; a chakram thrown out to come back
       const [hx, hy] = this.handPos(), bolt = B.kind === "bolt", n = 1 + s.wave + (h.legend && !bolt ? 1 : 0), spread = bolt ? 0.08 : 0.35;
       const goal = this.shotGoal();
-      const base = goal && Math.hypot(goal.x - hx, goal.y - hy) > 10 ? Math.atan2(goal.y - hy, goal.x - hx) : dir, speed = bolt ? 430 : 320;
+      const base = goal && Math.hypot(goal.x - hx, goal.y - hy) > 10 ? Math.atan2(goal.y - hy, goal.x - hx) : dir, speed = (bolt ? 430 : 320) * this.artSpeed();
+      this.armShots();
       for (let q = 0; q < n; q++) {
         const a = base + (q - (n - 1) / 2) * spread;
         // (a bolt leaves from the crossbow's head, well past the hand that holds its stock)
         const out = bolt ? 22 : 7;
-        this.bullets.add(TEAM_HERO, bolt ? B_BOLT : B_CHAKRAM, hx + Math.cos(a) * out, hy + Math.sin(a) * out, Math.cos(a) * speed, Math.sin(a) * speed, bolt ? 1 : 3, dmg, bolt ? 4 : 6.5, wel, bolt ? 4 + (h.legend ? 2 : 0) : 99);
+        this.bullets.add(TEAM_HERO, bolt ? B_BOLT : B_CHAKRAM, hx + Math.cos(a) * out, hy + Math.sin(a) * out, Math.cos(a) * speed, Math.sin(a) * speed, bolt ? 1 : 3, dmg, bolt ? 4 : 6.5, wel, bolt ? 4 + (h.legend ? 2 : 0) + this.artPierce() : 99);
       }
+      if (this.relics.length) this.artsOnShot(hx + Math.cos(base) * 12, hy + Math.sin(base) * 12, base, speed, dmg, bolt ? B_BOLT : B_CHAKRAM, wel, bolt ? 4 : 99, goal);
+      this.bullets.artCur = this.bullets.bounceCur = 0;
       this.audio.play(bolt ? "shoot" : "dash", bolt ? 0.45 : 1.6);
       this.addFx("hit_spark", hx + Math.cos(dir) * (bolt ? 20 : 4), hy + Math.sin(dir) * (bolt ? 20 : 4) + 8, { rot: dir + Math.PI, sx: 0.45, sy: 0.45, glow: 0.9, key: 4, tint: wel ? rgba(EL_COLOR[wel]) : 0xffffffff });
       if (bolt) this.shake = Math.max(this.shake, 0.12);
@@ -1932,11 +1934,21 @@ export class World {
         this.arcs.push({ pts: jag(tx0, ty0, ex, ey), life: 0.1, color: rgba(EL_COLOR[el]) });
         this.smashUrns(ex, ey, 16);
       }
+      this.armShots();
+      const bits = this.bullets.artCur;
+      this.bullets.artCur = this.bullets.bounceCur = 0;
       for (let q = 0; q <= jumps && j >= 0; q++) {
         const E2 = this.enemies, uid = E2.uid[j];
         hit.add(uid);
         this.body(j);
         const ex = this.bx, ey = this.by;
+        if (bits) {
+          this.artsOnHit(j, d);
+          // (the weapon artifacts act where the lightning first strikes, and on every leap after at the last level of each)
+          if (q === 0) (this.shotArts(bits, ex, ey, d, j), this.setSrc(SRC_WEAPON));
+          j = this.indexOf(uid);
+          if (j < 0) break;
+        }
         this.arcs.push({ pts: jag(px, py, ex, ey), life: 0.14, color: q === 0 ? rgba("#ffffff") : rgba(EL_COLOR[el]) });
         this.addFx("hit_spark", ex, ey + 10, { sx: 0.5, sy: 0.5, glow: 0.9, key: 2, tint: rgba(EL_COLOR[el]) });
         this.damage(j, d * (this.rng.chance(s.crit) ? 2 : 1), el);
@@ -1980,6 +1992,8 @@ export class World {
       }
     }
     let hits = 0;
+    // where this blow strikes, and strikes hard: what the weapon artifacts work from (artsOnBlow)
+    const hitPts: number[] = [], critPts: number[] = [], arts = this.relics.length > 0;
     const E = this.enemies, fx = h.x + h.face * B.arc, fy = h.y - 8;
     this.grid.query(cx, cy + 16, R + 50, (i) => {
       this.body(i);
@@ -2003,6 +2017,11 @@ export class World {
       }
       // (Echo: now and then the blow strikes again, a pale ghost of it)
       const echoed = s.echo > 0 && this.rng.chance(s.echo), uidE = E.uid[i];
+      if (arts) {
+        this.artsOnHit(i, dmg);
+        if (hitPts.length < 16) hitPts.push(ex, ey);
+        if (crit && critPts.length < 8) critPts.push(ex, ey);
+      }
       this.damage(i, dmg * (crit ? 2 : 1), wel, { crit });
       if (echoed) {
         const j = this.indexOf(uidE);
@@ -2072,7 +2091,7 @@ export class World {
       this.setSrc(SRC_WEAPON);
     }
     // the weapon artifacts' own turn on a blade's blow (once per blow)
-    if (hit === of - 1 && this.wArts.length && !W.ranged) this.meleeArts(cx, cy, dir, R, dmg);
+    if (hit === of - 1 && arts && !W.ranged) this.artsOnBlow(cx, cy, dir, R, dmg, k, !!B.fin, hitPts, critPts);
     // an element sings in its own voice when the blow lands
     if (hits && wel) this.audio.play(EL_SFX[wel], 1.1);
     if (hits) {
@@ -2083,104 +2102,49 @@ export class World {
     void W;
   }
 
-  // ============================================================================================ weapon artifacts
-  /** The shots about to leave take the weapon artifacts' marks: a trail of fire, bounces, lightning, frost. */
-  private armShots(): void {
-    let bits = 0;
-    for (const a of this.wArts) bits |= 1 << a.kind;
-    this.bullets.artCur = bits;
-    this.bullets.bounceCur = this.wLv(WArt.Ricochet);
-  }
-  /** A jagged line for lightning between two points. */
-  private jagged(x0: number, y0: number, x1: number, y1: number, amp = 7): number[] {
-    const pts = [x0, y0], nx = -(y1 - y0), ny = x1 - x0, L = Math.hypot(nx, ny) || 1;
-    for (let q = 1; q < 4; q++) {
-      const u = q / 4, o = this.rng.range(-amp, amp);
-      pts.push(x0 + (x1 - x0) * u + (nx / L) * o, y0 + (y1 - y0) * u + (ny / L) * o);
+  /** A hero's shot ends (spent, against a wall, or on a foe): a bubble bursts, a fire dragon flares, a halo ray stays. */
+  private bulletEnds(i: number): void {
+    const B = this.bullets, k = B.kind[i], x = B.x[i], y = B.y[i];
+    if (k === B_BUBBLE) this.popBubble(x, y, B.dmg[i]);
+    else if (k === B_DRAGON) {
+      const L = Math.max(1, this.relicLevel(RelicKind.Dragon)), was = this.setSrc(SRC_RELIC + RelicKind.Dragon), R = 24 + 3 * L;
+      this.addFx("explosion", x, y + 12, { sx: R / 44, sy: R / 44, glow: 1 });
+      this.blast(x, y, R, B.dmg[i], El.Fire, 120);
+      for (let q = 0; q < 4; q++) this.firePools.push({ x: x + this.rng.range(-14, 14), y: y + 12 + this.rng.range(-8, 8), r: 11, t: 0, life: 1.8, dmg: 4 * this.stats.might, tick: 0, ember: true });
+      this.shake = Math.max(this.shake, 0.4);
+      this.audio.play("boom", 1);
+      this.setSrc(was);
     }
-    pts.push(x1, y1);
-    return pts;
+    if (B.art[i] & (1 << RelicKind.Halo) && !(B.art[i] & ART_RAY)) this.leaveRay(i);
   }
-  /**
-   * From a point, on through the nearest foes not yet struck: lightning (jagged, in the storm's colour) or a whirl of
-   * blows (straight white cuts, a cross of light at each).
-   */
-  private chainFrom(x: number, y: number, jumps: number, reach: number, dmg: number, el: El, slash: boolean): void {
-    const hit = new Set<number>(), E = this.enemies;
-    let px = x, py = y, j = this.nearestEnemy(x, y, reach);
-    for (let q = 0; q < jumps && j >= 0; q++) {
-      hit.add(E.uid[j]);
+  /** The halo's shot leaves a ray of light along its last stretch, burning what it crosses. */
+  private leaveRay(i: number): void {
+    const B = this.bullets, L = Math.max(1, this.relicLevel(RelicKind.Halo)), sp = Math.hypot(B.vx[i], B.vy[i]) || 1;
+    B.art[i] |= ART_RAY;
+    const len = Math.max(20, Math.min(90, sp * B.t[i])), x1 = B.x[i], y1 = B.y[i], x0 = x1 - (B.vx[i] / sp) * len, y0 = y1 - (B.vy[i] / sp) * len;
+    if (this.rays.length < 40) this.rays.push({ x0, y0, x1, y1, t: 0 });
+    const was = this.setSrc(SRC_RELIC + RelicKind.Halo), dmg = B.dmg[i] * (0.25 + 0.05 * L) * (1 + (L >= 2 ? 0.3 : 0) + (L >= 4 ? 0.3 : 0));
+    this.grid.query((x0 + x1) / 2, (y0 + y1) / 2 + 10, len / 2 + 24, (j) => {
       this.body(j);
-      const ex = this.bx, ey = this.by;
-      this.arcs.push({ pts: slash ? [px, py, (px + ex) / 2 + this.rng.range(-6, 6), (py + ey) / 2 - 6, ex, ey] : this.jagged(px, py, ex, ey), life: slash ? 0.18 : 0.14, color: slash ? rgba("#ffffff") : q === 0 ? rgba("#ffffff") : rgba(EL_COLOR[El.Storm]) });
-      this.addFx(slash ? "crit" : "hit_spark", ex, ey + 10, { rot: Math.atan2(ey - py, ex - px), sx: slash ? 0.7 : 0.5, sy: slash ? 0.7 : 0.5, glow: 0.9, key: 2, tint: slash ? undefined : rgba(EL_COLOR[El.Storm]) });
-      this.damage(j, dmg, el);
-      (px = ex), (py = ey);
-      j = this.nearestEnemy(ex, ey, reach, hit);
-    }
-    if (hit.size) this.audio.play(slash ? "hit" : "zap", slash ? 1.4 : 1);
+      const u = Math.max(0, Math.min(1, ((this.bx - x0) * (x1 - x0) + (this.by - y0) * (y1 - y0)) / (len * len)));
+      if (Math.hypot(this.bx - (x0 + (x1 - x0) * u), this.by - (y0 + (y1 - y0) * u)) < 6 + this.brx) this.damage(j, dmg, El.Holy, { quiet: true });
+    });
+    this.setSrc(was);
   }
-  /** A blade's blow with the weapon artifacts held: each adds its own on top (see WARTS). */
-  private meleeArts(cx: number, cy: number, dir: number, R: number, dmg: number): void {
-    const B = this.bullets;
-    for (const a of this.wArts) {
-      const L = a.level;
-      switch (a.kind) {
-        case WArt.Fire: {
-          // waves of fire thrown along the blow, the ground burning where they pass; evolved, a whole ring of them
-          const n = this.wArtEvo ? 10 : L >= 5 ? 3 : L >= 3 ? 2 : 1, step = this.wArtEvo ? (Math.PI * 2) / n : 0.34;
-          B.artCur = 1 << WArt.Fire;
-          for (let q = 0; q < n; q++) {
-            const ang = this.wArtEvo ? dir + q * step : dir + (q - (n - 1) / 2) * step;
-            B.add(TEAM_HERO, B_CRESCENT, cx + Math.cos(ang) * 14, cy + Math.sin(ang) * 14, Math.cos(ang) * 210, Math.sin(ang) * 210, 0.5 + 0.06 * L, dmg * (0.35 + 0.08 * L), 9, El.Fire, 4);
-          }
-          B.artCur = 0;
-          if (this.wArtEvo) (this.addFx("explosion_s", cx, cy + 8, { glow: 1, sx: 1.2, sy: 1.2 }), (this.shake = Math.max(this.shake, 0.3)));
-          this.audio.play("ignite", 1.2);
-          break;
-        }
-        case WArt.Ricochet:
-          this.chainFrom(cx + Math.cos(dir) * R * 0.6, cy + Math.sin(dir) * R * 0.6, 1 + L, 70 + 10 * L, dmg * (0.4 + 0.05 * L), El.None, true);
-          break;
-        case WArt.Storm:
-          this.chainFrom(cx + Math.cos(dir) * R * 0.6, cy + Math.sin(dir) * R * 0.6, 1 + L, 80 + 10 * L, dmg * (0.35 + 0.05 * L), El.Storm, false);
-          break;
-        case WArt.Frost: {
-          // a fan of ice spikes out along the blow
-          const n = 3 + L, span = 0.9 + 0.12 * L;
-          for (let q = 0; q < n; q++) {
-            const ang = dir + (q / (n - 1) - 0.5) * span;
-            B.add(TEAM_HERO, B_LANCE, cx + Math.cos(ang) * 16, cy + Math.sin(ang) * 16, Math.cos(ang) * 290, Math.sin(ang) * 290, 0.3 + 0.03 * L, dmg * (0.25 + 0.05 * L), 3, El.Frost, 1);
-          }
-          this.audio.play("freeze", 1.4);
-          break;
-        }
-      }
+  /** The splitter: a shot splits where it strikes (in two, in three from the 3rd level; the pieces once more at the 5th). */
+  private splitShot(i: number, x: number, y: number, uid: number): void {
+    const B = this.bullets, L = Math.max(1, this.relicLevel(RelicKind.Splitter)), bits = B.art[i], child = (bits & ART_CHILD) !== 0;
+    B.art[i] |= ART_SPLIT;
+    const a = Math.atan2(B.vy[i], B.vx[i]), sp = Math.hypot(B.vx[i], B.vy[i]), n = L >= 3 ? 3 : 2, was = this.setSrc(SRC_RELIC + RelicKind.Splitter);
+    B.artCur = (bits & ~ART_MARKS) | ART_CHILD | (L >= 5 && !child ? ART_SPLIT2 : 0);
+    B.bounceCur = 0;
+    for (let q = 0; q < n; q++) {
+      const da = (q / (n - 1) - 0.5) * 0.9, c = B.add(TEAM_HERO, B.kind[i] === B_CHAKRAM || B.kind[i] === B_SICKLE ? B_SHARD : B.kind[i], x, y, Math.cos(a + da) * sp, Math.sin(a + da) * sp, 0.45, B.dmg[i] * (0.4 + 0.05 * L), Math.min(4, B.r[i]), B.el[i], 0);
+      if (c >= 0) B.hits[c * 4] = uid;
     }
-  }
-  /** A hero's shot that carries the weapon artifacts strikes a foe at (x, y): lightning, frost, the evolved fire. */
-  private shotArts(art: number, x: number, y: number, dmg: number): void {
-    if (art & (1 << WArt.Storm)) {
-      const L = this.wLv(WArt.Storm);
-      this.addFx("lightning", x, y + 10, { sx: 0.5 + 0.05 * L, sy: 0.5 + 0.05 * L, glow: 0.9, key: 4 });
-      this.blast(x, y, 14 + 3 * L, dmg * (0.3 + 0.07 * L), El.Storm, 20);
-      if (L >= 5) this.chainFrom(x, y, 2, 90, dmg * 0.4, El.Storm, false);
-      this.audio.play("zap", 1.1);
-    }
-    if (art & (1 << WArt.Frost)) {
-      const L = this.wLv(WArt.Frost);
-      this.addFx("frost_nova", x, y + 8, { sx: 0.3 + 0.07 * L, sy: 0.3 + 0.07 * L, glow: 0.7 });
-      this.blast(x, y, 14 + 5 * L, dmg * (0.2 + 0.05 * L), El.Frost, 10);
-    }
-    if (art & (1 << WArt.Fire) && this.wArtEvo) {
-      // the crown's shot bursts into a ring of fire where it strikes
-      this.addFx("explosion_s", x, y + 8, { glow: 1, sx: 1.1, sy: 1.1 });
-      this.blast(x, y, 34, dmg * 0.8, El.Fire, 60);
-      for (let q = 0; q < 6; q++) {
-        const a = (q / 6) * Math.PI * 2;
-        this.firePools.push({ x: x + Math.cos(a) * 22, y: y + 14 + Math.sin(a) * 16, r: 12, t: 0, life: 2, dmg: 7, tick: 0 });
-      }
-    }
+    B.artCur = B.bounceCur = 0;
+    this.burst(x, y, 5, rgba("#7af0ff"), 70, 0.25);
+    this.setSrc(was);
   }
   /** Damage everything in a circle (spells, fireballs bursting). */
   private blast(x: number, y: number, r: number, dmg: number, el: El, push: number): void {
@@ -2308,8 +2272,8 @@ export class World {
     this.audio.play("hurt");
     this.burst(h.x, h.y - 18, 14, rgba("#ff4a5a"), 90, 0.5, 200);
     // the Ice Crown answers the wound: everything near freezes (the Endless Winter seals the hero in ice first)
-    const crown = this.relics.find((r) => r.kind === RelicKind.Crown);
-    if (crown && h.hp > 0) this.crownNova(crown.evo ? 130 : 70 + (crown.level >= 2 ? 18 : 0), crown);
+    const crown = this.statLevels.crown ?? 0;
+    if (crown && h.hp > 0) this.crownNova(70 + (crown >= 2 ? 18 : 0), crown);
     // mercy: bullets right next to the hero vanish
     const B = this.bullets;
     for (let i = B.n - 1; i >= 0; i--) if (B.team[i] === TEAM_FOE && (B.x[i] - h.x) ** 2 + (B.y[i] - h.y + 10) ** 2 < 36 * 36) B.remove(i);
@@ -2829,11 +2793,8 @@ export class World {
     if (d.elite && d.ai < AI.Boss) {
       this.shake = Math.max(this.shake, 0.35);
     }
-    // the Plague Cauldron: a poisoned foe bursts into a pool of its own
-    if (E.poison[i] > 0 && this.pools.length < 28 && this.evolved(RelicKind.Flask)) {
-      this.pools.push({ x, y, r: 16, life: 2.6, max: 2.6, power: 1 });
-      this.burst(x, y - 4, 6, rgba("#8ad83a"), 50, 0.35, 120);
-    }
+    // the weapon artifacts' turn: a firebird, a last burst of venom, the blood fang's tally
+    this.artsOnKill(x, y, E.poison[i] > 0);
     // a puff where it fell: an elite's always; a common foe's smaller, and in a thick fight mostly just its sparks
     // (the owner: the puffs clouded the screen)
     let puffs = 0;
@@ -3241,6 +3202,9 @@ export class World {
   private elementsAtHand(): number {
     const els = new Set<El>(this.relics.map((r) => RELICS[r.kind].el));
     if (this.weaponEl) els.add(this.weaponEl);
+    // (the prism deals every element)
+    if (this.relicLevel(RelicKind.Prism)) for (const e of PRISM_ELS) els.add(e);
+    els.delete(El.None);
     return els.size;
   }
   /** The hero steps up to the spirit and takes its task. */
@@ -3362,15 +3326,18 @@ export class World {
     return q && q.kind === "bounty" && q.state === "active" && q.uid ? this.indexOf(q.uid) : -1;
   }
 
-  // ============================================================================================ relics
+  // ============================================================================================ weapon artifacts
   relicLevel(kind: RelicKind): number {
     return this.relics.find((r) => r.kind === kind)?.level ?? 0;
+  }
+  private relicOf(kind: RelicKind): Relic | undefined {
+    return this.relics.find((r) => r.kind === kind);
   }
   /** The elements the weapon in hand deals: its own. */
   weaponElements(): El[] {
     return this.weaponEl ? [this.weaponEl] : [];
   }
-  /** Ready to become legendary: an element in the weapon, a relic of that element at its last level. */
+  /** Ready to become legendary: an element in the weapon, a weapon artifact of that element at its last level. */
   legendReady(): boolean {
     const els = this.weaponElements();
     return !this.hero.legend && els.length > 0 && this.relics.some((r) => r.level >= RELIC_MAX && els.includes(RELICS[r.kind].el));
@@ -3390,325 +3357,872 @@ export class World {
   evolved(kind: RelicKind): boolean {
     return !!this.relics.find((r) => r.kind === kind)?.evo;
   }
-  /** Relics ready to evolve: at their last level, with their upgrade taken. */
+  /** Weapon artifacts ready to evolve: at their last level, with their boost taken. */
   evolvable(): RelicKind[] {
-    return this.relics.filter((r) => !r.evo && r.level >= RELIC_MAX && (this.statLevels[evolutionOf(r.kind).stat] ?? 0) > 0).map((r) => r.kind);
+    return this.relics
+      .filter((r) => {
+        const e = evolutionOf(r.kind);
+        return !r.evo && !!e && r.level >= RELIC_MAX && (this.statLevels[e.stat] ?? 0) > 0;
+      })
+      .map((r) => r.kind);
   }
-  /** A relic evolves: a burst of light and its new form from the next step. */
+  /**
+   * A weapon artifact evolves: an event for the whole screen. Time slows a moment, the light flares white, its
+   * banner goes up, and its colour rings out from the hero across the floor.
+   */
   evolve(kind: RelicKind): void {
-    const r = this.relics.find((q) => q.kind === kind);
-    if (!r) return;
+    const r = this.relicOf(kind), e = evolutionOf(kind);
+    if (!r || !e) return;
     r.evo = true;
     r.timer = 0.3;
     r.clock = 0;
-    const h = this.hero;
-    this.addFx("smite", h.x, h.y, { glow: 1, tint: rgba("#fff0c0") });
-    this.addFx("heal_ring", h.x, h.y, { glow: 0.8, tint: rgba(EL_COLOR[RELICS[kind].el]) });
-    this.burst(h.x, h.y - 18, 30, rgba(EL_COLOR[RELICS[kind].el]), 120, 0.7);
-    this.flash = Math.max(this.flash, 0.5);
-    this.shake = Math.max(this.shake, 0.5);
+    const h = this.hero, col = rgba(RELICS[kind].color);
+    this.slowmo = Math.max(this.slowmo, 1.1);
+    this.addFx("smite", h.x, h.y, { glow: 1, tint: rgba("#fff0c0"), sx: 1.4, sy: 1.4 });
+    for (let q = 0; q < 3; q++) this.addFx("heal_ring", h.x, h.y, { glow: 1, tint: col, sx: 1.4 + q * 1.3, sy: 1.4 + q * 1.3, delay: q * 0.12 });
+    this.burst(h.x, h.y - 18, 60, col, 220, 0.9);
+    this.burst(h.x, h.y - 18, 30, rgba("#ffffff"), 160, 0.6);
+    this.flash = Math.max(this.flash, 0.9);
+    this.shake = Math.max(this.shake, 0.7);
+    this.ev.banner(tr("evolution"), col, tx(e.name));
     this.audio.play("ult");
   }
-  /** Where the k-th of n orbiting embers is. */
-  orbitPos(r: Relic, k: number, n: number): [number, number] {
-    const R = r.evo ? 50 : r.level >= 3 ? 40 : 32, a = r.angle + (k * Math.PI * 2) / n, h = this.hero;
-    return [h.x + Math.cos(a) * R, h.y - 12 + Math.sin(a) * R * 0.72];
+  /**
+   * What the artifacts that act on their own (blades, birds) measure from: a typical blow of the weapon in hand,
+   * with the boosts that make blows harder.
+   */
+  private baseDmg(): number {
+    const h = this.hero, W = WEAPONS[h.weapon], s = this.stats;
+    let sum = 0;
+    for (const b of W.blows) sum += b.dmg * (b.fan ?? 1);
+    return (sum / W.blows.length) * s.edge * s.might * this.fury * RARITIES[h.rarity].dmg * (h.legend ? 1.4 : 1);
   }
-  orbitCount(r: Relic): number {
-    return r.evo ? 6 : [1, 2, 2, 3, 4][r.level - 1];
+  /** The shots about to leave take the weapon artifacts' marks (see shotArts), and the ricochet's bounces. */
+  private armShots(): void {
+    let bits = 0;
+    for (const r of this.relics) bits |= 1 << r.kind;
+    this.bullets.artCur = bits;
+    const ric = this.relicOf(RelicKind.Ricochet);
+    this.bullets.bounceCur = ric ? (ric.evo ? 12 : ric.level) : 0;
   }
-  private updateRelics(dt: number): void {
-    const h = this.hero, E = this.enemies, m = this.stats.might;
-    if (h.dead) return;
+  /** More pierce for shots (the halo), and more speed (the wind feather). */
+  private artPierce(): number {
+    const L = this.relicLevel(RelicKind.Halo);
+    return L >= 3 ? 2 : L ? 1 : 0;
+  }
+  private artSpeed(): number {
+    return 1 + 0.08 * this.relicLevel(RelicKind.Wind);
+  }
+  /** A jagged line for lightning between two points. */
+  private jagged(x0: number, y0: number, x1: number, y1: number, amp = 7): number[] {
+    const pts = [x0, y0], nx = -(y1 - y0), ny = x1 - x0, L = Math.hypot(nx, ny) || 1;
+    for (let q = 1; q < 4; q++) {
+      const u = q / 4, o = this.rng.range(-amp, amp);
+      pts.push(x0 + (x1 - x0) * u + (nx / L) * o, y0 + (y1 - y0) * u + (ny / L) * o);
+    }
+    pts.push(x1, y1);
+    return pts;
+  }
+  /**
+   * From a point, on through the nearest foes not yet struck: lightning (jagged, in the storm's colour) or a whirl of
+   * blows (straight silver cuts, a cross of light at each).
+   */
+  private chainFrom(x: number, y: number, jumps: number, reach: number, dmg: number, el: El, slash: boolean, stun = 0): void {
+    const hit = new Set<number>(), E = this.enemies;
+    let px = x, py = y, j = this.nearestEnemy(x, y, reach);
+    for (let q = 0; q < jumps && j >= 0; q++) {
+      hit.add(E.uid[j]);
+      this.body(j);
+      const ex = this.bx, ey = this.by;
+      this.arcs.push({ pts: slash ? [px, py, (px + ex) / 2 + this.rng.range(-6, 6), (py + ey) / 2 - 6, ex, ey] : this.jagged(px, py, ex, ey), life: slash ? 0.18 : 0.14, color: slash ? rgba("#ffffff") : q === 0 ? rgba("#ffffff") : rgba(EL_COLOR[El.Storm]) });
+      this.addFx(slash ? "crit" : "hit_spark", ex, ey + 10, { rot: Math.atan2(ey - py, ex - px), sx: slash ? 0.7 : 0.5, sy: slash ? 0.7 : 0.5, glow: 0.9, key: 2, tint: slash ? undefined : rgba(EL_COLOR[El.Storm]) });
+      if (stun && ENEMIES[E.type[j]].ai < AI.Boss) E.stun[j] = Math.max(E.stun[j], stun);
+      this.damage(j, dmg, el);
+      (px = ex), (py = ey);
+      j = this.nearestEnemy(ex, ey, reach, hit);
+    }
+    if (hit.size) this.audio.play(slash ? "hit" : "zap", slash ? 1.4 : 1);
+  }
+  /** The every-n-th count of an artifact: true on the n-th. */
+  private nth(r: Relic, n: number): boolean {
+    r.count++;
+    if (r.count < n) return false;
+    r.count = 0;
+    return true;
+  }
+  /** A meteor called down on (x, y): it lands in half a second. */
+  private callMeteor(x: number, y: number, dmg: number, L: number): void {
+    if (this.meteors.length < 8) this.meteors.push({ x, y, t: 0, dmg, r: 30 + 3 * L, burn: L >= 3 });
+  }
+  /** Where to aim what the artifacts throw: the foe nearest the point, if any is near enough. */
+  private foeNear(x: number, y: number, R: number): [number, number] | null {
+    const j = this.nearestEnemy(x, y, R);
+    if (j < 0) return null;
+    this.body(j);
+    return [this.bx, this.by];
+  }
+  /** A cut and spin of spectral blade where the hero is: one more blade circling, up to the level's count. */
+  private addBlade(dmg: number): void {
+    const r = this.relicOf(RelicKind.Blades);
+    if (!r) return;
+    const L = r.level, max = [3, 4, 4, 5, 6][L - 1];
+    if (this.blades.length >= max) this.blades.sort((a, b) => a.t - b.t).shift();
+    this.blades.push({ t: this.time + (L >= 3 ? 5.5 : 4), a: this.rng.range(0, Math.PI * 2), dmg: dmg * (L >= 3 ? 0.5 : 0.4) });
+  }
+  /** A burst of water where a bubble pops: a wave that knocks foes down. */
+  private popBubble(x: number, y: number, dmg: number): void {
+    const L = Math.max(1, this.relicLevel(RelicKind.Bubbles)), was = this.setSrc(SRC_RELIC + RelicKind.Bubbles);
+    this.addFx("splash", x, y + 10, { sx: 0.5 + 0.06 * L, sy: 0.5 + 0.06 * L, glow: 0.5 });
+    const R = 20 + 3 * L;
+    this.burst(x, y, 10, rgba("#9be4ff"), 90, 0.35, 120);
+    this.grid.query(x, y + 10, R + 24, (i) => {
+      this.body(i);
+      const E = this.enemies, dx = this.bx - x, dy = this.by - y, d = Math.hypot(dx, dy) || 1;
+      if (d > R + this.brx) return;
+      if (ENEMIES[E.type[i]].ai < AI.Boss) {
+        E.kx[i] += (dx / d) * 220;
+        E.ky[i] += (dy / d) * 220;
+        if (L >= 5) E.stun[i] = Math.max(E.stun[i], 0.45);
+      }
+      this.damage(i, dmg * (L >= 4 ? 1.3 : 1), El.None, { quiet: this.rng.chance(0.5) });
+    });
+    this.audio.play("venom", 1.9);
+    this.setSrc(was);
+  }
+  /** Shards of the splitter or of the rainbow, flying out from (x, y) in a ring. */
+  private ringOf(kind: number, x: number, y: number, n: number, speed: number, life: number, dmg: number, a0: number, els: El[] | null, el: El = El.None): void {
+    const was = this.bullets.artCur;
+    this.bullets.artCur = els ? ART_NOREACT : 0;
+    for (let q = 0; q < n; q++) {
+      const a = a0 + (q / n) * Math.PI * 2;
+      this.bullets.add(TEAM_HERO, kind, x + Math.cos(a) * 6, y + Math.sin(a) * 6, Math.cos(a) * speed, Math.sin(a) * speed, life, dmg, 3, els ? els[q % els.length] : el, kind === B_PETAL ? 1 : 0);
+    }
+    this.bullets.artCur = was;
+  }
+  /** A ghostly double repeats blow k of the weapon in hand (the mirror blade), in pale light. */
+  private ghostBlow(k: number, dir: number, dmg: number): void {
+    const h = this.hero, W = WEAPONS[h.weapon], B = W.blows[k] ?? W.blows[0], s = this.stats;
+    if (h.dead || W.ranged) return;
+    const was = this.setSrc(SRC_RELIC + RelicKind.Mirror), cx = h.x, cy = h.y - 18, R = B.reach * s.reach, arc = B.arc;
+    const fxName = `fx_${h.weapon}_${k}`;
+    if (hasAnim(fxName)) {
+      const sy = Math.cos(dir) < 0 ? -1 : 1, c = Math.cos(dir), sn = Math.sin(dir), ly = -22 * sy;
+      if (B.fxMode === "flip") this.addFx(fxName, h.x, h.y + 1, { sx: Math.cos(dir) < 0 ? -1 : 1, front: false, key: 3, glow: 1.2, tint: rgba("#a8c4ff"), follow: [0, 1] });
+      else this.addFx(fxName, cx + ly * sn, cy - ly * c, { rot: dir, sy, front: false, key: 3, glow: 1.2, tint: rgba("#a8c4ff"), follow: [ly * sn, -18 - ly * c] });
+    }
+    const E = this.enemies, fx = h.x + Math.cos(dir) * B.arc, fy = h.y - 8;
+    this.grid.query(cx, cy + 16, R + 50, (i) => {
+      this.body(i);
+      const dx = this.bx - cx, dy = this.by - cy, d = Math.hypot(dx, dy) || 1, r = (this.brx + this.bry) / 2;
+      if (B.kind === "front") {
+        if ((this.bx - fx) ** 2 + (this.by - fy) ** 2 > (R + r) ** 2) return;
+      } else if (B.kind === "around") {
+        if (d - r > R) return;
+      } else {
+        if (d - r > R) return;
+        let da = Math.atan2(dy, dx) - dir;
+        da = Math.atan2(Math.sin(da), Math.cos(da));
+        if (Math.abs(da) > arc + Math.asin(Math.min(1, r / d))) return;
+      }
+      if (ENEMIES[E.type[i]].ai < AI.Boss) (E.kx[i] += (dx / d) * B.push * 0.6, E.ky[i] += (dy / d) * B.push * 0.6);
+      this.damage(i, dmg, this.weaponEl, { quiet: this.rng.chance(0.4) });
+    });
+    this.burst(cx + Math.cos(dir) * 14, cy + Math.sin(dir) * 14, 6, rgba("#c4d8ff"), 70, 0.3);
+    this.audio.play("dash", 2.4);
+    this.setSrc(was);
+  }
+  /**
+   * A blade's blow lands (once, at its last hit): every weapon artifact held adds its own on top. `hits` are where
+   * it struck foes (x, y pairs), `crits` where it struck hard.
+   */
+  private artsOnBlow(cx: number, cy: number, dir: number, R: number, dmg: number, k: number, fin: boolean, hits: number[], crits: number[]): void {
+    const Bu = this.bullets, h = this.hero, ahead = (d: number): [number, number] => [cx + Math.cos(dir) * d, cy + Math.sin(dir) * d];
     for (const r of this.relics) {
+      const L = r.level, evo = r.evo;
       this.setSrc(SRC_RELIC + r.kind);
-      r.timer -= dt;
-      const L = r.level;
       switch (r.kind) {
-        case RelicKind.Orbit: {
-          const n = this.orbitCount(r), dmg = (r.evo ? 16 : 9 * (L >= 3 ? 1.3 : 1)) * m;
-          r.angle += dt * (r.evo ? 3.4 : L >= 5 ? 4.2 : 3.2);
-          // the Sun Crown: every two seconds the suns flare, each a burst of fire where it is
-          if (r.evo && r.timer <= 0) {
-            r.timer = 2;
-            for (let k = 0; k < n; k++) {
-              const [ox, oy] = this.orbitPos(r, k, n);
-              this.addFx("explosion_s", ox, oy + 10, { glow: 0.9, key: 3 });
-              this.blast(ox, oy, 24, 15 * m, El.Fire, 70);
-            }
-            this.audio.play("boom", 1.7);
-            this.shake = Math.max(this.shake, 0.2);
+        case RelicKind.Blades:
+          this.addBlade(dmg);
+          if (fin) this.addBlade(dmg);
+          break;
+        case RelicKind.Frost: {
+          // a fan of ice spikes out along the blow; evolved, a line of ice bursting from the ground to the screen's edge
+          const n = 3 + (L >= 3 ? 2 : 0) + (L >= 5 ? 2 : 0), span = 0.9 + 0.1 * n, f = 0.4 * (1 + (L >= 2 ? 0.25 : 0) + (L >= 4 ? 0.25 : 0));
+          for (let q = 0; q < n; q++) {
+            const ang = dir + (q / (n - 1) - 0.5) * span;
+            Bu.add(TEAM_HERO, B_LANCE, cx + Math.cos(ang) * 16, cy + Math.sin(ang) * 16, Math.cos(ang) * 290, Math.sin(ang) * 290, 0.32, dmg * f, 3, El.Frost, L >= 5 ? 2 : 1);
           }
-          for (let k = 0; k < n; k++) {
-            const [ox, oy] = this.orbitPos(r, k, n);
-            // a trail of fire left in the world behind each ember
-            if (this.rng.chance(dt * 70)) this.parts.add(ox + this.rng.range(-1.5, 1.5), oy + this.rng.range(-1.5, 1.5), this.rng.range(-8, 8), this.rng.range(-18, -4), this.rng.range(0.18, 0.35), this.rng.pick([rgba("#ffc23d"), rgba("#ff8a2a"), rgba("#f2561d")]), this.rng.chance(0.4) ? 2 : 1, 0, 1);
-            this.grid.query(ox, oy + 10, 22, (i) => {
-              if (E.orbitCd[i] > 0) return;
-              this.body(i);
-              if (this.touches(ox, oy, 5)) {
-                E.orbitCd[i] = 0.4;
-                const dx = E.x[i] - h.x, dy = E.y[i] - h.y, dd = Math.hypot(dx, dy) || 1;
-                if (ENEMIES[E.type[i]].ai < AI.Boss) (E.kx[i] += (dx / dd) * 50, E.ky[i] += (dy / dd) * 50);
-                this.damage(i, dmg, El.Fire);
-                this.audio.play("hit", 0.8);
-              }
-            });
-          }
+          if (evo) this.quakes.push({ x: h.x, y: h.y, dx: Math.cos(dir), dy: Math.sin(dir), n: Math.ceil(this.viewHW / 16), t: 0, every: 0.025, dmg: dmg * 0.7, stun: 0, ice: true });
+          this.audio.play("freeze", 1.4);
           break;
         }
-        case RelicKind.Lance: {
-          // the orb: over the shoulder behind the hero, catching up; still while it gathers the cold and just after
-          const o = (this.frostOrb ??= { x: h.x - h.face * 16, y: h.y - 34, charge: 0, hold: 0, flash: 0 });
-          const tx = h.x - h.face * 16, ty = h.y - 34 + Math.sin(this.time * 2.4) * 2;
-          if (Math.hypot(tx - o.x, ty - o.y) > 160) (o.x = tx), (o.y = ty);
-          o.charge = r.timer < ORB_CHARGE ? 1 - Math.max(0, r.timer) / ORB_CHARGE : 0;
-          o.hold = Math.max(0, o.hold - dt);
-          o.flash = Math.max(0, o.flash - dt * 4);
-          if (o.charge <= 0 && o.hold <= 0) {
-            const k = 1 - Math.exp(-dt * 5);
-            o.x += (tx - o.x) * k;
-            o.y += (ty - o.y) * k;
-          }
-          if (o.charge > 0 && this.rng.chance(dt * (r.evo ? 90 : 55))) {
-            // frost drawn in from round about
-            const a = this.rng.range(0, Math.PI * 2), d = this.rng.range(12, 20) * (r.evo ? 1.3 : 1);
-            this.parts.add(o.x + Math.cos(a) * d, o.y + Math.sin(a) * d, -Math.cos(a) * d * 3, -Math.sin(a) * d * 3, 0.3, this.rng.chance(0.5) ? rgba("#d8f4ff") : rgba("#78ccf4"), 1, 0, 1);
-          }
-          if (r.timer > 0) break;
-          const ox = o.x, oy = o.y;
-          o.hold = 0.3;
-          o.flash = 1;
-          if (r.evo) {
-            // the Blizzard: a ring of lances all round, and three more at the nearest
-            r.timer = 1.5;
-            const base = this.rng.range(0, Math.PI * 2), skip = new Set<number>();
-            for (let k = 0; k < 10; k++) {
-              const a = base + (k * Math.PI * 2) / 10;
-              this.bullets.add(TEAM_HERO, B_LANCE, ox + Math.cos(a) * 2, oy + Math.sin(a) * 2, Math.cos(a) * 250, Math.sin(a) * 250, 1.1, 18 * m, 4, El.Frost, 3);
-            }
-            for (let k = 0; k < 3; k++) {
-              const j = this.nearestEnemy(ox, oy, 290, skip);
-              if (j < 0) break;
-              skip.add(E.uid[j]);
-              this.body(j);
-              const a = Math.atan2(this.by - oy, this.bx - ox);
-              this.bullets.add(TEAM_HERO, B_LANCE, ox, oy, Math.cos(a) * 330, Math.sin(a) * 330, 1.1, 24 * m, 4, El.Frost, 3);
-            }
-            this.addFx("frost_nova_s", ox, oy + 10, { glow: 0.6 });
-            this.audio.play("freeze", 0.6);
-            break;
-          }
-          r.timer = 1.7 * (L >= 3 ? 0.8 : 1);
-          const n = L >= 4 ? 3 : L >= 2 ? 2 : 1, skip = new Set<number>();
-          for (let k = 0; k < n; k++) {
-            const j = this.nearestEnemy(ox, oy, 270, skip);
-            let a: number;
-            if (j >= 0) {
-              skip.add(E.uid[j]);
-              this.body(j);
-              a = Math.atan2(this.by - oy, this.bx - ox);
-            } else a = Math.atan2(h.aimY, h.aimX) + (k - (n - 1) / 2) * 0.3;
-            this.bullets.add(TEAM_HERO, B_LANCE, ox, oy, Math.cos(a) * 280, Math.sin(a) * 280, 1.0, 16 * (L >= 5 ? 1.4 : 1) * m, 4, El.Frost, L >= 4 ? 3 : 2);
-          }
-          this.audio.play("freeze", 0.7);
+        case RelicKind.Storm: {
+          const [x, y] = ahead(R * 0.6), jumps = 1 + L, f = (0.35 + 0.05 * L) * (L >= 4 ? 1.2 : 1);
+          this.chainFrom(x, y, jumps, 80 + 10 * L, dmg * f, El.Storm, false, L >= 5 ? 0.6 : 0);
+          if (L >= 3) this.chainFrom(h.x, cy, Math.max(2, jumps - 2), 90, dmg * f * 0.8, El.Storm, false, L >= 5 ? 0.6 : 0);
           break;
         }
-        case RelicKind.Coil: {
+        case RelicKind.Venom: {
           if (r.timer > 0) break;
-          if (r.evo) {
-            // the Sky Tempest: bolts out of the dark onto four foes, each leaping on to two more
-            r.timer = 1.1;
-            const skip = new Set<number>();
-            let struck = 0;
-            for (let b = 0; b < 4; b++) {
-              const j = this.nearestEnemy(h.x, h.y - 18, 250, skip);
-              if (j < 0) break;
-              skip.add(E.uid[j]);
-              this.body(j);
-              const tx = this.bx, ty = E.y[j];
-              this.addFx("lightning", tx, ty, { sx: 0.6, sy: 0.6, glow: 0.9, key: 4, delay: b * 0.06 });
-              this.arcs.push({ pts: [tx + this.rng.range(-6, 6), ty - 130, tx + this.rng.range(-8, 8), ty - 64, tx, ty - 8], life: 0.14, color: rgba("#fff08a") });
-              const pts = [tx, ty - 8];
-              let k = this.nearestEnemy(tx, ty, 80, skip);
-              for (let q = 0; q < 2 && k >= 0; q++) {
-                skip.add(E.uid[k]);
-                this.body(k);
-                pts.push(this.bx, this.by);
-                this.damage(k, 12 * m, El.Storm);
-                k = this.nearestEnemy(this.bx, this.by, 80, skip);
-              }
-              if (pts.length > 2) this.arcs.push({ pts, life: 0.16, color: rgba("#fff08a") });
-              this.blast(tx, ty - 8, 26, 22 * m, El.Storm, 60);
-              struck++;
-            }
-            if (struck) (this.audio.play("zap", 0.7), this.shake = Math.max(this.shake, 0.15));
-            break;
-          }
-          r.timer = 2.3 * (L >= 3 ? 0.75 : 1);
-          const bolts = L >= 4 ? 2 : 1, jumps = 3 + (L >= 2 ? 2 : 0) + (L >= 5 ? 2 : 0), dmg = 13 * (L >= 5 ? 1.5 : 1) * m;
-          const skip = new Set<number>();
-          for (let b = 0; b < bolts; b++) {
-            let j = this.nearestEnemy(h.x, h.y - 18, 200, skip);
-            if (j < 0) break;
-            const pts = [h.x, h.y - 20];
-            for (let k = 0; k < jumps && j >= 0; k++) {
-              this.body(j);
-              const ex = this.bx, ey = this.by;
-              skip.add(E.uid[j]);
-              pts.push(ex, ey);
-              this.burst(ex, ey, 4, rgba("#fff08a"), 60, 0.25);
-              this.damage(j, dmg, El.Storm);
-              j = this.nearestEnemy(ex, ey, 80, skip);
-            }
-            this.arcs.push({ pts, life: 0.18, color: rgba("#fff08a") });
-            if (pts.length > 2) this.addFx("zap", pts[2], pts[3] + 10, { sx: 0.6, sy: 0.6, glow: 0.7 });
-          }
-          if (skip.size) this.audio.play("zap");
-          break;
-        }
-        case RelicKind.Flask: {
-          if (r.timer > 0) break;
-          r.timer = r.evo ? 2.4 : 3.2;
-          const n = r.evo ? 4 : 1 + (L >= 3 ? 1 : 0) + (L >= 5 ? 1 : 0);
-          for (let k = 0; k < n; k++) {
-            const j = E.n ? this.rng.int(0, E.n - 1) : -1;
-            let tx: number, ty: number;
-            if (j >= 0 && (E.x[j] - h.x) ** 2 + (E.y[j] - h.y) ** 2 < 200 * 200) (tx = E.x[j], ty = E.y[j]);
-            else (tx = h.x + this.rng.range(-90, 90), ty = h.y + this.rng.range(-60, 60));
-            // it lands on floor: never in a wall, over a drop or off the map (else at the hero's feet)
-            for (let q = 0; q < 6 && !this.map.clear(tx, ty, 6); q++) (tx = h.x + this.rng.range(-70, 70), ty = h.y + this.rng.range(-45, 45));
-            if (!this.map.clear(tx, ty, 6)) (tx = h.x), (ty = h.y);
-            this.flasks.push({ x0: h.x, y0: h.y - 20, x1: tx, y1: ty, t: 0 });
-          }
+          r.timer = 0.45;
+          const [x, y] = ahead(R * 0.55), life = 2.4 + (L >= 3 ? 1.2 : 0);
+          if (this.pools.length < 28) this.pools.push({ x, y: y + 18, r: 18 + (L >= 2 ? 6 : 0), life, max: life, power: 1.4 + (L >= 4 ? 0.6 : 0) });
+          this.burst(x, y, 8, rgba("#8ad83a"), 50, 0.35, 120);
+          this.audio.play("venom", 1.3);
           break;
         }
         case RelicKind.Halo: {
-          if (r.evo) {
-            // the Sanctuary: a holy ring always about the hero, burning what stands in it and snuffing bullets
-            const R = SANCTUARY_R, B = this.bullets;
-            for (let i = B.n - 1; i >= 0; i--)
-              if (B.team[i] === TEAM_FOE && (B.x[i] - h.x) ** 2 + ((B.y[i] - h.y + 12) * 1.3) ** 2 < R * R * 0.7) {
-                this.parts.add(B.x[i], B.y[i], 0, -20, 0.4, rgba("#fff09a"), 1, 0, 1);
-                B.remove(i);
-                this.deflected(1);
-              }
-            r.clock += dt;
-            if (r.clock >= 40) {
-              r.clock = 0;
-              if (h.hp < h.maxHp) {
-                h.hp++;
-                this.popup(h.x, h.y - 40, "+1", rgba("#fff09a"), true);
-                this.audio.play("heal");
-              }
-            }
-            if (r.timer > 0) break;
-            r.timer = 0.5;
-            for (let i = E.n - 1; i >= 0; i--) {
-              const dx = E.x[i] - h.x, dy = (E.y[i] - h.y) * 1.3, d = Math.hypot(dx, dy);
-              if (d < R) this.damage(i, 7 * m, El.Holy, { quiet: this.rng.chance(0.6) });
-            }
-            break;
-          }
-          if (r.timer > 0) break;
-          r.timer = 2.6 * (L >= 3 ? 0.75 : 1);
-          const R = 58 + (L >= 2 ? 16 : 0), dmg = 10 * (L >= 4 ? 1.5 : 1) * m;
-          this.addFx("heal_ring", h.x, h.y, { sx: R / 64, sy: R / 64, glow: 0.6 });
-          for (let i = E.n - 1; i >= 0; i--) {
-            const dx = E.x[i] - h.x, dy = E.y[i] - h.y, d = Math.hypot(dx, dy);
-            if (d < R) {
-              if (ENEMIES[E.type[i]].ai < AI.Boss) (E.kx[i] += (dx / (d || 1)) * 150, E.ky[i] += (dy / (d || 1)) * 150);
-              this.damage(i, dmg, El.Holy);
-            }
-          }
+          if (!this.nth(r, L >= 5 ? 2 : 3)) break;
+          const Rr = 52 + (L >= 3 ? 16 : 0), d2 = dmg * 0.6 * (1 + (L >= 2 ? 0.3 : 0) + (L >= 4 ? 0.3 : 0));
+          this.addFx("heal_ring", h.x, h.y, { sx: Rr / 64, sy: Rr / 64, glow: 0.8 });
+          this.grid.query(h.x, h.y, Rr + 30, (i) => {
+            const E = this.enemies, dx = E.x[i] - h.x, dy = E.y[i] - h.y, d = Math.hypot(dx, dy);
+            if (d > Rr) return;
+            if (ENEMIES[E.type[i]].ai < AI.Boss) (E.kx[i] += (dx / (d || 1)) * 150, E.ky[i] += (dy / (d || 1)) * 150);
+            this.damage(i, d2, El.Holy, { quiet: this.rng.chance(0.4) });
+          });
           if (L >= 5) {
             const B = this.bullets;
-            for (let i = B.n - 1; i >= 0; i--) if (B.team[i] === TEAM_FOE && (B.x[i] - h.x) ** 2 + (B.y[i] - h.y) ** 2 < R * R) (B.remove(i), this.deflected(1));
+            for (let i = B.n - 1; i >= 0; i--) if (B.team[i] === TEAM_FOE && (B.x[i] - h.x) ** 2 + (B.y[i] - h.y) ** 2 < Rr * Rr) (B.remove(i), this.deflected(1));
           }
-          this.audio.play("heal");
+          this.audio.play("heal", 1.2);
           break;
         }
-        case RelicKind.Roots: {
-          // roots out of the floor under the foes nearest, holding them, venom in their thorns
+        case RelicKind.Void: {
           if (r.timer > 0) break;
-          r.timer = r.evo ? 2.2 : 3.2 * (L >= 3 ? 0.8 : 1);
-          const n = r.evo ? 5 : 1 + (L >= 2 ? 1 : 0) + (L >= 4 ? 1 : 0), hold = (L >= 3 ? 1.6 : 1.1) * (r.evo ? 1.3 : 1), dmg = 12 * (L >= 5 ? 1.4 : 1) * m;
-          const skip = new Set<number>();
-          for (let k = 0; k < n; k++) {
-            const j = this.nearestEnemy(h.x, h.y - 10, 170, skip);
-            if (j < 0) break;
-            skip.add(E.uid[j]);
-            this.rootFoe(j, hold, dmg, r.evo ? 2 : 0, skip);
+          r.timer = 1.1;
+          const [x, y] = ahead(R * 0.7);
+          this.openVortex(x, y, dmg, L);
+          break;
+        }
+        case RelicKind.Thorn: {
+          const n = 2 + (L >= 2 ? 1 : 0) + (L >= 4 ? 1 : 0), hold = 0.9 + (L >= 3 ? 0.5 : 0), skip = new Set<number>();
+          for (let q = 0; q < n && q * 2 < hits.length; q++) {
+            const j = this.nearestEnemy(hits[q * 2], hits[q * 2 + 1], 12, skip);
+            if (j < 0) continue;
+            skip.add(this.enemies.uid[j]);
+            this.rootFoe(j, hold, dmg * (0.5 + 0.08 * L), L >= 5 ? 2 : 0, skip);
           }
           if (skip.size) this.audio.play("venom", 0.8);
           break;
         }
-        case RelicKind.Brazier: {
-          // rings of fire left where the hero goes (the Flame Wake: a wake of them, hotter)
-          r.clock += dt * (h.moving ? 1 : 0.35);
-          const every = r.evo ? 0.16 : 1.3 * (L >= 4 ? 0.7 : 1);
-          if (r.clock >= every) {
-            r.clock = 0;
-            const R = (r.evo ? 16 : 22) * (L >= 2 ? 1.25 : 1);
-            this.firePools.push({ x: h.x, y: h.y, r: R, t: 0, life: (r.evo ? 1.4 : 2.2) * (L >= 3 ? 1.4 : 1), dmg: (r.evo ? 8 : 6) * (L >= 5 ? 1.5 : 1) * m, tick: 0 });
+        case RelicKind.Mirror: {
+          const d2 = dmg * (0.3 + 0.07 * L);
+          this.echoes.push({ t: L >= 3 ? 0.1 : 0.16, k, dir, dmg: d2 });
+          if (L >= 5) this.echoes.push({ t: 0.26, k, dir: dir + Math.PI, dmg: d2 * 0.7 });
+          break;
+        }
+        case RelicKind.Fire: {
+          // waves of fire thrown along the blow, the ground burning where they pass; evolved, a whole ring of them
+          const n = evo ? 10 : 1 + (L >= 3 ? 1 : 0) + (L >= 5 ? 1 : 0), step = evo ? (Math.PI * 2) / n : 0.34;
+          Bu.artCur = 1 << RelicKind.Fire;
+          for (let q = 0; q < n; q++) {
+            const ang = evo ? dir + q * step : dir + (q - (n - 1) / 2) * step;
+            Bu.add(TEAM_HERO, B_CRESCENT, cx + Math.cos(ang) * 14, cy + Math.sin(ang) * 14, Math.cos(ang) * 210, Math.sin(ang) * 210, 0.4 + 0.04 * L, dmg * (0.22 + 0.04 * L), 9, El.Fire, 3);
+          }
+          Bu.artCur = 0;
+          if (evo) (this.addFx("explosion_s", cx, cy + 8, { glow: 1, sx: 1.2, sy: 1.2 }), (this.shake = Math.max(this.shake, 0.3)));
+          this.audio.play("ignite", 1.2);
+          break;
+        }
+        case RelicKind.Ricochet: {
+          const [x, y] = ahead(R * 0.6);
+          this.chainFrom(x, y, evo ? 10 : 1 + L, evo ? 120 : 70 + 10 * L, dmg * (0.4 + 0.05 * L) * (L >= 5 ? 1.2 : 1), El.None, true);
+          break;
+        }
+        case RelicKind.Quake: {
+          const n = 4 + L + (L >= 4 ? 2 : 0), d2 = dmg * (0.3 + 0.06 * L), stun = L >= 5 ? 0.5 : 0;
+          this.quakes.push({ x: h.x + Math.cos(dir) * 14, y: h.y + Math.sin(dir) * 10, dx: Math.cos(dir), dy: Math.sin(dir) * 0.8, n, t: 0, every: 0.045, dmg: d2, stun, ice: false });
+          if (fin && L >= 3)
+            for (let q = 0; q < 8; q++) {
+              const a = (q / 8) * Math.PI * 2;
+              this.quakes.push({ x: h.x + Math.cos(a) * 14, y: h.y + Math.sin(a) * 10, dx: Math.cos(a), dy: Math.sin(a) * 0.8, n: 3, t: 0, every: 0.05, dmg: d2 * 0.8, stun, ice: false });
+            }
+          this.shake = Math.max(this.shake, 0.2);
+          break;
+        }
+        case RelicKind.Rune: {
+          const Rr = 20 + (L >= 2 ? 6 : 0) + (L >= 4 ? 6 : 0), d2 = dmg * 0.7 * (L >= 3 ? 1.4 : 1);
+          const at = crits.slice(0, 4);
+          if (L >= 3 && this.nth(r, 5) && !at.length && hits.length) at.push(hits[0], hits[1]);
+          for (let q = 0; q < at.length; q += 2) this.runeBurst(at[q], at[q + 1], d2, Rr, L);
+          break;
+        }
+        case RelicKind.Splitter:
+          this.ringOf(B_SHARD, h.x, cy, 4 + (L >= 2 ? 1 : 0) + (L >= 3 ? 1 : 0) + (L >= 4 ? 1 : 0), 300, 0.38, dmg * (0.2 + 0.03 * L) * (L >= 4 ? 1.25 : 1), dir, null);
+          this.audio.play("break", 1.8);
+          break;
+        case RelicKind.Wind: {
+          let n = 0;
+          for (let i = 0; i < Bu.n; i++) if (Bu.kind[i] === B_TORNADO) n++;
+          if (n >= 6) break;
+          const life = 0.9 + (L >= 2 ? 0.3 : 0) + (L >= 4 ? 0.3 : 0), d2 = dmg * (0.18 + 0.04 * L);
+          for (const da of L >= 5 ? [-0.3, 0.3] : [0]) {
+            const q = Bu.add(TEAM_HERO, B_TORNADO, cx + Math.cos(dir + da) * 18, cy + 8 + Math.sin(dir + da) * 18, Math.cos(dir + da) * 120, Math.sin(dir + da) * 120, life, d2, L >= 3 ? 14 : 10, El.None, 99);
+            if (q >= 0) Bu.trail[q] = L >= 3 ? 1.3 : 1;
+          }
+          this.audio.play("dash", 0.8);
+          break;
+        }
+        case RelicKind.Meteor: {
+          if (!this.nth(r, [8, 7, 6, 6, 5][L - 1])) break;
+          const d2 = dmg * (1.6 + 0.3 * L);
+          const t1 = this.foeNear(cx + Math.cos(dir) * 50, cy + Math.sin(dir) * 50, 170) ?? ahead(60);
+          this.callMeteor(t1[0], t1[1], d2, L);
+          if (L >= 5) {
+            const t2 = this.foeNear(h.x + this.rng.range(-90, 90), h.y + this.rng.range(-60, 60), 120);
+            if (t2) this.callMeteor(t2[0], t2[1], d2, L);
           }
           break;
         }
-        case RelicKind.Crown: {
-          // the Endless Winter also breathes out a little frost now and then when foes crowd close
-          if (!r.evo) break;
-          r.clock += dt;
-          if (r.clock >= 6) {
-            let near = 0;
-            for (let i = 0; i < E.n && near < 3; i++) if ((E.x[i] - h.x) ** 2 + (E.y[i] - h.y) ** 2 < 70 * 70) near++;
-            if (near >= 3) (r.clock = 0), this.crownNova(80, r, true);
+        case RelicKind.Prism: {
+          const n = 2 + L, span = 0.9 + 0.08 * n;
+          Bu.artCur = ART_NOREACT;
+          for (let q = 0; q < n; q++) {
+            const ang = dir + (q / Math.max(1, n - 1) - 0.5) * span;
+            Bu.add(TEAM_HERO, B_CRESCENT, cx + Math.cos(ang) * 14, cy + Math.sin(ang) * 14, Math.cos(ang) * 260, Math.sin(ang) * 260, L >= 5 ? 0.6 : 0.42, dmg * (0.2 + 0.03 * L), 6, PRISM_ELS[q % PRISM_ELS.length], 2);
+          }
+          Bu.artCur = 0;
+          this.audio.play("holy", 1.6);
+          break;
+        }
+        case RelicKind.Stardust:
+          if (hits.length && r.timer <= 0) (r.timer = 0.15), this.addStar(hits[0], hits[1], dmg);
+          break;
+        case RelicKind.Aurora: {
+          // a ribbon along the arc of the swing (all round for a blow that goes all round)
+          const B = WEAPONS[h.weapon].blows[k], around = B?.kind === "around", arc = around ? Math.PI : Math.min(1.4, Math.max(0.5, B?.arc ?? 1));
+          const pts: number[] = [], Rr = Math.max(26, R * 0.75);
+          for (let q = 0; q <= 8; q++) {
+            const a = dir - arc + (q / 8) * arc * 2;
+            pts.push(h.x + Math.cos(a) * Rr, h.y - 4 + Math.sin(a) * Rr * 0.8);
+          }
+          if (this.ribbons.length < 40) this.ribbons.push({ pts, t: 0, life: 1 + (L >= 2 ? 0.5 : 0), dmg: dmg * (0.14 + 0.03 * L) * (L >= 4 ? 1.3 : 1), w: L >= 3 ? 12 : 8 });
+          break;
+        }
+        case RelicKind.Bloom:
+          if (hits.length && r.timer <= 0) (r.timer = 0.25), this.plantFlower(hits[0], hits[1], dmg);
+          break;
+        case RelicKind.Moon: {
+          if (!this.nth(r, L >= 5 ? 2 : 3)) break;
+          Bu.add(TEAM_HERO, B_SICKLE, cx + Math.cos(dir) * 12, cy + Math.sin(dir) * 12, Math.cos(dir) * 300, Math.sin(dir) * 300, 2.4, dmg * (0.6 + 0.12 * L) * (L >= 4 ? 1.2 : 1), L >= 3 ? 12 : 9, El.None, 99);
+          this.audio.play("dash", 1.2);
+          break;
+        }
+        case RelicKind.Dragon: {
+          if (!this.nth(r, [6, 6, 5, 5, 4][L - 1])) break;
+          this.dragonBite(cx, cy, dir, dmg * (1.4 + 0.25 * L) * (L >= 3 ? 1.2 : 1), L);
+          break;
+        }
+        case RelicKind.Bubbles: {
+          const n = 1 + (L >= 3 ? 1 : 0) + (L >= 5 ? 1 : 0);
+          for (let q = 0; q < n; q++) {
+            const a = dir + (q - (n - 1) / 2) * 0.5 + this.rng.range(-0.15, 0.15);
+            Bu.add(TEAM_HERO, B_BUBBLE, cx + Math.cos(a) * 16, cy + Math.sin(a) * 16, Math.cos(a) * 110, Math.sin(a) * 110, 1.8, dmg * (0.3 + 0.06 * L), 7, El.None, 0);
+          }
+          this.audio.play("venom", 2.2);
+          break;
+        }
+        case RelicKind.Fang:
+        case RelicKind.Phoenix:
+          // (they act on each hit and on kills: see artsOnHit, artsOnKill)
+          break;
+      }
+    }
+    this.setSrc(SRC_WEAPON);
+  }
+  /**
+   * A shot leaves (once per volley, from (x, y) at angle a): the mirror's second shot, and what comes on every n-th
+   * shot (the moon's sickle, a meteor, a dragon).
+   */
+  private artsOnShot(x: number, y: number, a: number, speed: number, dmg: number, kind: number, el: El, pierce: number, aim: { x: number; y: number } | null): void {
+    const Bu = this.bullets, goal = aim ?? { x: x + Math.cos(a) * 120, y: y + Math.sin(a) * 120 }, bits = Bu.artCur;
+    for (const r of this.relics) {
+      const L = r.level;
+      this.setSrc(SRC_RELIC + r.kind);
+      // (only the mirror's second shot carries the artifacts' marks; a sickle or a dragon does its own)
+      Bu.artCur = r.kind === RelicKind.Mirror ? bits : 0;
+      switch (r.kind) {
+        case RelicKind.Mirror: {
+          // from a mirror image of the hand a little to the side, along the same line
+          const d2 = dmg * (0.35 + 0.1 * L);
+          for (const side of L >= 5 ? [-1, 1] : [1]) {
+            const ox = -Math.sin(a) * 9 * side, oy = Math.cos(a) * 9 * side;
+            Bu.add(TEAM_HERO, kind, x + ox, y + oy, Math.cos(a) * speed, Math.sin(a) * speed, 1, d2, 3.5, el, pierce);
+            this.burst(x + ox, y + oy, 3, rgba("#c4d8ff"), 40, 0.2);
           }
           break;
         }
-        case RelicKind.Void: {
-          if (r.evo) {
-            if (!this.star) this.star = { x: h.x, y: h.y - 30, vx: 0, vy: 0, t: 0 };
-            break;
-          }
-          const n = 1 + (L >= 2 ? 1 : 0) + (L >= 4 ? 1 : 0);
-          if (r.timer <= 0 && this.spheres.length < n) {
-            r.timer = 0.6;
-            const a = this.rng.range(0, Math.PI * 2);
-            this.spheres.push({ x: h.x, y: h.y - 16, vx: Math.cos(a) * 60, vy: Math.sin(a) * 60, life: L >= 3 ? 7 : 5, r: L >= 3 ? 12 : 9 });
+        case RelicKind.Moon:
+          if (this.nth(r, L >= 5 ? 2 : 3)) Bu.add(TEAM_HERO, B_SICKLE, x, y, Math.cos(a) * 300, Math.sin(a) * 300, 2.4, dmg * (0.6 + 0.12 * L) * (L >= 4 ? 1.2 : 1), L >= 3 ? 12 : 9, El.None, 99);
+          break;
+        case RelicKind.Meteor:
+          if (this.nth(r, [8, 7, 6, 6, 5][L - 1])) {
+            this.callMeteor(goal.x, goal.y, dmg * (1.2 + 0.2 * L), L);
+            if (L >= 5) this.callMeteor(goal.x + this.rng.range(-50, 50), goal.y + this.rng.range(-30, 30), dmg * (1.2 + 0.2 * L), L);
           }
           break;
+        case RelicKind.Dragon:
+          if (this.nth(r, [6, 6, 5, 5, 4][L - 1])) {
+            Bu.add(TEAM_HERO, B_DRAGON, x, y, Math.cos(a) * 240, Math.sin(a) * 240, 1.4, dmg * (1 + 0.2 * L) * (L >= 3 ? 1.15 : 1), 8, El.Fire, L >= 5 ? 3 : 0);
+            this.audio.play("ignite", 0.8);
+          }
+          break;
+      }
+    }
+    Bu.artCur = bits;
+    this.setSrc(SRC_WEAPON);
+  }
+  /** Each foe a blow or shot strikes: the blood fang opens a wound (it bleeds on, and at the last level its neighbours too). */
+  private artsOnHit(i: number, dmg: number): void {
+    const L = this.relicLevel(RelicKind.Fang);
+    if (!L) return;
+    const E = this.enemies, b = dmg * (0.14 + 0.04 * L) * (L >= 3 ? 1.3 : 1);
+    E.bleed[i] = 2;
+    E.bleedDmg[i] = Math.max(E.bleedDmg[i], b);
+    if (L >= 5 && this.rng.chance(0.3)) {
+      const j = this.nearestEnemy(E.x[i], E.y[i], 30, new Set([E.uid[i]]));
+      if (j >= 0) (E.bleed[j] = 2, E.bleedDmg[j] = Math.max(E.bleedDmg[j], b * 0.6));
+    }
+  }
+  /** A hero's shot carrying the weapon artifacts strikes a foe at (x, y) (`bits`: what it carries). */
+  private shotArts(bits: number, x: number, y: number, dmg: number, i: number): void {
+    const h = this.hero;
+    for (const r of this.relics) {
+      if (!(bits & (1 << r.kind))) continue;
+      const L = r.level, evo = r.evo;
+      this.setSrc(SRC_RELIC + r.kind);
+      switch (r.kind) {
+        case RelicKind.Blades:
+          if (r.timer <= 0) (r.timer = 0.35), this.addBlade(dmg);
+          break;
+        case RelicKind.Frost: {
+          const f = 0.25 * (1 + (L >= 2 ? 0.25 : 0) + (L >= 4 ? 0.25 : 0)), Rr = 16 + (L >= 3 ? 10 : 0);
+          this.addFx("frost_nova", x, y + 8, { sx: Rr / 50, sy: Rr / 50, glow: 0.7 });
+          this.blast(x, y, Rr, dmg * f, El.Frost, 10);
+          if (L >= 5) this.grid.query(x, y + 10, Rr + 20, (j) => {
+            const E = this.enemies;
+            if (ENEMIES[E.type[j]].ai < AI.Boss && (E.x[j] - x) ** 2 + (E.y[j] - y) ** 2 < Rr * Rr) E.frozen[j] = Math.max(E.frozen[j], 1);
+          });
+          if (evo) {
+            const a = Math.atan2(y - (h.y - 18), x - h.x);
+            this.quakes.push({ x, y: y + 14, dx: Math.cos(a), dy: Math.sin(a), n: Math.ceil(this.viewHW / 18), t: 0, every: 0.025, dmg: dmg * 0.6, stun: 0, ice: true });
+          }
+          break;
+        }
+        case RelicKind.Storm: {
+          if (r.timer > 0) break;
+          r.timer = 0.22;
+          this.addFx("lightning", x, y + 10, { sx: 0.5 + 0.05 * L, sy: 0.5 + 0.05 * L, glow: 0.9, key: 4 });
+          this.blast(x, y, 14 + 3 * L, dmg * (0.3 + 0.07 * L), El.Storm, 20);
+          if (L >= 3) this.chainFrom(x, y, L >= 5 ? 4 : 2, 90, dmg * 0.4, El.Storm, false, L >= 5 ? 0.6 : 0);
+          this.audio.play("zap", 1.1);
+          break;
+        }
+        case RelicKind.Venom:
+          if (r.timer <= 0 && this.pools.length < 28) {
+            r.timer = 0.3;
+            const life = 2.4 + (L >= 3 ? 1.2 : 0);
+            this.pools.push({ x, y: y + 16, r: 16 + (L >= 2 ? 6 : 0), life, max: life, power: 1.4 + (L >= 4 ? 0.6 : 0) });
+          }
+          break;
+        case RelicKind.Halo:
+          // (the ray is left as the shot goes: see updateBullets)
+          break;
+        case RelicKind.Void:
+          if (r.timer <= 0) (r.timer = 1.2), this.openVortex(x, y, dmg * 0.75, L);
+          break;
+        case RelicKind.Thorn: {
+          if (r.timer > 0 || i < 0 || i >= this.enemies.n) break;
+          r.timer = 0.15;
+          this.rootFoe(i, 0.9 + (L >= 3 ? 0.5 : 0), dmg * (0.5 + 0.08 * L), (L >= 3 ? 1 : 0) + (L >= 5 ? 1 : 0), new Set([this.enemies.uid[i]]));
+          break;
+        }
+        case RelicKind.Fire:
+          if (evo) {
+            // the crown's shot bursts into a ring of fire where it strikes
+            this.addFx("explosion_s", x, y + 8, { glow: 1, sx: 1.1, sy: 1.1 });
+            this.blast(x, y, 34, dmg * 0.8, El.Fire, 60);
+            for (let q = 0; q < 6; q++) {
+              const a = (q / 6) * Math.PI * 2;
+              this.firePools.push({ x: x + Math.cos(a) * 22, y: y + 14 + Math.sin(a) * 16, r: 12, t: 0, life: 2, dmg: 7 * this.stats.might, tick: 0, ember: true });
+            }
+          }
+          break;
+        case RelicKind.Quake:
+          if (r.timer <= 0) {
+            r.timer = 0.15;
+            const Rr = 18 + 3 * L;
+            this.addFx("slam", x, y + 12, { sx: 0.3 + 0.04 * L, sy: 0.3 + 0.04 * L, glow: 0.5 });
+            this.grid.query(x, y + 10, Rr + 24, (j) => {
+              this.body(j);
+              const E = this.enemies, dx = this.bx - x, dy = this.by - y, d = Math.hypot(dx, dy) || 1;
+              if (d > Rr + this.brx) return;
+              if (ENEMIES[E.type[j]].ai < AI.Boss) {
+                E.kx[j] += (dx / d) * 170;
+                E.ky[j] += (dy / d) * 170;
+                if (L >= 5) E.stun[j] = Math.max(E.stun[j], 0.4);
+              }
+              this.damage(j, dmg * (0.15 + 0.04 * L), El.None, { quiet: true });
+            });
+          }
+          break;
+        case RelicKind.Rune:
+          this.runeBurst(x, y, dmg * (0.2 + 0.05 * L) * (L >= 3 ? 1.3 : 1), 12 + (L >= 2 ? 3 : 0) + (L >= 4 ? 3 : 0), L);
+          break;
+        case RelicKind.Wind:
+          if (this.nth(r, 3)) {
+            const q = this.bullets.add(TEAM_HERO, B_TORNADO, x, y + 8, this.rng.range(-30, 30), this.rng.range(-20, 20), 0.8 + 0.2 * L, dmg * (0.22 + 0.05 * L), L >= 3 ? 12 : 9, El.None, 99);
+            if (q >= 0) this.bullets.trail[q] = 1;
+          }
+          break;
+        case RelicKind.Prism:
+          if (r.timer <= 0) (r.timer = 0.1), this.ringOf(B_CRESCENT, x, y, 2 + L, 230, L >= 5 ? 0.45 : 0.3, dmg * (0.15 + 0.03 * L), this.rng.range(0, Math.PI * 2), PRISM_ELS);
+          break;
+        case RelicKind.Stardust:
+          if (r.timer <= 0) (r.timer = 0.2), this.addStar(x, y, dmg);
+          break;
+        case RelicKind.Bloom:
+          if (r.timer <= 0) (r.timer = 0.3), this.plantFlower(x, y, dmg);
+          break;
+        case RelicKind.Bubbles:
+          this.popBubble(x, y, dmg * (0.2 + 0.05 * L));
+          break;
+      }
+    }
+    this.setSrc(SRC_WEAPON);
+  }
+  /** A foe falls: the phoenix's bird, the venom's last burst, the blood fang's tally. */
+  private artsOnKill(x: number, y: number, poisoned: boolean): void {
+    if (!this.relics.length) return;
+    const was = this.src;
+    const ph = this.relicOf(RelicKind.Phoenix);
+    if (ph && this.birdCd <= 0) {
+      const L = ph.level, byBird = was === SRC_RELIC + RelicKind.Phoenix;
+      if (this.rng.chance([0.3, 0.36, 0.42, 0.48, 0.55][L - 1]) || (L >= 5 && byBird)) {
+        let birds = 0;
+        for (let i = 0; i < this.bullets.n; i++) if (this.bullets.kind[i] === B_BIRD) birds++;
+        if (birds < 8) {
+          this.birdCd = 0.12;
+          this.setSrc(SRC_RELIC + RelicKind.Phoenix);
+          const a = this.rng.range(-Math.PI * 0.8, -Math.PI * 0.2);
+          this.bullets.add(TEAM_HERO, B_BIRD, x, y - 10, Math.cos(a) * 120, Math.sin(a) * 120, 2.2, this.baseDmg() * (1.2 + 0.2 * L) * (L >= 4 ? 1.2 : 1), 6, El.Fire, L >= 3 ? 1 : 0);
+          this.addFx("explosion_s", x, y + 6, { sx: 0.45, sy: 0.45, glow: 1 });
+          this.audio.play("ignite", 1.5);
         }
       }
     }
-    // the brazier's rings burn what stands in them
+    if (poisoned && this.relicLevel(RelicKind.Venom) >= 5 && this.pools.length < 28) {
+      this.pools.push({ x, y, r: 16, life: 2.6, max: 2.6, power: 1 });
+      this.burst(x, y - 4, 6, rgba("#8ad83a"), 50, 0.35, 120);
+    }
+    const fang = this.relicOf(RelicKind.Fang);
+    if (fang && ++this.fangKills >= [40, 40, 32, 32, 24][fang.level - 1]) {
+      this.fangKills = 0;
+      this.drops.add(D_HEART, x, y, 1, 0, -30);
+      this.burst(x, y - 6, 10, rgba("#ff4a5a"), 70, 0.4);
+    }
+    this.setSrc(was);
+  }
+  /** A vortex of the void shard opens at (x, y). */
+  private openVortex(x: number, y: number, dmg: number, L: number): void {
+    if (this.vortices.length >= 4) this.vortices.shift();
+    const life = 1.3 + (L >= 4 ? 0.7 : 0);
+    this.vortices.push({ x, y, r: 9 + (L >= 2 ? 3 : 0), pull: 48 + (L >= 2 ? 12 : 0), life, max: life, dmg: dmg * 0.12, burst: L >= 5 ? dmg * 0.6 : 0 });
+    this.audio.play("void", 1.4);
+  }
+  /** The blast rune goes off (and, at its last level, again a moment later). */
+  private runeBurst(x: number, y: number, dmg: number, R: number, L: number): void {
+    const was = this.setSrc(SRC_RELIC + RelicKind.Rune);
+    this.addFx("explosion_s", x, y + 8, { sx: R / 28, sy: R / 28, glow: 1, tint: rgba("#ff9ae8") });
+    this.blast(x, y, R, dmg, El.None, 80);
+    if (L >= 5 && this.runes.length < 12) this.runes.push({ x, y, t: 0.55, dmg: dmg * 0.7, r: R });
+    this.audio.play("boom", 1.9);
+    this.setSrc(was);
+  }
+  /** A star left by a hit (stardust); when enough are lit, they join in a constellation and burst. */
+  private addStar(x: number, y: number, dmg: number): void {
+    const r = this.relicOf(RelicKind.Stardust);
+    if (!r) return;
+    const L = r.level, need = L >= 3 ? 4 : 5;
+    this.stars.push({ x, y, t: 0, dmg: dmg * 0.5 * (L >= 2 ? 1.3 : 1) });
+    this.burst(x, y, 4, rgba("#fff6a0"), 40, 0.3);
+    if (this.stars.length >= need) this.constellation(this.stars.splice(0, need), L, 1);
+  }
+  /** Stars joined into a constellation (each to the nearest not yet joined) and burst; at the last level the lines cut too. */
+  private constellation(stars: { x: number; y: number; dmg: number }[], L: number, scale: number): void {
+    const was = this.setSrc(SRC_RELIC + RelicKind.Stardust), left = stars.slice(), pts: number[] = [];
+    let cur = left.shift()!;
+    pts.push(cur.x, cur.y);
+    while (left.length) {
+      let bi = 0, bd = 1e9;
+      for (let q = 0; q < left.length; q++) {
+        const d = (left[q].x - cur.x) ** 2 + (left[q].y - cur.y) ** 2;
+        if (d < bd) (bd = d), (bi = q);
+      }
+      cur = left.splice(bi, 1)[0];
+      pts.push(cur.x, cur.y);
+    }
+    this.constellations.push({ pts, t: 0 });
+    const R = (18 + (L >= 4 ? 8 : 0)) * scale;
+    for (const st of stars) {
+      this.addFx("hit_spark", st.x, st.y + 10, { sx: 0.9 * scale, sy: 0.9 * scale, glow: 1, tint: rgba("#fff6a0") });
+      this.blast(st.x, st.y, R, st.dmg, El.Holy, 40);
+    }
+    if (L >= 5)
+      for (let q = 0; q + 3 < pts.length; q += 2) {
+        const x0 = pts[q], y0 = pts[q + 1], x1 = pts[q + 2], y1 = pts[q + 3], len = Math.hypot(x1 - x0, y1 - y0) || 1;
+        this.grid.query((x0 + x1) / 2, (y0 + y1) / 2 + 10, len / 2 + 20, (i) => {
+          this.body(i);
+          const u = Math.max(0, Math.min(1, ((this.bx - x0) * (x1 - x0) + (this.by - y0) * (y1 - y0)) / (len * len)));
+          if (Math.hypot(this.bx - (x0 + (x1 - x0) * u), this.by - (y0 + (y1 - y0) * u)) < 8 + this.brx) this.damage(i, stars[0].dmg * 0.5, El.Holy, { quiet: true });
+        });
+      }
+    this.audio.play("holy", 1.8);
+    this.shake = Math.max(this.shake, 0.15);
+    this.setSrc(was);
+  }
+  /** A flower planted by a hit (the blooming thorn): it opens a moment later into bladed petals. */
+  private plantFlower(x: number, y: number, dmg: number): void {
+    const r = this.relicOf(RelicKind.Bloom);
+    if (!r) return;
+    const L = r.level, max = r.evo ? 14 : L >= 2 ? 4 : 3;
+    if (this.flowers.length >= max) return;
+    this.flowers.push({ x, y: y + 12, t: 0, open: L >= 5 ? 0.45 : 0.7, dmg: dmg * (0.15 + (L >= 4 ? 0.06 : 0)) });
+  }
+  /** The dragon's bite: fiery jaws snap shut ahead of the hero, a cone of breath at its last level. */
+  private dragonBite(cx: number, cy: number, dir: number, dmg: number, L: number): void {
+    const reach = 70 + 8 * L + (L >= 5 ? 30 : 0), cone = L >= 5 ? 0.8 : 0.45, E = this.enemies;
+    for (let q = 0; q < (L >= 5 ? 5 : 3); q++) {
+      const d = 22 + q * (reach - 22) / (L >= 5 ? 4 : 2), spread = (q % 2 ? 1 : -1) * cone * 0.4 * (q / 4);
+      this.addFx("explosion_s", cx + Math.cos(dir + spread) * d, cy + Math.sin(dir + spread) * d + 10, { sx: 0.5 + 0.12 * q, sy: 0.5 + 0.12 * q, glow: 1, delay: q * 0.04 });
+    }
+    for (let q = 0; q < 40; q++) {
+      const a = dir + this.rng.range(-cone, cone), sp = this.rng.range(120, 260);
+      this.parts.add(cx + Math.cos(a) * 12, cy + Math.sin(a) * 12, Math.cos(a) * sp, Math.sin(a) * sp, this.rng.range(0.2, 0.45), this.rng.pick([rgba("#ffe26b"), rgba("#ff8a2a"), rgba("#f2561d"), rgba("#c9281f")]), this.rng.chance(0.5) ? 2 : 1, 0, 1);
+    }
+    this.grid.query(cx, cy + 16, reach + 40, (i) => {
+      this.body(i);
+      const dx = this.bx - cx, dy = this.by - cy, d = Math.hypot(dx, dy) || 1;
+      if (d - this.brx > reach) return;
+      let da = Math.atan2(dy, dx) - dir;
+      da = Math.atan2(Math.sin(da), Math.cos(da));
+      if (Math.abs(da) > cone + 0.2) return;
+      if (ENEMIES[E.type[i]].ai < AI.Boss) (E.kx[i] += (dx / d) * 160, E.ky[i] += (dy / d) * 160);
+      this.damage(i, dmg, El.Fire);
+    });
+    this.shake = Math.max(this.shake, 0.35);
+    this.audio.play("boom", 1.1);
+    this.audio.play("ignite", 0.7);
+  }
+
+  /** Everything the weapon artifacts leave in the world, and the evolutions' own beat. */
+  private updateArts(dt: number): void {
+    const h = this.hero, E = this.enemies, m = this.stats.might;
+    for (const r of this.relics) r.timer -= dt;
+    this.birdCd -= dt;
+    // ---- spectral blades circling the hero, cutting what they pass through
+    if (this.blades.length) {
+      const bl = this.relicOf(RelicKind.Blades), L = bl?.level ?? 1, R = L >= 3 ? 36 : 30;
+      this.bladeSpin += dt * (L >= 4 ? 5 : 4);
+      this.setSrc(SRC_RELIC + RelicKind.Blades);
+      for (let k = this.blades.length - 1; k >= 0; k--) {
+        const b = this.blades[k];
+        if (!bl || this.time >= b.t || h.dead) {
+          // a fading blade lets go and flies at a foe (the last level)
+          if (bl && L >= 5 && !h.dead) {
+            const [ox, oy] = this.bladePos(k), j = this.nearestEnemy(ox, oy, 200);
+            if (j >= 0) {
+              this.body(j);
+              const a = Math.atan2(this.by - oy, this.bx - ox);
+              this.bullets.add(TEAM_HERO, B_BLADE, ox, oy, Math.cos(a) * 320, Math.sin(a) * 320, 0.8, b.dmg * 2, 5, El.None, 2);
+            }
+          }
+          this.blades.splice(k, 1);
+          continue;
+        }
+        const [ox, oy] = this.bladePos(k);
+        this.grid.query(ox, oy + 10, 26, (i) => {
+          if (E.orbitCd[i] > 0) return;
+          this.body(i);
+          if (!this.touches(ox, oy, L >= 3 ? 7 : 5)) return;
+          E.orbitCd[i] = 0.35;
+          const dx = E.x[i] - h.x, dy = E.y[i] - h.y, dd = Math.hypot(dx, dy) || 1;
+          if (ENEMIES[E.type[i]].ai < AI.Boss) (E.kx[i] += (dx / dd) * 40, E.ky[i] += (dy / dd) * 40);
+          this.damage(i, b.dmg, El.None, { quiet: this.rng.chance(0.5) });
+        });
+      }
+      void R;
+    }
+    // ---- the blood fang's wounds bleed on, twice a second
+    if (this.relicLevel(RelicKind.Fang)) {
+      this.setSrc(SRC_RELIC + RelicKind.Fang);
+      for (let i = E.n - 1; i >= 0; i--) {
+        if (E.bleed[i] <= 0) continue;
+        const was = E.bleed[i];
+        E.bleed[i] -= dt;
+        if (Math.floor(was / 0.5) !== Math.floor(Math.max(0, E.bleed[i]) / 0.5)) {
+          if (this.rng.chance(0.5)) this.parts.add(E.x[i] + this.rng.range(-3, 3), E.y[i] - 10, this.rng.range(-10, 10), this.rng.range(-20, 0), 0.4, rgba("#e0303a"), 1, 160, 1);
+          this.damage(i, E.bleedDmg[i], El.None, { quiet: true, react: false });
+        }
+        if (E.bleed[i] <= 0) E.bleedDmg[i] = 0;
+      }
+    }
+    // ---- stars fade if their constellation never comes; constellations go out
+    for (const st of this.stars) st.t += dt;
+    if (this.stars.length && this.stars[0].t > 7) this.stars.shift();
+    for (const c of this.constellations) c.t += dt;
+    this.constellations = this.constellations.filter((c) => c.t < 0.7);
+    // ---- flowers open into bladed petals
+    if (this.flowers.length) {
+      const L = this.relicLevel(RelicKind.Bloom) || 1, petals = 6 + (L >= 3 ? 2 : 0) + (L >= 5 ? 2 : 0);
+      this.setSrc(SRC_RELIC + RelicKind.Bloom);
+      for (let k = this.flowers.length - 1; k >= 0; k--) {
+        const f = this.flowers[k];
+        f.t += dt;
+        if (f.t < f.open) continue;
+        this.ringOf(B_PETAL, f.x, f.y - 12, petals, 220, 0.4, f.dmg, this.rng.range(0, Math.PI), null);
+        this.burst(f.x, f.y - 10, 8, rgba("#ff8ac0"), 70, 0.35);
+        this.audio.play("dash", 2.6);
+        this.flowers.splice(k, 1);
+      }
+    }
+    // ---- ribbons of the aurora hurt what stands in them
+    if (this.ribbons.length) {
+      const L = this.relicLevel(RelicKind.Aurora) || 1;
+      this.setSrc(SRC_RELIC + RelicKind.Aurora);
+      for (const rb of this.ribbons) {
+        rb.t += dt;
+        const p = rb.pts;
+        for (let q = 0; q + 3 < p.length; q += 2) {
+          const x0 = p[q], y0 = p[q + 1], x1 = p[q + 2], y1 = p[q + 3], len = Math.hypot(x1 - x0, y1 - y0) || 1;
+          this.grid.query((x0 + x1) / 2, (y0 + y1) / 2 + 10, len / 2 + rb.w + 16, (i) => {
+            if (E.ribbonCd[i] > 0) return;
+            const ex = E.x[i], ey = E.y[i] - 8, u = Math.max(0, Math.min(1, ((ex - x0) * (x1 - x0) + (ey - y0) * (y1 - y0)) / (len * len)));
+            if (Math.hypot(ex - (x0 + (x1 - x0) * u), ey - (y0 + (y1 - y0) * u)) > rb.w) return;
+            E.ribbonCd[i] = 0.3;
+            if (L >= 5) E.chill[i] = Math.max(E.chill[i], 0.6);
+            this.damage(i, rb.dmg, El.None, { quiet: true });
+          });
+        }
+      }
+      this.ribbons = this.ribbons.filter((rb) => rb.t < rb.life);
+      for (let i = 0; i < E.n; i++) if (E.ribbonCd[i] > 0) E.ribbonCd[i] -= dt;
+    }
+    // ---- vortices of the void draw foes in, grind them, and (at the last level) burst
+    if (this.vortices.length) {
+      const L = this.relicLevel(RelicKind.Void) || 1;
+      this.setSrc(SRC_RELIC + RelicKind.Void);
+      for (const v of this.vortices) {
+        v.life -= dt;
+        this.grid.query(v.x, v.y + 10, v.pull + 20, (i) => {
+          const dx = v.x - E.x[i], dy = v.y - E.y[i] + 10, d = Math.hypot(dx, dy) || 1;
+          if (d > v.pull) return;
+          if (ENEMIES[E.type[i]].ai < AI.Boss) (E.kx[i] += (dx / d) * 260 * dt * 4, E.ky[i] += (dy / d) * 260 * dt * 4);
+          if (E.voidCd[i] > 0) return;
+          if (d < v.r + 6) {
+            E.voidCd[i] = 0.3;
+            if (L >= 3) E.hex[i] = Math.max(E.hex[i], 2);
+            this.damage(i, v.dmg, El.Void, { quiet: true });
+          }
+        });
+        if (this.rng.chance(dt * 30)) {
+          const a = this.rng.range(0, Math.PI * 2), r0 = v.pull * 0.6;
+          this.parts.add(v.x + Math.cos(a) * r0, v.y + Math.sin(a) * r0 * 0.8, -Math.cos(a) * r0 * 2, -Math.sin(a) * r0 * 1.6, 0.3, rgba("#c684ff"), 1, 0, 1);
+        }
+        if (v.life <= 0 && v.burst) {
+          this.addFx("explosion_s", v.x, v.y + 10, { tint: rgba("#c684ff"), glow: 0.9, sx: 0.9, sy: 0.9 });
+          this.blast(v.x, v.y, 40, v.burst, El.Void, -60);
+          this.audio.play("boom", 1.2);
+        }
+      }
+      this.vortices = this.vortices.filter((v) => v.life > 0);
+    }
+    // ---- meteors come down and burst
+    if (this.meteors.length) {
+      this.setSrc(SRC_RELIC + RelicKind.Meteor);
+      for (const mt of this.meteors) {
+        mt.t += dt / 0.5;
+        if (mt.t < 1) continue;
+        this.addFx("explosion", mt.x, mt.y + 14, { sx: mt.r / 46, sy: mt.r / 46, glow: 1 });
+        this.blast(mt.x, mt.y, mt.r, mt.dmg, El.Fire, 110);
+        this.dust(mt.x, mt.y + 10, 10, 90);
+        if (mt.burn) for (let q = 0; q < 5; q++) this.firePools.push({ x: mt.x + this.rng.range(-16, 16), y: mt.y + 12 + this.rng.range(-10, 10), r: 12, t: 0, life: 2.2, dmg: 4 * m, tick: 0, ember: true });
+        this.shake = Math.max(this.shake, 0.45);
+        this.audio.play("boom", 0.9);
+      }
+      this.meteors = this.meteors.filter((mt) => mt.t < 1);
+    }
+    // ---- waves along the ground: the shockwave's cracks, the permafrost's spikes of ice
+    if (this.quakes.length) {
+      for (const q of this.quakes) {
+        this.setSrc(SRC_RELIC + (q.ice ? RelicKind.Frost : RelicKind.Quake));
+        q.t -= dt;
+        while (q.t <= 0 && q.n > 0) {
+          q.t += q.every;
+          q.n--;
+          q.x += q.dx * (q.ice ? 16 : 18);
+          q.y += q.dy * (q.ice ? 16 : 18);
+          if (!this.map.clear(q.x, q.y, 2)) {
+            q.n = 0;
+            break;
+          }
+          if (q.ice) this.addFx("frost_nova_s", q.x, q.y + 4, { sx: 0.6, sy: 0.6, glow: 0.8 });
+          else this.addFx("slam", q.x, q.y + 2, { sx: 0.32, sy: 0.32, glow: 0.4 });
+          this.dust(q.x, q.y, 2, 30);
+          this.grid.query(q.x, q.y, 34, (i) => {
+            const dx = E.x[i] - q.x, dy = E.y[i] - q.y;
+            if (dx * dx + dy * dy > 18 * 18) return;
+            if (ENEMIES[E.type[i]].ai < AI.Boss) {
+              if (q.ice) E.frozen[i] = Math.max(E.frozen[i], 1.2);
+              else (E.kx[i] += q.dx * 110 - q.dy * 40, E.ky[i] += q.dy * 110 + q.dx * 40);
+              if (q.stun) E.stun[i] = Math.max(E.stun[i], q.stun);
+            }
+            this.damage(i, q.dmg, q.ice ? El.Frost : El.None, { quiet: this.rng.chance(0.6) });
+          });
+        }
+      }
+      this.quakes = this.quakes.filter((q) => q.n > 0);
+    }
+    // ---- the mirror's doubles strike
+    if (this.echoes.length) {
+      for (const e of this.echoes) {
+        e.t -= dt;
+        if (e.t <= 0) this.ghostBlow(e.k, e.dir, e.dmg);
+      }
+      this.echoes = this.echoes.filter((e) => e.t > 0);
+    }
+    for (const ry of this.rays) ry.t += dt;
+    this.rays = this.rays.filter((ry) => ry.t < 0.35);
+    if (this.runes.length) {
+      for (const rn of this.runes) {
+        rn.t -= dt;
+        if (rn.t > 0) continue;
+        this.setSrc(SRC_RELIC + RelicKind.Rune);
+        this.addFx("explosion_s", rn.x, rn.y + 8, { sx: rn.r / 28, sy: rn.r / 28, glow: 1, tint: rgba("#ff9ae8") });
+        this.blast(rn.x, rn.y, rn.r, rn.dmg, El.None, 60);
+        this.audio.play("boom", 2.1);
+      }
+      this.runes = this.runes.filter((rn) => rn.t > 0);
+    }
+    if (!h.dead) this.updateEvolutions(dt);
+    // the rings of fire burn what stands in them
     if (this.firePools.length) {
-      this.setSrc(SRC_RELIC + RelicKind.Brazier);
+      this.setSrc(SRC_RELIC + RelicKind.Fire);
       for (const f of this.firePools) {
         f.t += dt;
         f.tick -= dt;
         if (f.tick > 0) continue;
         f.tick = 0.4;
-        for (let i = E.n - 1; i >= 0; i--) {
+        this.grid.query(f.x, f.y, f.r + 30, (i) => {
           const dx = E.x[i] - f.x, dy = (E.y[i] - f.y) / FLOOR_SQ;
           if (dx * dx + dy * dy < (f.r + 6) * (f.r + 6)) this.damage(i, f.dmg, El.Fire, { quiet: this.rng.chance(0.7) });
-        }
+        });
       }
       this.firePools = this.firePools.filter((f) => f.t < f.life);
     }
-    // flasks in flight become pools where they land
-    for (const f of this.flasks) {
-      f.t += dt / 0.45;
-      if (f.t >= 1) {
-        const L = this.relicLevel(RelicKind.Flask), evo = this.evolved(RelicKind.Flask);
-        this.pools.push({ x: f.x1, y: f.y1, r: evo ? 32 : 22 + (L >= 2 ? 8 : 0), life: evo ? 7 : L >= 4 ? 6 : 4.2, max: evo ? 7 : L >= 4 ? 6 : 4.2, power: evo ? 1.8 : L >= 5 ? 1.5 : 1 });
-        // the flask breaks: glass and poison splash up, then the pool spreads
-        this.burst(f.x1, f.y1 - 3, 10, rgba("#8ad83a"), 60, 0.4, 150);
-        this.burst(f.x1, f.y1 - 4, 5, rgba("#d8ffb0"), 40, 0.25, 200);
-        this.audio.play("break", 1.4);
-      }
-    }
-    this.flasks = this.flasks.filter((f) => f.t < 1);
-    this.setSrc(SRC_RELIC + RelicKind.Flask);
+    // pools of poison sicken what wades in them
+    this.setSrc(SRC_RELIC + RelicKind.Venom);
     for (const p of this.pools) {
       p.life -= dt;
       const pr = p.r * poolSpread(p);
@@ -3721,38 +4235,105 @@ export class World {
       });
     }
     this.pools = this.pools.filter((p) => p.life > 0);
-    // void spheres drift toward the thick of the horde
-    this.setSrc(SRC_RELIC + RelicKind.Void);
-    const VL = this.relicLevel(RelicKind.Void);
-    for (const s of this.spheres) {
-      s.life -= dt;
-      const j = this.nearestEnemy(s.x, s.y, 220);
-      if (j >= 0) {
-        this.body(j);
-        const dx = this.bx - s.x, dy = this.by - s.y, d = Math.hypot(dx, dy) || 1;
-        s.vx += (dx / d) * 120 * dt;
-        s.vy += (dy / d) * 120 * dt;
-      }
-      const sp = Math.hypot(s.vx, s.vy);
-      if (sp > 75) (s.vx *= 75 / sp, s.vy *= 75 / sp);
-      s.x += s.vx * dt;
-      s.y += s.vy * dt;
-      this.grid.query(s.x, s.y + 10, s.r + 20, (i) => {
-        if (E.voidCd[i] > 0) return;
-        this.body(i);
-        if (this.touches(s.x, s.y, s.r)) {
-          E.voidCd[i] = 0.3;
-          this.damage(i, 7 * (VL >= 5 ? 1.6 : 1) * m, El.Void);
-        }
-      });
-    }
-    this.spheres = this.spheres.filter((s) => s.life > 0);
     if (this.star) this.updateStar(dt);
+    this.setSrc(SRC_WEAPON);
+  }
+  /** Where the k-th spectral blade is on its ring about the hero. */
+  bladePos(k: number): [number, number] {
+    const h = this.hero, n = Math.max(1, this.blades.length), L = this.relicLevel(RelicKind.Blades), R = L >= 3 ? 36 : 30, a = this.bladeSpin + (k * Math.PI * 2) / n;
+    return [h.x + Math.cos(a) * R, h.y - 12 + Math.sin(a) * R * 0.72];
+  }
+  /**
+   * What the evolutions do on their own, beyond the blow and the shot: the tempest's rain of lightning, the rainbow's
+   * sweep, the constellations, the garden, the black hole (the Crown of Flame, the Endless Ricochet and the Permafrost
+   * act through the blows and shots themselves).
+   */
+  private updateEvolutions(dt: number): void {
+    const h = this.hero, E = this.enemies, base = this.baseDmg();
+    for (const r of this.relics) {
+      if (!r.evo) continue;
+      r.clock += dt;
+      this.setSrc(SRC_RELIC + r.kind);
+      switch (r.kind) {
+        case RelicKind.Storm: {
+          // lightning rains on the foes in view, one bolt a beat
+          if (r.clock < 0.3 || !E.n) break;
+          r.clock = 0;
+          const j = this.rng.int(0, E.n - 1);
+          if (Math.abs(E.x[j] - h.x) > this.viewHW || Math.abs(E.y[j] - h.y) > this.viewHH) break;
+          this.body(j);
+          const tx = this.bx, ty = E.y[j];
+          this.addFx("lightning", tx, ty, { sx: 0.6, sy: 0.6, glow: 0.9, key: 4 });
+          this.arcs.push({ pts: [tx + this.rng.range(-6, 6), ty - 130, tx + this.rng.range(-8, 8), ty - 64, tx, ty - 8], life: 0.14, color: rgba("#fff08a") });
+          this.blast(tx, ty - 8, 28, base * 0.9, El.Storm, 50);
+          this.audio.play("zap", 0.7 + this.rng.range(0, 0.4));
+          break;
+        }
+        case RelicKind.Prism: {
+          // every few seconds a rainbow ray sweeps once round, out to the screen's edge, in every element
+          const rb = this.rainbow;
+          if (rb.done < 0) {
+            if (r.clock < 4.5) break;
+            r.clock = 0;
+            rb.done = 0;
+            rb.a = Math.atan2(h.aimY, h.aimX);
+            this.audio.play("holy", 0.6);
+          }
+          const step = dt * Math.PI * 2 / 1.1, a0 = rb.a, a1 = rb.a + step, len = Math.hypot(this.viewHW, this.viewHH);
+          rb.a = a1;
+          rb.done += step;
+          rb.t += dt;
+          this.grid.query(h.x, h.y - 18, len, (i) => {
+            const dx = E.x[i] - h.x, dy = E.y[i] - 8 - (h.y - 18), d = Math.hypot(dx, dy);
+            if (d > len || d < 8) return;
+            let da = Math.atan2(dy, dx) - a0;
+            da = ((da % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+            if (da > step + 0.06) return;
+            this.damage(i, base * 0.9, PRISM_ELS[Math.floor(rb.t * 7) % PRISM_ELS.length], { quiet: this.rng.chance(0.5) });
+          });
+          if (rb.done >= Math.PI * 2) rb.done = -1;
+          break;
+        }
+        case RelicKind.Stardust: {
+          // constellations flare across the screen: up to seven foes in view become its stars
+          if (r.clock < 3.5) break;
+          r.clock = 0;
+          const pick: { x: number; y: number; dmg: number }[] = [];
+          for (let q = 0; q < 24 && pick.length < 7 && E.n; q++) {
+            const j = this.rng.int(0, E.n - 1);
+            if (Math.abs(E.x[j] - h.x) > this.viewHW || Math.abs(E.y[j] - h.y) > this.viewHH) continue;
+            this.body(j);
+            if (!pick.some((p) => Math.abs(p.x - this.bx) < 20 && Math.abs(p.y - this.by) < 20)) pick.push({ x: this.bx, y: this.by, dmg: base * 1.6 });
+          }
+          if (pick.length >= 3) this.constellation(pick, 5, 1.6);
+          break;
+        }
+        case RelicKind.Bloom: {
+          // a field of flowers keeps growing about the hero
+          if (r.clock < 0.35) break;
+          r.clock = 0;
+          const a = this.rng.range(0, Math.PI * 2), d = this.rng.range(30, 110), x = h.x + Math.cos(a) * d, y = h.y + Math.sin(a) * d * 0.75;
+          if (this.map.clear(x, y, 4)) this.plantFlower(x, y - 12, base * 1.2);
+          break;
+        }
+        case RelicKind.Void:
+          if (!this.star) this.star = { x: h.x, y: h.y - 30, vx: 0, vy: 0, t: 0 };
+          break;
+      }
+    }
   }
 
-  /** The Black Star drifts to the horde, drags it in, grinds what touches it, and collapses every few seconds. */
+  /**
+   * The Black Hole (the void shard evolved): it drifts to the horde, drags in everything on the screen, grinds what
+   * touches it, and collapses every few seconds.
+   */
   private updateStar(dt: number): void {
-    const S = this.star!, E = this.enemies, h = this.hero, m = this.stats.might, R = 15;
+    const S = this.star!, E = this.enemies, h = this.hero, m = this.stats.might, R = 15, pull = Math.max(this.viewHW, 160);
+    if (!this.evolved(RelicKind.Void)) {
+      this.star = null;
+      return;
+    }
+    this.setSrc(SRC_RELIC + RelicKind.Void);
     S.t += dt;
     const j = this.nearestEnemy(S.x, S.y, 260);
     let tx = h.x + Math.cos(this.time * 0.8) * 60, ty = h.y - 20 + Math.sin(this.time * 0.8) * 40;
@@ -3764,11 +4345,12 @@ export class World {
     if (sp > 60) (S.vx *= 60 / sp, S.vy *= 60 / sp);
     S.x += S.vx * dt;
     S.y += S.vy * dt;
-    // the pull and the grinding
-    this.grid.query(S.x, S.y + 10, 100, (i) => {
+    // the pull (harder near it) and the grinding
+    this.grid.query(S.x, S.y + 10, pull, (i) => {
       const ex = S.x - E.x[i], ey = S.y - E.y[i] + 10, ed = Math.hypot(ex, ey) || 1;
-      if (ed > 100) return;
-      if (ENEMIES[E.type[i]].ai < AI.Boss) (E.kx[i] += (ex / ed) * 420 * dt, E.ky[i] += (ey / ed) * 420 * dt);
+      if (ed > pull) return;
+      const k = 160 + 380 * (1 - ed / pull);
+      if (ENEMIES[E.type[i]].ai < AI.Boss) (E.kx[i] += (ex / ed) * k * dt, E.ky[i] += (ey / ed) * k * dt);
       if (E.voidCd[i] > 0) return;
       this.body(i);
       if (this.touches(S.x, S.y, R + 4)) {
@@ -3783,12 +4365,12 @@ export class World {
     }
     if (S.t >= STAR_EVERY) {
       S.t = 0;
-      this.addFx("frost_nova", S.x, S.y + 10, { tint: rgba("#c684ff"), glow: 0.9, sx: 0.8, sy: 0.8 });
-      this.addFx("explosion", S.x, S.y + 12, { tint: rgba("#b070ff"), sx: 0.5, sy: 0.5, glow: 0.8 });
-      this.blast(S.x, S.y, 64, 55 * m * this.stats.edge, El.Void, -90);
+      this.addFx("frost_nova", S.x, S.y + 10, { tint: rgba("#c684ff"), glow: 0.9, sx: 1.1, sy: 1.1 });
+      this.addFx("explosion", S.x, S.y + 12, { tint: rgba("#b070ff"), sx: 0.7, sy: 0.7, glow: 0.8 });
+      this.blast(S.x, S.y, 72, 55 * m * this.stats.edge, El.Void, -90);
       this.audio.play("boom", 0.8);
-      this.shake = Math.max(this.shake, 0.45);
-      this.flash = Math.max(this.flash, 0.2);
+      this.shake = Math.max(this.shake, 0.5);
+      this.flash = Math.max(this.flash, 0.25);
     }
   }
 
@@ -4999,9 +5581,10 @@ export class World {
       B.t[i] += dt;
       B.life[i] -= dt;
       // (a lance of the hero's eases out of the orb or the book before it flies)
-      // a chakram slows as it flies out, then turns for the hero's hand and is caught there (cutting again on the way)
-      if (B.kind[i] === B_CHAKRAM && B.team[i] === TEAM_HERO) {
-        if (!B.grazed[i] && B.t[i] >= CHAKRAM_OUT) (B.grazed[i] = 1), B.hits.fill(0, i * 4, i * 4 + 4);
+      // a chakram slows as it flies out, then turns for the hero's hand and is caught there (cutting again on the way);
+      // so does the moon's sickle
+      if ((B.kind[i] === B_CHAKRAM || B.kind[i] === B_SICKLE) && B.team[i] === TEAM_HERO) {
+        if (!B.grazed[i] && B.t[i] >= (B.kind[i] === B_SICKLE ? SICKLE_OUT : CHAKRAM_OUT)) (B.grazed[i] = 1), B.hits.fill(0, i * 4, i * 4 + 4);
         if (B.grazed[i]) {
           const dx = h.x - B.x[i], dy = h.y - 18 - B.y[i], d = Math.hypot(dx, dy) || 1, k = Math.min(1, dt * 9);
           B.vx[i] += ((dx / d) * 360 - B.vx[i]) * k;
@@ -5015,12 +5598,40 @@ export class World {
           B.vy[i] *= 1 - dt * 1.8;
         }
       }
+      if (B.team[i] === TEAM_HERO && B.kind[i] >= B_PETAL) {
+        const k = B.kind[i];
+        if (k === B_BIRD) {
+          // the firebird climbs, then turns on the nearest foe and keeps after it
+          const j = B.t[i] > 0.18 ? this.nearestEnemy(B.x[i], B.y[i], 260) : -1;
+          if (j >= 0) {
+            this.body(j);
+            const dx = this.bx - B.x[i], dy = this.by - B.y[i], d = Math.hypot(dx, dy) || 1, q = Math.min(1, dt * 7);
+            B.vx[i] += ((dx / d) * 230 - B.vx[i]) * q;
+            B.vy[i] += ((dy / d) * 230 - B.vy[i]) * q;
+          }
+        } else if (k === B_TORNADO) {
+          // a whirlwind cuts what it holds again and again, and draws in what stands near
+          if (Math.floor(B.t[i] / 0.3) !== Math.floor((B.t[i] - dt) / 0.3)) B.hits.fill(0, i * 4, i * 4 + 4);
+          const R = B.r[i] * 2.4;
+          this.grid.query(B.x[i], B.y[i] + 10, R + 20, (j) => {
+            if (ENEMIES[E.type[j]].ai >= AI.Boss) return;
+            const dx = B.x[i] - E.x[j], dy = B.y[i] - E.y[j] + 8, d = Math.hypot(dx, dy) || 1;
+            if (d < R) (E.kx[j] += (dx / d) * 300 * dt, E.ky[j] += (dy / d) * 300 * dt);
+          });
+        } else if (k === B_BUBBLE) {
+          B.vx[i] *= 1 - dt * 1.1;
+          B.vy[i] *= 1 - dt * 1.1;
+          B.vy[i] -= 6 * dt;
+        }
+      }
       const lance = B.kind[i] === B_LANCE && B.team[i] === TEAM_HERO, spent = lance && B.grazed[i] >= LANCE_SPENT;
       const ease = lance ? (B.grazed[i] === LANCE_STUCK ? 0 : lanceRamp(B.t[i])) : 1;
       B.x[i] += B.vx[i] * dt * ease;
       B.y[i] += B.vy[i] * dt * ease;
       const x = B.x[i], y = B.y[i];
       if (B.life[i] <= 0 || x < -20 || y < -40 || x > this.w + 20 || y > this.h + 20) {
+        // a bubble that meets nothing bursts where it ends; the halo's shot leaves its ray
+        if (B.team[i] === TEAM_HERO && B.life[i] <= 0) this.bulletEnds(i);
         B.remove(i);
         continue;
       }
@@ -5050,18 +5661,27 @@ export class World {
             continue;
           }
           this.burst(x, y, 4, B.team[i] === TEAM_FOE ? rgba("#ff8a9a") : rgba("#c4ecff"), 40, 0.25);
+          if (B.team[i] === TEAM_HERO) this.bulletEnds(i);
           B.remove(i);
           continue;
         }
       }
       if (spent) continue;
-      // the Ring of Fire: a hero's shot leaves embers burning on the ground behind it
-      if (B.team[i] === TEAM_HERO && B.art[i] & (1 << WArt.Fire)) {
+      // the Ring of Fire: a hero's shot (or wave) leaves embers burning on the ground behind it; the aurora's shot
+      // draws its ribbon
+      if (B.team[i] === TEAM_HERO && B.art[i] & ((1 << RelicKind.Fire) | (1 << RelicKind.Aurora)) && B.kind[i] !== B_TORNADO) {
         B.trail[i] += Math.hypot(B.vx[i], B.vy[i]) * dt;
-        if (B.trail[i] > 26) {
-          const L = this.wLv(WArt.Fire);
+        if (B.trail[i] > 22) {
           B.trail[i] = 0;
-          if (this.firePools.length < 90) this.firePools.push({ x, y: y + 14, r: this.wArtEvo ? 11 : 6 + L, t: 0, life: (this.wArtEvo ? 1.8 : 0.7 + 0.25 * L), dmg: (this.wArtEvo ? 6 : 2 + L) * this.stats.might, tick: 0, ember: true });
+          if (B.art[i] & (1 << RelicKind.Fire)) {
+            // (a blade's wave of fire leaves a thinner line of embers than a shot's trail)
+            const L = Math.max(1, this.relicLevel(RelicKind.Fire)), evo = this.evolved(RelicKind.Fire), wave = B.kind[i] === B_CRESCENT, k = wave ? 0.45 : 1;
+            if (this.firePools.length < 90 && (!wave || this.rng.chance(0.6))) this.firePools.push({ x, y: y + 14, r: evo ? 11 : 7 + L, t: 0, life: evo ? 1.8 : 0.8 + (L >= 2 ? 0.5 : 0) + 0.15 * L, dmg: (evo ? 6 : 3 + (L >= 4 ? 2 : 0) + 0.6 * L) * k * this.stats.might, tick: 0, ember: true });
+          }
+          if (B.art[i] & (1 << RelicKind.Aurora) && this.ribbons.length < 60) {
+            const L = Math.max(1, this.relicLevel(RelicKind.Aurora)), px = x - B.vx[i] * 0.07, py = y - B.vy[i] * 0.07;
+            this.ribbons.push({ pts: [px, py, x, y], t: 0, life: 0.9 + (L >= 2 ? 0.5 : 0), dmg: B.dmg[i] * (0.3 + 0.06 * L) * (L >= 4 ? 1.3 : 1), w: L >= 3 ? 13 : 9 });
+          }
         }
       }
       if (B.team[i] === TEAM_HERO) {
@@ -5093,7 +5713,14 @@ export class World {
             gone = true;
             return true;
           }
-          let dead = this.damage(j, B.dmg[i] * (crit ? 2 : 1), B.el[i] as El, { crit });
+          if (B.kind[i] === B_DRAGON || B.kind[i] === B_BUBBLE) {
+            // a fire dragon bursts in a great flare; a bubble bursts in a wave
+            this.bulletEnds(i);
+            gone = true;
+            return true;
+          }
+          if (B.art[i] && !(B.art[i] & ART_CHILD)) this.artsOnHit(j, B.dmg[i]);
+          let dead = this.damage(j, B.dmg[i] * (crit ? 2 : 1), B.el[i] as El, { crit, react: !(B.art[i] & ART_NOREACT) });
           if (!dead && this.stats.echo > 0 && this.rng.chance(this.stats.echo)) {
             const jj = this.indexOf(uid);
             if (jj >= 0) dead = this.damage(jj, B.dmg[i] * 0.6, B.el[i] as El, { quiet: true });
@@ -5112,8 +5739,17 @@ export class World {
           this.audio.play("hit", dead ? 0.8 : 1);
           // (the weapon artifacts' turn comes when the bullet is done with this pass: see below)
           if (B.art[i]) (artX = ex), (artY = ey), (artUid = uid);
+          // the splitter's shards split once more at its last level
+          if (B.kind[i] === B_SHARD && !B.grazed[i] && this.relicLevel(RelicKind.Splitter) >= 5) {
+            B.grazed[i] = 1;
+            const a = Math.atan2(B.vy[i], B.vx[i]);
+            for (const da of [-0.5, 0.5]) {
+              const q = this.bullets.add(TEAM_HERO, B_SHARD, x, y, Math.cos(a + da) * 260, Math.sin(a + da) * 260, 0.22, B.dmg[i] * 0.6, 3, El.None, 0);
+              if (q >= 0) this.bullets.grazed[q] = 1;
+            }
+          }
           // a ricochet: the shot turns to the next foe instead of spending itself
-          if (B.art[i] & (1 << WArt.Ricochet) && B.bounce[i] > 0) return true;
+          if (B.art[i] & (1 << RelicKind.Ricochet) && B.bounce[i] > 0) return true;
           if (B.pierce[i] > 0) B.pierce[i]--;
           else {
             gone = true;
@@ -5122,8 +5758,13 @@ export class World {
         });
         // a lance that has struck its last flies on through, spent, and melts over a short fade
         if (artUid) {
-          this.shotArts(B.art[i], artX, artY, B.dmg[i]);
-          if (B.art[i] & (1 << WArt.Ricochet) && B.bounce[i] > 0 && !gone) {
+          const bits = B.art[i], idx = this.indexOf(artUid);
+          // the splitter: the shot splits on its first strike (in three from the 3rd level; again at the 5th)
+          if (bits & (1 << RelicKind.Splitter) && !(bits & ART_SPLIT) && (!(bits & ART_CHILD) || bits & ART_SPLIT2)) this.splitShot(i, artX, artY, artUid);
+          if (bits & (1 << RelicKind.Halo) && !(bits & ART_RAY)) this.leaveRay(i);
+          if (!(bits & ART_CHILD)) this.shotArts(bits & ~ART_MARKS, artX, artY, B.dmg[i], idx);
+          this.setSrc(B.src[i]);
+          if (B.art[i] & (1 << RelicKind.Ricochet) && B.bounce[i] > 0 && !gone) {
             // on to the nearest foe this shot has not struck, at its own speed; it forgets the older ones
             const skip = new Set<number>();
             for (let k = 0; k < 4; k++) if (B.hits[i * 4 + k]) skip.add(B.hits[i * 4 + k]);
@@ -5138,6 +5779,8 @@ export class World {
               B.hits.fill(0, i * 4, i * 4 + 4);
               B.hits[i * 4] = artUid;
               this.burst(artX, artY, 5, rgba("#ffffff"), 70, 0.25);
+              // the Endless Ricochet's silver web: each leap stays a moment as a thread of light
+              if (this.evolved(RelicKind.Ricochet)) this.arcs.push({ pts: [artX, artY, this.bx, this.by], life: 0.5, color: rgba("#e8eeff") });
             } else if (B.pierce[i] > 0) B.pierce[i]--;
             else gone = true;
           }
@@ -5170,7 +5813,6 @@ export class World {
             }
             continue;
           }
-          if (this.mirrorTurns(i)) continue;
           this.hurtHero(B.dmg[i] >= 2 ? 2 : 1);
           B.remove(i);
           continue;
@@ -6161,7 +6803,7 @@ export class World {
   addRelic(kind: RelicKind): void {
     const r = this.relics.find((q) => q.kind === kind);
     if (r) r.level = Math.min(5, r.level + 1);
-    else this.relics.push({ kind, level: 1, timer: 0.5, angle: 0, evo: false, clock: 0 });
+    else this.relics.push({ kind, level: 1, timer: 0, angle: 0, evo: false, clock: 0, count: 0 });
   }
   /** The artifacts held, in the order they were taken: each fills a slot. */
   get artifacts(): StatId[] {

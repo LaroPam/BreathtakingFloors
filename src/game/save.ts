@@ -94,8 +94,10 @@ export interface RunSave {
   hero: { id: string; victor: boolean; weapon: string; el: number; legend: boolean; rarity: number; level: number; xp: number; hp: number; maxHp: number; od: number; harvest: number; vampKills: number; dashMax: number };
   stats: Record<string, number>;
   statLevels: Record<string, number>;
-  /** Each relic: [kind, level, evolved]. */
+  /** Each weapon artifact: [kind, level, evolved] (the relics' list, which they took over). */
   relics: [number, number, boolean][];
+  /** Set once the run was saved with weapon artifacts; before, kind 9 was the Ice Crown (now a boost). */
+  arts?: 1;
   dodge: number;
   xpMul: number;
   kills: number;

@@ -499,90 +499,204 @@ export function roster(s: Stop, phase: number): [number, number][] {
   return out;
 }
 
-// ------------------------------------------------------------------------------------------------ relics
+// ------------------------------------------------------------------------------------------------ weapon artifacts
+/**
+ * Weapon artifacts (the top row of the panel): each changes the weapon in hand and gives it a mechanic of its own,
+ * one for a blade's blow and one for a shot (world.ts, "weapon artifacts"), stronger over five levels and visibly so
+ * at the 3rd and the 5th. They took the relics' place (docs/PLAN-POWER.md, stage 2), so the code still calls them
+ * relics: the first nine carry on the relics of the same number (the orbit became the spectral blades, the lance the
+ * ice shard, and so on), which keeps what old saves have seen and opened.
+ */
 export enum RelicKind {
-  Orbit = 0,
-  Lance = 1,
-  Coil = 2,
-  Flask = 3,
+  Blades = 0,
+  Frost = 1,
+  Storm = 2,
+  Venom = 3,
   Halo = 4,
   Void = 5,
-  Roots = 6,
+  Thorn = 6,
   Mirror = 7,
-  Brazier = 8,
-  Crown = 9,
+  Fire = 8,
+  Ricochet = 9,
+  Quake = 10,
+  Rune = 11,
+  Splitter = 12,
+  Fang = 13,
+  Wind = 14,
+  Meteor = 15,
+  Prism = 16,
+  Stardust = 17,
+  Aurora = 18,
+  Phoenix = 19,
+  Bloom = 20,
+  Moon = 21,
+  Dragon = 22,
+  Bubbles = 23,
 }
 export interface RelicDef {
   kind: RelicKind;
+  /** The element it deals (None for those that deal none), for reactions, legends and the books. */
   el: El;
+  /** Its own colour: the weapon steeped in it, its trails, its badge's rim. */
+  color: string;
+  /** Its badge in the "icons" and "items" atlas animations. */
+  icon: string;
   name: Text;
-  desc: Text;
+  /** What it does to a blade's blow, and to a shot. */
+  melee: Text;
+  ranged: Text;
   /** What each level adds, levels 2..5. */
   levels: Text[];
 }
+const L = (ru: string, en: string): Text => ({ ru, en });
 export const RELICS: RelicDef[] = [
   {
-    kind: RelicKind.Orbit, el: El.Fire,
-    name: { ru: "УГОЛЬНАЯ ОРБИТА", en: "EMBER ORBIT" },
-    desc: { ru: "ОГНЕННЫЕ ШАРЫ КРУЖАТ ВОКРУГ И ПОДЖИГАЮТ", en: "FIREBALLS CIRCLE YOU AND SET FOES ALIGHT" },
-    levels: [{ ru: "+1 ШАР", en: "+1 FIREBALL" }, { ru: "+30% УРОНА, ШИРЕ", en: "+30% DAMAGE, WIDER" }, { ru: "+1 ШАР", en: "+1 FIREBALL" }, { ru: "+1 ШАР, БЫСТРЕЕ", en: "+1 FIREBALL, FASTER" }],
+    kind: RelicKind.Blades, el: El.None, color: "#aebcff", icon: "orbit", name: L("ПРИЗРАЧНЫЕ КЛИНКИ", "SPECTRAL BLADES"),
+    melee: L("УДАРЫ ОСТАВЛЯЮТ ПРИЗРАЧНЫЕ КЛИНКИ, ОНИ КРУЖАТ ВОКРУГ И РЕЖУТ", "BLOWS LEAVE SPECTRAL BLADES THAT CIRCLE YOU AND CUT"),
+    ranged: L("ПОПАДАНИЯ ОСТАВЛЯЮТ ПРИЗРАЧНЫЕ КЛИНКИ, ОНИ КРУЖАТ ВОКРУГ И РЕЖУТ", "HITS LEAVE SPECTRAL BLADES THAT CIRCLE YOU AND CUT"),
+    levels: [L("+1 КЛИНОК", "+1 BLADE"), L("КЛИНКИ КРУПНЕЕ И ЖИВУТ ДОЛЬШЕ", "BIGGER BLADES THAT LAST LONGER"), L("+1 КЛИНОК, БЫСТРЕЕ", "+1 BLADE, FASTER"), L("ГАСНУЩИЙ КЛИНОК ЛЕТИТ ВО ВРАГА", "A FADING BLADE FLIES AT A FOE")],
   },
   {
-    kind: RelicKind.Lance, el: El.Frost,
-    name: { ru: "ЛЕДЯНОЕ КОПЬЁ", en: "FROST LANCE" },
-    desc: { ru: "КОПЬЯ ПРОНЗАЮТ И ЗАМЕДЛЯЮТ, ТРИ - ЗАМОРАЖИВАЮТ", en: "LANCES PIERCE AND CHILL; THREE CHILLS FREEZE" },
-    levels: [{ ru: "+1 КОПЬЁ", en: "+1 LANCE" }, { ru: "ЧАЩЕ НА 20%", en: "20% MORE OFTEN" }, { ru: "+1 КОПЬЁ, +1 ПРОБИТИЕ", en: "+1 LANCE, +1 PIERCE" }, { ru: "+40% УРОНА", en: "+40% DAMAGE" }],
+    kind: RelicKind.Frost, el: El.Frost, color: "#78ccf4", icon: "lance", name: L("ЛЕДЯНОЙ ОСКОЛОК", "ICE SHARD"),
+    melee: L("УДАР ВЫПУСКАЕТ ВЕЕР ЛЕДЯНЫХ ШИПОВ", "BLOWS LOOSE A FAN OF ICE SPIKES"),
+    ranged: L("СНАРЯДЫ ВЗРЫВАЮТСЯ МОРОЗНЫМ ОБЛАКОМ", "SHOTS BURST INTO A FROST CLOUD"),
+    levels: [L("+25% УРОНА", "+25% DAMAGE"), L("+2 ШИПА, ОБЛАКО ШИРЕ", "+2 SPIKES, A WIDER CLOUD"), L("+25% УРОНА", "+25% DAMAGE"), L("+2 ШИПА, ЗАМОРАЖИВАЕТ", "+2 SPIKES, FREEZES")],
   },
   {
-    kind: RelicKind.Coil, el: El.Storm,
-    name: { ru: "ГРОЗОВАЯ КАТУШКА", en: "STORM COIL" },
-    desc: { ru: "МОЛНИЯ ПРЫГАЕТ ПО ВРАГАМ И ОГЛУШАЕТ", en: "LIGHTNING JUMPS FROM FOE TO FOE AND STUNS" },
-    levels: [{ ru: "+2 ПРЫЖКА", en: "+2 JUMPS" }, { ru: "ЧАЩЕ НА 25%", en: "25% MORE OFTEN" }, { ru: "ВТОРАЯ МОЛНИЯ", en: "A SECOND BOLT" }, { ru: "+50% УРОНА, +2 ПРЫЖКА", en: "+50% DAMAGE, +2 JUMPS" }],
+    kind: RelicKind.Storm, el: El.Storm, color: "#ffe03c", icon: "coil", name: L("ГРОЗОВОЙ КАМЕНЬ", "STORM STONE"),
+    melee: L("УДАР ПУСКАЕТ ЦЕПНУЮ МОЛНИЮ", "BLOWS LOOSE CHAIN LIGHTNING"),
+    ranged: L("ПОПАДАНИЕ ЗОВЁТ МОЛНИЮ С НЕБА", "A HIT CALLS LIGHTNING FROM THE SKY"),
+    levels: [L("+1 ПРЫЖОК", "+1 LEAP"), L("+1 ПРЫЖОК, ВТОРАЯ МОЛНИЯ", "+1 LEAP, A SECOND BOLT"), L("+1 ПРЫЖОК, СИЛЬНЕЕ", "+1 LEAP, STRONGER"), L("+1 ПРЫЖОК, ОГЛУШАЕТ", "+1 LEAP, STUNS")],
   },
   {
-    kind: RelicKind.Flask, el: El.Venom,
-    name: { ru: "ФЛЯГА С ЯДОМ", en: "VENOM FLASK" },
-    desc: { ru: "ЯДОВИТЫЕ ЛУЖИ ОТРАВЛЯЮТ ВСЕХ, КТО В НИХ", en: "POISON POOLS SICKEN ALL WHO WADE IN" },
-    levels: [{ ru: "ЛУЖИ ШИРЕ", en: "WIDER POOLS" }, { ru: "+1 ФЛЯГА", en: "+1 FLASK" }, { ru: "ЛУЖИ ДОЛЬШЕ", en: "POOLS LAST LONGER" }, { ru: "+1 ФЛЯГА, СИЛЬНЕЕ", en: "+1 FLASK, STRONGER" }],
+    kind: RelicKind.Venom, el: El.Venom, color: "#8ad83a", icon: "flask", name: L("ЯДОВИТЫЙ ФЛАКОН", "VENOM FLASK"),
+    melee: L("НА МЕСТЕ УДАРА ВСТАЁТ ОБЛАКО ЯДА", "A CLOUD OF POISON RISES WHERE YOU STRIKE"),
+    ranged: L("ГДЕ УДАРИЛ СНАРЯД, РАСТЕКАЕТСЯ ЯДОВИТАЯ ЛУЖА", "A POISON POOL SPREADS WHERE A SHOT STRIKES"),
+    levels: [L("ОБЛАКО ШИРЕ", "A WIDER CLOUD"), L("ДЕРЖИТСЯ ДОЛЬШЕ", "LASTS LONGER"), L("ЯД СИЛЬНЕЕ", "STRONGER POISON"), L("ОТРАВЛЕННЫЕ ЛОПАЮТСЯ НОВЫМИ ЛУЖАМИ", "THE POISONED BURST INTO NEW POOLS")],
   },
   {
-    kind: RelicKind.Halo, el: El.Holy,
-    name: { ru: "НИМБ", en: "HALO" },
-    desc: { ru: "ВОЛНА СВЕТА ОТБРАСЫВАЕТ ВСЕХ ВОКРУГ", en: "A WAVE OF LIGHT HURLS BACK ALL AROUND" },
-    levels: [{ ru: "ШИРЕ", en: "WIDER" }, { ru: "ЧАЩЕ НА 25%", en: "25% MORE OFTEN" }, { ru: "+50% УРОНА", en: "+50% DAMAGE" }, { ru: "ГАСИТ ВРАЖЕСКИЕ СНАРЯДЫ", en: "ERASES ENEMY BOLTS" }],
+    kind: RelicKind.Halo, el: El.Holy, color: "#fff09a", icon: "halo", name: L("СВЯТОЙ ОРЕОЛ", "HOLY HALO"),
+    melee: L("КАЖДЫЙ ТРЕТИЙ УДАР - КОЛЬЦО СВЕТА ВОКРУГ", "EVERY THIRD BLOW SENDS OUT A RING OF LIGHT"),
+    ranged: L("СНАРЯДЫ ПРОБИВАЮТ И ОСТАВЛЯЮТ ЛУЧ СВЕТА, ОН ЖЖЁТ", "SHOTS PIERCE AND LEAVE A BURNING RAY OF LIGHT"),
+    levels: [L("+30% УРОНА", "+30% DAMAGE"), L("КОЛЬЦО ШИРЕ, +1 ПРОБИТИЕ", "A WIDER RING, +1 PIERCE"), L("+30% УРОНА", "+30% DAMAGE"), L("КАЖДЫЙ ВТОРОЙ УДАР, ГАСИТ ВРАЖЕСКИЕ СНАРЯДЫ", "EVERY SECOND BLOW, SNUFFS ENEMY BOLTS")],
   },
   {
-    kind: RelicKind.Void, el: El.Void,
-    name: { ru: "СФЕРА ПУСТОТЫ", en: "VOID SPHERE" },
-    desc: { ru: "МЕДЛЕННАЯ СФЕРА ПРОКЛИНАЕТ: +30% УРОНА ПО ЦЕЛИ", en: "A SLOW SPHERE HEXES: +30% DAMAGE TAKEN" },
-    levels: [{ ru: "+1 СФЕРА", en: "+1 SPHERE" }, { ru: "БОЛЬШЕ И ДОЛЬШЕ", en: "BIGGER, LASTS LONGER" }, { ru: "+1 СФЕРА", en: "+1 SPHERE" }, { ru: "+60% УРОНА", en: "+60% DAMAGE" }],
-  },
-  // (the tower's update brought these)
-  {
-    kind: RelicKind.Roots, el: El.Venom,
-    name: { ru: "ТОТЕМ КОРНЕЙ", en: "ROOT TOTEM" },
-    desc: { ru: "КОРНИ ВЫРЫВАЮТСЯ ИЗ ПОЛА И ДЕРЖАТ ВРАГОВ, ШИПЫ ОТРАВЛЯЮТ", en: "ROOTS BURST FROM THE FLOOR AND HOLD FOES; THEIR THORNS POISON" },
-    levels: [{ ru: "+1 КОРЕНЬ", en: "+1 ROOT" }, { ru: "ДЕРЖАТ ДОЛЬШЕ, ЧАЩЕ", en: "HOLD LONGER, MORE OFTEN" }, { ru: "+1 КОРЕНЬ", en: "+1 ROOT" }, { ru: "+40% УРОНА", en: "+40% DAMAGE" }],
+    kind: RelicKind.Void, el: El.Void, color: "#a970e0", icon: "void", name: L("ОСКОЛОК ПУСТОТЫ", "VOID SHARD"),
+    melee: L("УДАР ОТКРЫВАЕТ МАЛУЮ ВОРОНКУ, ОНА ТЯНЕТ ВРАГОВ", "BLOWS OPEN A SMALL VORTEX THAT DRAWS FOES IN"),
+    ranged: L("СНАРЯД СХЛОПЫВАЕТСЯ В ВОРОНКУ", "SHOTS COLLAPSE INTO A VORTEX"),
+    levels: [L("ВОРОНКА ШИРЕ", "A WIDER VORTEX"), L("ПРОКЛИНАЕТ: +30% УРОНА ПО ЦЕЛИ", "HEXES: +30% DAMAGE TAKEN"), L("ДЕРЖИТСЯ ДОЛЬШЕ", "LASTS LONGER"), L("СХЛОПЫВАЕТСЯ ВЗРЫВОМ", "COLLAPSES IN A BURST")],
   },
   {
-    kind: RelicKind.Mirror, el: El.Holy,
-    name: { ru: "ЗЕРКАЛЬНЫЙ ЩИТ", en: "MIRROR SHIELD" },
-    desc: { ru: "КАЖДЫЙ ЧЕТВЁРТЫЙ ВРАЖЕСКИЙ СНАРЯД ОТРАЖАЕТСЯ ОБРАТНО", en: "EVERY FOURTH ENEMY BOLT IS TURNED BACK" },
-    levels: [{ ru: "КАЖДЫЙ ТРЕТИЙ", en: "EVERY THIRD" }, { ru: "ОТРАЖЁННЫЙ БЬЁТ СИЛЬНЕЕ", en: "TURNED BOLTS HIT HARDER" }, { ru: "КАЖДЫЙ ВТОРОЙ", en: "EVERY SECOND" }, { ru: "ОТРАЖЁННЫЙ РАСПАДАЕТСЯ НА ТРИ", en: "TURNED BOLTS SPLIT IN THREE" }],
+    kind: RelicKind.Thorn, el: El.Venom, color: "#6ab04a", icon: "roots", name: L("ТЕРНОВЫЙ КОРЕНЬ", "THORN ROOT"),
+    melee: L("КОРНИ ВЫРЫВАЮТСЯ ВДОЛЬ УДАРА И ДЕРЖАТ ВРАГОВ", "ROOTS BURST UP ALONG THE BLOW AND HOLD FOES"),
+    ranged: L("ГДЕ УДАРИЛ СНАРЯД, ИЗ ПОЛА БЬЮТ КОРНИ", "ROOTS BURST FROM THE FLOOR WHERE A SHOT STRIKES"),
+    levels: [L("+1 КОРЕНЬ", "+1 ROOT"), L("ДЕРЖАТ ДОЛЬШЕ", "THEY HOLD LONGER"), L("+1 КОРЕНЬ", "+1 ROOT"), L("ШИПЫ ОТРАВЛЯЮТ И ПОЛЗУТ К СОСЕДЯМ", "THE THORNS POISON AND CREEP TO NEIGHBOURS")],
   },
   {
-    kind: RelicKind.Brazier, el: El.Fire,
-    name: { ru: "ПЕПЕЛЬНАЯ ЖАРОВНЯ", en: "ASH BRAZIER" },
-    desc: { ru: "ПОД НОГАМИ ОСТАЮТСЯ ОГНЕННЫЕ КРУГИ И ЖГУТ ВРАГОВ", en: "RINGS OF FIRE ARE LEFT UNDERFOOT AND BURN FOES" },
-    levels: [{ ru: "КРУГИ ШИРЕ", en: "WIDER RINGS" }, { ru: "ГОРЯТ ДОЛЬШЕ", en: "BURN LONGER" }, { ru: "ЧАЩЕ", en: "MORE OFTEN" }, { ru: "+50% УРОНА", en: "+50% DAMAGE" }],
+    kind: RelicKind.Mirror, el: El.None, color: "#d8e8ff", icon: "mirror", name: L("ЗЕРКАЛЬНЫЙ КЛИНОК", "MIRROR BLADE"),
+    melee: L("ПРИЗРАЧНЫЙ ДВОЙНИК ПОВТОРЯЕТ УДАР", "A GHOSTLY DOUBLE REPEATS THE BLOW"),
+    ranged: L("ЗЕРКАЛЬНЫЙ ВТОРОЙ ВЫСТРЕЛ", "A MIRRORED SECOND SHOT"),
+    levels: [L("ДВОЙНИК СИЛЬНЕЕ", "A STRONGER DOUBLE"), L("ДВОЙНИК СИЛЬНЕЕ И БЫСТРЕЕ", "A STRONGER, QUICKER DOUBLE"), L("ДВОЙНИК СИЛЬНЕЕ", "A STRONGER DOUBLE"), L("ДВА ДВОЙНИКА", "TWO DOUBLES")],
   },
   {
-    kind: RelicKind.Crown, el: El.Frost,
-    name: { ru: "ЛЕДЯНАЯ КОРОНА", en: "ICE CROWN" },
-    desc: { ru: "КОГДА ТЕБЯ РАНЯТ, ВСЕ РЯДОМ ЗАМЕРЗАЮТ", en: "WHEN YOU ARE HURT, ALL NEAR YOU FREEZE" },
-    levels: [{ ru: "ШИРЕ", en: "WIDER" }, { ru: "ЛЁД ДЕРЖИТ ДОЛЬШЕ", en: "THE ICE HOLDS LONGER" }, { ru: "+60% УРОНА", en: "+60% DAMAGE" }, { ru: "ЕЩЁ И ПРИ РЫВКЕ, РАЗ В 6 С", en: "ON A DASH TOO, ONCE IN 6 S" }],
+    kind: RelicKind.Fire, el: El.Fire, color: "#ff7a2a", icon: "brazier", name: L("ОГНЕННОЕ КОЛЬЦО", "RING OF FIRE"),
+    melee: L("УДАР ПУСКАЕТ ОГНЕННЫЕ ВОЛНЫ, ЗА НИМИ ГОРИТ ЗЕМЛЯ", "BLOWS SEND OUT WAVES OF FIRE THAT LEAVE THE GROUND BURNING"),
+    ranged: L("СНАРЯДЫ ОСТАВЛЯЮТ ТЛЕЮЩИЙ ОГНЕННЫЙ СЛЕД", "SHOTS LEAVE A SMOULDERING TRAIL OF FIRE"),
+    levels: [L("ГОРИТ ДОЛЬШЕ", "BURNS LONGER"), L("+1 ВОЛНА", "+1 WAVE"), L("ЖЖЁТ СИЛЬНЕЕ", "BURNS HOTTER"), L("+1 ВОЛНА", "+1 WAVE")],
+  },
+  {
+    kind: RelicKind.Ricochet, el: El.None, color: "#e8eeff", icon: "mirror", name: L("РИКОШЕТ", "RICOCHET"),
+    melee: L("ВИХРЬ УДАРОВ ПЕРЕСКАКИВАЕТ С ВРАГА НА ВРАГА", "A WHIRL OF BLOWS LEAPS FROM FOE TO FOE"),
+    ranged: L("СНАРЯДЫ ОТСКАКИВАЮТ К СЛЕДУЮЩИМ ВРАГАМ", "SHOTS BOUNCE ON TO THE NEXT FOES"),
+    levels: [L("+1 ОТСКОК", "+1 BOUNCE"), L("+1 ОТСКОК", "+1 BOUNCE"), L("+1 ОТСКОК", "+1 BOUNCE"), L("+1 ОТСКОК, СИЛЬНЕЕ", "+1 BOUNCE, STRONGER")],
+  },
+  {
+    kind: RelicKind.Quake, el: El.None, color: "#d8a868", icon: "roots", name: L("УДАРНАЯ ВОЛНА", "SHOCKWAVE"),
+    melee: L("УДАР РАСКАЛЫВАЕТ ЗЕМЛЮ ВОЛНОЙ ВПЕРЁД", "BLOWS SPLIT THE GROUND IN A WAVE AHEAD"),
+    ranged: L("ПОПАДАНИЕ ОТБРАСЫВАЕТ ВСЕХ ВОКРУГ ВОЛНОЙ", "A HIT THROWS BACK ALL AROUND IN A WAVE"),
+    levels: [L("ВОЛНА ДАЛЬШЕ", "A LONGER WAVE"), L("ДОБИВАЮЩИЙ УДАР - КОЛЬЦО ВОЛН", "A FINISHING BLOW SENDS A RING"), L("ВОЛНА ДАЛЬШЕ И СИЛЬНЕЕ", "A LONGER, HARDER WAVE"), L("ОГЛУШАЕТ", "STUNS")],
+  },
+  {
+    kind: RelicKind.Rune, el: El.None, color: "#ff6ad8", icon: "void", name: L("ВЗРЫВНАЯ РУНА", "BLAST RUNE"),
+    melee: L("КРИТИЧЕСКИЙ УДАР ВЗРЫВАЕТСЯ", "CRITICAL BLOWS EXPLODE"),
+    ranged: L("СНАРЯДЫ ВЗРЫВАЮТСЯ ПРИ ПОПАДАНИИ", "SHOTS EXPLODE ON A HIT"),
+    levels: [L("ВЗРЫВ ШИРЕ", "A WIDER BLAST"), L("+40% УРОНА ВЗРЫВА, ВЗРЫВАЕТСЯ И КАЖДЫЙ ПЯТЫЙ УДАР", "+40% BLAST DAMAGE, EVERY FIFTH BLOW TOO"), L("ВЗРЫВ ШИРЕ", "A WIDER BLAST"), L("РУНА ВЗРЫВАЕТСЯ ДВАЖДЫ", "THE RUNE GOES OFF TWICE")],
+  },
+  {
+    kind: RelicKind.Splitter, el: El.None, color: "#7af0ff", icon: "lance", name: L("РАСЩЕПИТЕЛЬ", "SPLITTER"),
+    melee: L("УДАР ВЫПУСКАЕТ ОСКОЛКИ ВО ВСЕ СТОРОНЫ", "BLOWS LOOSE SHARDS ALL ROUND"),
+    ranged: L("СНАРЯД ДЕЛИТСЯ НА ДВА ПРИ ПОПАДАНИИ", "SHOTS SPLIT IN TWO ON A HIT"),
+    levels: [L("+1 ОСКОЛОК", "+1 SHARD"), L("+1 ОСКОЛОК, ДЕЛИТСЯ НА ТРИ", "+1 SHARD, SPLITS IN THREE"), L("+1 ОСКОЛОК, СИЛЬНЕЕ", "+1 SHARD, STRONGER"), L("ОСКОЛКИ ДЕЛЯТСЯ СНОВА", "THE SHARDS SPLIT AGAIN")],
+  },
+  {
+    kind: RelicKind.Fang, el: El.None, color: "#e0303a", icon: "flask", name: L("КРОВАВЫЙ КЛЫК", "BLOOD FANG"),
+    melee: L("УДАРЫ ПУСКАЮТ КРОВЬ, СЕРИЯ УБИЙСТВ ДАЁТ ЛЕЧЕБНУЮ СФЕРУ", "BLOWS DRAW BLOOD; A STRING OF KILLS GIVES A HEALING ORB"),
+    ranged: L("ВЫСТРЕЛЫ ПУСКАЮТ КРОВЬ, СЕРИЯ УБИЙСТВ ДАЁТ ЛЕЧЕБНУЮ СФЕРУ", "SHOTS DRAW BLOOD; A STRING OF KILLS GIVES A HEALING ORB"),
+    levels: [L("КРОВЬ ЛЬЁТ СИЛЬНЕЕ", "MORE BLOOD"), L("СФЕРА ЧАЩЕ", "ORBS MORE OFTEN"), L("КРОВЬ ЛЬЁТ СИЛЬНЕЕ", "MORE BLOOD"), L("СФЕРА ЧАЩЕ, КРОВЬ БРЫЗЖЕТ НА СОСЕДЕЙ", "ORBS MORE OFTEN, BLOOD SPLASHES ON NEIGHBOURS")],
+  },
+  {
+    kind: RelicKind.Wind, el: El.None, color: "#bff0d8", icon: "halo", name: L("ВЕТРЯНОЕ ПЕРО", "WIND FEATHER"),
+    melee: L("УДАР ПУСКАЕТ ВПЕРЁД РЕЖУЩИЙ СМЕРЧ", "BLOWS SEND A CUTTING WHIRLWIND AHEAD"),
+    ranged: L("СНАРЯДЫ БЫСТРЕЕ, ПОПАДАНИЯ ЗАКРУЧИВАЮТ СМЕРЧИ", "FASTER SHOTS; HITS SPIN UP WHIRLWINDS"),
+    levels: [L("СМЕРЧ ДОЛЬШЕ", "A LONGER WHIRLWIND"), L("СМЕРЧ КРУПНЕЕ", "A BIGGER WHIRLWIND"), L("СМЕРЧ ДОЛЬШЕ, СИЛЬНЕЕ", "LONGER, STRONGER"), L("ДВА СМЕРЧА", "TWO WHIRLWINDS")],
+  },
+  {
+    kind: RelicKind.Meteor, el: El.Fire, color: "#ff9a3a", icon: "brazier", name: L("МЕТЕОРНЫЙ КАМЕНЬ", "METEOR STONE"),
+    melee: L("КАЖДЫЙ ВОСЬМОЙ УДАР ЗОВЁТ С НЕБА МЕТЕОР", "EVERY EIGHTH BLOW CALLS A METEOR FROM THE SKY"),
+    ranged: L("КАЖДЫЙ ВОСЬМОЙ ВЫСТРЕЛ ЗОВЁТ МЕТЕОР В ЦЕЛЬ", "EVERY EIGHTH SHOT CALLS A METEOR ON THE TARGET"),
+    levels: [L("ЧАЩЕ", "MORE OFTEN"), L("ПОСЛЕ НЕГО ГОРИТ ЗЕМЛЯ", "IT LEAVES THE GROUND BURNING"), L("ЧАЩЕ, СИЛЬНЕЕ", "MORE OFTEN, STRONGER"), L("ДВА МЕТЕОРА", "TWO METEORS")],
+  },
+  {
+    kind: RelicKind.Prism, el: El.None, color: "#ff8af0", icon: "halo", name: L("РАДУЖНАЯ ПРИЗМА", "RAINBOW PRISM"),
+    melee: L("УДАР РАСЩЕПЛЯЕТСЯ НА ЦВЕТНЫЕ ЛУЧИ РАЗНЫХ СТИХИЙ", "BLOWS SPLIT INTO COLOURED RAYS OF EVERY ELEMENT"),
+    ranged: L("СНАРЯД РАСКАЛЫВАЕТСЯ РАДУГОЙ ПРИ ПОПАДАНИИ", "SHOTS SHATTER INTO A RAINBOW ON A HIT"),
+    levels: [L("+1 ЛУЧ", "+1 RAY"), L("+1 ЛУЧ", "+1 RAY"), L("+1 ЛУЧ", "+1 RAY"), L("+1 ЛУЧ, ЛУЧИ ДАЛЬШЕ", "+1 RAY, LONGER RAYS")],
+  },
+  {
+    kind: RelicKind.Stardust, el: El.None, color: "#fff6a0", icon: "coil", name: L("ЗВЁЗДНАЯ ПЫЛЬ", "STARDUST"),
+    melee: L("ПОПАДАНИЯ ОСТАВЛЯЮТ ЗВЁЗДЫ, ПЯТЬ ЗВЁЗД СОБИРАЮТСЯ В СОЗВЕЗДИЕ И ВЗРЫВАЮТСЯ", "HITS LEAVE STARS; FIVE STARS JOIN IN A CONSTELLATION AND BURST"),
+    ranged: L("ПОПАДАНИЯ ОСТАВЛЯЮТ ЗВЁЗДЫ, ПЯТЬ ЗВЁЗД СОБИРАЮТСЯ В СОЗВЕЗДИЕ И ВЗРЫВАЮТСЯ", "HITS LEAVE STARS; FIVE STARS JOIN IN A CONSTELLATION AND BURST"),
+    levels: [L("ВЗРЫВ СИЛЬНЕЕ", "A STRONGER BURST"), L("ХВАТАЕТ ЧЕТЫРЁХ ЗВЁЗД", "FOUR STARS ARE ENOUGH"), L("ВЗРЫВ ШИРЕ", "A WIDER BURST"), L("ЛИНИИ СОЗВЕЗДИЯ ТОЖЕ РАНЯТ", "ITS LINES CUT TOO")],
+  },
+  {
+    kind: RelicKind.Aurora, el: El.None, color: "#7affb0", icon: "halo", name: L("СЕВЕРНОЕ СИЯНИЕ", "AURORA"),
+    melee: L("ВЗМАХ ОСТАВЛЯЕТ ЛЕНТУ СВЕТА, ОНА РАНИТ ВСЕХ В НЕЙ", "SWINGS LEAVE A RIBBON OF LIGHT THAT HURTS ALL IN IT"),
+    ranged: L("СНАРЯД ТЯНЕТ ЗА СОБОЙ СИЯЮЩУЮ ЛЕНТУ, ОНА РАНИТ", "SHOTS DRAW A SHINING RIBBON THAT HURTS"),
+    levels: [L("ЛЕНТА ДОЛЬШЕ", "A LONGER-LASTING RIBBON"), L("ЛЕНТА ШИРЕ", "A WIDER RIBBON"), L("ЖЖЁТ СИЛЬНЕЕ", "IT BURNS HARDER"), L("ЛЕНТА ЗАМЕДЛЯЕТ", "THE RIBBON SLOWS")],
+  },
+  {
+    kind: RelicKind.Phoenix, el: El.Fire, color: "#ffb03a", icon: "brazier", name: L("ПЕРО ФЕНИКСА", "PHOENIX FEATHER"),
+    melee: L("УБИТЫЙ ВРАГ ВСПЫХИВАЕТ ОГНЕННОЙ ПТИЦЕЙ, ОНА ЛЕТИТ В СЛЕДУЮЩЕГО", "A SLAIN FOE FLARES INTO A FIREBIRD THAT FLIES AT THE NEXT"),
+    ranged: L("УБИТЫЙ ВРАГ ВСПЫХИВАЕТ ОГНЕННОЙ ПТИЦЕЙ, ОНА ЛЕТИТ В СЛЕДУЮЩЕГО", "A SLAIN FOE FLARES INTO A FIREBIRD THAT FLIES AT THE NEXT"),
+    levels: [L("ЧАЩЕ", "MORE OFTEN"), L("ПТИЦА ПРОБИВАЕТ", "THE BIRD PIERCES"), L("ЧАЩЕ, СИЛЬНЕЕ", "MORE OFTEN, STRONGER"), L("УБИТЫЙ ПТИЦЕЙ ТОЖЕ ВСПЫХИВАЕТ", "ITS PREY FLARES UP TOO")],
+  },
+  {
+    kind: RelicKind.Bloom, el: El.None, color: "#ff8ac0", icon: "roots", name: L("ЦВЕТУЩИЙ ШИП", "BLOOMING THORN"),
+    melee: L("ПОПАДАНИЕ САЖАЕТ ЦВЕТОК, ОН РАСПУСКАЕТСЯ ЛЕПЕСТКАМИ-ЛЕЗВИЯМИ", "A HIT PLANTS A FLOWER THAT BLOOMS INTO BLADED PETALS"),
+    ranged: L("ПОПАДАНИЕ САЖАЕТ ЦВЕТОК, ОН РАСПУСКАЕТСЯ ЛЕПЕСТКАМИ-ЛЕЗВИЯМИ", "A HIT PLANTS A FLOWER THAT BLOOMS INTO BLADED PETALS"),
+    levels: [L("+1 ЦВЕТОК", "+1 FLOWER"), L("+2 ЛЕПЕСТКА", "+2 PETALS"), L("ЛЕПЕСТКИ ОСТРЕЕ", "SHARPER PETALS"), L("+2 ЛЕПЕСТКА, ЦВЕТЫ БЫСТРЕЕ", "+2 PETALS, QUICKER FLOWERS")],
+  },
+  {
+    kind: RelicKind.Moon, el: El.None, color: "#c8d8ff", icon: "mirror", name: L("ЛУННЫЙ СЕРП", "MOON SICKLE"),
+    melee: L("КАЖДЫЙ ТРЕТИЙ УДАР - СИЯЮЩИЙ СЕРП, ОН ВОЗВРАЩАЕТСЯ", "EVERY THIRD BLOW THROWS A SHINING SICKLE THAT COMES BACK"),
+    ranged: L("КАЖДЫЙ ТРЕТИЙ ВЫСТРЕЛ ВОЗВРАЩАЕТСЯ СЕРПОМ", "EVERY THIRD SHOT COMES BACK AS A SICKLE"),
+    levels: [L("СЕРП СИЛЬНЕЕ", "A STRONGER SICKLE"), L("СЕРП КРУПНЕЕ", "A BIGGER SICKLE"), L("СЕРП СИЛЬНЕЕ", "A STRONGER SICKLE"), L("КАЖДЫЙ ВТОРОЙ", "EVERY SECOND ONE")],
+  },
+  {
+    kind: RelicKind.Dragon, el: El.Fire, color: "#ff4a2a", icon: "brazier", name: L("ДРАКОНЬЕ СЕРДЦЕ", "DRAGON HEART"),
+    melee: L("КАЖДЫЙ ШЕСТОЙ УДАР - ОГНЕННАЯ ПАСТЬ ДРАКОНА КУСАЕТ ВПЕРЁД", "EVERY SIXTH BLOW A DRAGON'S FIERY JAWS BITE AHEAD"),
+    ranged: L("КАЖДЫЙ ШЕСТОЙ ВЫСТРЕЛ - ОГНЕННЫЙ ДРАКОН", "EVERY SIXTH SHOT IS A FIRE DRAGON"),
+    levels: [L("ЧАЩЕ", "MORE OFTEN"), L("ЖАР СИЛЬНЕЕ", "HOTTER"), L("ЧАЩЕ", "MORE OFTEN"), L("ДЫХАНИЕ КОНУСОМ", "A CONE OF BREATH")],
+  },
+  {
+    kind: RelicKind.Bubbles, el: El.None, color: "#5ac8ff", icon: "lance", name: L("ПУЗЫРИ ГЛУБИН", "DEEP BUBBLES"),
+    melee: L("УДАРЫ ВЫПУСКАЮТ ПУЗЫРИ, ОНИ ЛОПАЮТСЯ ВОЛНОЙ И СБИВАЮТ ВРАГОВ", "BLOWS RELEASE BUBBLES THAT BURST IN A WAVE AND KNOCK FOES DOWN"),
+    ranged: L("СНАРЯДЫ В ПУЗЫРЯХ: ПОПАДАНИЕ ЛОПАЕТСЯ ВОЛНОЙ", "SHOTS IN BUBBLES: A HIT BURSTS IN A WAVE"),
+    levels: [L("ВОЛНА ШИРЕ", "A WIDER WAVE"), L("+1 ПУЗЫРЬ", "+1 BUBBLE"), L("ВОЛНА СИЛЬНЕЕ", "A STRONGER WAVE"), L("+1 ПУЗЫРЬ, ОГЛУШАЕТ", "+1 BUBBLE, STUNS")],
   },
 ];
+/** What an artifact does to this weapon: a blade's blow or a shot. */
+export const relicDesc = (def: RelicDef, ranged: boolean): Text => (ranged ? def.ranged : def.melee);
 export const RELIC_MAX = 5;
 /**
  * The horde: many and each weak, rather than a few tough ones (the owner's note: it must feel like an onslaught).
@@ -614,38 +728,13 @@ export const HORDE = {
   /** The hero's blows and shots, a little rarer (the owner's note), against the weapons' own pace. */
   blowRate: 0.87,
 };
-/**
- * Weapon artifacts: the stage 2 prototype (docs/PLAN-POWER.md), for the owner to judge before the rework; nothing
- * offers them in play yet. Each changes the weapon in hand, one effect for a blade and one for a shot, stronger by
- * level (1-5). The prototype's evolution: the Ring of Fire at its last level with the Bright Lantern.
- */
-export enum WArt {
-  Fire = 0,
-  Ricochet = 1,
-  Storm = 2,
-  Frost = 3,
-}
-export interface WArtDef {
-  kind: WArt;
-  el: El;
-  /** Its badge in the "icons" animation (the relics' for now). */
-  icon: string;
-  name: Text;
-  melee: Text;
-  ranged: Text;
-}
-export const WARTS: WArtDef[] = [
-  { kind: WArt.Fire, el: El.Fire, icon: "orbit", name: { ru: "ОГНЕННОЕ КОЛЬЦО", en: "RING OF FIRE" }, melee: { ru: "УДАР ПУСКАЕТ ОГНЕННЫЕ ВОЛНЫ, ЗА НИМИ ГОРИТ ЗЕМЛЯ", en: "BLOWS SEND OUT WAVES OF FIRE THAT LEAVE THE GROUND BURNING" }, ranged: { ru: "СНАРЯДЫ ОСТАВЛЯЮТ ТЛЕЮЩИЙ ОГНЕННЫЙ СЛЕД", en: "SHOTS LEAVE A SMOULDERING TRAIL OF FIRE" } },
-  { kind: WArt.Ricochet, el: El.None, icon: "mirror", name: { ru: "РИКОШЕТ", en: "RICOCHET" }, melee: { ru: "ВИХРЬ УДАРОВ ПЕРЕСКАКИВАЕТ С ВРАГА НА ВРАГА", en: "A WHIRL OF BLOWS LEAPS FROM FOE TO FOE" }, ranged: { ru: "СНАРЯДЫ ОТСКАКИВАЮТ К СЛЕДУЮЩИМ ВРАГАМ", en: "SHOTS BOUNCE ON TO THE NEXT FOES" } },
-  { kind: WArt.Storm, el: El.Storm, icon: "coil", name: { ru: "ГРОЗОВОЙ КАМЕНЬ", en: "STORM STONE" }, melee: { ru: "УДАР ПУСКАЕТ ЦЕПНУЮ МОЛНИЮ", en: "BLOWS LOOSE CHAIN LIGHTNING" }, ranged: { ru: "ПОПАДАНИЕ ЗОВЁТ МОЛНИЮ С НЕБА", en: "A HIT CALLS LIGHTNING FROM THE SKY" } },
-  { kind: WArt.Frost, el: El.Frost, icon: "lance", name: { ru: "ЛЕДЯНОЙ ОСКОЛОК", en: "ICE SHARD" }, melee: { ru: "УДАР ВЫПУСКАЕТ ВЕЕР ЛЕДЯНЫХ ШИПОВ", en: "BLOWS LOOSE A FAN OF ICE SPIKES" }, ranged: { ru: "СНАРЯДЫ ВЗРЫВАЮТСЯ МОРОЗНЫМ ОБЛАКОМ", en: "SHOTS BURST INTO A FROST CLOUD" } },
-];
-export const RELIC_SLOTS = 5;
-/** Slots for artifacts (the passive upgrades): a new one only while one is free, then only their levels. */
-export const ARTIFACT_SLOTS = 5;
+/** The panel: 6 weapon artifacts above, 6 boosts below (a new one only while a slot of its row is free). */
+export const RELIC_SLOTS = 6;
+/** Slots for artifacts (the passive upgrades, the boosts): a new one only while one is free, then only their levels. */
+export const ARTIFACT_SLOTS = 6;
 
 // ------------------------------------------------------------------------------------------------ upgrades
-export type StatId = "edge" | "haste" | "reach" | "wave" | "parry" | "speed" | "maxhp" | "magnet" | "dashcd" | "overdrive" | "crit" | "lantern" | "pact" | "compass" | "crucible" | "echo" | "candle" | "tread";
+export type StatId = "edge" | "haste" | "reach" | "wave" | "parry" | "speed" | "maxhp" | "magnet" | "dashcd" | "overdrive" | "crit" | "lantern" | "pact" | "compass" | "crucible" | "echo" | "candle" | "tread" | "crown";
 export interface StatDef {
   id: StatId;
   name: Text;
@@ -673,6 +762,8 @@ export const STATS: StatDef[] = [
   { id: "echo", name: { ru: "ЭХО", en: "ECHO" }, desc: { ru: "10% ШАНС, ЧТО УДАР ОТЗОВЁТСЯ ЕЩЁ РАЗ", en: "A 10% CHANCE A BLOW STRIKES AGAIN" }, max: 3, weight: 5 },
   { id: "candle", name: { ru: "СВЕЧА УЧЕНИКА", en: "APPRENTICE'S CANDLE" }, desc: { ru: "+15% ОПЫТА", en: "+15% EXPERIENCE" }, max: 4, weight: 5 },
   { id: "tread", name: { ru: "ТЯЖЁЛАЯ ПОСТУПЬ", en: "HEAVY TREAD" }, desc: { ru: "РЫВОК ОТБРАСЫВАЕТ И РАНИТ ВСЕХ РЯДОМ", en: "THE DASH THROWS BACK AND HURTS ALL NEAR" }, max: 3, weight: 4 },
+  // (the Ice Crown was a relic; it guards rather than strikes, so it came down to this row)
+  { id: "crown", name: { ru: "ЛЕДЯНАЯ КОРОНА", en: "ICE CROWN" }, desc: { ru: "КОГДА ТЕБЯ РАНЯТ, ВСЕ РЯДОМ ЗАМЕРЗАЮТ; С УРОВНЕМ ШИРЕ, ДОЛЬШЕ И ЕЩЁ ПРИ РЫВКЕ", en: "WHEN YOU ARE HURT, ALL NEAR YOU FREEZE; WIDER, LONGER AND ON A DASH TOO WITH LEVELS" }, max: 4, weight: 4 },
 ];
 
 // ------------------------------------------------------------------------------------------------ the arsenal
@@ -703,16 +794,25 @@ export const UNLOCKS: UnlockDef[] = [
   { key: "weapon:staff", stat: "reactionsKnown", goal: 6, need: { ru: "ОТКРОЙ 6 РЕАКЦИЙ СТИХИЙ", en: "DISCOVER 6 REACTIONS" } },
   { key: "weapon:chakram", stat: "grazes", goal: 300, need: { ru: "ЗАДЕНЬ 300 СНАРЯДОВ", en: "GRAZE 300 BOLTS" } },
   { key: "weapon:bell", stat: "spirits", goal: 12, need: { ru: "ВЫПОЛНИ 12 ЗАДАНИЙ ДУХОВ", en: "FULFIL 12 SPIRITS' TASKS" } },
-  { key: `relic:${RelicKind.Coil}`, stat: "evolve", goal: 1, need: { ru: "СОБЕРИ ЭВОЛЮЦИЮ", en: "EVOLVE A RELIC" } },
+  { key: `relic:${RelicKind.Storm}`, stat: "evolve", goal: 1, need: { ru: "СОБЕРИ ЭВОЛЮЦИЮ", en: "EVOLVE AN ARTIFACT" } },
   { key: `relic:${RelicKind.Halo}`, stat: "spirits", goal: 5, need: { ru: "ВЫПОЛНИ 5 ЗАДАНИЙ ДУХОВ", en: "FULFIL 5 SPIRITS' TASKS" } },
   { key: `relic:${RelicKind.Void}`, stat: "bestFloor", goal: 7, need: { ru: "ДОЙДИ ДО ЛЕДЯНЫХ ЗАЛОВ", en: "REACH THE FROZEN HALLS" } },
-  { key: `relic:${RelicKind.Roots}`, stat: "fell_garden", goal: 1, need: { ru: "ПОБЕДИ ГНИЮЩЕГО ДРЕВНЯ", en: "DEFEAT THE ROTTING TREANT" } },
+  { key: `relic:${RelicKind.Thorn}`, stat: "fell_garden", goal: 1, need: { ru: "ПОБЕДИ ГНИЮЩЕГО ДРЕВНЯ", en: "DEFEAT THE ROTTING TREANT" } },
   { key: `relic:${RelicKind.Mirror}`, stat: "grazes", goal: 150, need: { ru: "ЗАДЕНЬ 150 СНАРЯДОВ", en: "GRAZE 150 BOLTS" } },
-  { key: `relic:${RelicKind.Brazier}`, stat: "fell_ashen", goal: 1, need: { ru: "ПОБЕДИ ГОРНОВОГО", en: "DEFEAT THE FORGEMASTER" } },
-  { key: `relic:${RelicKind.Crown}`, stat: "fell_frost", goal: 1, need: { ru: "ПОБЕДИ ОКО ПУСТОТЫ", en: "DEFEAT THE VOID EYE" } },
+  { key: `relic:${RelicKind.Fire}`, stat: "fell_ashen", goal: 1, need: { ru: "ПОБЕДИ ГОРНОВОГО", en: "DEFEAT THE FORGEMASTER" } },
+  { key: `relic:${RelicKind.Ricochet}`, stat: "fell_frost", goal: 1, need: { ru: "ПОБЕДИ ОКО ПУСТОТЫ", en: "DEFEAT THE VOID EYE" } },
+  // the colourful weapon artifacts, by deeds (the elemental ones are there from the start)
+  { key: "relic:16", stat: "reactionsKnown", goal: 5, need: { ru: "ОТКРОЙ 5 РЕАКЦИЙ СТИХИЙ", en: "DISCOVER 5 REACTIONS" } },
+  { key: "relic:17", stat: "kills", goal: 800, need: { ru: "УБЕЙ 800 ВРАГОВ", en: "SLAY 800 FOES" } },
+  { key: "relic:18", stat: "floorsCleared", goal: 6, need: { ru: "ПРОЙДИ 6 ЭТАЖЕЙ", en: "CLEAR 6 FLOORS" } },
+  { key: "relic:19", stat: "boss", goal: 2, need: { ru: "ПОБЕДИ 2 БОССОВ", en: "DEFEAT 2 BOSSES" } },
+  { key: "relic:20", stat: "secrets", goal: 2, need: { ru: "ОТКРОЙ 2 ТАЙНЫЕ КОМНАТЫ", en: "OPEN 2 SECRET ROOMS" } },
+  { key: "relic:21", stat: "braziers", goal: 20, need: { ru: "ЗАЖГИ 20 ЖАРОВЕН", en: "LIGHT 20 BRAZIERS" } },
+  { key: "relic:22", stat: "minis", goal: 4, need: { ru: "ПОБЕДИ 4 МИНИ-БОССОВ", en: "DEFEAT 4 MINIBOSSES" } },
+  { key: "relic:23", stat: "urns", goal: 80, need: { ru: "РАЗБЕЙ 80 УРН", en: "SMASH 80 URNS" } },
   { key: "stat:pact", stat: "kills", goal: 4000, need: { ru: "УБЕЙ 4000 ВРАГОВ", en: "SLAY 4000 FOES" } },
   { key: "stat:compass", stat: "floorsCleared", goal: 25, need: { ru: "ПРОЙДИ 25 ЭТАЖЕЙ", en: "CLEAR 25 FLOORS" } },
-  { key: "stat:crucible", stat: "evolve", goal: 3, need: { ru: "СОБЕРИ 3 ЭВОЛЮЦИИ", en: "EVOLVE 3 RELICS" } },
+  { key: "stat:crucible", stat: "evolve", goal: 3, need: { ru: "СОБЕРИ 3 ЭВОЛЮЦИИ", en: "EVOLVE 3 ARTIFACTS" } },
   { key: "stat:echo", stat: "minis", goal: 6, need: { ru: "ПОБЕДИ 6 МИНИ-БОССОВ", en: "DEFEAT 6 MINIBOSSES" } },
   { key: "stat:candle", stat: "chests", goal: 30, need: { ru: "ОТКРОЙ 30 СУНДУКОВ", en: "OPEN 30 CHESTS" } },
   { key: "stat:tread", stat: "urns", goal: 150, need: { ru: "РАЗБЕЙ 150 УРН", en: "SMASH 150 URNS" } },
@@ -949,8 +1049,8 @@ export const SHOP: ShopItem[] = [
 
 // ------------------------------------------------------------------------------------------------ evolutions
 /**
- * A relic at its last level, with the right upgrade taken, can evolve: a chest always offers it, a level-up often.
- * The evolved relic keeps its slot and works in a new, stronger way (world.ts, `relic.evo`).
+ * A weapon artifact at its last level, with the right boost taken, can evolve: a chest always offers it, a level-up
+ * often. The evolved artifact keeps its slot and turns into something the whole screen sees (world.ts, `relic.evo`).
  */
 export interface EvolutionDef {
   relic: RelicKind;
@@ -961,18 +1061,17 @@ export interface EvolutionDef {
   desc: Text;
 }
 export const EVOLUTIONS: EvolutionDef[] = [
-  { relic: RelicKind.Orbit, stat: "lantern", icon: "e_orbit", name: { ru: "СОЛНЕЧНЫЙ ВЕНЕЦ", en: "SUN CROWN" }, desc: { ru: "ШЕСТЬ МАЛЫХ СОЛНЦ НА ШИРОКОЙ ОРБИТЕ, РАЗ В ДВЕ СЕКУНДЫ ОНИ ВСПЫХИВАЮТ ВЗРЫВОМ", en: "SIX SMALL SUNS ON A WIDE ORBIT; EVERY TWO SECONDS THEY FLARE AND BURST" } },
-  { relic: RelicKind.Lance, stat: "reach", icon: "e_lance", name: { ru: "ЛЕДЯНОЙ ШКВАЛ", en: "BLIZZARD" }, desc: { ru: "КОПЬЯ ЛЕТЯТ ВО ВСЕ СТОРОНЫ И ПРОБИВАЮТ ВСЕХ, ТРИ ИЗ НИХ - В БЛИЖАЙШИХ", en: "LANCES FLY ALL ROUND AND PIERCE EVERYTHING, THREE AT THE NEAREST" } },
-  { relic: RelicKind.Coil, stat: "haste", icon: "e_coil", name: { ru: "НЕБЕСНАЯ БУРЯ", en: "SKY TEMPEST" }, desc: { ru: "МОЛНИИ БЬЮТ С НЕБА В ЧЕТЫРЁХ ВРАГОВ СРАЗУ И ПЕРЕСКАКИВАЮТ ДАЛЬШЕ", en: "LIGHTNING STRIKES FOUR FOES FROM THE SKY AND LEAPS ON" } },
-  { relic: RelicKind.Flask, stat: "crit", icon: "e_flask", name: { ru: "ЧУМНОЙ КОТЁЛ", en: "PLAGUE CAULDRON" }, desc: { ru: "ЧЕТЫРЕ ФЛЯГИ РАЗОМ, ОТРАВЛЕННЫЕ ВРАГИ ЛОПАЮТСЯ НОВЫМИ ЛУЖАМИ", en: "FOUR FLASKS AT ONCE; POISONED FOES BURST INTO NEW POOLS" } },
-  { relic: RelicKind.Halo, stat: "wave", icon: "e_halo", name: { ru: "ОБИТЕЛЬ СВЕТА", en: "SANCTUARY" }, desc: { ru: "СВЯТОЙ КРУГ ВСЕГДА С ТОБОЙ: ЖЖЁТ ВРАГОВ, ГАСИТ СНАРЯДЫ, РАЗ В 40 С ЛЕЧИТ СЕРДЦЕ", en: "A HOLY RING ALWAYS ABOUT YOU: BURNS FOES, SNUFFS BOLTS, HEALS A HEART EVERY 40 S" } },
-  { relic: RelicKind.Void, stat: "edge", icon: "e_void", name: { ru: "ЧЁРНАЯ ЗВЕЗДА", en: "BLACK STAR" }, desc: { ru: "ЗВЕЗДА ПУСТОТЫ ТЯНЕТ ВРАГОВ В СЕБЯ И РАЗ В ЧЕТЫРЕ СЕКУНДЫ СХЛОПЫВАЕТСЯ", en: "A STAR OF VOID DRAWS FOES IN AND COLLAPSES EVERY FOUR SECONDS" } },
-  { relic: RelicKind.Roots, stat: "magnet", icon: "e_roots", name: { ru: "ЛЕС-ДУШИТЕЛЬ", en: "STRANGLER GROVE" }, desc: { ru: "ПЯТЬ КОРНЕЙ РАЗОМ, И ОТ КАЖДОГО ПОЙМАННОГО ОНИ ПОЛЗУТ К СОСЕДЯМ", en: "FIVE ROOTS AT ONCE, AND FROM EACH ONE CAUGHT THEY CREEP TO ITS NEIGHBOURS" } },
-  { relic: RelicKind.Mirror, stat: "parry", icon: "e_mirror", name: { ru: "ЗЕРКАЛО ВЕЧНОСТИ", en: "ETERNAL MIRROR" }, desc: { ru: "ОТРАЖАЕТ КАЖДЫЙ СНАРЯД, И ОТРАЖЁННЫЙ САМ ИЩЕТ ВРАГА", en: "TURNS BACK EVERY BOLT, AND THE TURNED BOLT SEEKS A FOE" } },
-  { relic: RelicKind.Brazier, stat: "speed", icon: "e_brazier", name: { ru: "ПУТЬ ПЛАМЕНИ", en: "FLAME WAKE" }, desc: { ru: "ЗА ТОБОЙ ТЯНЕТСЯ ОГНЕННЫЙ СЛЕД, И ОН ЖЖЁТ СИЛЬНЕЕ", en: "A WAKE OF FIRE TRAILS BEHIND YOU AND BURNS HARDER" } },
-  { relic: RelicKind.Crown, stat: "maxhp", icon: "e_crown", name: { ru: "ВЕЧНАЯ ЗИМА", en: "ENDLESS WINTER" }, desc: { ru: "РАНЕННЫЙ, ТЫ В ЛЕДЯНОЙ ГРОБНИЦЕ: ОНА ЛОПАЕТСЯ И ЗАМОРАЖИВАЕТ ВСЁ ВОКРУГ", en: "HURT, YOU ARE SEALED IN ICE THAT SHATTERS AND FREEZES ALL ABOUT" } },
+  { relic: RelicKind.Fire, stat: "lantern", icon: "e_orbit", name: L("ПЛАМЕННЫЙ ВЕНЕЦ", "CROWN OF FLAME"), desc: L("УДАРЫ И ВЫСТРЕЛЫ РАЗБРАСЫВАЮТ ОГОНЬ КОЛЬЦОМ, ЗЕМЛЯ ГОРИТ ВОКРУГ", "BLOWS AND SHOTS THROW FIRE IN A RING; THE GROUND BURNS ALL ROUND") },
+  { relic: RelicKind.Prism, stat: "wave", icon: "e_halo", name: L("РАДУГА", "RAINBOW"), desc: L("РАДУЖНЫЙ ЛУЧ ОБХОДИТ КРУГ ЧЕРЕЗ ВЕСЬ ЭКРАН", "A RAINBOW RAY SWEEPS ROUND THE WHOLE SCREEN") },
+  { relic: RelicKind.Stardust, stat: "crit", icon: "e_crown", name: L("СОЗВЕЗДИЕ", "CONSTELLATION"), desc: L("ПО ВСЕМУ ЭКРАНУ ВСПЫХИВАЮТ СОЗВЕЗДИЯ И ВЗРЫВАЮТСЯ", "CONSTELLATIONS FLARE ACROSS THE SCREEN AND BURST") },
+  { relic: RelicKind.Ricochet, stat: "echo", icon: "e_mirror", name: L("БЕСКОНЕЧНЫЙ РИКОШЕТ", "ENDLESS RICOCHET"), desc: L("УДАРЫ И СНАРЯДЫ ПЛЕТУТ СЕРЕБРЯНУЮ ПАУТИНУ МЕЖДУ ВРАГАМИ", "BLOWS AND SHOTS WEAVE A SILVER WEB BETWEEN FOES") },
+  { relic: RelicKind.Storm, stat: "haste", icon: "e_coil", name: L("НЕБЕСНАЯ БУРЯ", "SKY TEMPEST"), desc: L("МОЛНИИ СЫПЛЮТСЯ ДОЖДЁМ НА ВРАГОВ ПО ВСЕМУ ЭКРАНУ", "LIGHTNING RAINS ON FOES ALL OVER THE SCREEN") },
+  { relic: RelicKind.Frost, stat: "reach", icon: "e_lance", name: L("ВЕЧНАЯ МЕРЗЛОТА", "PERMAFROST"), desc: L("ЛЕДЯНЫЕ ШИПЫ ВЫРЫВАЮТСЯ ИЗ ЗЕМЛИ ДЛИННОЙ ЛИНИЕЙ И ЗАМОРАЖИВАЮТ", "ICE SPIKES BURST FROM THE GROUND IN A LONG LINE AND FREEZE") },
+  { relic: RelicKind.Bloom, stat: "magnet", icon: "e_roots", name: L("САД КЛИНКОВ", "GARDEN OF BLADES"), desc: L("ВОКРУГ ТЕБЯ РАСТЁТ ПОЛЕ ЦВЕТОВ, ОНИ РАСПУСКАЮТСЯ ЛЕЗВИЯМИ", "A FIELD OF FLOWERS GROWS ABOUT YOU AND BLOOMS IN BLADES") },
+  { relic: RelicKind.Void, stat: "edge", icon: "e_void", name: L("ЧЁРНАЯ ДЫРА", "BLACK HOLE"), desc: L("ЧЁРНАЯ ДЫРА ТЯНЕТ ВРАГОВ СО ВСЕГО ЭКРАНА И СХЛОПЫВАЕТСЯ", "A BLACK HOLE DRAWS FOES FROM ALL OVER THE SCREEN AND COLLAPSES") },
 ];
-export const evolutionOf = (kind: RelicKind): EvolutionDef => EVOLUTIONS.find((e) => e.relic === kind)!;
+/** The evolution of an artifact, if it has one. */
+export const evolutionOf = (kind: RelicKind): EvolutionDef | undefined => EVOLUTIONS.find((e) => e.relic === kind);
 
 // ------------------------------------------------------------------------------------------------ quests
 /**

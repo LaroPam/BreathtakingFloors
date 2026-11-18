@@ -401,10 +401,25 @@ const INFUSE = {
   ricochet: { hi: "#ffffff", a: "#ffffff", b: "#d8e0f4", d: "#8a96b8", string: "#f4f8ff" },
   white: { hi: "#ffffff", a: "#fff8e0", b: "#ffe0a0", d: "#ff8a3a", string: "#fff4c0" },
 };
+/** A steeping made from one colour ("ff7a2a": a weapon artifact's own), lighter towards the edge, darker in the steel. */
+const infuseCache = new Map();
+function infuseOf(kind) {
+  if (!kind) return null;
+  if (INFUSE[kind]) return INFUSE[kind];
+  if (!/^[0-9a-f]{6}$/i.test(kind)) return null;
+  let m = infuseCache.get(kind);
+  if (!m) {
+    const c = [0, 2, 4].map((i) => parseInt(kind.slice(i, i + 2), 16));
+    const mix = (t, to) => "#" + c.map((v) => Math.round(v + (to - v) * t).toString(16).padStart(2, "0")).join("");
+    m = { hi: mix(0.8, 255), a: mix(0.45, 255), b: mix(0, 0), d: mix(0.45, 0), string: mix(0.3, 255) };
+    infuseCache.set(kind, m);
+  }
+  return m;
+}
 /** The steeping of the weapon being drawn (for the parts a weapon plots itself, as a bow's string). */
 let INF = null;
 function infused(T, kind, strong) {
-  const m = INFUSE[kind];
+  const m = infuseOf(kind);
   INF = m ? { ...m, strong: !!strong } : null;
   if (!m) return T;
   // the steel and the gold fittings (guards, tips, bands) take the colours; the bright ones glow

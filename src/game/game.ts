@@ -8,7 +8,7 @@ import { anim, FONTS, frameAt, hasAnim, icon, type Anim, type Rect } from "../en
 import { heroSprites, initHeroSprites, lookId, type HeroAnim, type HeroSprites } from "./heroSprites";
 import { fitScale, measure, text, wrap, type FontName } from "../engine/text";
 import { dayNumber, weekNumber, type Board, type BoardName, type Platform, type Product } from "../platform/platform";
-import { ACHIEVEMENTS, heroDef, combine, DEPTH, floorText, PLACE_FLOORS, EL_COLOR, LEGENDS, legendDesc, type WeaponId, EL_NAME, ENEMIES, EVOLUTIONS, evolutionOf, FORGE, questDef, TASK_BONUS, TASKS, type TaskId, type ForgeId, SHOP, type ShopItem, HEROES, WEAPONS, weaponName, MODIFIERS, MUTATORS, NO_MODIFIER, REACTIONS, RELIC_MAX, RELIC_SLOTS, ARTIFACT_SLOTS, RELICS, STATS, El, fullWeaponName, STAIR_EVENTS, type Outcome, type StairEvent, MYTHIC, PERK_TEXT, RARITIES, UNIQUES, type Modifier, type PlaceId, type GiftId, giftDef, giftFor, giftFrom, GIFTS, DOORS, GIFTS_IN_TOWER, PLACES, UNLOCKS, arsenalName, ARSENAL, unlockOf, TIERS, placeDef, depthOf, type GateKind, type Reaction, RelicKind, type StatId } from "./defs";
+import { ACHIEVEMENTS, heroDef, combine, DEPTH, floorText, PLACE_FLOORS, EL_COLOR, LEGENDS, legendDesc, type WeaponId, EL_NAME, ENEMIES, EVOLUTIONS, evolutionOf, FORGE, questDef, TASK_BONUS, TASKS, type TaskId, type ForgeId, SHOP, type ShopItem, HEROES, WEAPONS, weaponName, MODIFIERS, MUTATORS, NO_MODIFIER, REACTIONS, RELIC_MAX, RELIC_SLOTS, ARTIFACT_SLOTS, RELICS, relicDesc, STATS, El, fullWeaponName, STAIR_EVENTS, type Outcome, type StairEvent, MYTHIC, PERK_TEXT, RARITIES, UNIQUES, type Modifier, type PlaceId, type GiftId, giftDef, giftFor, giftFrom, GIFTS, DOORS, GIFTS_IN_TOWER, PLACES, UNLOCKS, arsenalName, ARSENAL, unlockOf, TIERS, placeDef, depthOf, type GateKind, type Reaction, RelicKind, type StatId } from "./defs";
 import { drawWorld, Scene } from "./draw";
 import { ascent } from "./ascent";
 import { getLang, langFor, setLang, t, tx, type Lang } from "./i18n";
@@ -49,7 +49,9 @@ interface Pick {
 }
 /** The chest's screen (s): it comes in and shakes, its lid flies up, then the reel rises out of it and spins. */
 const SPIN_LID = 0.42, SPIN_OPEN = 0.62;
-const RELIC_ICON = ["orbit", "lance", "coil", "flask", "halo", "void", "roots", "mirror", "brazier", "crown"];
+/** A weapon artifact's badge, and its evolution's. */
+const RELIC_ICON = RELICS.map((r) => r.icon);
+const evoIcon = (k: RelicKind): string => evolutionOf(k)?.icon ?? RELIC_ICON[k];
 /** A big number short: 950, 12.3K, 4.1M (К and М in Russian). */
 const fmtNum = (n: number): string => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}${t("mega")}` : n >= 1e4 ? `${(n / 1e3).toFixed(n >= 1e5 ? 0 : 1)}${t("kilo")}` : String(Math.round(n)));
 /** An arsenal key's badge in the icons: a weapon's, a relic's, an artifact's. */
@@ -64,7 +66,7 @@ const arsenalIcon = (key: string): string => {
   const [kind, id] = key.split(":");
   return kind === "weapon" ? `w_${id}` : kind === "relic" ? RELIC_ICON[+id] : id;
 };
-const iconKey = (c: Choice) => (c.type === "relic" ? RELIC_ICON[c.kind] : c.type === "evo" ? evolutionOf(c.kind).icon : c.type === "legend" ? `w_${c.weapon}` : c.type === "rest" ? "maxhp" : c.id);
+const iconKey = (c: Choice) => (c.type === "relic" ? RELIC_ICON[c.kind] : c.type === "evo" ? evoIcon(c.kind) : c.type === "legend" ? `w_${c.weapon}` : c.type === "rest" ? "maxhp" : c.id);
 
 /**
  * Part of a sprite inside a box, nothing outside it: the window (wx, wy) w x h of the sprite's own space (from its
@@ -1376,11 +1378,11 @@ export class Game {
     }
     // the sure thing goes in the middle, where the eye lands
     if (ready.length && out.length === 3) [out[0], out[1]] = [out[1], out[0]];
-    // a newcomer's first level-up of a run offers a relic that fills the screen (the ember orbit or the ice lance),
-    // in the middle: the game shows early what it becomes
+    // a newcomer's first level-up of a run offers a weapon artifact that fills the screen (the ring of fire, the storm
+    // stone or the ice shard), in the middle: the game shows early what it becomes
     const w = this.world;
     if (kind === "level" && w.showcase && !w.relics.length && !ready.length && out.length) {
-      const showy = [RelicKind.Orbit, RelicKind.Lance].filter((k) => !w.locked.has(`relic:${k}`));
+      const showy = [RelicKind.Fire, RelicKind.Storm, RelicKind.Frost].filter((k) => !w.locked.has(`relic:${k}`));
       if (showy.length && !out.some((c) => c.type === "relic" && showy.includes(c.kind))) out[out.length === 3 ? 1 : 0] = { type: "relic", kind: showy[this.runRng.int(0, showy.length - 1)], level: 1 };
     }
     return out;
@@ -1689,7 +1691,7 @@ export class Game {
       } else if (id === "elite") {
         const E = w.enemies;
         for (let i = 0; i < E.n && !now; i++) now = E.lunge[i] > LUNGE_DASH && near(E.x[i], E.y[i], 220);
-      } else if (id === "evo") now = w.relics.some((r) => r.level >= 3 && !r.evo);
+      } else if (id === "evo") now = w.relics.some((r) => r.level >= 3 && !r.evo && !!evolutionOf(r.kind));
       else now = !!w.secret?.found && w.secret.hp > 0;
       if (!now) continue;
       sv.seen.push(`sight:${id}`);
@@ -1697,7 +1699,7 @@ export class Game {
       this.sightT = this.now;
       // a relic halfway up: what it becomes, and with which artifact
       if (id === "evo") {
-        const r = w.relics.find((q) => q.level >= 3 && !q.evo)!, e = evolutionOf(r.kind), st = STATS.find((q) => q.id === e.stat)!;
+        const r = w.relics.find((q) => q.level >= 3 && !q.evo && !!evolutionOf(q.kind))!, e = evolutionOf(r.kind)!, st = STATS.find((q) => q.id === e.stat)!;
         w.say(t("sightEvo").replace("{relic}", tx(RELICS[r.kind].name)).replace("{stat}", tx(st.name)).replace("{evo}", tx(e.name)), 6);
         return;
       }
@@ -2220,6 +2222,7 @@ export class Game {
       stats: { ...w.stats },
       statLevels: { ...w.statLevels } as Record<string, number>,
       relics: w.relics.map((r): [number, number, boolean] => [r.kind, r.level, r.evo]),
+      arts: 1,
       dodge: w.dodge,
       xpMul: w.xpMul,
       kills: w.kills,
@@ -2279,7 +2282,13 @@ export class Game {
       heroSprites().prefetch(lookId(hd.id, h.victor), h.weapon);
       Object.assign(w.stats, r.stats);
       w.statLevels = { ...r.statLevels } as typeof w.statLevels;
-      w.relics = r.relics.filter(([kind]) => RELICS[kind]).map(([kind, level, evo]) => ({ kind: kind as RelicKind, level, evo, timer: 0.5, angle: 0, clock: 0 }));
+      // (a run saved before the weapon artifacts: the relics carry on as the artifacts of the same number, the Ice Crown
+      // comes down to the boosts, and an evolution stays only where the new one is the same pair)
+      const old = !r.arts;
+      if (old) for (const [kind, level] of r.relics) if (kind === 9) w.statLevels.crown = Math.min(4, level);
+      w.relics = r.relics
+        .filter(([kind]) => RELICS[kind] && !(old && kind === 9))
+        .map(([kind, level, evo]) => ({ kind: kind as RelicKind, level, evo: evo && !!evolutionOf(kind) && (!old || [1, 2, 5].includes(kind)), timer: 0, angle: 0, clock: 0, count: 0 }));
       w.dodge = r.dodge;
       w.xpMul = r.xpMul;
       w.autoAim = true;
@@ -2919,8 +2928,9 @@ export class Game {
     if (on) {
       text(ui, u ? t("openedNew") : t("fromStart"), px + 32, ly, { font: "mini", color: C.green });
       ly = Math.max(ly + 10, py + 32);
-      const desc = kind === "weapon" ? WEAPONS[id as WeaponId].desc : kind === "relic" ? RELICS[+id].desc : STATS.find((q) => q.id === id)!.desc;
-      para(ui, tx(desc), px + 8, ly, pw - 16, C.text, "left", 9, "mini");
+      // (a weapon artifact: what it does to a blade, then to a shot)
+      const desc = kind === "weapon" ? tx(WEAPONS[id as WeaponId].desc) : kind === "relic" ? `${tx(RELICS[+id].melee)}. ${t("shotsDo")}: ${tx(RELICS[+id].ranged)}` : tx(STATS.find((q) => q.id === id)!.desc);
+      para(ui, desc, px + 8, ly, pw - 16, C.text, "left", 9, "mini");
     } else if (u) {
       ly = Math.max(ly + 2, py + 32);
       ly += para(ui, tx(u.need), px + 8, ly, pw - 16, C.text, "left", 9, "mini");
@@ -3210,7 +3220,7 @@ export class Game {
       tag = `${t("legendary")}: ${tx(weaponName(c.weapon, w.weaponEl))}`;
       col = rgbaf(1, 0.85 + 0.15 * Math.sin(this.now * 8), 0.45, 1);
     } else if (c.type === "evo") {
-      const e = evolutionOf(c.kind);
+      const e = evolutionOf(c.kind)!;
       name = tx(e.name);
       desc = tx(e.desc);
       tag = `${t("evolution")}: ${tx(RELICS[c.kind].name)}`;
@@ -3218,10 +3228,11 @@ export class Game {
     } else if (c.type === "relic") {
       const def = RELICS[c.kind], e = evolutionOf(c.kind);
       name = tx(def.name);
-      desc = c.level === 1 ? tx(def.desc) : tx(def.levels[c.level - 2]);
-      // at its last level, the relic says what it evolves with
-      tag = c.level === 1 ? `${t("newRelic")} · ${tx(EL_NAME[def.el])}` : `${t("relic")} · ${t("lv")} ${c.level}${c.level >= RELIC_MAX ? ` ${t("max")} · ${t("evoWith")}: ${tx(STATS.find((q) => q.id === e.stat)!.name)}` : ""}`;
-      col = rgba(EL_COLOR[def.el]);
+      // (what it does to the weapon in hand: a blade's blow or a shot)
+      desc = c.level === 1 ? tx(relicDesc(def, WEAPONS[w.hero.weapon].ranged)) : tx(def.levels[c.level - 2]);
+      // at its last level, the artifact says what it evolves with
+      tag = c.level === 1 ? `${t("newRelic")}${def.el ? ` · ${tx(EL_NAME[def.el])}` : ""}` : `${t("relic")} · ${t("lv")} ${c.level}${c.level >= RELIC_MAX && e ? ` ${t("max")} · ${t("evoWith")}: ${tx(STATS.find((q) => q.id === e.stat)!.name)}` : ""}`;
+      col = rgba(def.color);
     } else if (c.type === "rest") {
       name = t("rest");
       desc = t("restDesc");
@@ -3395,7 +3406,8 @@ export class Game {
     if (src === SRC_WEAPON) return { name: tx(h.legend ? LEGENDS[h.weapon] : fullWeaponName(h.weapon, h.weaponEl, h.rarity)), ic: icon("icons", `w_${h.weapon}`) };
     if (src >= SRC_RELIC && src < SRC_RELIC + RELICS.length) {
       const kind = (src - SRC_RELIC) as RelicKind, evo = w.evolved(kind);
-      return { name: tx(evo ? evolutionOf(kind).name : RELICS[kind].name), ic: icon("icons", evo ? evolutionOf(kind).icon : RELIC_ICON[kind]) };
+      const e = evo ? evolutionOf(kind) : undefined;
+      return { name: tx(e ? e.name : RELICS[kind].name), ic: icon("icons", e ? e.icon : RELIC_ICON[kind]) };
     }
     const stat = (id: StatId) => tx(STATS.find((q) => q.id === id)!.name);
     switch (src) {
