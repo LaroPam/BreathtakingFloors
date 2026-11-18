@@ -8,6 +8,7 @@ import { rgba, rgbaf } from "../engine/renderer";
 import {
   AI, depthOf, placeDef, El, EL_COLOR, EN, ENEMIES, evolutionOf, heroDef, mainStop, nextStop, PLACE_FLOORS, QUESTS, RELIC_MAX, RELICS, RelicKind, reactionFor, roster, WEAPON_IDS, WEAPONS,
   type PlaceDef, type PlaceId, type Stop, type GateKind, giftFor, DOORS, type DoorKind, MINIS, type MiniMove, type Blow, type HeroDef, type Modifier, type QuestKind, type Reaction, type StatId, type TaskId, type WeaponId, MYTHIC, RARITIES, rollRarity, UNIQUES, type Perk,
+  HORDE,
 } from "./defs";
 import { getLang, t as tr, tx } from "./i18n";
 import { Bullets, Drops, Enemies, Grid, Particles, TEAM_FOE, TEAM_HERO } from "./pools";
@@ -750,6 +751,8 @@ export class World {
   moveX = 0;
   moveY = 0;
   private spawnAcc = 0;
+  /** Time since the horde last closed in a ring round the hero. */
+  private ringT = 0;
   /** The floor's wave: lit at the brazier, it lasts `left` of `total` seconds (survive it), `n` its stage (1-3). */
   wave: { left: number; total: number; n: number } | null = null;
   /** The fire's stage (see `phase`). */
@@ -853,6 +856,7 @@ export class World {
     this.cleared = false;
     this.time = 0;
     this.spawnAcc = 0;
+    this.ringT = 0;
     this.wave = null;
     this.waitSaid = false;
     // what to do here, once the hero has arrived (the first floor says it in full)
@@ -1232,7 +1236,9 @@ export class World {
     // hero took to reach it, and the last one is the test of the whole build. A floor being one room and one wave, the
     // hero comes to a boss with less behind him than when floors were long: its health is cut to match)
     const boss = d.ai >= AI.Boss && d.ai !== AI.Mini, late = boss ? (d.ai === AI.LastLight ? 1.2 : 1.15) : 1 + Math.min(1.2, this.time / 180);
-    const hp = d.hp * tough * (1 + 0.4 * (f - 1)) * late * curse * (boss && this.firstBoss ? 0.75 : 1);
+    // (a common foe of the horde is weaker one by one: there are many more of them)
+    const horde = d.ai < AI.Boss && !d.elite ? HORDE.hp : 1;
+    const hp = d.hp * tough * horde * (1 + 0.4 * (f - 1)) * late * curse * (boss && this.firstBoss ? 0.75 : 1);
     const i = this.enemies.add(type, x, y, hp, this.rng.next(), this.mod.speed * (1.08 + Math.min(9, f - 1) * 0.04) * this.rng.range(0.9, 1.1) * (this.curse ? 1.2 : 1) * (this.mutator === "haste" ? 1.25 : 1));
     if (i >= 0) {
       this.enemies.face[i] = this.hero.x < x ? -1 : 1;
@@ -2627,12 +2633,14 @@ export class World {
     this.addFx("poof", cx, cy + this.bry, { sx: d.scale * (d.elite ? 1.2 : 0.8), sy: d.scale * (d.elite ? 1.2 : 0.8), glow: 0.5 });
     this.burst(cx, cy, d.elite ? 18 : 6, rgba(d.glow || "#c8c0d8"), 70, 0.45, 120);
     // soul shards: the value broken into the fewest pieces
-    let v = d.xp * this.mod.xp * this.xpMul * (this.mutator === "swarm" ? 1.33 : 1);
+    let v = d.xp * (d.ai < AI.Boss && !d.elite ? HORDE.xp : 1) * this.mod.xp * this.xpMul * (this.mutator === "swarm" ? 1.33 : 1);
     while (v > 0) {
-      const tier = v >= 20 ? D_RED : v >= 5 ? D_GREEN : D_BLUE, val = tier === D_RED ? 20 : tier === D_GREEN ? 5 : 1;
-      const a = this.rng.range(0, Math.PI * 2), s = this.rng.range(10, 50);
-      this.drops.add(tier, x, y - 2, val * (v < val ? v / val : 1), Math.cos(a) * s, Math.sin(a) * s);
+      const tier = v >= 20 ? D_RED : v >= 5 ? D_GREEN : D_BLUE, val = tier === D_RED ? 20 : tier === D_GREEN ? 5 : 1, value = val * (v < val ? v / val : 1);
       v -= val;
+      // with the floor already strewn, a shard joins one lying near instead of adding to the gravel
+      if (this.drops.n > HORDE.gemsLoose && this.mergeGem(x, y, value)) continue;
+      const a = this.rng.range(0, Math.PI * 2), s = this.rng.range(10, 50);
+      this.drops.add(tier, x, y - 2, value, Math.cos(a) * s, Math.sin(a) * s);
     }
     // hearts are rare: a kill now and then, an elite sometimes
     if (this.rng.chance(d.elite ? 0.15 : 0.003)) this.drops.add(D_HEART, x, y, 1, 0, -20);
@@ -5772,17 +5780,21 @@ export class World {
     let target = 0, every = 99, far = true;
     if (boss) (target = Math.round((5 + f * 0.9) * more)), (every = 2.6), (far = false);
     else if (this.wave) {
+      // the onslaught: many foes, thicker at each stage of the fire, packs coming quick from all round
       const k = 1 - this.wave.left / this.wave.total;
-      target = Math.min(160, Math.round((9 + f * 2.6) * (1 + 0.4 * (this.wave.n - 1)) * (0.8 + 0.6 * k) * more));
-      every = Math.max(0.7, 1.9 - f * 0.12 - k * 0.7);
+      target = Math.min(HORDE.max, Math.round((HORDE.base + f * HORDE.perFloor) * (1 + HORDE.stage * (this.wave.n - 1)) * (0.8 + 0.6 * k) * more));
+      every = Math.max(HORDE.everyMin, HORDE.every - f * 0.05 - k * 0.4);
       far = false;
+      // from the second stage, a ring closing in now and then
+      this.ringT += dt;
+      if (this.wave.n >= 2 && this.ringT >= HORDE.ringEvery && E.n < HORDE.max) (this.ringT = 0), this.ringOfFoes();
     } else if (!this.portal && !this.stairs?.open) (target = Math.min(30, Math.round((3 + f) * more))), (every = 4.5);
     // ...and come faster to match, more packs at a time when the floor is far short of its number
     every /= Math.max(1, more);
     this.spawnAcc += dt;
     if (E.n < target && this.spawnAcc >= every) {
       this.spawnAcc = 0;
-      const packs = far ? 1 : 1 + Math.min(3, Math.floor((target - E.n) / 14));
+      const packs = far ? 1 : 1 + Math.min(5, Math.floor((target - E.n) / 10));
       for (let k = 0; k < packs; k++) this.spawnPack(this.pickEnemy(), far);
     }
     this.audio.intensity = Math.min(1, E.n / 50 + (boss ? 0.5 : 0) + (this.wave ? 0.2 : 0));
@@ -5803,6 +5815,32 @@ export class World {
     let n = 0;
     for (let i = 0; i < E.n; i++) if ((E.x[i] - h.x) ** 2 + (E.y[i] - h.y) ** 2 < r * r) n++;
     return n;
+  }
+  /** A soul shard of this value joins the nearest shard within reach (it grows a tier when it is worth it). */
+  private mergeGem(x: number, y: number, value: number): boolean {
+    const D = this.drops;
+    let best = -1, bd = 48 * 48;
+    for (let i = D.n - 1; i >= 0; i--) {
+      if (D.kind[i] > D_RED || D.pulled[i]) continue;
+      const dd = (D.x[i] - x) ** 2 + (D.y[i] - y) ** 2;
+      if (dd < bd) (bd = dd), (best = i);
+    }
+    if (best < 0) return false;
+    D.value[best] += value;
+    D.kind[best] = D.value[best] >= 20 ? D_RED : D.value[best] >= 5 ? D_GREEN : D_BLUE;
+    return true;
+  }
+  /**
+   * The ring: the horde closes round the hero from every side at once, a whole circle of the floor's first foes
+   * rising out of the grey a little way off (the onslaught's signature).
+   */
+  private ringOfFoes(): void {
+    const h = this.hero, f = this.floor, n = Math.min(HORDE.ringMax, HORDE.ring + HORDE.ringPerFloor * f), type = this.pickEnemy(0), TAU = Math.PI * 2, a0 = this.rng.range(0, TAU);
+    for (let k = 0; k < n; k++) {
+      const a = a0 + (k / n) * TAU, r = HORDE.ringR + this.rng.range(-12, 12), x = h.x + Math.cos(a) * r, y = h.y + Math.sin(a) * r * 0.75;
+      if (x < 20 || y < 24 || x > this.w - 20 || y > this.h - 12 || !this.free(x, y, 10)) continue;
+      this.spawnAt(type, x, y);
+    }
   }
   private spawnPack(type: number, far: boolean): void {
     const d = ENEMIES[type], h = this.hero, R = this.rng, f = this.floor, dist = far ? 280 : 190, TAU = Math.PI * 2;

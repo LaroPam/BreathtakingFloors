@@ -557,49 +557,50 @@ export function buildBeyond(): TileMap {
 
 /**
  * Each place's three rooms, cut three different ways: the first its plain self, the second changed, the third (the
- * boss's) a clean arena. About two screens each, growing a little as the tower goes down.
+ * boss's) a clean arena. About two screens each, growing a little as the tower goes down (a quarter larger a side
+ * since the view in play widened: the horde comes from beyond it).
  */
 export const MAP_PLANS: Record<string, MapPlan[]> = {
   // the crypt: a square hall, columns round the fire; the ossuary, faceted, niches in its back wall; the catacombs'
   // heart, a rough hollow veined with light, the boss's arena
   crypt: [
-    { w: 48, h: 30, shape: "rect", columns: true },
-    { w: 52, h: 31, shape: "facet", columns: true, niches: true },
-    { w: 54, h: 32, shape: "cave", veins: true, arena: true },
+    { w: 60, h: 38, shape: "rect", columns: true },
+    { w: 65, h: 39, shape: "facet", columns: true, niches: true },
+    { w: 68, h: 40, shape: "cave", veins: true, arena: true },
   ],
   // the garden: a round clearing, hedges about; the drowned garden, the fire on an island in a moat; its heart, a
   // clearing round which the boss comes
   garden: [
-    { w: 50, h: 30, shape: "round", clumps: true },
-    { w: 54, h: 32, shape: "round", pit: "moat" },
-    { w: 56, h: 33, shape: "round", arena: true },
+    { w: 62, h: 38, shape: "round", clumps: true },
+    { w: 68, h: 40, shape: "round", pit: "moat" },
+    { w: 70, h: 41, shape: "round", arena: true },
   ],
   // the tower's heart: a hall of mirrors, columns round the fire; the foundry, rough, veined with molten light,
   // boulders about; the crucible, faceted, the boss's arena
   heart: [
-    { w: 54, h: 32, shape: "rect", columns: true },
-    { w: 56, h: 33, shape: "cave", veins: true, clumps: true },
-    { w: 58, h: 34, shape: "facet", veins: true, arena: true },
+    { w: 68, h: 40, shape: "rect", columns: true },
+    { w: 70, h: 41, shape: "cave", veins: true, clumps: true },
+    { w: 72, h: 42, shape: "facet", veins: true, arena: true },
   ],
   // the drowned catacombs: a hall whose sides have gone under; the cistern, the fire on an island of stone in black
   // water; the old well's hall, rough, the boss's arena
   cistern: [
-    { w: 50, h: 31, shape: "rect", pit: "ponds", columns: true },
-    { w: 54, h: 32, shape: "rect", pit: "moat" },
-    { w: 56, h: 33, shape: "cave", arena: true },
+    { w: 62, h: 39, shape: "rect", pit: "ponds", columns: true },
+    { w: 68, h: 40, shape: "rect", pit: "moat" },
+    { w: 70, h: 41, shape: "cave", arena: true },
   ],
   // the ashen forge: a smelting hall, iron columns, the floor veined with fire; the slag river round the fire on its
   // island; the great hearth, rough, the boss's arena
   ashen: [
-    { w: 52, h: 31, shape: "rect", columns: true, veins: true },
-    { w: 54, h: 32, shape: "cave", pit: "moat", veins: true },
-    { w: 56, h: 33, shape: "cave", veins: true, arena: true },
+    { w: 65, h: 39, shape: "rect", columns: true, veins: true },
+    { w: 68, h: 40, shape: "cave", pit: "moat", veins: true },
+    { w: 70, h: 41, shape: "cave", veins: true, arena: true },
   ],
   // the frost: a faceted hall of rime, columns; an ice cave, a sheet round the fire, boulders; the throne of the
   // void, the boss's arena
   frost: [
-    { w: 54, h: 32, shape: "facet", columns: true },
-    { w: 56, h: 33, shape: "cave", ice: true, clumps: true },
-    { w: 58, h: 34, shape: "facet", arena: true },
+    { w: 68, h: 40, shape: "facet", columns: true },
+    { w: 70, h: 41, shape: "cave", ice: true, clumps: true },
+    { w: 72, h: 42, shape: "facet", arena: true },
   ],
 };

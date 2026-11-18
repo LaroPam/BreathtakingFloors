@@ -584,6 +584,31 @@ export const RELICS: RelicDef[] = [
   },
 ];
 export const RELIC_MAX = 5;
+/**
+ * The horde: many and each weak, rather than a few tough ones (the owner's note: it must feel like an onslaught).
+ * A common foe's health and soul shards against the old numbers; how many stand on a floor in its wave; the ring
+ * that closes round the hero from the wave's second stage on.
+ */
+export const HORDE = {
+  hp: 0.65,
+  xp: 0.5,
+  /** In a wave: (base + perFloor x floor) foes, x(1 + stage step) by the fire's stage, up to max. */
+  base: 30,
+  perFloor: 8,
+  stage: 0.5,
+  max: 380,
+  /** A pack every so often (s), sooner deeper down and as the wave burns. */
+  every: 1.2,
+  everyMin: 0.35,
+  /** The ring: every so many seconds from the second stage, this many foes round the hero at this distance. */
+  ringEvery: 13,
+  ring: 16,
+  ringPerFloor: 2,
+  ringMax: 40,
+  ringR: 210,
+  /** Soul shards lying about past this many merge into one near them, so the floor does not turn to gravel. */
+  gemsLoose: 260,
+};
 export const RELIC_SLOTS = 5;
 /** Slots for artifacts (the passive upgrades): a new one only while one is free, then only their levels. */
 export const ARTIFACT_SLOTS = 5;
