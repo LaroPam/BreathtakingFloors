@@ -4090,7 +4090,7 @@ export class Game {
     const pw = Math.min(480, W - 12), px = Math.round(W / 2 - pw / 2), rise = 0;
     const lines = (list: [string, boolean][], w: number) => list.flatMap(([l, good]) => wrap(l, w, "mini").map((q): [string, boolean] => [q, good]));
     // the wheel's step: its strip, the result under it (the taller of a win and a loss), the buttons
-    const SH = H < 300 ? 60 : 84, resW = pw - 16, adOk = this.platform.canShowRewarded();
+    const SH = H < 300 ? 64 : 96, resW = pw - 16, adOk = this.platform.canShowRewarded();
     const rollH = (ch: (typeof ev.choices)[number]) => {
       const sure = ch.chance >= 1, outs = sure ? [ch.win] : [ch.win, ch.lose ?? {}];
       const resH = Math.max(...outs.map((o, k) => 14 + lines(this.outcomeLines(o), resW - 8).length * 9 + 6 + (k === 1 && adOk ? (resW >= 260 ? 22 : 44) : 22)));
@@ -4163,8 +4163,8 @@ export class Game {
     text(ui, tx(ev.title), W / 2, top + 7, { align: "center", color: C.gold, shadow: C.ink });
     text(ui, tx(c.label), W / 2, top + 17, { font: "mini", align: "center", color: C.goldLight });
     if (!sure) {
-      // the turn: several, easing out onto the roll (the pointer at the top, luck from the wheel's zero on round)
-      const end = -Math.PI / 2 - se.roll * Math.PI * 2, e = 1 - (1 - u) ** 3, phi = end - Math.PI * 2 * 3.5 * (1 - e);
+      // the turn: several, easing out onto the roll (the pointer at the right, luck from the wheel's zero on round)
+      const end = -se.roll * Math.PI * 2, e = 1 - (1 - u) ** 3, phi = end - Math.PI * 2 * 3.5 * (1 - e);
       const notch = Math.floor((phi * 24) / (Math.PI * 2));
       if (u < 1 && notch !== se.tick) (se.tick = notch), this.audio.play("click", 1.2 + 0.4 * (1 - u));
       this.drawWheelStrip(px + 8, top + 25, pw - 16, SH, c.chance, phi, u >= 1 ? Math.max(0, 1 - (se.t - WHEEL_SPIN) / 0.6) : 0, se.win);
@@ -4206,21 +4206,20 @@ export class Game {
   }
 
   /**
-   * The wheel of fate as a big wheel seen through a strip (x, y, w, h): only its top shows, as wide as the strip,
-   * turning by phi past the pointer at the top. Luck (the first `luck` of the round) is green with stars, the rest
-   * red with skulls, gold seams between them and notches round the rim; the ends of the strip fall into shadow.
-   * `flash` lights it in the colour of what it gave. (Drawn a row at a time, a rect per run of one colour.)
+   * The wheel of fate across a strip (x, y, w, h): a wheel as wide as the strip, cut off above and below (its middle
+   * band shows, the hub in the centre and its sides running out to the rim at both ends), turned by phi past the
+   * pointer at the right end. Luck (the first `luck` of the round) is green with stars, the rest red with skulls, gold
+   * seams between them and notches round the rim. `flash` lights it in the colour of what it gave. (Drawn a row at a
+   * time, a rect per run of one colour.) The pointer stands at angle 0: a roll r stops under it when phi = -r * TAU.
    */
   private drawWheelStrip(sx: number, sy: number, sw: number, sh: number, luck: number, phi: number, flash: number, won: boolean): void {
     const ui = this.ui, TAU = Math.PI * 2, cos = Math.cos(phi), sin = Math.sin(phi);
     const GOOD = [rgba("#123a1c"), rgba("#1c5228"), rgba("#286a34"), rgba("#388a42"), rgba("#4aa856")];
     const BAD = [rgba("#300c12"), rgba("#4a141c"), rgba("#661c26"), rgba("#842632"), rgba("#a8323e")];
-    const SEAM = rgba("#e0b050"), RIM = [rgba("#3a2408"), rgba("#a8701c"), rgba("#f0c450"), rgba("#fff0b0")];
-    // the wheel's size: its top a little under the strip's top (room for the pointer), its rim reaching the strip's
-    // bottom corners, so the cap fills the strip
-    const capTop = sy + 7, hc = sy + sh - capTop, R = Math.max(hc + 6, (sw * sw) / 4 / (2 * hc) + hc / 2), cx = sx + sw / 2, cy = capTop + R;
+    const SEAM = rgba("#e0b050"), RIM = [rgba("#3a2408"), rgba("#a8701c"), rgba("#f0c450")];
+    const R = Math.floor(sw / 2) - 7, cx = sx + Math.floor(sw / 2) - 4, cy = sy + sh / 2;
     ui.rect(sx, sy, sw, sh, rgba("#07060c"));
-    for (let y = capTop; y < sy + sh; y++) {
+    for (let y = sy; y < sy + sh; y++) {
       const fy = y + 0.5 - cy;
       let runX = sx, runC = 0;
       for (let x = sx; x <= sx + sw; x++) {
@@ -4230,6 +4229,7 @@ export class Game {
           if (d <= R) {
             if (d > R - 1.2) col = RIM[0];
             else if (d > R - 3.2) col = d > R - 2.2 ? RIM[2] : RIM[1];
+            else if (d < 5) col = RIM[d < 3 ? 2 : 1];
             else {
               // where this pixel is on the wheel itself, turned back by phi
               const wu = fx * cos + fy * sin, wv = -fx * sin + fy * cos, f = (((Math.atan2(wv, wu) / TAU) % 1) + 1) % 1;
@@ -4237,8 +4237,8 @@ export class Game {
               if (luck > 0 && luck < 1 && (arc(f) < 0.9 || arc(1 - f) < 0.9 || arc(f - luck) < 0.9)) col = SEAM;
               else if (d > R - 8 && tick < 0.6) col = RIM[1];
               else {
-                // lit from the rim, darker inwards; every other notch a step darker
-                const ramp = f < luck ? GOOD : BAD, v = 4 - ((R - d) / hc) * 2.6 - (Math.floor(n) & 1) * 0.6;
+                // lighter out toward the rim, every other notch a step darker
+                const ramp = f < luck ? GOOD : BAD, v = 1 + (d / R) * 3 - (Math.floor(n) & 1) * 0.7;
                 col = ramp[Math.max(0, Math.min(4, Math.round(v)))];
               }
             }
@@ -4251,21 +4251,24 @@ export class Game {
         }
       }
     }
-    // the signs ride round: a star in each 24th of luck, a skull in each of the rest (those in the strip)
+    // the signs ride round: a star in each 24th of luck, a skull in each of the rest (those inside the strip)
     for (let k = 0; k < 24; k++) {
-      const mid = (k + 0.5) / 24, an = mid * TAU + phi, r = R - hc * 0.55, x = Math.round(cx + Math.cos(an) * r), y = Math.round(cy + Math.sin(an) * r);
-      if (y < capTop + 8 || y > sy + sh - 6 || x < sx + 7 || x > sx + sw - 7) continue;
+      const mid = (k + 0.5) / 24, an = mid * TAU + phi, r = R * 0.68, x = Math.round(cx + Math.cos(an) * r), y = Math.round(cy + Math.sin(an) * r);
+      if (y < sy + 6 || y > sy + sh - 6) continue;
       ui.image(mid < luck ? icon("fate", "luck") : icon("hud", "skull"), x, y);
     }
-    // the ends of the strip turn away into the dark, and its edge
-    for (let k = 0; k < 4; k++) {
-      const a = 0.55 - k * 0.13, bw = Math.max(2, Math.round(sw * 0.025));
-      ui.rect(sx + k * bw, sy, bw, sh, rgba("#07060c", a));
-      ui.rect(sx + sw - (k + 1) * bw, sy, bw, sh, rgba("#07060c", a));
+    // the strip's top and bottom fall into shadow (the wheel turns on beyond them), and its edge
+    for (let k = 0; k < 3; k++) {
+      const a = 0.5 - k * 0.15, bh = Math.max(2, Math.round(sh * 0.06));
+      ui.rect(sx, sy + k * bh, sw, bh, rgba("#07060c", a));
+      ui.rect(sx, sy + sh - (k + 1) * bh, sw, bh, rgba("#07060c", a));
     }
     if (flash > 0) ui.rect(sx, sy, sw, sh, withAlpha(won ? C.green : C.red, 0.25 * flash));
     ui.rect(sx, sy - 1, sw, 1, C.ink), ui.rect(sx, sy + sh, sw, 1, C.ink), ui.rect(sx - 1, sy, 1, sh, C.ink), ui.rect(sx + sw, sy, 1, sh, C.ink);
-    ui.image(icon("fate", "pointer"), Math.round(cx), capTop - 2);
+    // the pointer at the right end, its point on the rim, pointing in
+    const px = cx + R + 1, py = Math.round(cy);
+    for (let k = 0; k <= 6; k++) ui.rect(px + k, py - Math.floor(k * 0.7), 1, 1 + 2 * Math.floor(k * 0.7), k === 0 ? rgba("#fff0b0") : k < 5 ? C.gold : C.goldDeep);
+    ui.rect(px + 6, py - 5, 2, 11, C.ink);
   }
 
   private drawStairs(): void {
