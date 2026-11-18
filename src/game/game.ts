@@ -230,6 +230,10 @@ export class Game {
   private startSpins = 0;
   /** The first run's opening is on (World.intro): when it ends it is marked seen (save.stats.intro). */
   private introOn = false;
+  /** When the mouse last moved (the pointer shows a while after, to click the buttons in play), and the frame the
+   *  opening was skipped by a key (so that key does not skip the lessons too). */
+  private mouseT = -9;
+  private keySkipT = -1;
   /** The boss whose entrance is on (or -1): when it ends, it is marked seen, and the next time a touch skips it. */
   private cineType = -1;
   /** The forge's rerolls left this run, and its second wind (unused). */
@@ -1506,7 +1510,7 @@ export class Game {
     input.setOffset(this.r.safeL, this.r.safeT);
     input.poll();
     if (input.mode === "touch") this.touch = true;
-    else if (input.mode === "kbm" && input.mouse.moved) this.touch = false;
+    else if (input.mode === "kbm" && input.mouse.moved) (this.touch = false), (this.mouseT = this.now);
     // a boss's entrance seen once can be cut short with a touch or a key; seen to the end, it is remembered
     const cw = this.world?.cine;
     if (cw) {
@@ -1754,8 +1758,9 @@ export class Game {
     if (this.state !== "play" && this.state !== "card" && !over && since < 0.2) this.fillScreen(rgba("#07060c", (1 - since / 0.2) * 0.7));
     // the system pointer hides while the reticle aims
     // no aiming with the mouse: in play the pointer only gets in the way of the view
-    // (except in the opening, whose skip button wants clicking)
-    const cursor = this.state === "play" && this.input.mode === "kbm" && !this.touch && !this.world?.intro ? "none" : "default";
+    // (except in the opening, whose skip button wants clicking, and for a while after the mouse moves, to click a button)
+    const hide = this.state === "play" && this.input.mode === "kbm" && !this.touch && !this.world?.intro && this.now - this.mouseT > 2;
+    const cursor = hide ? "none" : "default";
     if (this.r.canvas.style.cursor !== cursor) this.r.canvas.style.cursor = cursor;
     this.drawToast(this.dt);
     this.drawWipe();
@@ -1780,12 +1785,22 @@ export class Game {
     }
     // (low in the middle: clear of the floor's plate at the top and of the touch controls at the corners)
     // the button, or a key: Enter (Space is the dash, so not that), Backspace, a pad's B; the key is named on the button
-    const input = this.input, key = this.touch ? "" : input.mode === "pad" ? "B - " : "ENTER - ", label = key + t("introSkip");
-    const bw = Math.max(90, measure(label) + 30), keyed = (input.pressed("confirm") && !input.pressed("dash")) || (input.pressed("back") && !input.pressed("pause"));
+    const label = this.skipKey() + t("introSkip"), bw = Math.max(90, measure(label) + 30), keyed = this.skipPressed();
     if (button(ui, this.menu, now, Math.round(W / 2 - bw / 2), H - (this.touch ? 30 : 22), bw, 16, label, { icon: icon("hud", "play") }) || keyed) {
+      if (keyed) this.keySkipT = now;
       this.world.endIntro();
       this.audio.play("click");
     }
+  }
+
+  /** The key that skips the opening or the lessons, as named on their buttons (none on a touch screen). */
+  private skipKey(): string {
+    return this.touch ? "" : this.input.mode === "pad" ? "B - " : "ENTER - ";
+  }
+  /** That key pressed: Enter (Space is the dash, so not that), Backspace, a pad's B (Escape pauses). */
+  private skipPressed(): boolean {
+    const input = this.input;
+    return (input.pressed("confirm") && !input.pressed("dash")) || (input.pressed("back") && !input.pressed("pause"));
   }
 
   private drawHint(): void {
@@ -1979,12 +1994,12 @@ export class Game {
     }
     // the lessons can be skipped (a click or a tap on the word beside the plate, or above it where there is no room)
     if (done) return;
-    const sk = t("tutSkip"), sw = measure(sk, "mini") + 8, side = x + lw + 6 + sw <= W - 4;
+    const sk = this.skipKey() + t("tutSkip"), sw = measure(sk, "mini") + 8, side = x + lw + 6 + sw <= W - 4;
     const sx = side ? x + lw + 6 : x + lw - sw, sy = side ? y + 3 : y - 12;
     frame(ui, sx, sy, sw, 11, { edge: rgba("#5a5068") });
     text(ui, sk, sx + sw / 2, sy + 2, { font: "mini", align: "center", color: withAlpha(rgba("#c8b8a0"), a) });
     const c = this.input.click;
-    if (c && c.x >= sx - 4 && c.x <= sx + sw + 4 && c.y >= sy - 4 && c.y <= sy + 15) this.skipTutorial();
+    if ((c && c.x >= sx - 4 && c.x <= sx + sw + 4 && c.y >= sy - 4 && c.y <= sy + 15) || (this.skipPressed() && this.keySkipT !== this.now)) this.skipTutorial();
   }
   /** The player skips the first run's lessons: the run goes on as any other (the funnel notes at which lesson). */
   private skipTutorial(): void {
