@@ -284,7 +284,11 @@ for (const hero of heroes) {
         if (B.floorT > limit) {
           const o = w.objective();
           const bi = w.bossIndex(), boss = bi >= 0 ? `the boss ${E.hp[bi] | 0}/${E.maxHp[bi] | 0} hp at ${E.x[bi] | 0},${E.y[bi] | 0} over tile ${map.tileAt(E.x[bi], E.y[bi])}` : w.bossSpawned ? "the boss gone" : "no boss yet";
-          return { done: true, won: false, floor: w.floor, log: [...B.log, `${at} not got through in ${limit} s: ${w.braziers.filter((q) => q.lit).length}/3 fires, the hero at ${h.x | 0},${h.y | 0} (level ${h.level}), the goal ${o ? o.map((v) => v | 0) : "none"}, ${boss}, ${E.n} enemies, portal ${w.portal ? "open" : "none"}, state ${G.state}`] };
+          // (what is about the hero, and the last of his steps: to tell what held him)
+          const near = [];
+          for (let i = 0; i < E.n; i++) if (Math.hypot(E.x[i] - h.x, E.y[i] - h.y) < 90) near.push(`${E.type[i]}@${E.x[i] | 0},${E.y[i] | 0}`);
+          const steps = (B.trail ?? []).slice(-8).join(" ");
+          return { done: true, won: false, floor: w.floor, log: [...B.log, `${at} not got through in ${limit} s: ${w.braziers.filter((q) => q.lit).length}/${w.braziers.length} fires, guide ${w.guide.map((v) => v.toFixed(2))}, foes near [${near.join(" ")}], steps ${steps}, the hero at ${h.x | 0},${h.y | 0} (level ${h.level}), the goal ${o ? o.map((v) => v | 0) : "none"}, ${boss}, ${E.n} enemies, portal ${w.portal ? "open" : "none"}, state ${G.state}`] };
         }
         if (w.floor > floors) return { done: true, won: true, floor: w.floor - 1, trail: w.trail, log: B.log };
       }
