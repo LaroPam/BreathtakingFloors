@@ -17,6 +17,9 @@ export interface HeroImage {
   hands: [number, number, number, number];
   /** Where the eyes are, from the feet. */
   eye: [number, number];
+  /** The weapon's spine (eight points, x y pairs, from the feet) and half-width; the off-hand weapon's; null if none. */
+  blade: { pts: number[]; w: number } | null;
+  blade2: { pts: number[]; w: number } | null;
   edge: boolean;
 }
 export function heroImage(look: Look, pose: Pose): HeroImage;

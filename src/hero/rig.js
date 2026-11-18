@@ -1049,6 +1049,19 @@ function evolvedForm(T0, wid, form, q) {
     }
   });
 }
+/** A weapon's spine as eight points in screen terms (y down, from the feet) and its mean half-width; null if it has none. */
+function spinePath(T, wid) {
+  const pts = SPINE[wid];
+  if (!pts) return null;
+  const out = [], n = pts.length;
+  let w = 0;
+  for (let j = 0; j < 8; j++) {
+    const p = pts[Math.round((j * (n - 1)) / 7)], a = T.at(p[0], p[1]);
+    out.push(Math.round(a[0] * 10) / 10, Math.round(-a[1] * 10) / 10);
+    w += p[2] / 8;
+  }
+  return { pts: out, w };
+}
 /** Where the eyes are in the head's own frame: on the face, forward of the head's middle. */
 const EYE_AT = [3, 0.1, 0];
 const turnAll = (S, a) => {
@@ -1096,15 +1109,21 @@ function render(L, pose) {
   clipBody = false;
   if (S.W) S.W.draw(infused(along(S.armN.end, S.axis, S.side, PART.weapon), q.infuse, q.infuseStrong), q, S.armF.end);
   if (S.W && q.evoForm != null) evolvedForm(along(S.armN.end, S.axis, S.side, PART.weapon), q.weapon, q.evoForm, q);
+  // (and the weapon's spine in screen terms, for the game to set an evolution's live light along it)
+  const blade = S.W ? spinePath(along(S.armN.end, S.axis, S.side, PART.weapon), q.weapon) : null;
+  let blade2 = null;
   if (S.OW) {
     const sb = q.sb ?? Math.PI;
     let ax = [Math.cos(sb), -Math.sin(sb), 0], sd = [-Math.sin(sb), -Math.cos(sb), 0];
     if (whole) { const R = rotY(-whole); ax = mv(R, ax); sd = mv(R, sd); }
     S.OW.draw(along(S.armF.end, ax, sd, PART.offWeapon), q, S.armF.end);
     if (q.evoForm != null) evolvedForm(along(S.armF.end, ax, sd, PART.offWeapon), q.offWeapon, q.evoForm, q);
+    blade2 = spinePath(along(S.armF.end, ax, sd, PART.offWeapon), q.offWeapon);
   }
   clipWeapon = false;
   const out = finish(S);
+  out.blade = blade;
+  out.blade2 = blade2;
   // where the hands are, in screen terms (y down), for the game to hang a lantern and sparks on; and the eyes, for it to
   // light them
   out.hands = [Math.round(S.armN.end[0]), Math.round(-S.armN.end[1]), Math.round(S.armF.end[0]), Math.round(-S.armF.end[1])];
@@ -1137,9 +1156,10 @@ export function heroImage(L, pose) {
     if (r.light[i]) (light ??= new Uint32Array(w * h))[p] = r.light[i];
   }
   const hands = [r.hands[0] + dx, r.hands[1] + dy, r.hands[2] + dx, r.hands[3] + dy], eye = [r.eye[0] + dx, r.eye[1] + dy];
+  const shift = (b) => (b ? { pts: b.pts.map((v, i) => v + (i % 2 ? dy : dx)), w: b.w } : null), blade = shift(r.blade), blade2 = shift(r.blade2);
   // a pixel on the scratch grid's border may have been cut off (tools/check/clip.mjs looks for these)
   const edge = r.x0 <= -OX + 1 || r.y0 <= -OY + 1 || r.x1 >= BW - OX - 2 || r.y1 >= BH - OY - 2;
-  return { w, h, ox: r.x0 + dx, oy: r.y0 + dy, color, light, hands, eye, edge };
+  return { w, h, ox: r.x0 + dx, oy: r.y0 + dy, color, light, hands, eye, blade, blade2, edge };
 }
 
 /**

@@ -255,6 +255,140 @@ function clipUp(b: Batch, r: Rect, x: number, y: number, h: number): void {
 }
 const DECOR_LIGHT: Record<string, [number, string, number]> = { candle: [40, "#ffb060", 0.55], mushrooms: [34, "#3ad0c8", 0.4], crystal: [44, "#62c8f4", 0.45] };
 
+/** The live layer of an evolved weapon: per evolution, what moves along the blade from frame to frame. */
+let evoLastT = 0;
+const FLAME_C = ["#fffbe0", "#fff0a0", "#ffd060", "#ff9a2a", "#ff5a1a", "#c8281a"].map((c) => rgba(c));
+const RAINBOW_C = ["#ff4a4a", "#ff9a2a", "#ffe03c", "#6ad83a", "#4ab8ff", "#6a5aff", "#c070ff"].map((c) => rgba(c));
+const STAR_C = rgba("#fff6c0"), ICE_C = [rgba("#e8f8ff"), rgba("#a8e0ff"), rgba("#78ccf4")], PETAL_C = [rgba("#ff8ac0"), rgba("#ffd0e8"), rgba("#ffb0d8")], VOID_C = [rgba("#b070ff"), rgba("#e0b0ff"), rgba("#8a50d0")];
+function evoAlive(s: Scene, w: World, kind: number, b: { pts: number[]; w: number }, hx: number, hy: number, face: number, time: number): void {
+  const dt = Math.min(0.05, Math.max(0, time - evoLastT));
+  evoLastT = time;
+  const n = b.pts.length / 2, P = (j: number): [number, number] => [hx + b.pts[j * 2] * face, hy + b.pts[j * 2 + 1]];
+  // a point a fraction u of the way along the spine, and the way across it there
+  const at = (u: number): [number, number, number, number] => {
+    const f = Math.max(0, Math.min(0.999, u)) * (n - 1), j = Math.floor(f), t = f - j, [x0, y0] = P(j), [x1, y1] = P(j + 1), L = Math.hypot(x1 - x0, y1 - y0) || 1;
+    return [x0 + (x1 - x0) * t, y0 + (y1 - y0) * t, -(y1 - y0) / L, (x1 - x0) / L];
+  };
+  const R = w.rng, chance = (rate: number) => R.chance(Math.min(1, rate * dt)), W = b.w;
+  switch (kind) {
+    case 8: {
+      // the Crown of Flame: tongues licking up off the blade, leaping and falling back, sparks torn off
+      for (let q = 0; q < 12; q++) {
+        const u = q / 11, [x, y] = at(u), hgt = 2 + 3.5 * (0.5 + 0.5 * Math.sin(time * 13 + q * 1.7)) + (u > 0.85 ? 3 : 0);
+        for (let d = 0; d < hgt; d++) s.glow.rect(Math.round(x + Math.sin(time * 9 + q + d) * 0.6), Math.round(y - W * 0.5 - d), 1, 1, FLAME_C[Math.min(5, Math.floor((d / hgt) * 6))]);
+      }
+      if (chance(40)) {
+        const [x, y] = at(R.next());
+        w.parts.add(x, y - 2, R.range(-12, 12), R.range(-55, -25), R.range(0.25, 0.5), R.pick(FLAME_C.slice(1, 5)), 1, -40, 1);
+      }
+      const [tx, ty] = at(0.9);
+      s.illum.light(tx, ty, 34, 28, rgbaf(1, 0.55, 0.2, 0.45 + 0.1 * Math.sin(time * 17)));
+      break;
+    }
+    case 16: {
+      // the Rainbow: the bands flow along the blade, a white glint running down it
+      for (let q = 0; q < 14; q++) {
+        const u = q / 13, [x, y, nx, ny] = at(u), c = RAINBOW_C[(q + Math.floor(time * 12)) % 7];
+        s.glow.rect(Math.round(x + nx * W * 0.6), Math.round(y + ny * W * 0.6), 1, 1, c);
+        s.glow.rect(Math.round(x - nx * W * 0.6), Math.round(y - ny * W * 0.6), 1, 1, c);
+      }
+      const [gx, gy] = at((time * 1.4) % 1);
+      s.glow.light(gx, gy, 4, 4, rgbaf(1, 1, 1, 0.9));
+      if (chance(20)) {
+        const [x, y] = at(R.next());
+        w.parts.add(x, y, R.range(-15, 15), R.range(-20, 5), 0.45, R.pick(RAINBOW_C), 1, 0, 1);
+      }
+      break;
+    }
+    case 17: {
+      // the Constellation: stars wheel slowly round the blade, twinkling, a faint line strung between them
+      const pts: [number, number][] = [];
+      for (let q = 0; q < 5; q++) {
+        const u = (q / 5 + time * 0.08) % 1, [x, y, nx, ny] = at(u), off = (W + 4) * Math.sin(time * 1.6 + q * 2.1);
+        pts.push([x + nx * off, y + ny * off]);
+      }
+      for (let q = 1; q < pts.length; q++) s.glow.line(pts[q - 1][0], pts[q - 1][1], pts[q][0], pts[q][1], 1, rgbaf(1, 0.95, 0.7, 0.25));
+      pts.forEach(([x, y], q) => {
+        const tw = 0.5 + 0.5 * Math.sin(time * 7 + q * 2.3), arm = tw > 0.7 ? 2 : 1, X = Math.round(x), Y = Math.round(y);
+        s.glow.rect(X, Y, 1, 1, rgbaf(1, 1, 0.9, 1));
+        s.glow.rect(X - arm, Y, arm * 2 + 1, 1, withAlpha(STAR_C, 0.7 * tw)), s.glow.rect(X, Y - arm, 1, arm * 2 + 1, withAlpha(STAR_C, 0.7 * tw));
+      });
+      break;
+    }
+    case 9: {
+      // the Endless Ricochet: glints running up and down the silver threads, a thread now and then snapping out
+      for (let q = 0; q < 3; q++) {
+        const u = (time * (0.9 + q * 0.35) + q / 3) % 1, [x, y, nx, ny] = at(u), side = q % 2 ? 1 : -1, z = Math.abs(((u * 6) % 2) - 1) * 3;
+        s.glow.light(x + nx * side * (W + 1 + z), y + ny * side * (W + 1 + z), 3, 3, rgbaf(0.95, 0.97, 1, 0.9));
+      }
+      if (chance(3)) {
+        const [x, y] = at(0.95), a = R.range(0, Math.PI * 2), d = R.range(14, 26);
+        w.arcs.push({ pts: [x, y, x + Math.cos(a) * d, y + Math.sin(a) * d * 0.7], life: 0.18, color: rgba("#e8eeff") });
+      }
+      break;
+    }
+    case 2: {
+      // the Sky Tempest: lightning crackling along both edges, redrawn many times a second, an arc off the tip
+      const seed = Math.floor(time * 18);
+      for (const side of [-1, 1]) {
+        let px = 0, py = 0;
+        for (let q = 0; q <= 8; q++) {
+          const [x, y, nx, ny] = at(q / 8), j = Math.sin(seed * 12.9 + q * 78.2 + side) * 43758.5, jit = (j - Math.floor(j)) * 3;
+          const X = x + nx * side * (W + 0.5 + jit), Y = y + ny * side * (W + 0.5 + jit);
+          if (q) s.glow.line(px, py, X, Y, 1, rgbaf(1, 0.97, 0.6, 0.9));
+          (px = X), (py = Y);
+        }
+      }
+      if (seed % 7 === 0) {
+        const [x, y] = at(1), a = Math.sin(seed) * Math.PI;
+        s.glow.line(x, y, x + Math.cos(a) * 12, y + Math.sin(a) * 9, 1, rgbaf(1, 1, 1, 0.9));
+      }
+      const [tx, ty] = at(0.7);
+      s.illum.light(tx, ty, 30, 26, rgbaf(1, 0.95, 0.5, 0.25 + 0.25 * ((seed % 3) / 2)));
+      break;
+    }
+    case 1: {
+      // the Permafrost: cold mist pouring off the ice and sinking, a glint of frost along the edge
+      if (chance(35)) {
+        const [x, y, nx, ny] = at(R.next()), side = R.chance(0.5) ? 1 : -1;
+        w.parts.add(x + nx * side * W, y + ny * side * W, R.range(-6, 6), R.range(4, 16), R.range(0.5, 0.9), R.pick(ICE_C), R.chance(0.3) ? 2 : 1, 12, 1);
+      }
+      const [gx, gy] = at((time * 0.9) % 1);
+      s.glow.light(gx, gy, 3, 3, rgbaf(0.85, 0.95, 1, 0.9));
+      const [tx, ty] = at(0.8);
+      s.illum.light(tx, ty, 26, 22, rgbaf(0.5, 0.8, 1, 0.3));
+      break;
+    }
+    case 20: {
+      // the Garden of Blades: petals let go of the vine and drift down, the flowers breathing
+      if (chance(14)) {
+        const [x, y] = at(R.next());
+        w.parts.add(x, y, R.range(-14, 14), R.range(-10, 4), R.range(0.8, 1.3), R.pick(PETAL_C), 1, 30, 1);
+      }
+      for (let q = 0; q < 3; q++) {
+        const [x, y] = at(0.2 + q * 0.3);
+        s.glow.light(x, y, 4, 4, rgbaf(1, 0.55, 0.78, 0.35 + 0.25 * Math.sin(time * 3 + q * 2)));
+      }
+      break;
+    }
+    case 5: {
+      // the Black Hole: matter drawn spiralling into the tip, a ring of violet turning round it
+      const [tx, ty] = at(1);
+      if (chance(45)) {
+        const a = R.range(0, Math.PI * 2), d = R.range(10, 18), x = tx + Math.cos(a) * d, y = ty + Math.sin(a) * d * 0.8;
+        w.parts.add(x, y, (tx - x) * 3 - Math.sin(a) * 20, (ty - y) * 3 + Math.cos(a) * 16, 0.3, R.pick(VOID_C), 1, 0, 1);
+      }
+      for (let q = 0; q < 10; q++) {
+        const a = (q / 10) * Math.PI * 2 + time * 4, r = 3.5 + Math.sin(time * 6) * 0.5;
+        s.glow.rect(Math.round(tx + Math.cos(a) * r), Math.round(ty + Math.sin(a) * r * 0.8), 1, 1, withAlpha(VOID_C[q % 2], 0.85));
+      }
+      s.color.disc(tx, ty, 2, 2, rgba("#05030a"), hy + 2);
+      s.illum.light(tx, ty, 26, 22, rgbaf(0.6, 0.25, 1, 0.45));
+      break;
+    }
+  }
+}
+
 /** Where the burning eyes have been lately (world positions, the time each was there). */
 const eyeTrail: { x: number; y: number; t: number }[] = [];
 /**
@@ -870,6 +1004,10 @@ export function drawWorld(s: Scene, w: World, camX: number, camY: number, viewW:
     const eye = a.eyes?.[fi];
     if (eye && show && !h.dead) eyesAflame(s, w.heat, h.x + eye[0] * h.face * Math.abs(sx), h.y + eye[1] * sy, h.face, time);
     else eyeTrail.length = 0;
+    // an evolved weapon is alive: its evolution's light moves along the blade every frame (fire, lightning, stars...)
+    const top = w.topRelic();
+    if (top?.evo && show && !h.dead && h.exitT < 0)
+      for (const b of [a.blades?.[fi], a.blades2?.[fi]]) if (b) evoAlive(s, w, top.kind, b, h.x, h.y, h.face, time);
     // the light: a lantern in the free hand or at the belt, swinging; or a wisp floating at the shoulder
     const hand = a.hands?.[fi] ?? [8, -20, 5, -15];
     // the weapon hand, for the world to throw an element's sparks from; the element glows there

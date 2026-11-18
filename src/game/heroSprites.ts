@@ -116,6 +116,9 @@ export interface HeroAnim extends Anim {
   hands: [number, number, number, number][];
   /** Where the eyes are in each frame drawn (from the feet). */
   eyes: [number, number][];
+  /** The weapon's spine in each frame drawn, and the off-hand weapon's (rig.js spinePath). */
+  blades: ({ pts: number[]; w: number } | null)[];
+  blades2: ({ pts: number[]; w: number } | null)[];
 }
 const EMPTY: Frame = [null, null];
 const PAD = 1;
@@ -145,7 +148,7 @@ export class HeroSprites {
       const raw = smooth ? (nm.endsWith("_run") ? smoothRun(wid, nm.slice(0, -4)) : smoothPoses(posesOf(wid, nm))) : posesOf(wid, nm);
       const base = raw, poses = inf ? base.map((p) => ({ ...p, infuse: inf, infuseStrong: strong === "1", ...(evo ? { evoForm: +evo } : {}) })) : base;
       const fps = fpsOf(nm) * (smooth ? SMOOTH : 1), n = poses.length;
-      a = { key, name: key, look: LOOKS[look] ?? LOOKS.knight, poses, fps, loop: loops(name), cut: false, frames: new Array(n).fill(EMPTY), drawn: new Array(n).fill(false), hands: [], eyes: [], dur: n / fps };
+      a = { key, name: key, look: LOOKS[look] ?? LOOKS.knight, poses, fps, loop: loops(name), cut: false, frames: new Array(n).fill(EMPTY), drawn: new Array(n).fill(false), hands: [], eyes: [], blades: [], blades2: [], dur: n / fps };
       this.anims.set(key, a);
     }
     return a;
@@ -192,6 +195,8 @@ export class HeroSprites {
     a.frames[f] = [color, light];
     a.hands[f] = img.hands;
     a.eyes[f] = img.eye;
+    a.blades[f] = img.blade;
+    a.blades2[f] = img.blade2;
     a.drawn[f] = true;
     this.stats.drawn++;
     this.stats.ms += performance.now() - t0;
