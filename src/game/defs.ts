@@ -1544,10 +1544,13 @@ export interface HeroDef {
   crit: number;
   /** Their own ability, let loose when the Overdrive meter is full (world.ts: overdrive). */
   ability: { name: Text; desc: Text };
+  /** Why they go down into the dark: one line of their own (the hero select shows it). */
+  why: Text;
 }
 export const HEROES: HeroDef[] = [
   {
     id: "knight", cost: 0, name: { ru: "РЫЦАРЬ ФОНАРЯ", en: "LANTERN KNIGHT" }, title: { ru: "СТАЛЬ И ТЁПЛЫЙ СВЕТ", en: "STEEL AND WARM LIGHT" },
+    why: { ru: "МОЙ ОТЕЦ УНЁС ЭТОТ ФОНАРЬ ВНИЗ. Я ВЕРНУ ЕГО СВЕТ.", en: "MY FATHER CARRIED THIS LANTERN DOWN. I WILL BRING ITS LIGHT BACK." },
     perk: { ru: "+1 СЕРДЦЕ, ФОНАРЬ СВЕТИТ НА 20% ШИРЕ", en: "+1 HEART, A LANTERN 20% WIDER" },
     weapon: "sword", hearts: 6, speed: 1, dashCd: 3.5, dashes: 1, lantern: 1.2, light: "lantern", lightColor: [1, 0.82, 0.58],
     might: 1.16, haste: 1, crit: 0.05,
@@ -1556,6 +1559,7 @@ export const HEROES: HeroDef[] = [
   },
   {
     id: "ranger", cost: 300, name: { ru: "СЛЕДОПЫТ", en: "RANGER" }, title: { ru: "ЛУК, КОЖА И ЛЁГКИЙ ШАГ", en: "BOW, LEATHER, A LIGHT STEP" },
+    why: { ru: "ЛЮБОЙ СЛЕД КУДА-ТО ВЕДЁТ. ЭТОТ ВЕДЁТ К СЕРДЦУ.", en: "EVERY TRAIL LEADS SOMEWHERE. THIS ONE LEADS TO THE HEART." },
     perk: { ru: "ДВА РЫВКА ПОДРЯД, БЕГАЕТ БЫСТРЕЕ, СТРЕЛЫ ПРОБИВАЮТ +1, КАЖДЫЙ ВТОРОЙ ВЫСТРЕЛ В БОССА", en: "TWO DASHES, FASTER FEET, ARROWS PIERCE +1, EVERY OTHER SHOT AT THE BOSS" },
     weapon: "bow", hearts: 4, speed: 1.12, dashCd: 3.2, dashes: 2, lantern: 1, light: "lantern", lightColor: [1, 0.85, 0.6],
     might: 0.9, haste: 1.15, crit: 0.1,
@@ -1564,6 +1568,7 @@ export const HEROES: HeroDef[] = [
   },
   {
     id: "mage", cost: 500, name: { ru: "ЧАРОДЕЙКА", en: "SORCERESS" }, title: { ru: "ВЛАДЫЧИЦА СТУЖИ", en: "MISTRESS OF FROST" },
+    why: { ru: "СТУЖА СЛУШАЕТСЯ МЕНЯ. ПОСМОТРИМ, ПОСЛУШАЕТСЯ ЛИ ТЬМА.", en: "THE FROST OBEYS ME. LET US SEE IF THE DARK WILL." },
     perk: { ru: "ПО ЗАМОРОЖЕННЫМ ВРАГАМ ОНА БЬЁТ НА 25% СИЛЬНЕЕ", en: "SHE HITS FROZEN FOES 25% HARDER" },
     weapon: "spell", hearts: 4, speed: 0.98, dashCd: 3.5, dashes: 1, lantern: 1, light: "wisp", lightColor: [0.55, 0.85, 1],
     might: 1, haste: 0.95, crit: 0.05,
@@ -1572,6 +1577,7 @@ export const HEROES: HeroDef[] = [
   },
   {
     id: "reaper", cost: 800, name: { ru: "ЖНЕЦ", en: "REAPER" }, title: { ru: "КОСА И ЗЕЛЁНЫЙ ОГОНЬ ДУШ", en: "A SCYTHE AND GREEN SOUL-FIRE" },
+    why: { ru: "ДУШИ ВНИЗУ НЕ МОГУТ УЙТИ. Я ПРОВОЖУ ИХ.", en: "THE SOULS BELOW CANNOT LEAVE. I WILL SEE THEM ON THEIR WAY." },
     perk: { ru: "ЖАТВА: КАЖДЫЕ 25 УБИЙСТВ ВОЗВРАЩАЮТ СЕРДЦЕ", en: "HARVEST: EVERY 25 KILLS GIVE A HEART BACK" },
     weapon: "scythe", hearts: 5, speed: 0.95, dashCd: 3.8, dashes: 1, lantern: 1, light: "wisp", lightColor: [0.55, 1, 0.6],
     might: 1.1, haste: 0.9, crit: 0.08,
@@ -1580,6 +1586,7 @@ export const HEROES: HeroDef[] = [
   },
   {
     id: "berserker", cost: 1100, name: { ru: "БЕРСЕРК", en: "BERSERKER" }, title: { ru: "БРОНЗА, МЕХ И ЯРОСТЬ", en: "BRONZE, FUR AND FURY" },
+    why: { ru: "ТЬМА ОТНЯЛА МОЙ ДОМ. Я ЗАБЕРУ У НЕЁ ВСЁ.", en: "THE DARK TOOK MY HOME. I WILL TAKE EVERYTHING FROM IT." },
     perk: { ru: "ЯРОСТЬ: ЧЕМ МЕНЬШЕ СЕРДЕЦ, ТЕМ СИЛЬНЕЕ УДАРЫ (ДО +70%)", en: "FURY: THE FEWER HEARTS, THE HARDER THE BLOWS (UP TO +70%)" },
     weapon: "greatsword", hearts: 7, speed: 0.95, dashCd: 4, dashes: 1, lantern: 0.95, light: "lantern", lightColor: [1, 0.7, 0.45],
     might: 1.25, haste: 0.85, crit: 0.05,
@@ -1588,6 +1595,7 @@ export const HEROES: HeroDef[] = [
   },
   {
     id: "shadow", cost: 1500, name: { ru: "ТЕНЬ", en: "SHADE" }, title: { ru: "КОГТИ ИЗ СУМРАКА", en: "CLAWS OUT OF THE DUSK" },
+    why: { ru: "ТЕНЬ ЖИВЁТ ЛИШЬ ТАМ, ГДЕ ЕСТЬ СВЕТ. ВЕРНУ ЕГО РАДИ СЕБЯ.", en: "A SHADOW LIVES ONLY WHERE THERE IS LIGHT. I WILL BRING IT BACK FOR MY OWN SAKE." },
     perk: { ru: "+20% КРИТА, РЫВОК РЕЖЕТ ВСЕХ НА ПУТИ", en: "+20% CRIT, THE DASH CUTS ALL IN ITS WAY" },
     weapon: "claws", hearts: 4, speed: 1.15, dashCd: 2.8, dashes: 2, lantern: 0.9, light: "wisp", lightColor: [0.8, 0.5, 1],
     might: 0.85, haste: 1.3, crit: 0.25,

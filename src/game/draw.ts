@@ -1219,6 +1219,17 @@ export function drawWorld(s: Scene, w: World, camX: number, camY: number, viewW:
     }
   }
 
+  // ---- the first run's opening: the ghost of the lightbearer who gives the hero its fire, then rises away
+  const it = w.intro;
+  if (it) {
+    const gone = it.given < 0 ? 0 : Math.min(1, (it.t - it.given) / 1.8), fade = 1 - gone, rise = gone * gone * 40, flip = h.x < it.sx ? -1 : 1;
+    if (fade > 0.01) {
+      const pulse = 0.85 + 0.15 * Math.sin(time * 4);
+      drawAnim(s, anim("spirit"), time, it.sx, it.sy - rise, { sx: flip, key: it.sy, alpha: fade, glow: 0.9 * fade });
+      s.illum.light(it.sx + 10 * flip, it.sy - 20 - rise, 70, 60, rgbaf(0.55, 0.82, 1, 0.7 * pulse * fade));
+    }
+  }
+
   // ---- the dying crumble: their last frame falls apart texel by texel from the top down, in its own colours, each
   // bit charring the moment before it goes (the sprite shader's crumbling), sinking a little as it does
   for (const c of w.corpses) {

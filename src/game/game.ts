@@ -19,7 +19,7 @@ import { bar, button, slider, C, divider, glow as glowUi, drawHud, drawPointers,
 import { CINE_DUR, LUNGE_DASH, SRC_ABILITY, SRC_DASH, SRC_ELS, SRC_N, SRC_PARRY, SRC_REACT, SRC_RELIC, SRC_STATUS, SRC_WAVE, SRC_WEAPON, World } from "./world";
 
 type StatRow = { ic: Rect; name: string; col: number; sum: number; segs: [number, number][] };
-type State = "title" | "heroes" | "forge" | "shop" | "daily" | "records" | "tasks" | "settings" | "card" | "play" | "spin" | "pick" | "pause" | "book" | "stairs" | "dead" | "won" | "stats" | "gift" | "arsenal" | "credits" | "gifts" | "atlas" | "start";
+type State = "story" | "title" | "heroes" | "forge" | "shop" | "daily" | "records" | "tasks" | "settings" | "card" | "play" | "spin" | "pick" | "pause" | "book" | "stairs" | "dead" | "won" | "stats" | "gift" | "arsenal" | "credits" | "gifts" | "atlas" | "start";
 /** A thing the merchant on the stairs sells: a weapon artifact (new, or a level of one held) or a weapon. */
 type Good = { price: number; sold: boolean } & ({ relic: RelicKind; level: number } | { weapon: WeaponId; el: El; rarity: number });
 type Choice = { type: "relic"; kind: RelicKind; level: number } | { type: "stat"; id: StatId } | { type: "evo"; kind: RelicKind } | { type: "legend"; weapon: WeaponId } | { type: "rest" };
@@ -228,6 +228,8 @@ export class Game {
   /** The plates at the top right waiting their turn: achievements, and things opened for the runs (`open`). */
   private toasts: { id: string; t: number; open?: boolean; porch?: { streak: number; gift: number }; note?: string }[] = [];
   private startSpins = 0;
+  /** The first run's opening is on (World.intro): when it ends it is marked seen (save.stats.intro). */
+  private introOn = false;
   /** The boss whose entrance is on (or -1): when it ends, it is marked seen, and the next time a touch skips it. */
   private cineType = -1;
   /** The forge's rerolls left this run, and its second wind (unused). */
@@ -837,6 +839,8 @@ export class Game {
     this.reached(this.runFrom);
     this.revived = false;
     this.save.runs++;
+    // the very first run opens in the dark: a fallen lightbearer's spirit gives the hero its fire (World.intro)
+    if (this.save.runs === 1 && !this.daily && !this.weekly && !this.save.stats.intro) (w.startIntro(), (this.introOn = true));
     const nth = this.save.funnel.filter((q) => /^run\d$/.test(q)).length + 1;
     if (nth <= 3) this.step(`run${nth}`, { hero: hero.id });
     this.persist();
@@ -1512,6 +1516,11 @@ export class Game {
       this.save.stats[`intro_${this.cineType}`] = 1;
       this.cineType = -1;
     }
+    if (this.introOn && !this.world?.intro) {
+      this.introOn = false;
+      this.save.stats.intro = 1;
+      this.persist();
+    }
     if (this.banner) this.banner.t += dt;
 
     const w = this.world;
@@ -1592,7 +1601,7 @@ export class Game {
         this.tutor(dt);
         this.firstSights();
         w.gentle = this.save.tutorial && !this.daily && !this.weekly;
-        w.holdSpawns = w.gentle && TUTOR[this.save.tutStep] === "move" && w.floor === 1;
+        w.holdSpawns = (w.gentle && TUTOR[this.save.tutStep] === "move" && w.floor === 1) || !!w.intro;
         this.nextSpin();
       }
     }
@@ -1677,6 +1686,11 @@ export class Game {
       tintK: w.flash > 0 && this.save.flashes && !down ? w.flash * 0.25 : dim ? dimK : 0,
     };
     if (this.state === "title") light.tintK = 0.2;
+    // the opening's dark: the room all but black till the spirit's fire, then it clears as the light opens
+    if (w.intro) {
+      const k = w.intro.given < 0 ? 0.55 : 0.55 * Math.max(0, 1 - (w.intro.t - w.intro.given) / 1.5);
+      if (k > light.tintK) (light.tint = [0.01, 0.01, 0.03]), (light.tintK = k);
+    }
     if (w.curse && this.state === "play" && !(w.flash > 0 && this.save.flashes)) {
       light.tint = [0.35, 0.02, 0.05];
       light.tintK = 0.07 + 0.02 * Math.sin(this.now * 2);
@@ -1697,6 +1711,7 @@ export class Game {
       case "records": this.drawRecords(); break;
       case "tasks": this.drawTasks(); break;
       case "settings": this.drawSettings(); break;
+      case "story": this.drawStory(); break;
       case "play":
         if (w.cine) {
           this.drawCine();
@@ -1707,10 +1722,12 @@ export class Game {
         // (on a touch screen the bars and buttons along the bottom keep clear of its edge, where a phone or the page
         // around the game may have its own controls)
         const hudH = this.touch ? H - TOUCH_INSET : H;
-        drawHud(ui, w, W, hudH, this.now, this.banner, this.touch, this.weekly ? "trophy" : this.daily ? "daily" : "", this.save.tutorial && !this.daily);
+        // (in the dark of the opening, before the spirit's fire, nothing but the world and its words)
+        if (!(w.intro && w.intro.given < 0)) drawHud(ui, w, W, hudH, this.now, this.banner, this.touch, this.weekly ? "trophy" : this.daily ? "daily" : "", this.save.tutorial && !this.daily);
         if (this.touch) drawTouch(ui, this.input, w, W, hudH, this.now);
         else this.input.zones = [];
         this.drawLevelRing(ucx, ucy);
+        this.drawIntro();
         this.drawTutorial();
         this.drawHint();
         // the reticle stands in for the pointer while aiming with the mouse
@@ -1745,9 +1762,31 @@ export class Game {
   }
 
   /** The world's word to the player (what to do now), on a plate low in the middle: it fades in, holds, fades out. */
+  /**
+   * The opening's story, a line at a time over the dark (World.intro): the first while the spirit waits, the second as
+   * it gives its fire, then two more on the way to the brazier; and a way to skip it all.
+   */
+  private drawIntro(): void {
+    const it = this.world.intro;
+    if (!it) return;
+    const ui = this.ui, W = this.r.w, H = this.r.h, now = this.now;
+    // which line, and how far into it (each fades in and out)
+    const lines: [string, number, number][] = it.given < 0 ? [[t("introL1"), 0.6, 999]] : [[t("introL2"), it.given, it.given + 3.6], [t("introL3"), it.given + 4.2, it.given + 8], [t("introL4"), it.given + 8.6, it.given + 14]];
+    for (const [str, t0, t1] of lines) {
+      if (it.t < t0 || it.t > t1) continue;
+      const a = Math.min(1, (it.t - t0) / 0.6, (t1 - it.t) / 0.6), rows = wrap(str, Math.min(320, W - 30));
+      rows.forEach((row, k) => text(ui, row, W / 2, Math.round(H * 0.66) + k * 12, { align: "center", color: withAlpha(C.goldLight, a), shadow: withAlpha(C.ink, a), outline: true }));
+    }
+    // (low in the middle: clear of the floor's plate at the top and of the touch controls at the corners)
+    if (button(ui, this.menu, now, Math.round(W / 2 - 45), H - (this.touch ? 30 : 22), 90, 16, t("introSkip"), { icon: icon("hud", "play") })) {
+      this.world.endIntro();
+      this.audio.play("click");
+    }
+  }
+
   private drawHint(): void {
     const hint = this.world.hint;
-    if (!hint || hint.t < 0) return;
+    if (!hint || hint.t < 0 || this.world.intro) return;
     const ui = this.ui, W = this.r.w, H = this.r.h, a = Math.max(0, Math.min(1, hint.t / 0.45, (hint.dur - hint.t) / 0.7));
     if (a <= 0) return;
     // (on a phone held sideways it keeps clear of the dash and ability buttons at the right, as the lessons do; held
@@ -1847,14 +1886,14 @@ export class Game {
   /** The lesson on show now, if any: the ability's waits, unseen, until there is a charge to spend. */
   private tutorShown(): boolean {
     const sv = this.save, step = TUTOR[sv.tutStep];
-    if (!sv.tutorial || !step || this.daily || this.weekly || this.world.hero.dead) return false;
+    if (!sv.tutorial || !step || this.daily || this.weekly || this.world.hero.dead || this.world.intro) return false;
     return this.tutDoneT >= 0 || step !== "ult" || this.world.hero.od >= 100;
   }
 
   /** The first run's lessons, one at a time, each learnt by doing it: walk, fight, dash, gather, unleash. */
   private tutor(dt: number): void {
     const sv = this.save, w = this.world, h = w.hero, step = TUTOR[sv.tutStep];
-    if (!sv.tutorial || this.daily || this.weekly) return;
+    if (!sv.tutorial || this.daily || this.weekly || w.intro) return;
     if (!step) {
       sv.tutorial = false;
       this.persist();
@@ -2070,7 +2109,8 @@ export class Game {
     const pw = wide ? Math.min(300, Math.round(W * 0.5) - 20) : Math.min(340, W - 24);
     const abLines = wrap(tx(hero.ability.desc), pw - 4, "mini").length, perkLines = wrap(tx(hero.perk), pw - 4, "mini").length;
     const wdLines = wrap(tx(weapon.desc), pw - 24, "mini"), wdH = 24 + (wdLines.length - 1) * 8;
-    const heightFor = (sc: number) => FONT_H * sc + 4 + 11 + wdH + 11 + abLines * 8 + 4 + perkLines * 8 + 4 + 14 + 2 * 9 + 2;
+    const whyLines = wrap(tx(hero.why), pw - 4, "mini").length;
+    const heightFor = (sc: number) => FONT_H * sc + 4 + 11 + whyLines * 8 + 3 + wdH + 11 + abLines * 8 + 4 + perkLines * 8 + 4 + 14 + 2 * 9 + 2;
     let ns = fitScale(tx(hero.name), "title", pw, 2);
     if (wide && heightFor(ns) > by - 8 - top) ns = 1;
     const infoH = heightFor(ns), px = wide ? W - 12 - pw : Math.round(W / 2 - pw / 2), paneY = wide ? top + 6 : stripY - 10 - infoH;
@@ -2125,6 +2165,8 @@ export class Game {
     y += FONT_H * ns + 4;
     text(ui, locked ? `${tx(hero.title)}  ·  ${t("locked")}` : tx(hero.title), px, y, { font: "mini", color: locked ? C.goldDim : C.dim });
     y += 11;
+    // why they go down: their own line, in the lantern's colour
+    y += para(ui, tx(hero.why), px + 2, y, pw - 4, rgba("#f4c27a"), "left", 8, "mini") + 3;
     ui.image(icon("icons", `w_${hero.weapon}`), px + 10, y + 10);
     text(ui, tx(weapon.name), px + 24, y + 3, { color: C.text });
     wdLines.forEach((l, k) => text(ui, l, px + 24, y + 13 + k * 8, { font: "mini", color: C.dim }));
@@ -2835,8 +2877,8 @@ export class Game {
   private drawSettings(): void {
     const ui = this.ui, W = this.r.w, H = this.r.h, now = this.now, sv = this.save;
     const th = this.heading(t("settings"), 8, H >= 300 ? 2 : 1);
-    // six rows: one column, or two side by side on a short wide screen (a phone held wide)
-    const two = H < 240 && W >= 320, per = two ? 3 : 6, rh = two ? 22 : H < 240 ? 19 : 22;
+    // seven rows: one column, or two side by side on a short wide screen (a phone held wide)
+    const two = H < 240 && W >= 320, per = two ? 4 : 7, rh = two ? 22 : H < 240 ? 19 : 22;
     const pw = two ? Math.floor((Math.min(480, W - 24) - 14) / 2) : Math.min(300, W - 24);
     const left = Math.round(W / 2 - (two ? pw + 7 : pw / 2)), top = 8 + th + 8;
     frame(ui, left - 10, top - 8, (two ? pw * 2 + 14 : pw) + 20, rh * per + 12);
@@ -2864,9 +2906,37 @@ export class Game {
         this.persist();
       }
     }
+    // the story told again (the first run's opening, and why each hero goes down)
+    [px, y] = at(6);
+    if (button(ui, this.menu, now, px, y, pw, 18, t("story"), { icon: icon("hud", "book") })) (this.storyT = 0), this.setState("story");
     // the way to the game's support (the stores ask for one), as set for this build
     if (SUPPORT) text(ui, `${t("support")}: ${SUPPORT}`, W / 2, H - 38, { font: "mini", align: "center", color: C.dim });
     if (button(ui, this.menu, now, Math.round(W / 2 - 50), H - 26, 100, 18, t("back"), { icon: icon("hud", "back") }) || this.input.pressed("back")) this.setState(this.settingsFrom, this.settingsFrom === "title" ? this.titleSlot("settings") : 6);
+  }
+
+  private storyT = 0;
+  /** The story told again, a line at a time over the dark, and under it each hero's own reason to go down. */
+  private drawStory(): void {
+    const ui = this.ui, W = this.r.w, H = this.r.h, now = this.now;
+    this.storyT += this.dt;
+    this.fillScreen(rgba("#07060c", 0.82));
+    const th = this.heading(t("story"), 8, H >= 300 ? 2 : 1);
+    const cw = Math.min(360, W - 24);
+    let y = 8 + th + 10;
+    ["introL1", "introL2", "introL3", "introL4"].forEach((key, k) => {
+      const a = Math.max(0, Math.min(1, (this.storyT - k * 1.2) / 0.8));
+      for (const row of wrap(t(key as "introL1"), cw)) (text(ui, row, W / 2, y, { align: "center", color: withAlpha(C.goldLight, a), shadow: withAlpha(C.ink, a) }), (y += 11));
+      y += 5;
+    });
+    y += 4;
+    const a = Math.max(0, Math.min(1, (this.storyT - 5) / 0.8));
+    for (const hero of HEROES) {
+      if (y > H - 40) break;
+      const line = `${tx(hero.name)}: ${tx(hero.why)}`;
+      for (const row of wrap(line, cw, "mini")) (text(ui, row, W / 2, y, { font: "mini", align: "center", color: withAlpha(rgba("#f4c27a"), a) }), (y += 8));
+      y += 3;
+    }
+    if (button(ui, this.menu, now, Math.round(W / 2 - 50), H - 24, 100, 18, t("back"), { icon: icon("hud", "back") }) || this.input.pressed("back")) this.setState("settings", 6);
   }
 
   /** Achievements: a card each, earned ones gilded, the rest dim with how far along; paged to fit the screen. */

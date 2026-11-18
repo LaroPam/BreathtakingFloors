@@ -1205,7 +1205,54 @@ export class World {
   }
 
   get lanternR(): number {
-    return 138 * this.stats.lantern * (this.gifts.has("beacon") ? 1.25 : 1) * (1 - this.mod.dark * 0.5) * (this.mutator === "dark" ? 0.67 : 1);
+    return 138 * this.stats.lantern * (this.gifts.has("beacon") ? 1.25 : 1) * (1 - this.mod.dark * 0.5) * (this.mutator === "dark" ? 0.67 : 1) * (this.intro ? this.intro.light : 1);
+  }
+
+  /**
+   * The first run's opening: the hero in the dark, a lantern all but out; the ghost of a lightbearer who fell here
+   * waits a little way off and comes to meet them; at the touch it gives its fire (given: when), the light opens out,
+   * and it rises away. It ends at the first brazier lit (or on its own after a while; game.ts may skip it).
+   * Game.ts tells the story's lines over it and holds the horde back while it lasts.
+   */
+  intro: { t: number; light: number; given: number; sx: number; sy: number } | null = null;
+  startIntro(): void {
+    const h = this.hero;
+    // the spirit a little way ahead, on open floor, toward the brazier if there is room
+    const b = this.braziers[0], dx = b ? b.x - h.x : 1, dy = b ? b.y - h.y : 0, d = Math.hypot(dx, dy) || 1;
+    let sx = h.x + (dx / d) * 80, sy = h.y + (dy / d) * 80;
+    if (!this.map.clear(sx, sy, 8)) (sx = h.x + 60), (sy = h.y);
+    this.intro = { t: 0, light: 0.14, given: -1, sx, sy };
+  }
+  /** The opening is over: full light, the spirit gone. */
+  endIntro(): void {
+    this.intro = null;
+  }
+  private updateIntro(dt: number): void {
+    const it = this.intro!, h = this.hero;
+    it.t += dt;
+    if (it.given < 0) {
+      // it waits, then comes to meet a hero who does not come
+      const dx = h.x - it.sx, dy = h.y - 10 - it.sy, d = Math.hypot(dx, dy) || 1;
+      if (it.t > 3.5 && d > 30) (it.sx += (dx / d) * 26 * dt), (it.sy += (dy / d) * 26 * dt);
+      if (this.rng.chance(dt * 10)) this.parts.add(it.sx + this.rng.range(-8, 8), it.sy - 20 + this.rng.range(-10, 10), 0, -12, 0.8, rgba("#9ad4ff"), 1, 0, 1);
+      if (d < 34) {
+        // the fire passes: a stream of embers from its lantern to the hero's, a ring of light, a sound of kindling
+        it.given = it.t;
+        for (let q = 0; q < 24; q++) {
+          const u = q / 24, x = it.sx + (h.x - it.sx) * u, y = it.sy - 22 + (h.y - 24 - (it.sy - 22)) * u;
+          this.parts.add(x, y, this.rng.range(-10, 10), this.rng.range(-30, -5), 0.6 + u * 0.5, rgba(u < 0.5 ? "#9ad4ff" : "#ffd27a"), 2, 0, 1);
+        }
+        this.addFx("heal_ring", h.x, h.y, { tint: rgba("#ffd27a"), glow: 1, sx: 1.6, sy: 1.6 });
+        this.burst(h.x, h.y - 24, 30, rgba("#ffc95a"), 120, 0.8);
+        this.audio.play("ignite", 0.8);
+        this.audio.play("evolve", 1.2);
+      }
+      return;
+    }
+    // the light opens out over a second and a half
+    const u = Math.min(1, (it.t - it.given) / 1.5);
+    it.light = 0.14 + 0.86 * (1 - (1 - u) ** 3);
+    if (this.braziers.some((b) => b.lit) || it.t > 50) this.endIntro();
   }
   get ambient(): number {
     // dusk, not pitch dark: the floor reads everywhere, the lights still make the mood
@@ -1429,6 +1476,7 @@ export class World {
     this.updateDrops(dt);
     this.updateFloor(dt);
     this.updateQuest(dt);
+    if (this.intro) this.updateIntro(dt);
     this.updateProps(dt);
     this.director(dt);
     this.tickAmbient(dt);
