@@ -8,6 +8,9 @@ export const IDS = [
   "orbit", "lance", "coil", "flask", "halo", "void",
   "e_orbit", "e_lance", "e_coil", "e_flask", "e_halo", "e_void",
   "roots", "mirror", "brazier", "crown", "e_roots", "e_mirror", "e_brazier", "e_crown",
+  // the weapon artifacts that have their own, and their evolutions
+  "blades", "ricochet", "quake", "rune", "splitter", "fang", "wind", "meteor", "prism", "stardust", "aurora", "phoenix",
+  "bloom", "moon", "dragon", "bubbles", "e_prism", "e_stardust", "e_ricochet", "e_bloom",
   // the sword, the body, the light
   "edge", "haste", "reach", "wave", "parry", "speed", "maxhp", "magnet", "dashcd", "overdrive", "crit", "lantern",
   "pact", "compass", "crucible", "echo", "candle", "tread",
@@ -37,6 +40,8 @@ const BADGE = {
   venom: ["#0c200c", "#22501a", "#8ad83a"], holy: ["#241c08", "#5a4818", "#fff09a"], void: ["#120a22", "#33185a", "#c684ff"],
   gold: ["#201408", "#5a3c14", "#f4d27a"], steel: ["#12141c", "#2e3448", "#b8c4dc"], life: ["#240810", "#5a1422", "#ff7a8a"],
   arms: ["#100e16", "#2a2434", "#e8e4f0"],
+  rose: ["#26061a", "#5a1440", "#ff8ad0"], sky: ["#062020", "#145048", "#7af0d0"], night: ["#080c22", "#18245a", "#c8d8ff"],
+  ember: ["#201006", "#5a3010", "#ffb060"],
 };
 const KIND = {
   orbit: "fire", lance: "frost", coil: "storm", flask: "venom", halo: "holy", void: "void",
@@ -46,6 +51,9 @@ const KIND = {
   edge: "gold", haste: "gold", reach: "gold", wave: "gold", parry: "steel", speed: "steel", maxhp: "life",
   magnet: "steel", dashcd: "steel", overdrive: "holy", crit: "gold", lantern: "holy",
   w_sword: "arms", w_hammer: "arms", w_spear: "arms", w_scythe: "arms", w_daggers: "arms", w_bow: "arms", w_spell: "arms",
+  blades: "steel", ricochet: "steel", quake: "ember", rune: "rose", splitter: "frost", fang: "life", wind: "sky", meteor: "fire",
+  prism: "rose", stardust: "night", aurora: "sky", phoenix: "fire", bloom: "rose", moon: "night", dragon: "fire", bubbles: "frost",
+  e_prism: "rose", e_stardust: "night", e_ricochet: "steel", e_bloom: "rose",
   w_greatsword: "arms", w_claws: "arms", w_whip: "arms", w_flail: "arms", w_glaive: "arms", w_crossbow: "arms", w_staff: "arms", w_chakram: "arms", w_bell: "arms",
 };
 
@@ -562,6 +570,212 @@ const EVOLVED = {
     p.px(-6, -1, H("#ffffff")); p.px(5, 1, H("#ffd0ff"));
   },
 };
+
+// ---- the weapon artifacts' own
+const rotp = (x, y, a) => [x * Math.cos(a) - y * Math.sin(a), x * Math.sin(a) + y * Math.cos(a)];
+const starPts = (cx, cy, r1, r2, n = 4, a0 = -Math.PI / 2) =>
+  Array.from({ length: n * 2 }, (_, k) => [cx + Math.cos(a0 + (k * Math.PI) / n) * (k % 2 ? r2 : r1), cy + Math.sin(a0 + (k * Math.PI) / n) * (k % 2 ? r2 : r1)]);
+const RAINBOW = ["#ff4a4a", "#ff9a2a", "#ffe03c", "#6cd02a", "#4aa8ff", "#a970e0"];
+Object.assign(SYMBOLS, {
+  blades(p) {
+    // three ghostly blades chasing each other round a faint ring
+    p.ring(0, 0, 8, 1, () => H("#3c4a7a"));
+    // (no ink round them: they are light, not steel)
+    for (let k = 0; k < 3; k++) {
+      const a = (k / 3) * Math.PI * 2 - Math.PI / 2, c = [Math.cos(a) * 5.5, Math.sin(a) * 5.5], t = [-Math.sin(a), Math.cos(a)], n = [Math.cos(a), Math.sin(a)];
+      const P = (u, v) => [c[0] + t[0] * u + n[0] * v, c[1] + t[1] * u + n[1] * v];
+      p.poly([P(-4, 1.6), P(2, 1.6), P(6, 0), P(2, -1.6), P(-4, -1.6)], H("#5a68a8"));
+      p.poly([P(-3, 0.9), P(2, 0.9), P(5, 0), P(2, -0.9), P(-3, -0.9)], H(k === 0 ? "#ffffff" : "#c8d4ff"));
+    }
+    p.circle(0, 0, 1.6, (d) => H(d < 0.5 ? "#ffffff" : "#8a9aff"));
+  },
+  ricochet(p) {
+    // a shot bouncing off one wall to the next, sparks where it struck
+    outlined(p, (ink) => {
+      p.line(-7, 6, -3, -6, pick(ink, "#8e9cb8"));
+      p.line(-3, -6, 2, 6, pick(ink, "#b8c4dc"));
+      p.line(2, 6, 5, -2, pick(ink, "#e8f0ff"));
+      p.circle(5.5, -3.5, 2.2, (d) => pick(ink, d < 0.5 ? "#ffffff" : "#b8c4dc"));
+    });
+    for (const [x, y] of [[-3, -8], [2, 8]]) (p.px(x, y, H("#fff6c4")), p.px(x - 1, y, H("#ffd27a")), p.px(x + 1, y, H("#ffd27a")));
+  },
+  quake(p) {
+    // the ground split, the shock rising off it in rings, stones flung up
+    outlined(p, (ink) => {
+      p.rect(-8, 4, 16, 4, pick(ink, "#6a4a22"));
+      p.arc(0, 4, 8, 1.5, Math.PI, Math.PI * 2, () => pick(ink, "#ffd27a"));
+      p.arc(0, 4, 4.5, 1.5, Math.PI, Math.PI * 2, () => pick(ink, "#d8a868"));
+      for (const [x, y] of [[-6, -4], [6, -5], [0, -7]]) p.rect(x, y, 2, 2, pick(ink, "#8a7a68"));
+    });
+    p.line(-8, 4, 7, 4, H("#a07a42"));
+    p.line(0, 4, 1, 6, H("#1c1006")); p.line(1, 6, -1, 7, H("#1c1006"));
+  },
+  rune(p) {
+    // a ring of pink fire and a rune burning in it
+    outlined(p, (ink) => {
+      p.ring(0, 0, 7.5, 1.8, () => pick(ink, "#c83a9a"));
+      p.line(0, -5, 0, 5, pick(ink, "#ff9ae0"));
+      p.line(-3, -2, 3, 2, pick(ink, "#ff9ae0"));
+      p.line(3, -2, 0, -5, pick(ink, "#ff9ae0"));
+      p.line(-3, 2, 0, 5, pick(ink, "#ff9ae0"));
+    });
+    p.px(0, 0, H("#ffffff")); p.px(-5, -5, H("#ffd0ea"));
+  },
+  splitter(p) {
+    // one shot coming in, three going out
+    outlined(p, (ink) => {
+      p.line(-8, 1, -2, 0, pick(ink, "#2f7fcc"));
+      for (const [x, y] of [[6, -6], [7, 0], [6, 6]]) {
+        p.line(-2, 0, x, y, pick(ink, "#7af0ff"));
+        const L = Math.hypot(x + 2, y), dx = (x + 2) / L, dy = y / L;
+        p.poly([[x + dx * 2, y + dy * 2], [x - dy * 1.8, y + dx * 1.8], [x + dy * 1.8, y - dx * 1.8]], pick(ink, "#ffffff"));
+      }
+    });
+    p.px(-2, 0, H("#ffffff")); p.px(-2, -1, H("#c4f6ff")); p.px(-2, 1, H("#c4f6ff"));
+  },
+  fang(p) {
+    // a long fang, a drop of blood running off its tip
+    outlined(p, (ink) => {
+      p.rect(-6, -8, 12, 3, pick(ink, "#9a1830"));
+      p.poly([[-4, -6], [4, -6], [3, -1], [0, 7], [-2, 0]], pick(ink, "#e8e0c8"));
+      p.circle(3, 6, 1.7, () => pick(ink, "#e0303a"));
+    });
+    p.line(-3, -5, -1, 3, H("#ffffff")); p.px(2, 5, H("#ff8a96")); p.line(-5, -8, 4, -8, H("#d83048"));
+  },
+  wind(p) {
+    // a feather riding a gust
+    p.arc(1, 3, 6, 1, -Math.PI * 0.2, Math.PI * 0.9, () => H("#3aa888"));
+    p.line(-8, -4, -3, -4, H("#7af0d0")); p.line(-7, -6, -4, -6, H("#3aa888"));
+    outlined(p, (ink) => {
+      p.poly([[-6, 7], [-4, 1], [1, -5], [6, -8], [4, -3], [-1, 3]], pick(ink, "#dcfff0"));
+      p.line(-7, 8, 5, -7, pick(ink, "#6ab89c"));
+    });
+    p.px(2, -6, H("#ffffff")); p.px(-2, 0, H("#ffffff"));
+  },
+  meteor(p) {
+    // a stone falling in a tail of fire
+    p.poly([[-8, -8], [5, 0], [0, 5]], (x, y) => H((x + y) > 0 ? "#ffe868" : (x + y) > -7 ? "#ff8424" : "#9a2008"));
+    outlined(p, (ink) => p.circle(3, 3, 4, (d, a) => pick(ink, d < 0.45 && Math.sin(a) < 0.3 ? "#80523a" : "#44281e")));
+    p.px(2, 3, H("#ffc840")); p.px(4, 2, H("#ff8424")); p.px(1, 1, H("#a46a4a"));
+  },
+  prism(p) {
+    // white light into a prism, a fan of colours out
+    p.line(-8, 3, -2, 1, H("#ffffff"));
+    RAINBOW.forEach((c, i) => p.line(2, 0, 8, -5 + i * 2, H(c)));
+    outlined(p, (ink) => p.poly([[0, -7], [5, 5], [-5, 5]], (x) => pick(ink, x < 0 ? "#eaf6ff" : "#a2c0d6")));
+    p.line(-1, -4, -3, 3, H("#ffffff"));
+  },
+  stardust(p) {
+    // a big star, a little one, dust about them
+    outlined(p, (ink) => {
+      p.poly(starPts(-1, -1, 6.5, 1.7), pick(ink, "#fff6a0"));
+      p.poly(starPts(5, 5, 3.2, 1), pick(ink, "#ffd84a"));
+    });
+    p.px(-1, -1, H("#ffffff")); p.px(-1, -2, H("#ffffff"));
+    for (const [x, y, c] of [[-7, 5, "#fff09a"], [6, -6, "#ffffff"], [-6, -7, "#eccb4c"], [1, 7, "#eccb4c"], [7, 1, "#fff09a"]]) p.px(x, y, H(c));
+  },
+  aurora(p) {
+    // curtains of light over dark hills
+    for (let x = -8; x <= 8; x++) {
+      const y = Math.round(-3 + Math.sin(x * 0.55) * 2);
+      p.rect(x, y - 3, 1, 2, H(x % 3 ? "#7affb0" : "#c8ffe0"));
+      p.rect(x, y - 1, 1, 2, H("#2ac8a0"));
+      p.px(x, y + 1, H("#c87aff"));
+    }
+    outlined(p, (ink) => p.poly([[-8, 8], [-8, 5], [-4, 2], [-1, 5], [3, 1], [8, 6], [8, 8]], pick(ink, "#1e2434")));
+    p.px(-6, -7, H("#ffffff")); p.px(5, -8, H("#ffffff"));
+  },
+  phoenix(p) {
+    // a bird of fire, wings swept up
+    outlined(p, (ink) => {
+      for (const s of [-1, 1]) p.poly([[0, 0], [s * 8, -7], [s * 6, -2], [s * 8, 1], [s * 3, 3]], pick(ink, "#ff8424"));
+      p.poly([[-1.5, -4], [1.5, -4], [2, 2], [0, 8], [-2, 2]], pick(ink, "#ffc840"));
+      p.circle(0, -5, 2, () => pick(ink, "#fff8c8"));
+    });
+    for (const s of [-1, 1]) (p.line(s * 2, -1, s * 6, -5, H("#ffc840")), p.px(s * 6, -5, H("#fff8c8")));
+    p.px(1, -5, H("#4a0c06")); p.px(2, -4, H("#ffae35"));
+  },
+  bloom(p) {
+    // a pink flower on a thorny stem
+    outlined(p, (ink) => {
+      p.line(0, 8, 0, 0, pick(ink, "#3f8a1e"));
+      p.poly([[0, 5], [4, 2], [2, 6]], pick(ink, "#6cd02a"));
+      for (let k = 0; k < 5; k++) {
+        const a = (k / 5) * Math.PI * 2 - Math.PI / 2;
+        p.circle(Math.cos(a) * 3.2, -3 + Math.sin(a) * 3.2, 2.3, (d) => pick(ink, d < 0.5 ? "#ffc0e0" : "#ff6aa8"));
+      }
+      p.circle(0, -3, 1.5, () => pick(ink, "#ffe03c"));
+    });
+    p.px(-1, 3, H("#a8e04a")); p.px(-2, 4, H("#3f8a1e"));
+  },
+  moon(p) {
+    // a crescent honed to an edge
+    outlined(p, (ink) =>
+      p.shade(-8, -8, 8, 8, (x, y) => (Math.hypot(x + 0.5, y) < 7.2 && Math.hypot(x - 3, y + 2.5) > 6.2 ? pick(ink, Math.hypot(x + 3, y + 1) < 4.5 ? "#eaf2ff" : "#9aaee0") : undefined)),
+    );
+    p.px(-5, -2, H("#ffffff")); p.px(5, -7, H("#ffffff")); p.px(7, 3, H("#c8d8ff"));
+  },
+  dragon(p) {
+    // a heart in flames, scaled like the beast it came from
+    outlined(p, (ink) => {
+      p.poly([[-5, -2], [-7, -8], [-3, -5], [0, -9], [3, -5], [7, -8], [5, -2]], pick(ink, "#ff8424"));
+      p.circle(-3, -1, 3.7, () => pick(ink, "#d83048"));
+      p.circle(3, -1, 3.7, () => pick(ink, "#d83048"));
+      p.poly([[-6.6, 0], [6.6, 0], [0, 8]], pick(ink, "#d83048"));
+    });
+    p.px(-4, -3, H("#ff6c80")); p.px(-5, -2, H("#ffc6ce"));
+    for (const [x, y] of [[1, 1], [3, 3], [-1, 3], [1, 5], [4, 0]]) p.px(x, y, H("#9a1830"));
+    p.px(0, -7, H("#ffe868"));
+  },
+  bubbles(p) {
+    outlined(p, (ink) => {
+      p.circle(-2, 1, 5.2, (d) => pick(ink, d > 0.78 ? "#9ad8ff" : "#2a6ab2"));
+      p.circle(5, -5, 2.6, (d) => pick(ink, d > 0.6 ? "#9ad8ff" : "#2a6ab2"));
+      p.circle(4.5, 6, 1.7, (d) => pick(ink, d > 0.5 ? "#9ad8ff" : "#2a6ab2"));
+    });
+    p.px(-4, -2, H("#ffffff")); p.px(-5, -1, H("#ffffff")); p.px(4, -6, H("#ffffff"));
+  },
+});
+Object.assign(EVOLVED, {
+  e_prism(p) {
+    // a rainbow over two clouds
+    outlined(p, (ink) => p.arc(0, 6, 8.5, 6, Math.PI, Math.PI * 2, (u, v) => pick(ink, RAINBOW[Math.min(5, Math.floor((1 - v) * 6))])));
+    for (const s of [-1, 1]) outlined(p, (ink) => (p.circle(s * 6, 6, 2.4, () => pick(ink, "#ffffff")), p.circle(s * 4, 7, 1.8, () => pick(ink, "#dce2ee"))));
+    p.px(0, -6, H("#ffffff"));
+  },
+  e_stardust(p) {
+    // stars joined into a figure: bright lines, twinkles at the joints, one big star
+    const S = [[-6, -5], [-1, -7], [4, -3], [7, -7], [5, 4], [-2, 6], [-6, 2]];
+    for (const [i, j] of [[0, 1], [1, 2], [2, 3], [2, 4], [4, 5], [5, 6], [6, 0]]) p.line(...S[i], ...S[j], H("#8a9ad8"));
+    S.forEach(([x, y], k) => {
+      if (k === 2) return;
+      p.px(x, y, H("#ffffff"));
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) p.px(x + dx, y + dy, H("#ffd84a"));
+    });
+    outlined(p, (ink) => p.poly(starPts(4, -3, 4, 1.1), pick(ink, "#fff6a0")));
+    p.px(4, -3, H("#ffffff"));
+  },
+  e_ricochet(p) {
+    // a silver web with a shot caught in it
+    const ring = (r) => Array.from({ length: 6 }, (_, k) => rotp(r, 0, (k / 6) * Math.PI * 2 + 0.3));
+    for (const [x, y] of ring(8)) p.line(0, 0, x, y, H("#8e9cb8"));
+    for (const r of [3.5, 7]) { const R = ring(r); R.forEach((q, k) => p.line(...q, ...R[(k + 1) % 6], H(r > 5 ? "#e8f0ff" : "#b8c4dc"))); }
+    outlined(p, (ink) => (p.circle(0, 0, 1.8, () => pick(ink, "#ffffff")), p.circle(...ring(7)[4], 1.6, () => pick(ink, "#d8e0f0"))));
+  },
+  e_bloom(p) {
+    // flowers whose petals are blades
+    for (const [cx, cy, r] of [[-4, -2, 4.5], [5, -4, 3.5], [2, 5, 3.2]]) {
+      p.line(cx, cy, cx * 0.5, 8, H("#3f8a1e"));
+      outlined(p, (ink) => {
+        for (let k = 0; k < 5; k++) {
+          const a = (k / 5) * Math.PI * 2 - Math.PI / 2, t = [Math.cos(a), Math.sin(a)], n = [-t[1], t[0]];
+          p.poly([[cx + n[0], cy + n[1]], [cx + t[0] * r, cy + t[1] * r], [cx - n[0], cy - n[1]]], pick(ink, k % 2 ? "#e8e4f0" : "#ff8ac0"));
+        }
+        p.circle(cx, cy, 1.2, () => pick(ink, "#ffe03c"));
+      });
+    }
+  },
+});
 
 export function draw(p, t, o) {
   if (EVOLVED[o.id]) {

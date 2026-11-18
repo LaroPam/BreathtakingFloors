@@ -6,7 +6,7 @@ import { heroSprites, lookId, SMOOTH, type HeroAnim } from "./heroSprites";
 import { TEAM_HERO } from "./pools";
 import { Batch, rgba, rgbaf, SOFT, withAlpha } from "../engine/renderer";
 import { text } from "../engine/text";
-import { AI, DOORS, giftFor, placeDef, EL_COLOR, ENEMIES, fullWeaponName, LEGENDS, questDef, RARITIES, RelicKind, WEAPONS, type GateKind, type PlaceId } from "./defs";
+import { AI, DOORS, giftFor, placeDef, EL_COLOR, ENEMIES, fullWeaponName, LEGENDS, questDef, RARITIES, RELICS, RelicKind, WEAPONS, type GateKind, type PlaceId } from "./defs";
 import { t as tr, tx } from "./i18n";
 import { FLOOR, LOOK_BRIDGE, LOOK_ICE, LOOK_VEIN, PIT, WALL } from "./map";
 import { lanceTravel, LANCE_FADE, LANCE_STUCK, B_BOLT, B_CHAKRAM, BULLET_ANIMS, EYE_H, FLOOR_SQ, LUNGE_DASH, SPAWN_T, type BossBrain, poolSpread, HERO_HIT_Y, HERO_R, B_CRESCENT, B_FIREBALL, B_LANCE, B_SICKLE, B_PETAL, B_SHARD, B_BUBBLE, B_TORNADO, B_BIRD, B_BLADE, B_DRAGON, CINE_DUR, CRUMBLE_T, D_CHEST, D_EMBER, D_GREEN, D_HEART, D_RED, STAR_EVERY, TILE, type World } from "./world";
@@ -391,6 +391,27 @@ function evoAlive(s: Scene, w: World, kind: number, b: { pts: number[]; w: numbe
 
 /** Where the burning eyes have been lately (world positions, the time each was there). */
 const eyeTrail: { x: number; y: number; t: number }[] = [];
+/**
+ * The hero's power shows round him: a glow on the floor and a light in the colour of his weapon artifacts, and motes
+ * of their colours rising about him, all growing with how much he holds (levels; an evolved one counts for seven).
+ */
+function powerAura(s: Scene, w: World, x: number, y: number, time: number): void {
+  let P = 0;
+  for (const r of w.relics) P += r.evo ? 7 : r.level;
+  if (P < 3) return;
+  const k = Math.min(1, (P - 2) / 24), R = w.relics;
+  const main = w.artColor() ?? RELICS[R[0].kind].color, breath = 0.85 + 0.15 * Math.sin(time * 2.6);
+  s.back.disc(x, y, 12 + 9 * k, (12 + 9 * k) * 0.42, rgba(main, (0.1 + 0.2 * k) * breath));
+  s.illum.light(x, y - 8, 26 + 34 * k, 22 + 26 * k, rgba(main, (0.15 + 0.3 * k) * breath));
+  // motes rising and winding about him, in the colours of the artifacts he holds
+  const n = 2 + Math.round(8 * k);
+  for (let i = 0; i < n; i++) {
+    const u = (time * (0.35 + 0.05 * (i % 3)) + i / n) % 1, a = i * 2.4 + time * 1.3, r = 7 + 5 * k + 3 * Math.sin(i * 1.7);
+    const mx = x + Math.cos(a) * r, my = y - 2 - u * (18 + 10 * k) + Math.sin(a) * r * 0.35, fade = Math.sin(u * Math.PI);
+    s.glow.light(mx, my, 1.6, 1.6, rgba(RELICS[R[i % R.length].kind].color, 0.9 * fade));
+  }
+}
+
 /**
  * The hero's eyes burning with the heat of the killing (0 to 1): a neon red glint where they are, a glow about them,
  * and a trail of their light along where they have just been, fading over a fifth of a second.
@@ -997,6 +1018,7 @@ export function drawWorld(s: Scene, w: World, camX: number, camY: number, viewW:
     // hurt and briefly safe: he flickers (not under the Knight's ward, nor in the Shade's dance)
     const blink = h.invuln > 0 && w.ward <= 0 && !w.strikes.some((q) => q.kind === "blink") && h.dashT <= 0 && h.exitT < 0 && h.arriveT > 0.55 && Math.floor(time * 16) % 2 === 0;
     if (show) {
+      if (!h.dead && h.exitT < 0) powerAura(s, w, h.x, h.y, time);
       s.back.disc(h.x, h.y, 9 * Math.abs(sx), 3, C_SHADOW);
       drawAnim(s, a, 0, h.x, h.y, { frame: fi, sx: sx * (1 + squash), sy: sy * (1 - squash), rot, key: h.y, alpha: blink ? 0.45 : fade, flash });
     }

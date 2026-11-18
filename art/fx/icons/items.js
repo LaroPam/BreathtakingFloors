@@ -14,6 +14,9 @@ export const IDS = [
   "orbit", "lance", "coil", "flask", "halo", "void",
   "e_orbit", "e_lance", "e_coil", "e_flask", "e_halo", "e_void",
   "roots", "mirror", "brazier", "crown", "e_roots", "e_mirror", "e_brazier", "e_crown",
+  // the weapon artifacts that have their own, and their evolutions
+  "blades", "ricochet", "quake", "rune", "splitter", "fang", "wind", "meteor", "prism", "stardust", "aurora", "phoenix",
+  "bloom", "moon", "dragon", "bubbles", "e_prism", "e_stardust", "e_ricochet", "e_bloom",
   // artifacts: the sword, the body, the light
   "edge", "haste", "reach", "wave", "parry", "speed", "maxhp", "magnet", "dashcd", "overdrive", "crit", "lantern",
   "pact", "compass", "crucible", "echo", "candle", "tread",
@@ -76,6 +79,8 @@ const RAMP = Object.fromEntries(
     sack: ["#1a1208", "#342612", "#56401e", "#7a5c2e", "#a07e44", "#c8a466"],
     blue: ["#06102e", "#0c2462", "#163ea0", "#2662d8", "#58a0ff", "#c4e2ff"],
     green: ["#06180c", "#0e3018", "#1a5028", "#2a7a3a", "#4aa858", "#8ad890"],
+    rose: ["#2a0618", "#5a0e34", "#9a1e5a", "#d83c8a", "#ff7ac0", "#ffd0ea"],
+    teal: ["#041a1a", "#0a3a36", "#147060", "#28a888", "#6ae0b8", "#d0fff0"],
   }).map(([k, v]) => [k, v.map(H)]),
 );
 
@@ -393,13 +398,20 @@ const LOOK = {
   arms: { field: ["#0c0b10", "#16141c", "#22202a", "#302c3a"], frame: ["#2c2834", "#4c4658", "#857e96", "#e6e0f2"] },
   ember: { field: ["#140806", "#24100a", "#3a1a0e", "#562812"], frame: ["#4a2a0c", "#8a541a", "#d0923a", "#ffe0a0"] },
   wisdom: { field: ["#060a1a", "#0c1430", "#14204a", "#1e2e66"], frame: ["#1a2650", "#34488a", "#6a86cc", "#d0e0ff"] },
+  rose: { field: ["#140610", "#240a1c", "#3a1030", "#561848"], frame: ["#4a1438", "#862a68", "#cc5aa8", "#ffd0f0"] },
+  sky: { field: ["#041210", "#08201c", "#0e342c", "#164a40"], frame: ["#123a34", "#28705e", "#5ab89c", "#d0fff0"] },
 };
 const EVO_FRAME = ["#5a3608", "#a8701c", "#f0c450", "#fffae0"];
-const ELEMENT = { fire: "fire", frost: "ice", storm: "storm", venom: "venom", holy: "holy", void: "void" };
+const ELEMENT = {
+  fire: "fire", frost: "ice", storm: "storm", venom: "venom", holy: "holy", void: "void",
+  rose: "rose", sky: "teal", wisdom: "blue", steel: "glass", gold: "gold", life: "red", ember: "copper",
+};
 
 const KIND = {
   orbit: "fire", lance: "frost", coil: "storm", flask: "venom", halo: "holy", void: "void",
   roots: "venom", mirror: "holy", brazier: "fire", crown: "frost",
+  blades: "steel", ricochet: "steel", quake: "ember", rune: "rose", splitter: "frost", fang: "life", wind: "sky", meteor: "fire",
+  prism: "rose", stardust: "wisdom", aurora: "sky", phoenix: "fire", bloom: "rose", moon: "wisdom", dragon: "fire", bubbles: "frost",
   pact: "life", compass: "gold", crucible: "ember", echo: "steel", candle: "holy", tread: "steel",
   edge: "gold", haste: "gold", reach: "gold", wave: "gold", parry: "steel", speed: "steel", maxhp: "life",
   magnet: "steel", dashcd: "steel", overdrive: "holy", crit: "gold", lantern: "holy",
@@ -1484,6 +1496,262 @@ SYM.unknown = (p) => {
   const a = new Art();
   a.add(S.or(S.arc(0, -5, 8.5, 4, Math.PI * 0.95, Math.PI * 2.35), S.seg(5.2, -0.6, 0.6, 3.4, 4), S.seg(0.6, 3.4, 0.6, 6.4, 4)), "stone", T.lin(-8, -14, 8, 7, 1, 0.45));
   a.add(S.disc(0.6, 12, 2.6), "stone", T.sph(0.6, 12, 2.6, 0.4, 1.05));
+  a.draw(p);
+};
+
+// ---- the weapon artifacts' own, and their evolutions
+const starS = (cx, cy, r1, r2, n = 4, a0 = -Math.PI / 2) =>
+  S.poly(Array.from({ length: n * 2 }, (_, k) => [cx + Math.cos(a0 + (k * Math.PI) / n) * (k % 2 ? r2 : r1), cy + Math.sin(a0 + (k * Math.PI) / n) * (k % 2 ? r2 : r1)]));
+const RAINBOW_M = ["red", "fire", "storm", "venom", "blue", "cloth"];
+
+SYM.blades = (p) => {
+  halo(p, 0, 0, 16, "#8a9aff", 0.35);
+  const a = new Art();
+  // three ghostly blades chasing each other round a ring of pale light
+  a.add(S.oring(0, 0, 14, 14, 1.2), "glass", 0.55, { flat: true, bare: true });
+  for (let k = 0; k < 3; k++) {
+    const t = (k / 3) * TAU - Math.PI / 2, cx = Math.cos(t) * 9.5, cy = Math.sin(t) * 9.5, tx = -Math.sin(t), ty = Math.cos(t);
+    blade(a, cx - tx * 6, cy - ty * 6, cx + tx * 8, cy + ty * 8, 2.6, { mat: "glass", fuller: 0.5 });
+    const gx = cx - tx * 6, gy = cy - ty * 6;
+    a.add(S.seg(gx + Math.cos(t) * 3.4, gy + Math.sin(t) * 3.4, gx - Math.cos(t) * 3.4, gy - Math.sin(t) * 3.4, 2), "steel", 0.7);
+  }
+  a.add(S.disc(0, 0, 3.4), "glass", T.core(-0.8, -0.8, 3.6, 0.5, 1.1), { flat: true, rim: 0.45 });
+  a.draw(p);
+  glint(p, -1, -1, 1, "#e8eeff");
+  specks(p, [[13, -10, "#c8d4ff"], [-13, 9, "#aebcff"], [-3, 14, "#e8eeff"]]);
+};
+SYM.ricochet = (p) => {
+  halo(p, 0, 0, 15, "#c8d4ff", 0.3);
+  const a = new Art();
+  // a shot's path bouncing across, brighter as it goes, and the shot
+  const P = [[-14, 13], [-8, -13], [-1, 13], [6, -13], [12, 1]];
+  for (let i = 1; i < P.length; i++) a.add(S.seg(...P[i - 1], ...P[i], 1.4 + i * 0.35), "feather", 0.35 + i * 0.15, { flat: true, rim: 0.25 + i * 0.12 });
+  a.add(S.disc(12, 1, 3.6), "steel", T.sph(12, 1, 3.6));
+  a.draw(p);
+  for (const [x, y] of P.slice(1, 4)) glint(p, x, y + (y < 0 ? 1 : -1), 2, "#ffe8a0");
+};
+SYM.quake = (p) => {
+  halo(p, 0, 6, 16, "#ffb060", 0.3);
+  const a = new Art();
+  // the shock rising off the ground in rings
+  for (const [r, w, t] of [[14, 2.2, 0.55], [9.5, 2, 0.78], [5, 1.8, 1]]) a.add(S.and(S.oring(0, 6, r, r * 0.55, w), S.half(0, 6, 0, -1)), "paper", t, { flat: true, rim: t - 0.25 });
+  // the ground, split down the middle
+  a.add(S.poly([[-14, 6], [14, 6], [14, 14], [-14, 14]]), "stone", T.lin(0, 6, 0, 14, 0.8, 0.25));
+  a.cut(S.poly([[-1, 6], [2, 6], [0.5, 10], [2.5, 14], [-0.5, 14], [-1.5, 10]]));
+  // stones flung up
+  for (const [x, y, r] of [[-9, -5, 2.4], [8, -8, 2], [1, -12, 1.6], [12, -1, 1.4]]) a.add(S.disc(x, y, r), "stone", T.sph(x, y, r));
+  a.draw(p);
+};
+SYM.rune = (p) => {
+  halo(p, 0, 0, 16, "#ff6ad8", 0.4);
+  const a = new Art();
+  // a round stone, a ring and a rune burning into it
+  a.add(S.disc(0, 0, 13), "stone", T.sph(0, 0, 13, 0.15, 0.85));
+  a.add(S.oring(0, 0, 10.5, 10.5, 1.6), "rose", 0.85, { onto: true, flat: true });
+  for (const [x0, y0, x1, y1] of [[0, -7, 0, 7], [-4.5, -3.5, 4.5, 3.5], [-4.5, 3.5, 0, 7], [4.5, -3.5, 0, -7]]) a.add(S.seg(x0, y0, x1, y1, 2), "rose", 1.05, { onto: true, flat: true });
+  a.draw(p);
+  glint(p, 0, 0, 2, "#ffd0ea");
+};
+SYM.splitter = (p) => {
+  halo(p, 2, 0, 15, "#7af0ff", 0.35);
+  const a = new Art();
+  const arrow = (x0, y0, x1, y1) => {
+    const F = frameOf(x0, y0, x1, y1), P = F.P;
+    a.add(S.seg(x0, y0, ...P(0.78, 0), 1.8), "ice", T.cyl(x0, y0, x1, y1, 0.9, 0.3, 0.9));
+    a.add(S.poly([P(1, 0), P(0.68, 3), P(0.76, 0), P(0.68, -3)]), "steel", (x, y) => ((x - x0) * F.nx + (y - y0) * F.ny > 0 ? 0.95 : 0.45));
+  };
+  // one shot comes in, three fly on
+  a.add(S.seg(-15, 2, -3, 0, 2.4), "ice", 0.6);
+  arrow(-3, 0, 14, -12); arrow(-3, 0, 15, 0); arrow(-3, 0, 14, 12);
+  a.add(S.disc(-3, 0, 3), "ice", T.core(-3.6, -0.6, 3.2, 0.6, 1.1), { flat: true, rim: 0.5 });
+  a.draw(p);
+  glint(p, -3, 0, 2, "#d8fbff");
+};
+SYM.fang = (p) => {
+  halo(p, 0, 2, 15, "#ff4a5a", 0.35);
+  const a = new Art();
+  a.add(S.ell(0, -11, 13, 4.4), "red", T.lin(0, -15, 0, -7, 0.75, 0.3));
+  // a long fang, its lit face honed bright, and a drop of blood running off its tip
+  a.add(S.poly([[-7, -10], [7, -10], [5, -2], [2, 8], [-1, 14], [-2, 6], [-5, -2]]), "bone", T.lin(-7, -10, 6, 10, 1.0, 0.35));
+  a.add(S.poly([[-4, -9], [-1, -9], [-1, 10], [-3, 4]]), "bone", 1.05, { onto: true });
+  a.add(S.or(S.disc(5.5, 11, 2.6), S.poly([[3.5, 10.5], [7.5, 10.5], [5.5, 6]])), "red", T.sph(5.5, 11, 2.6, 0.35, 1.05));
+  a.draw(p);
+  glint(p, -3, -6, 1);
+};
+SYM.wind = (p) => {
+  halo(p, 0, 0, 15, "#7af0d0", 0.3);
+  const a = new Art();
+  // gusts curling past behind a feather
+  for (const [cx, cy, r, a0, a1] of [[-6, 6, 7, 0.6, 3.6], [7, -6, 6, 3.6, 6.6], [8, 9, 4, 3.4, 5.8]]) a.add(S.arc(cx, cy, r, 1.6, a0, a1), "teal", 0.75, { flat: true, rim: 0.5, bare: true });
+  const F = frameOf(-12, 13, 11, -13), P = F.P;
+  a.add(S.poly([P(0.15, 0), P(0.3, 4.5), P(0.7, 6), P(1, 0)]), "feather", T.lin(...P(0.2, 6), ...P(0.9, 0), 0.95, 0.6));
+  a.add(S.poly([P(0.15, 0), P(0.3, -4), P(0.75, -5.5), P(1, 0)]), "feather", 0.45);
+  a.cut(S.seg(...P(0.5, 6.5), ...P(0.44, 3.5), 1));
+  a.cut(S.seg(...P(0.62, -6), ...P(0.56, -3.4), 1));
+  a.add(S.seg(-12, 13, ...P(0.97, 0), 1.4), "feather", 0.95);
+  a.draw(p);
+};
+SYM.meteor = (p) => {
+  halo(p, 4, 4, 15, "#ff8424", 0.45);
+  const a = new Art();
+  // a stone in a tail of fire
+  a.add(S.seg(-14, -14, 5, 5, 3, 13), "fire", (x, y) => 0.35 + 0.7 * clamp((x + 14 + (y + 14)) / 38), { flat: true, rim: 0.3 });
+  a.add(S.seg(-8, -8, 5, 5, 1.5, 7), "fire", 1.05, { flat: true, onto: true });
+  coal(a, 6, 6, 6.5, 6, 1.3);
+  a.draw(p);
+  specks(p, [[-12, -6, "#ffc840"], [-6, -13, "#ff8424"], [-15, -10, "#dc4612"], [13, -2, "#ffc840"]]);
+};
+SYM.prism = (p) => {
+  halo(p, 0, 0, 15, "#ff8af0", 0.3);
+  const a = new Art();
+  // a beam of white light in, a fan of colours out, the prism in between
+  a.add(S.seg(-16, 5, -4, 2, 2.4), "holy", 1.05, { flat: true, rim: 0.7 });
+  RAINBOW_M.forEach((m, i) => {
+    const y = -10 + i * 3.4;
+    a.add(S.poly([[3, -1 + i * 0.5], [3, -0.5 + i * 0.5], [16, y + 3.4], [16, y]]), m, 0.85, { flat: true, rim: 0.85, bare: true });
+  });
+  a.add(S.poly([[0, -13], [11, 9], [-11, 9]]), "glass", (x) => (x < 0 ? 0.9 : 0.5));
+  a.add(S.seg(0, -12, -9.5, 8, 1), "glass", 1.1, { onto: true });
+  a.draw(p);
+  glint(p, -2, -6, 1);
+};
+SYM.stardust = (p) => {
+  halo(p, -2, -2, 15, "#fff6a0", 0.35);
+  const a = new Art();
+  a.add(starS(-2, -2, 12, 3), "holy", T.core(-3, -3, 12, 0.5, 1.1), { flat: true, rim: 0.55 });
+  a.add(starS(9, 9, 5.5, 1.6), "storm", T.core(9, 9, 5, 0.6, 1.05), { flat: true, rim: 0.5 });
+  a.add(starS(-10, 9, 3.6, 1.2), "holy", 0.9, { flat: true, rim: 0.6 });
+  a.add(starS(10, -10, 3, 1), "holy", 0.95, { flat: true, rim: 0.6 });
+  a.draw(p);
+  glint(p, -3, -3, 1);
+  specks(p, [[3, 6, "#fff09a"], [-6, 12, "#ffe868"], [13, 2, "#fff6d0"], [-13, -6, "#eccb4c"], [5, -13, "#fff6d0"], [-1, 13, "#eccb4c"]]);
+};
+SYM.aurora = (p) => {
+  halo(p, 0, -4, 16, "#7affb0", 0.3);
+  const a = new Art();
+  // curtains of light hanging in the sky, streaked, fading downwards
+  const curtain = (y0, amp, ph, h, m) => {
+    const top = (x) => y0 + Math.sin(x * 0.3 + ph) * amp;
+    a.add({ b: [-15, y0 - amp, 15, y0 + amp + h], f: (x, y) => y > top(x) && y < top(x) + h * (0.75 + 0.25 * Math.sin(x * 0.9 + ph)) }, m,
+      (x, y) => 1.05 - 0.75 * clamp((y - top(x)) / h) - ((Math.floor(x) & 3) === 0 ? 0.15 : 0), { flat: true, bare: true });
+  };
+  curtain(-13, 2.5, 0, 10, "teal");
+  curtain(-7, 2.5, 1.6, 8, "venom");
+  curtain(-2, 2, 3.2, 5, "rose");
+  a.add(S.poly([[-14, 14], [-14, 8], [-9, 3], [-5, 7], [0, 2], [6, 8], [10, 5], [14, 9], [14, 14]]), "stone", T.lin(0, 2, 0, 14, 0.42, 0.12));
+  a.draw(p);
+  specks(p, [[-11, -9, "#ffffff"], [9, -12, "#ffffff"], [3, -6, "#d0fff0"], [12, -3, "#ffffff"]]);
+};
+SYM.phoenix = (p) => {
+  halo(p, 0, 0, 16, "#ffb03a", 0.45);
+  const a = new Art();
+  // wings of fire swept up, a tail of flames, a bright body and head
+  for (const s of [-1, 1]) {
+    flame(a, s * 9, 1, 4.2, 15, { lean: s * 6 });
+    flame(a, s * 12, 5, 3, 9, { lean: s * 5 });
+    a.add(S.seg(s * 1.5, 5, s * 6, 15, 3.4, 1), "fire", 0.6, { flat: true, rim: 0.35 });
+  }
+  a.add(S.seg(0, 5, 0, 15, 3.6, 1.2), "fire", 0.75, { flat: true, rim: 0.4 });
+  a.add(S.ell(0, 1, 4.2, 7), "fire", T.core(-1, -1, 7, 0.6, 1.1), { flat: true, rim: 0.45 });
+  a.add(S.disc(0, -8, 3.2), "fire", T.core(-0.8, -8.8, 3.4, 0.7, 1.12), { flat: true, rim: 0.5 });
+  a.add(S.poly([[2.5, -9], [6, -7.5], [2.5, -6.5]]), "gold", 0.9);
+  a.draw(p);
+  p.px(1, -9, H("#4a0c06"));
+};
+SYM.bloom = (p) => {
+  halo(p, 0, -4, 15, "#ff8ac0", 0.35);
+  const a = new Art();
+  // a thorny stem, a leaf, a pink flower
+  a.add(S.seg(2, 15, 0, -2, 2.4), "green", T.cyl(2, 15, 0, -2, 1.2));
+  for (const [x, y, s] of [[1.2, 9, 1], [0.6, 4, -1]]) a.add(S.poly([[x, y - 1], [x + s * 3.5, y - 2.5], [x, y + 1]]), "green", 0.35);
+  a.add(S.ell(7, 8, 4.2, 2, -0.5), "venom", T.lin(4, 6, 10, 10, 0.95, 0.45));
+  for (let k = 0; k < 5; k++) {
+    const t = (k / 5) * TAU - Math.PI / 2, x = Math.cos(t) * 5, y = -6 + Math.sin(t) * 5;
+    a.add(S.ell(x, y, 4.6, 3.2, t), "rose", T.sph(x - 0.6, y - 0.6, 4.6, 0.3, 1.05));
+  }
+  a.add(S.disc(0, -6, 2.8), "storm", T.sph(0, -6, 2.8));
+  a.draw(p);
+  glint(p, -4, -10, 1, "#ffd0ea");
+};
+SYM.moon = (p) => {
+  halo(p, 0, 0, 16, "#c8d8ff", 0.35);
+  const a = new Art();
+  // a crescent honed to an edge, its face marked
+  a.add(S.sub(S.disc(-1, 0, 13), S.disc(4, -3, 12)), "feather", T.sph(-4, -2, 13, 0.25, 1.05));
+  for (const [x, y, r] of [[-9, 4, 1.6], [-5, 9, 1.2], [-10, -2, 1]]) a.add(S.disc(x, y, r), "feather", 0.35, { onto: true });
+  a.draw(p);
+  glint(p, 10, -11, 1, "#e8eeff");
+  specks(p, [[6, 8, "#c8d8ff"], [12, 2, "#ffffff"], [2, -12, "#aab4c8"]]);
+};
+SYM.dragon = (p) => {
+  halo(p, 0, 2, 16, "#ff4a2a", 0.45);
+  const a = new Art();
+  // flames rising behind a heart scaled like the beast it came from
+  flame(a, -7, -2, 4, 13, { lean: -3 }); flame(a, 7, -2, 4, 13, { lean: 3 }); flame(a, 0, -4, 4.6, 12);
+  const heart = S.or(S.disc(-5.2, -1, 6.2), S.disc(5.2, -1, 6.2), S.poly([[-10.8, 2], [10.8, 2], [0, 14]]));
+  a.add(heart, "red", T.sph(-3, -2, 12, 0.2, 1.05));
+  a.add({ b: heart.b, f: (x, y) => heart.f(x, y) && (Math.floor(y) % 3 + 3) % 3 === 0 && ((Math.floor(x) + (Math.floor(y / 3) & 1) * 2) & 3) === 0 }, "red", 0.1, { onto: true });
+  a.draw(p);
+  glint(p, -6, -4, 1, "#ffc6ce");
+};
+SYM.bubbles = (p) => {
+  halo(p, 0, 0, 15, "#5ac8ff", 0.3);
+  const a = new Art();
+  const bubble = (x, y, r) => {
+    a.add(S.disc(x, y, r), "blue", (px, py) => 0.25 + 0.6 * (Math.hypot(px - x, py - y) / r) ** 2, { flat: true, rim: 0.85 });
+    a.add(S.ell(x - r * 0.4, y - r * 0.45, r * 0.32, r * 0.2, -0.6), "glass", 1.1, { onto: true, flat: true });
+  };
+  bubble(-3, 3, 9); bubble(9, -8, 5); bubble(9, 10, 3.2); bubble(-11, -11, 2.4);
+  a.draw(p);
+};
+SYM.e_prism = (p) => {
+  halo(p, 0, 4, 17, "#ff8af0", 0.4);
+  const a = new Art();
+  // a rainbow standing on two clouds
+  RAINBOW_M.forEach((m, i) => a.add(S.and(S.oring(0, 9, 15 - i * 2, 15 - i * 2, 2.2), S.half(0, 9, 0, -1)), m, 0.85, { flat: true, rim: 0.85, bare: i > 0 }));
+  for (const s of [-1, 1]) for (const [dx, dy, r] of [[0, 0, 3.6], [s * 3.4, 1.4, 2.8], [-s * 3, 1.6, 2.4]]) a.add(S.disc(s * 11 + dx, 10 + dy, r), "feather", T.sph(s * 11 + dx, 10 + dy, r, 0.45, 1.05));
+  a.draw(p);
+  glint(p, 0, -11, 2);
+};
+SYM.e_stardust = (p) => {
+  halo(p, 0, 0, 17, "#fff6a0", 0.35);
+  const a = new Art();
+  // stars joined into a figure across the night
+  const pts = [[-12, -8], [-4, -12], [5, -6], [11, -11], [8, 4], [-1, 10], [-10, 5]];
+  for (const [i, j] of [[0, 1], [1, 2], [2, 3], [2, 4], [4, 5], [5, 6], [6, 0]]) a.add(S.seg(...pts[i], ...pts[j], 1), "blue", 0.85, { flat: true, bare: true, part: 0 });
+  a.n = 1;
+  pts.forEach(([x, y], k) => a.add(starS(x, y, k === 2 ? 6 : 3.6, k === 2 ? 1.6 : 1.1), "holy", T.core(x, y, 4, 0.6, 1.1), { flat: true, rim: 0.55 }));
+  a.draw(p);
+  glint(p, 5, -6, 2);
+};
+SYM.e_ricochet = (p) => {
+  halo(p, 0, 0, 17, "#e8eeff", 0.35);
+  const a = new Art();
+  // a silver web, shots caught in it
+  const ring = (r) => Array.from({ length: 8 }, (_, k) => [Math.cos((k / 8) * TAU + 0.2) * r, Math.sin((k / 8) * TAU + 0.2) * r]);
+  for (const [x, y] of ring(15)) a.add(S.seg(0, 0, x, y, 1), "glass", 0.9, { flat: true, bare: true, part: 0 });
+  for (const r of [5, 9.5, 14]) {
+    const R = ring(r);
+    R.forEach((q, k) => a.add(S.seg(...q, ...R[(k + 1) % 8], 1), "glass", 0.75 + r * 0.015, { flat: true, bare: true, part: 0 }));
+  }
+  a.n = 1;
+  for (const [x, y, r] of [[0, 0, 3.4], [...ring(9.5)[1], 2.4], [...ring(14)[5], 2]]) a.add(S.disc(x, y, r), "steel", T.sph(x, y, r));
+  a.draw(p);
+  glint(p, -1, -1, 1);
+};
+SYM.e_bloom = (p) => {
+  halo(p, 0, 0, 17, "#ff8ac0", 0.4);
+  const a = new Art();
+  // flowers whose petals are blades
+  const flower = (cx, cy, r, sx, sy) => {
+    a.add(S.seg(cx, cy, sx, sy, 1.8), "green", T.cyl(cx, cy, sx, sy, 0.9));
+    for (let k = 0; k < 5; k++) {
+      const t = (k / 5) * TAU - Math.PI / 2;
+      blade(a, cx, cy, cx + Math.cos(t) * r, cy + Math.sin(t) * r, r * 0.26, { mat: k % 2 ? "steel" : "rose", fuller: 0, tip: 0.6 });
+    }
+    a.add(S.disc(cx, cy, r * 0.28), "gold", T.sph(cx, cy, r * 0.28));
+  };
+  flower(-7, -5, 8, -5, 15); flower(7, -9, 6.5, 6, 15); flower(5, 6, 6, 3, 15);
   a.draw(p);
 };
 

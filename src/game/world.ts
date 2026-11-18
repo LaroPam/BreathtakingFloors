@@ -2622,7 +2622,9 @@ export class World {
     }
     if (!o.quiet && (this.numbers || o.crit)) {
       this.body(i);
-      const big = !!o.crit || dmg >= 60;
+      // big numbers only for the big hits: a crit, or a blow of several times what the weapon deals now (so the horde's
+      // small change stays small however strong the hero grows)
+      const big = !!o.crit || dmg >= Math.max(40, this.baseDmg() * 2.5);
       this.popup(this.bx, this.by - this.bry - 6, String(Math.round(dmg)), o.crit ? rgba("#ffe03c") : el ? rgba(EL_COLOR[el]) : rgba("#ffffff"), big);
     }
     if (el !== El.None && o.react !== false) this.applyEl(i, el);
