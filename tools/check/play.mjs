@@ -179,12 +179,21 @@ for (const hero of heroes) {
         if (G.state === "play" && gt && gt.open < 1 && w.gifts.has(OPENS[gt.kind]) && B.gateFloor !== w.floor && h.arriveT > 1.5 && !w.cine && w.bossIndex() < 0) {
           B.gateFloor = w.floor;
           B.gateT = 0;
+          B.gateAway = 0;
+          h.wantUlt = false;
+          h.wantDash = false;
           h.x = gt.x + 16;
           h.y = gt.y + 10;
         }
         if (B.gateT >= 0 && B.gateFloor === w.floor && gt) {
           // (the world stands still on the gift screen and in a cut-scene: only its own time counts)
-          if (G.state === "play" && !w.cine) B.gateT += 1 / 60;
+          // (only while the hero stands at its foot: a blow, a boss or the shade's dance may carry it off, and it walks
+          // back; what is tested is that the gate opens for one who stands there with its gift)
+          const atFoot = Math.abs(h.x - gt.x - 16) < 20 && Math.abs(h.y - gt.y - 10) < 20;
+          if (G.state === "play" && !w.cine) (B.gateAway = (B.gateAway ?? 0) + 1 / 60), atFoot && (B.gateT += 1 / 60);
+          // (carried off and its dance over, the bot puts it back at the foot, as it first did: it walks straight, and a
+          // wall between would hold it)
+          if (G.state === "play" && !w.cine && !atFoot && !w.strikes.length && h.dashT <= 0) (h.x = gt.x + 16), (h.y = gt.y + 10);
           if (gt.open >= 1) {
             const r = gt.room, mid = map.at(r.x + (r.w >> 1), r.y + (r.h >> 1)), way = map.at(gt.x / 16, gt.y / 16 - 2);
             if (mid !== 0 || way !== 0) B.log.push(`floor ${w.floor}: the gate opened but its vault is not open (room ${mid}, passage ${way})`);
@@ -192,7 +201,8 @@ for (const hero of heroes) {
             B.gateT = -1;
             // a way stone behind it: the heroes take turns at the roads (each gets played)
             if (w.wayStone && !w.wayStone.taken && B.takeWay.includes(w.wayStone.to)) (h.x = w.wayStone.x), (h.y = w.wayStone.y + 4);
-          } else if (B.gateT > 6) (B.log.push(`floor ${w.floor}: the hero at the gate with its gift, and it did not open (${gt.kind}, seen ${gt.seen.toFixed(2)}, opening ${gt.opening}, open ${gt.open.toFixed(2)}, hero ${Math.round(h.x - gt.x - 16)},${Math.round(h.y - gt.y)} from its foot)`), (B.gateT = -1));
+          } else if (B.gateAway > 40 && B.gateT < 6) (B.log.push(`floor ${w.floor}: the hero could not get back to the gate's foot in 40 s (hero ${Math.round(h.x - gt.x - 16)},${Math.round(h.y - gt.y)} from it)`), (B.gateT = -1));
+          else if (B.gateT > 6) (B.log.push(`floor ${w.floor}: the hero at the gate with its gift, and it did not open (${gt.kind}, seen ${gt.seen.toFixed(2)}, opening ${gt.opening}, open ${gt.open.toFixed(2)}, hero ${Math.round(h.x - gt.x - 16)},${Math.round(h.y - gt.y)} from its foot; its steps ${B.trail.filter((_, k, a) => (a.length - k) % 30 === 1).join(" ")}, gate at ${gt.x | 0},${gt.y | 0})`), (B.gateT = -1));
         }
         if (G.state === "won") return { done: true, won: true, floor: w.floor, trail: w.trail, log: B.log };
         if (G.state === "dead") return { done: true, won: false, floor: w.floor, log: [...B.log, "the hero died, though the bot keeps them alive"] };
@@ -226,7 +236,8 @@ for (const hero of heroes) {
             }
           }
           // now and then a dash, and the ability when it is full
-          if (B.frames % 150 === 0) h.wantDash = true;
+          // (not while waiting at a gate for it to open: the shade's dash is a long blink, and would take it away)
+          if (B.frames % 150 === 0 && !(B.gateT >= 0 && B.gateFloor === w.floor)) h.wantDash = true;
           if (h.od >= 100 && B.frames % 60 === 0) h.wantUlt = true;
         }
         G.input.move.x = mx;
@@ -234,7 +245,7 @@ for (const hero of heroes) {
         const a = performance.now();
         // (the hero's last steps, to tell how a bad place was reached)
         (B.trail ??= []).push(`${G.state}:${h.x | 0},${h.y | 0}${h.dashT > 0 ? " dash" : ""}${h.exitT >= 0 ? " exit" : ""}`);
-        if (B.trail.length > 40) B.trail.shift();
+        if (B.trail.length > 400) B.trail.shift();
         G.frame(1 / 60);
         if (G.state === "play" && map.wall(h.x, h.y) && !B.traced) (B.traced = true), B.log.push(`trail into the wall: ${B.trail.join(" ")}`);
         const ms = performance.now() - a;
