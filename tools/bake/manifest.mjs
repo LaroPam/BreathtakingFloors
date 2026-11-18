@@ -263,6 +263,8 @@ export const ANIMS = [
   { name: "torch_blue", fx: "fire/torch", fps: 10, light: { thr: 10, k: 0.9 }, opts: { palette: ICE_FIRE } },
   { name: "torch_gold", fx: "fire/torch", fps: 10, light: { thr: 10, k: 0.9 }, opts: { palette: PAL.holy } },
   { name: "candle", fx: "fire/candle", fps: 8, light: { thr: 5, k: 1 } },
+  // fire burning on the floor where a fiery blow or shot passed (the Ring of Fire)
+  { name: "ground_fire", art: "props/ground-fire", fps: 20, light: { thr: 8, k: 0.9 } },
   { name: "brazier_cold", art: "props/brazier-cold", fps: 12 },
   { name: "brazier", fx: "fire/brazier", fps: 10, light: { thr: 10, k: 1 } },
   { name: "portal", fx: "arcane/portal", fps: 8, light: FX_BIG },

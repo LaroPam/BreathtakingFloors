@@ -367,14 +367,11 @@ export function drawWorld(s: Scene, w: World, camX: number, camY: number, viewW:
     if (!inView(f.x, f.y, f.r + 10)) continue;
     const k = Math.min(1, f.t / 0.15) * Math.min(1, (f.life - f.t) / 0.5), n = Math.max(10, Math.round(f.r * 0.9));
     if (f.ember) {
-      // an ember a fiery shot left: a scorch, a few licks of flame in its middle, a warm glow
-      s.back.disc(f.x, f.y, f.r * 0.8, f.r * 0.8 * FLOOR_SQ, rgbaf(0.25, 0.06, 0.02, 0.4 * k));
-      for (let q = 0; q < 4; q++) {
-        const px = Math.round(f.x + (q - 1.5) * 2.5 + Math.sin(f.x + q) * 1.5), fl = Math.round((3 + 3 * Math.abs(Math.sin(time * 10 + q * 2.1 + f.x))) * k);
-        s.glow.rect(px, f.y - fl, 1, fl, rgbaf(1, 0.45 + 0.35 * Math.sin(time * 8 + q), 0.1, 0.9 * k));
-        if (q % 2 === 0) s.glow.rect(px, f.y - fl - 1, 1, 1, rgbaf(1, 0.9, 0.5, 0.7 * k));
-      }
-      s.illum.light(f.x, f.y - 3, f.r + 8, (f.r + 8) * FLOOR_SQ, rgbaf(1, 0.42, 0.12, 0.22 * k));
+      // fire burning on the floor where a fiery blow or shot passed: live flames, a size by its heat, each at its own
+      // point of the loop
+      const sc = Math.max(0.45, Math.min(1.1, f.r / 10)) * (0.6 + 0.4 * k);
+      drawAnim(s, anim("ground_fire"), time + (f.x * 0.37 + f.y * 0.11), f.x, f.y + 2, { sx: sc, sy: sc, alpha: k, key: f.y, glow: k });
+      s.illum.light(f.x, f.y - 4, f.r + 10, (f.r + 10) * FLOOR_SQ, rgbaf(1, 0.42, 0.12, 0.22 * k));
       continue;
     }
     s.back.disc(f.x, f.y, f.r, f.r * FLOOR_SQ, rgbaf(0.35, 0.08, 0.02, 0.35 * k));

@@ -608,6 +608,11 @@ export const HORDE = {
   ringR: 210,
   /** Soul shards lying about past this many merge into one near them, so the floor does not turn to gravel. */
   gemsLoose: 260,
+  /** The foes' pace: base x (1 + perFloor x the floors below the first, up to nine) (the owner: they ran in too fast). */
+  speed: 0.8,
+  speedPerFloor: 0.03,
+  /** The hero's blows and shots, a little rarer (the owner's note), against the weapons' own pace. */
+  blowRate: 0.87,
 };
 /**
  * Weapon artifacts: the stage 2 prototype (docs/PLAN-POWER.md), for the owner to judge before the rework; nothing

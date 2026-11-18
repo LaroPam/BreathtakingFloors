@@ -1298,7 +1298,7 @@ export class World {
     // (a common foe of the horde is weaker one by one: there are many more of them)
     const horde = d.ai < AI.Boss && !d.elite ? HORDE.hp : 1;
     const hp = d.hp * tough * horde * (1 + 0.4 * (f - 1)) * late * curse * (boss && this.firstBoss ? 0.75 : 1);
-    const i = this.enemies.add(type, x, y, hp, this.rng.next(), this.mod.speed * (1.08 + Math.min(9, f - 1) * 0.04) * this.rng.range(0.9, 1.1) * (this.curse ? 1.2 : 1) * (this.mutator === "haste" ? 1.25 : 1));
+    const i = this.enemies.add(type, x, y, hp, this.rng.next(), this.mod.speed * (HORDE.speed + Math.min(9, f - 1) * HORDE.speedPerFloor) * this.rng.range(0.9, 1.1) * (this.curse ? 1.2 : 1) * (this.mutator === "haste" ? 1.25 : 1));
     if (i >= 0) {
       this.enemies.face[i] = this.hero.x < x ? -1 : 1;
       // slimes of a pack do not all hop as one: each starts at its own point of the loop
@@ -1792,7 +1792,7 @@ export class World {
       this.audio.play("dash", W.ranged ? 2.2 : 1.8);
     }
     const hits = attackHits(h.weapon, h.atk), frames = attackFrames(h.weapon, h.atk);
-    h.atkT += dt * s.haste * W.speed * RARITIES[h.rarity].speed * (this.rage > 0 ? 1.3 : 1);
+    h.atkT += dt * HORDE.blowRate * s.haste * W.speed * RARITIES[h.rarity].speed * (this.rage > 0 ? 1.3 : 1);
     const frame = Math.floor(h.atkT * ATK_FPS);
     while (h.hitsDone < hits.length && frame >= hits[h.hitsDone]) {
       this.land(W.blows[h.atk], h.atk, h.hitsDone, hits.length);
@@ -2804,7 +2804,11 @@ export class World {
       this.pools.push({ x, y, r: 16, life: 2.6, max: 2.6, power: 1 });
       this.burst(x, y - 4, 6, rgba("#8ad83a"), 50, 0.35, 120);
     }
-    this.addFx("poof", cx, cy + this.bry, { sx: d.scale * (d.elite ? 1.2 : 0.8), sy: d.scale * (d.elite ? 1.2 : 0.8), glow: 0.5 });
+    // a puff where it fell: an elite's always; a common foe's smaller, and in a thick fight mostly just its sparks
+    // (the owner: the puffs clouded the screen)
+    let puffs = 0;
+    for (const f of this.fx) if (f.anim === "poof") puffs++;
+    if (d.elite || (puffs < 3 && this.rng.chance(0.5))) this.addFx("poof", cx, cy + this.bry, { sx: d.scale * (d.elite ? 1.2 : 0.4), sy: d.scale * (d.elite ? 1.2 : 0.4), glow: 0.25 });
     this.burst(cx, cy, d.elite ? 18 : 6, rgba(d.glow || "#c8c0d8"), 70, 0.45, 120);
     // soul shards: the value broken into the fewest pieces
     let v = d.xp * (d.ai < AI.Boss && !d.elite ? HORDE.xp : 1) * this.mod.xp * this.xpMul * (this.mutator === "swarm" ? 1.33 : 1);
