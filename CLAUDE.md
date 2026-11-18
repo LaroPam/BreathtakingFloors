@@ -15,6 +15,9 @@ The user writes in Russian; docs and in-game text are Russian-first (English is 
   ~50x faster than real time, and reports what breaks: a boss gone without dying, a stale enemy index, NaN, someone
   inside a wall or off the map, a floor not got through, a gate that does not open with its gift, page errors, slow
   frames. `-- --heroes=mage --floors=3 --seed=2`, `--from=9` (start deeper), `--gifts=shade`.
+- `npm run bench`: the weapon bench, every weapon bare and with each weapon artifact at levels 1/3/5 and evolved against
+  the same horde (the dev build's World in headless Chromium); `records/bench/report.md` flags pairs far too strong or
+  nearly useless. `-- --weapons=sword,bow --arts=0,8 --levels=5`.
 - `npm run check:clip` (nothing cut off its bake canvas), `npm run check:release` and `npm run check:sdk` (the built
   Yandex and YouTube bundles against the stores' rules; the last plays them with stand-in SDKs). See `docs/RELEASE.md`.
 - `node pixelfx/tools/render.mjs <id>`: the same for a library effect.
