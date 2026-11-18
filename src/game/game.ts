@@ -1606,10 +1606,11 @@ export class Game {
         // (on a touch screen the bars and buttons along the bottom keep clear of its edge, where a phone or the page
         // around the game may have its own controls)
         const hudH = this.touch ? H - TOUCH_INSET : H;
-        if (this.hudStyle) {
-          // (a mock-up of another style of HUD, for the owner to choose: hudStyles.ts)
+        const hudStyle = this.hudStyle || (this.save.hud as HudStyle | "");
+        if (hudStyle) {
+          // (another style of HUD on trial, for the owner to choose: hudStyles.ts; set in the settings)
           drawHud(ui, w, W, hudH, this.now, this.banner, this.touch, this.weekly ? "trophy" : this.daily ? "daily" : "", this.save.tutorial && !this.daily, STYLED_PARTS);
-          drawStyledHud(this.hudStyle, ui, w, W, hudH, this.now, [(w.hero.x - cx) * this.viewK, (w.hero.y - cy) * this.viewK]);
+          drawStyledHud(hudStyle, ui, w, W, hudH, this.now, [(w.hero.x - cx) * this.viewK, (w.hero.y - cy) * this.viewK]);
         } else drawHud(ui, w, W, hudH, this.now, this.banner, this.touch, this.weekly ? "trophy" : this.daily ? "daily" : "", this.save.tutorial && !this.daily);
         if (this.touch) drawTouch(ui, this.input, w, W, hudH, this.now);
         else this.input.zones = [];
@@ -2735,30 +2736,43 @@ export class Game {
   private drawSettings(): void {
     const ui = this.ui, W = this.r.w, H = this.r.h, now = this.now, sv = this.save;
     const th = this.heading(t("settings"), 8, H >= 300 ? 2 : 1);
-    const pw = Math.min(300, W - 24), px = Math.round(W / 2 - pw / 2), rh = 22;
-    let y = 8 + th + 8;
-    frame(ui, px - 10, y - 8, pw + 20, rh * 6 + 12);
+    // seven rows: one column, or two side by side on a short wide screen (a phone held wide)
+    const two = H < 240 && W >= 320, per = two ? 4 : 7, rh = two ? 22 : H < 240 ? 19 : 22;
+    const pw = two ? Math.floor((Math.min(480, W - 24) - 14) / 2) : Math.min(300, W - 24);
+    const left = Math.round(W / 2 - (two ? pw + 7 : pw / 2)), top = 8 + th + 8;
+    frame(ui, left - 10, top - 8, (two ? pw * 2 + 14 : pw) + 20, rh * per + 12);
+    const at = (i: number): [number, number] => [left + (i >= per ? pw + 14 : 0), top + (i % per) * rh];
     const flip = (on: boolean) => (on ? t("on") : t("off"));
+    let [px, y] = at(0);
     if (button(ui, this.menu, now, px, y, pw, 18, `${t("langShort")}: ${t("langName")}`, { icon: icon("hud", "globe") })) {
       const next: Lang = getLang() === "ru" ? "en" : "ru";
       setLang(next);
       sv.lang = next;
       this.persist();
     }
-    y += rh;
+    [px, y] = at(1);
     const mv = slider(ui, this.menu, now, px, y, pw, t("music"), sv.vol.music, icon("hud", "speaker"));
     if (mv !== null) (sv.vol.music = mv, this.applySettings(), this.persist());
-    y += rh;
+    [px, y] = at(2);
     const sv2 = slider(ui, this.menu, now, px, y, pw, t("sfx"), sv.vol.sfx, icon("hud", "speaker"));
     if (sv2 !== null) (sv.vol.sfx = sv2, this.applySettings(), this.audio.play("pickup"), this.persist());
-    y += rh;
+    let i = 3;
     for (const [key, label] of [["shake", t("shake")], ["numbers", t("numbers")], ["flashes", t("flashes")]] as const) {
+      [px, y] = at(i++);
       if (button(ui, this.menu, now, px, y, pw, 18, `${label}: ${flip(sv[key])}`, { color: sv[key] ? C.text : C.dim })) {
         sv[key] = !sv[key];
         this.applySettings();
         this.persist();
       }
-      y += rh;
+    }
+    // the HUD on trial: the plates or one of the styles the owner is choosing between (hudStyles.ts)
+    const HUDS = ["", "lantern", "reliquary", "hero"] as const, HUD_NAME = ["hudPlain", "hudLantern", "hudReliquary", "hudHero"] as const;
+    const hi = Math.max(0, HUDS.indexOf(sv.hud as HudStyle));
+    [px, y] = at(i);
+    if (button(ui, this.menu, now, px, y, pw, 18, `${t("hudStyle")}: ${t(HUD_NAME[hi])}`, { icon: icon("hud", "gear") })) {
+      sv.hud = HUDS[(hi + 1) % HUDS.length];
+      this.applySettings();
+      this.persist();
     }
     // the way to the game's support (the stores ask for one), as set for this build
     if (SUPPORT) text(ui, `${t("support")}: ${SUPPORT}`, W / 2, H - 38, { font: "mini", align: "center", color: C.dim });
