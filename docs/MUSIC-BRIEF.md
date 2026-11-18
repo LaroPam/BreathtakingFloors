@@ -42,6 +42,19 @@
 | 9 | `boss` | бои с боссами | быстро, напор, эпика | 118–128, до минор |
 | 10 | `lastlight` | Последний Свет (финальный босс) | величие, хор, орган, отчаяние и свет | 120, си минор |
 
+### Как заполнять Suno
+
+Режим Custom, переключатель **Instrumental** включён. Название (Title) — имя файла (`crypt` и т. д.).
+
+- **Style of Music** — описание стиля из списка ниже, для каждого трека своё.
+- **Exclude styles** (в Advanced Options, если есть в твоей версии) — одинаково для всех:
+  `lead vocals, lyrics, rap, spoken word, fade in, fade out, tempo change, ritardando, long silence`
+- **Lyrics** (если поле остаётся при Instrumental) — одинаково для всех, без вступления и концовки:
+  `[Instrumental]` `[Main Theme]` `[Variation]` `[Main Theme]` (каждое с новой строки).
+
+Из нескольких вариантов, что выдаст Suno, бери тот, где с первой секунды уже идёт основное движение и нет затухания
+в конце.
+
 ### Описания стиля для Suno
 
 1. **menu**: `dark fantasy, lonely lantern in the dark, soft piano and harp, warm low strings, distant choir pad,
