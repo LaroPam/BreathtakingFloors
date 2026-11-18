@@ -16,6 +16,7 @@ import { Rng } from "./rng";
 import { TEAM_FOE } from "./pools";
 import { defaultSave, sanitize, type RunSave, type SaveData } from "./save";
 import { bar, button, slider, C, divider, glow as glowUi, drawHud, drawPointers, drawTouch, fmtTime, frame, header , medallion, Menu, panel, para, plate , slot, type ButtonOpts } from "./ui";
+import { drawStyledHud, STYLED_PARTS, type HudStyle } from "./hudStyles";
 import { CINE_DUR, LUNGE_DASH, SRC_ABILITY, SRC_DASH, SRC_ELS, SRC_N, SRC_PARRY, SRC_REACT, SRC_RELIC, SRC_STATUS, SRC_WAVE, SRC_WEAPON, World } from "./world";
 
 type StatRow = { ic: Rect; name: string; col: number; sum: number; segs: [number, number][] };
@@ -212,6 +213,8 @@ export class Game {
   private demoCam: [number, number] = [0, 0];
   /** World pixels to interface pixels this frame (the world in play is drawn finer than the interface). */
   private viewK = 1;
+  /** A test hook: draw a mock-up of another style of HUD (hudStyles.ts) instead of the plates. */
+  hudStyle: HudStyle | "" = "";
   private bookNote = "";
   private bookNoteT = -9;
   private bookShake = -1;
@@ -1603,7 +1606,11 @@ export class Game {
         // (on a touch screen the bars and buttons along the bottom keep clear of its edge, where a phone or the page
         // around the game may have its own controls)
         const hudH = this.touch ? H - TOUCH_INSET : H;
-        drawHud(ui, w, W, hudH, this.now, this.banner, this.touch, this.weekly ? "trophy" : this.daily ? "daily" : "", this.save.tutorial && !this.daily);
+        if (this.hudStyle) {
+          // (a mock-up of another style of HUD, for the owner to choose: hudStyles.ts)
+          drawHud(ui, w, W, hudH, this.now, this.banner, this.touch, this.weekly ? "trophy" : this.daily ? "daily" : "", this.save.tutorial && !this.daily, STYLED_PARTS);
+          drawStyledHud(this.hudStyle, ui, w, W, hudH, this.now, [(w.hero.x - cx) * this.viewK, (w.hero.y - cy) * this.viewK]);
+        } else drawHud(ui, w, W, hudH, this.now, this.banner, this.touch, this.weekly ? "trophy" : this.daily ? "daily" : "", this.save.tutorial && !this.daily);
         if (this.touch) drawTouch(ui, this.input, w, W, hudH, this.now);
         else this.input.zones = [];
         this.drawLevelRing(cx, cy);
