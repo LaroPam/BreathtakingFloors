@@ -4,7 +4,13 @@
 type Sfx =
   | "shoot" | "hit" | "kill" | "pickup" | "levelup" | "dash" | "hurt" | "boom" | "zap" | "freeze" | "ult" | "ignite"
   | "portal" | "click" | "graze" | "heal" | "chest" | "reaction" | "enemyShot" | "roar" | "deny" | "break" | "coin" | "curse" | "achieve" | "secret"
-  | "hover" | "burn" | "venom" | "holy" | "void";
+  | "hover" | "burn" | "venom" | "holy" | "void" | "evolve" | "victory" | "fall";
+
+/** How a weapon's blow sounds landing (World.land): a blade rings, a mace thuds, a point stabs, a whip cracks. */
+export type BlowVoice = "blade" | "blunt" | "pierce" | "crack";
+
+/** The sounds that matter over the fight: the music steps back under them for a moment. */
+const DUCK: Partial<Record<Sfx, number>> = { roar: 0.45, levelup: 0.6, chest: 0.6, achieve: 0.6, ult: 0.55, evolve: 0.35, victory: 0.3, fall: 0.3, portal: 0.6 };
 
 /** The master's lift (×): the voices are mixed small, this brings the whole to a normal loudness (peaks near -3 dBFS). */
 const LEVEL = 8;
@@ -136,7 +142,54 @@ export class Audio {
     this.musicVolume = music;
     if (!this.ctx) return;
     this.sfxBus.gain.value = sfx * 0.5;
+    this.musicBus.gain.cancelScheduledValues(this.ctx.currentTime);
     this.musicBus.gain.value = music * 0.4;
+  }
+  /** The music steps back to k of its level for a moment and comes back (under a sound that matters). */
+  private duck(k: number): void {
+    const c = this.ctx!, g = this.musicBus.gain, base = this.musicVolume * 0.4, t = c.currentTime;
+    if (t - this.duckT < 0.3 || base <= 0) return;
+    this.duckT = t;
+    g.cancelScheduledValues(t);
+    g.setValueAtTime(Math.min(base, g.value), t);
+    g.linearRampToValueAtTime(base * k, t + 0.05);
+    g.setValueAtTime(base * k, t + 0.4);
+    g.linearRampToValueAtTime(base, t + 1.1);
+  }
+  private duckT = -1;
+
+  /** A weapon's blow landing in its own voice (a share of the hits' throttle); heavier for a heavy blow or a crit. */
+  blow(voice: BlowVoice, heavy: boolean, crit: boolean): void {
+    const c = this.ctx;
+    if (!c || !this.enabled || c.state !== "running") return;
+    const now = c.currentTime;
+    if (now - (this.last.get("hit") ?? -1) < (LIMITS.hit ?? 0)) return;
+    this.last.set("hit", now);
+    const p = (heavy ? 0.75 : 1) * (crit ? 0.82 : 1) * (0.92 + Math.random() * 0.16);
+    switch (voice) {
+      case "blade":
+        // steel through: a bright hiss and a short ring
+        this.hiss(0.06, 5200 * p, 1400, 0.1, 2.5);
+        this.tone("triangle", 1300 * p, 900 * p, 0.07, 0.035);
+        break;
+      case "blunt":
+        // a club's thud: low and round, a dull crunch over it
+        this.tone("sine", 160 * p, 60, 0.12, 0.16);
+        this.hiss(0.08, 900 * p, 200, 0.12, 0.8);
+        break;
+      case "pierce":
+        // a point going in: short and narrow
+        this.hiss(0.04, 3000 * p, 1200, 0.1, 3);
+        this.tone("square", 520 * p, 200 * p, 0.04, 0.03);
+        break;
+      case "crack":
+        // a lash: a snap high up
+        this.hiss(0.03, 7000, 2500, 0.16, 1.2, "highpass");
+        this.tone("square", 1800 * p, 600, 0.03, 0.03);
+        break;
+    }
+    // a crit lands a weight under it
+    if (crit) (this.tone("sine", 110, 45, 0.18, 0.18), this.hiss(0.1, 1200, 200, 0.08, 0.7));
   }
 
   /** The platform paused the game (an ad, a hidden tab): stop all sound until resume(). */
@@ -189,6 +242,8 @@ export class Audio {
     const now = c.currentTime, lim = LIMITS[name] ?? 0;
     if (lim && now - (this.last.get(name) ?? -1) < lim) return;
     this.last.set(name, now);
+    const dk = DUCK[name];
+    if (dk) this.duck(dk);
     const p = pitch * (0.96 + Math.random() * 0.08);
     switch (name) {
       case "shoot":
@@ -216,6 +271,23 @@ export class Audio {
       }
       case "levelup":
         [0, 4, 7, 12, 16].forEach((s, i) => this.tone("triangle", 440 * 2 ** (s / 12), 440 * 2 ** (s / 12), 0.22, 0.09, i * 0.06));
+        break;
+      case "evolve":
+        // an evolution: a long climb in a major seventh, a shimmer over it, a low swell under it
+        [0, 4, 7, 11, 14, 19, 23].forEach((s, i) => this.tone("triangle", 392 * 2 ** (s / 12), 392 * 2 ** (s / 12), 0.5, 0.08, i * 0.07, 0.01));
+        this.hiss(1.2, 6000, 9000, 0.04, 0.6, "highpass", 0.2);
+        this.tone("sine", 98, 98, 1.3, 0.1, 0, 0.3);
+        break;
+      case "victory":
+        // the tower won: a fanfare up to the octave, then the whole chord held
+        [0, 4, 7, 12].forEach((s, i) => this.tone("square", 523 * 2 ** (s / 12), 523 * 2 ** (s / 12), 0.16, 0.05, i * 0.13));
+        [0, 4, 7, 12].forEach((s) => this.tone("triangle", 523 * 2 ** (s / 12), 523 * 2 ** (s / 12), 1.4, 0.06, 0.55, 0.02));
+        this.tone("sine", 131, 131, 1.6, 0.1, 0.55, 0.05);
+        break;
+      case "fall":
+        // the hero falls: a minor line sinking slowly, a low tone fading under it
+        [12, 8, 5, 3, 0].forEach((s, i) => this.tone("sine", 330 * 2 ** (s / 12), 330 * 2 ** (s / 12) * 0.98, 0.42, 0.08, i * 0.2, 0.02));
+        this.tone("triangle", 82, 70, 1.6, 0.09, 0.1, 0.2);
         break;
       case "dash":
         this.hiss(0.18, 600, 3200, 0.12, 0.9);

@@ -3,7 +3,7 @@
 
 import { anim, frameAt, hasAnim, type Anim } from "../engine/atlas";
 import { attackFrames, attackHits, HERO_FPS, heroHands, lookId } from "./heroSprites";
-import type { Audio } from "../engine/audio";
+import type { Audio, BlowVoice } from "../engine/audio";
 import { rgba, rgbaf } from "../engine/renderer";
 import {
   AI, depthOf, placeDef, El, EL_COLOR, EN, ENEMIES, evolutionOf, heroDef, mainStop, nextStop, PLACE_FLOORS, QUESTS, RELIC_MAX, RELICS, RelicKind, reactionFor, roster, WEAPON_IDS, WEAPONS,
@@ -453,6 +453,11 @@ export interface Cine {
   type: number;
 }
 export const CINE_DUR = 2.8;
+/** How each weapon's blow sounds landing: a blade rings, a mace thuds, a point stabs, a whip cracks (Audio.blow). */
+const BLOW_VOICE: Record<WeaponId, BlowVoice> = {
+  sword: "blade", hammer: "blunt", spear: "pierce", scythe: "blade", daggers: "blade", bow: "pierce", spell: "pierce", greatsword: "blade",
+  claws: "blade", whip: "crack", flail: "blunt", glaive: "blade", crossbow: "pierce", staff: "pierce", chakram: "blade", bell: "blunt",
+};
 export interface Mote {
   x: number;
   y: number;
@@ -2129,7 +2134,8 @@ export class World {
     if (hits) {
       const heavy = B.push >= 140;
       this.shake = Math.max(this.shake, heavy ? 0.25 : 0.1);
-      this.audio.play("hit", heavy ? 0.6 : 1);
+      // the weapon's own voice, heavier for a heavy blow or a crit
+      this.audio.blow(BLOW_VOICE[h.weapon], heavy || !!B.fin, critPts.length > 0);
     }
     void W;
   }
@@ -2329,6 +2335,7 @@ export class World {
       this.hitstop = 0.2;
       this.flash = 1;
       this.addFx("heal_ring", h.x, h.y, { tint: rgba("#ff8a9a"), glow: 0.6 });
+      this.audio.play("fall");
       this.ev.died();
     }
   }
@@ -2938,6 +2945,7 @@ export class World {
       E.remove(i);
       if (!this.next()) {
         this.won = true;
+        this.audio.play("victory");
         this.ev.victory();
       } else this.openPortal(...this.portalSpot());
       return;
@@ -3465,6 +3473,7 @@ export class World {
     this.shake = Math.max(this.shake, 0.7);
     this.ev.banner(tr("evolution"), col, tx(e.name));
     this.audio.play("ult");
+    this.audio.play("evolve");
   }
   /**
    * What the artifacts that act on their own (blades, birds) measure from: a typical blow of the weapon in hand,
@@ -5819,7 +5828,9 @@ export class World {
           }
           this.addFx(B.kind[i] === B_LANCE ? "hit_frost" : crit ? "crit" : "hit_spark", ex, ey + 10, { rot: Math.atan2(-B.vy[i], -B.vx[i]), sx: 0.6, sy: 0.6, glow: 0.7 });
           if (B.el[i] && B.kind[i] !== B_LANCE) this.burst(ex, ey, 4, rgba(EL_COLOR[B.el[i] as El]), 60, 0.3);
-          this.audio.play("hit", dead ? 0.8 : 1);
+          // an arrow or a bolt goes in with a stab, the rest with the plain hit
+          if (B.kind[i] === B_ARROW || B.kind[i] === B_BOLT) this.audio.blow("pierce", dead, crit);
+          else this.audio.play("hit", dead ? 0.8 : 1);
           // (the weapon artifacts' turn comes when the bullet is done with this pass: see below)
           if (B.art[i]) (artX = ex), (artY = ey), (artUid = uid);
           // the splitter's shards split once more at its last level
