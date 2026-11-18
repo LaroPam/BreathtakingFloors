@@ -1754,7 +1754,8 @@ export class Game {
     if (this.state !== "play" && this.state !== "card" && !over && since < 0.2) this.fillScreen(rgba("#07060c", (1 - since / 0.2) * 0.7));
     // the system pointer hides while the reticle aims
     // no aiming with the mouse: in play the pointer only gets in the way of the view
-    const cursor = this.state === "play" && this.input.mode === "kbm" && !this.touch ? "none" : "default";
+    // (except in the opening, whose skip button wants clicking)
+    const cursor = this.state === "play" && this.input.mode === "kbm" && !this.touch && !this.world?.intro ? "none" : "default";
     if (this.r.canvas.style.cursor !== cursor) this.r.canvas.style.cursor = cursor;
     this.drawToast(this.dt);
     this.drawWipe();
@@ -1778,7 +1779,10 @@ export class Game {
       rows.forEach((row, k) => text(ui, row, W / 2, Math.round(H * 0.66) + k * 12, { align: "center", color: withAlpha(C.goldLight, a), shadow: withAlpha(C.ink, a), outline: true }));
     }
     // (low in the middle: clear of the floor's plate at the top and of the touch controls at the corners)
-    if (button(ui, this.menu, now, Math.round(W / 2 - 45), H - (this.touch ? 30 : 22), 90, 16, t("introSkip"), { icon: icon("hud", "play") })) {
+    // the button, or a key: Enter (Space is the dash, so not that), Backspace, a pad's B; the key is named on the button
+    const input = this.input, key = this.touch ? "" : input.mode === "pad" ? "B - " : "ENTER - ", label = key + t("introSkip");
+    const bw = Math.max(90, measure(label) + 30), keyed = (input.pressed("confirm") && !input.pressed("dash")) || (input.pressed("back") && !input.pressed("pause"));
+    if (button(ui, this.menu, now, Math.round(W / 2 - bw / 2), H - (this.touch ? 30 : 22), bw, 16, label, { icon: icon("hud", "play") }) || keyed) {
       this.world.endIntro();
       this.audio.play("click");
     }
