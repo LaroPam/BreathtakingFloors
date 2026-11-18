@@ -766,6 +766,25 @@ const WEAPONS = {
     const c = 31, R = 2.4;
     for (let i = -R; i <= R; i += 0.3) for (let k = -R; k <= R; k += 0.3) if (i * i + k * k <= R * R) T(c + i, k, i * i + k * k < 1 ? ARMS.stormH : (i + k) < 0 ? ARMS.storm : ARMS.stormD, 0.6, true);
   } },
+  // the Sorceress's frost staff: a pale ash haft wound with silver, its head a silver crook curled round a long
+  // crystal of ice that glows; a few shards float off it
+  frost: { two: -9, draw(T) {
+    haft(T, -14, 24, STEEL.wood, STEEL.woodD, 0.6);
+    for (const b of [-12, 3, 18]) for (let k = -1; k <= 1.01; k += 0.35) (T(b, k, GIFT.silver), T(b + 0.4, k, GIFT.silverD));
+    // the crook: from the haft's end, out to one side, over and down round the crystal
+    for (let a = 0; a <= Math.PI * 1.35; a += 0.06) {
+      const i = 27.5 - Math.cos(a) * 3.6, k = -Math.sin(a) * 3.2 - 0.6;
+      T(i, k, a > 0.9 && a < 2 ? GIFT.silver : GIFT.silverD, 0.2);
+      T(i + 0.3, k, a > 0.9 && a < 2 ? GIFT.silver : GIFT.silverD, 0.2);
+    }
+    // the crystal: long along the haft, a bright core, lit on its upper face
+    const c = 29.5;
+    for (let i = -4.6; i <= 4.6; i += 0.3) {
+      const half = 2.1 * (1 - Math.abs(i) / 4.6) ** 0.8;
+      for (let k = -half; k <= half; k += 0.3) T(c + i, k, Math.abs(k) < 0.6 && i > -2 && i < 2.5 ? GIFT.iceH : k < 0 ? GIFT.ice : GIFT.iceD, 0.8, true);
+    }
+    for (const [i, k] of [[35.5, -2.4], [34.8, 2.6], [36.6, 0.4]]) T(i, k, GIFT.iceH, 0.8, true);
+  } },
   // a chakram: a ring of steel with a sharpened outer edge and six teeth, held by its inner rim
   chakram: { draw(T, q) {
     const c = q.model ? 0 : 6.5, R = 6, w = 1.4;

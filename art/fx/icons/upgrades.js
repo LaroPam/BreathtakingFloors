@@ -468,15 +468,12 @@ Object.assign(SYMBOLS, {
     p.px(6, 0, H("#ffffff"));
   },
   w_spell(p) {
-    // a book of spells with a flame, a frost shard and a spark over it
+    // the frost staff: a pale haft, a crystal of ice at its head
     outlined(p, (ink) => {
-      p.poly([[-7, 1], [0, 3], [7, 1], [7, 7], [0, 9], [-7, 7]], pick(ink, "#6b2cc0"));
-      p.line(0, 3, 0, 9, pick(ink, "#2b1252"));
-      p.circle(-5, -5, 2.2, (d) => pick(ink, d < 0.5 ? "#fff3a6" : "#ff8a2a"));
-      p.tri(-1, -2, 1, -9, 2, -2, pick(ink, "#9bdcff"));
-      p.poly([[5, -8], [3, -4], [5, -4], [4, -1], [7, -5], [5, -5], [6, -8]], pick(ink, "#ffe03c"));
+      p.line(-8, 8, 2, -2, pick(ink, "#b07a48"));
+      p.poly([[4, -9], [7, -5], [4, 0], [1, -5]], pick(ink, "#9bdcff"));
     });
-    p.line(-6, 3, -1, 4, H("#c684ff")); p.line(1, 4, 6, 3, H("#c684ff"));
+    p.px(3, -6, H("#ffffff")); p.px(4, -7, H("#e8f8ff")); p.px(8, -9, H("#e8f8ff")); p.px(-3, 3, H("#c8c8dc"));
   },
 });
 

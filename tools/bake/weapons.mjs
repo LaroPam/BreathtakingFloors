@@ -168,14 +168,13 @@ export const WEAPONS = {
     attacks: [{ act: ARROW, times: [-0.14, 0.02, 0.18, 0.36, 0.5, 0.56, 0.72, 1.0], hits: [5] }],
   },
   spell: {
-    // the Book of Elements open in the off hand; the casting hand works the spell
-    guard: { ...READY, offWeapon: "book", sb: -1.25, fx: 10, fy: -20, bx: 8, by: -21, turn: 0.35 },
+    // the Sorceress's frost staff: two thrusts of the crystal at the foe, then a wide sweep that looses a fan
+    guard: { ...READY, weapon: "frost", fx: 11, fy: -22, bx: 7, by: -16, sa: -1.3, turn: 0.3 },
     oneHand: false,
-    book: true,
     attacks: [
-      { act: FIREBALL, times: [0.5, 0.7, 0.85, 0.92, 0.95, 1.05, 1.25, 1.39], hits: [4], rune: "fire" },
-      { act: ICELANCE, times: [0.4, 0.6, 0.7, 0.77, 0.8, 0.9, 1.1, 1.3], hits: [4], rune: "frost" },
-      { act: LIGHTNING, times: [0.26, 0.5, 0.66, 0.72, 0.76, 0.86, 1.0, 1.3], hits: [4], rune: "storm" },
+      { act: THRUST, times: [-0.24, -0.12, -0.04, 0, 0.07, 0.3, 0.55], hits: [3], weapon: "frost" },
+      { act: THRUST, times: [-0.2, -0.1, -0.03, 0, 0.06, 0.28, 0.5], hits: [3], weapon: "frost" },
+      { act: SLASH, times: [-0.3, -0.16, -0.06, 0, 0.06, 0.22, 0.45], hits: [3], weapon: "frost" },
     ],
   },
 };
@@ -247,7 +246,7 @@ export const DEATH = [
  * A weapon on its own, turning in 3D: the stock figure holds it upright and turns round (yaw), and only the weapon's
  * pixels are kept, recentred. The altars float these over their stone.
  */
-export const MODEL_WEAPONS = { sword: "sword", hammer: "hammer", spear: "spear", scythe: "scythe", daggers: "dagger", greatsword: "greatsword", claws: "rig:claw", bow: "bow", spell: "rig:book", whip: "rig:whip", flail: "rig:flail", glaive: "rig:glaive", crossbow: "rig:crossbow", staff: "rig:staff", chakram: "rig:chakram", bell: "rig:bell" };
+export const MODEL_WEAPONS = { sword: "sword", hammer: "hammer", spear: "spear", scythe: "scythe", daggers: "dagger", greatsword: "greatsword", claws: "rig:claw", bow: "bow", spell: "rig:frost", whip: "rig:whip", flail: "rig:flail", glaive: "rig:glaive", crossbow: "rig:crossbow", staff: "rig:staff", chakram: "rig:chakram", bell: "rig:bell" };
 export function weaponModelFrames(rigWeapon, n = 12) {
   const frames = [];
   for (let k = 0; k < n; k++) {

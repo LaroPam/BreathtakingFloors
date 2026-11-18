@@ -1055,9 +1055,9 @@ export class World {
       const [x, y] = tries === 0 && nooks.length ? nooks[0] : anyGround();
       if (!clear(x, y, 14) && !(tries === 0 && nooks.length)) continue;
       const pool = this.weaponsOpen((id) => id !== this.hero.weapon), weapon = R.pick(pool);
-      // from the second floor on, more and more of them are steeped in an element (not the spellbook, not the fire whip)
+      // from the second floor on, more and more of them are steeped in an element (not the weapons born with one: the frost staff, the fire whip)
       const rarity = rollRarity(R.next(), this.floor);
-      let el = this.floor >= 2 && !WEAPONS[weapon].el && weapon !== "spell" && R.chance(0.25 + 0.06 * this.floor) ? R.pick(ELEMENTS) : El.None;
+      let el = this.floor >= 2 && !WEAPONS[weapon].el && R.chance(0.25 + 0.06 * this.floor) ? R.pick(ELEMENTS) : El.None;
       if (rarity >= MYTHIC) el = UNIQUES[weapon].el;
       this.racks.push({ x: Math.round(x), y: Math.round(y), weapon, el, legend: false, rarity, progress: 0, armed: true });
       break;
@@ -1734,8 +1734,6 @@ export class World {
     const h = this.hero, hands = heroHands(lookId(h.def.id), h.weapon, `a${Math.max(0, h.atk)}`), f = Math.min(hands.length - 1, Math.floor(h.atkT * ATK_FPS));
     const hand = hands[f];
     if (!hand) return [h.x + h.face * 10, h.y - 20];
-    // the Book of Elements: spells leave from the open book in the far hand (as draw.ts places it)
-    if (h.weapon === "spell") return [h.x + (hand[2] - 2) * h.face, h.y + hand[3] - 5];
     return [h.x + hand[0] * h.face, h.y + hand[1]];
   }
 
@@ -1764,7 +1762,7 @@ export class World {
     const dmg = B.dmg * s.edge * s.might * this.fury * (h.legend ? 1.4 : 1) * RARITIES[h.rarity].dmg * (1 + s.pact * Math.max(0, h.maxHp - h.hp));
     const cx = h.x, cy = h.y - 18;
     if (B.kind === "arrow" || B.kind === "fire" || B.kind === "frost") {
-      const [hx, hy] = this.handPos(), n = 1 + s.wave + (h.legend && B.kind !== "arrow" ? 1 : 0), spread = B.kind === "arrow" ? 0.1 : 0.22;
+      const [hx, hy] = this.handPos(), n = (B.fan ?? 1) + s.wave + (h.legend && B.kind !== "arrow" ? 1 : 0), spread = B.kind === "arrow" ? 0.1 : B.fan ? 0.3 : 0.22;
       const speed = (B.kind === "arrow" ? 380 : B.kind === "fire" ? 230 : 300) * (0.9 + 0.1 * s.reach);
       const kind = B.kind === "arrow" ? B_ARROW : B.kind === "fire" ? B_FIREBALL : B_LANCE;
       const el = B.kind === "fire" ? El.Fire : B.kind === "frost" ? El.Frost : wel;
@@ -2420,7 +2418,8 @@ export class World {
     // the heroes' abilities are for the horde: a boss takes only a third of them
     if (this.src === SRC_ABILITY && d.ai >= AI.Boss) dmg *= 0.35;
     if (E.hex[i] > 0) dmg *= 1.3;
-    if (E.frozen[i] > 0) dmg *= 1.15;
+    // (the Sorceress's perk: she hits a frozen foe much harder)
+    if (E.frozen[i] > 0) dmg *= this.hero.def.id === "mage" ? 1.4 : 1.15;
     const dealt = Math.max(0, Math.min(dmg, E.hp[i])), row = this.src * SRC_ELS, re = this.src === SRC_REACT && o.as === undefined ? this.reactEls : null;
     if (re) (this.dmgStat[row + re[0]] += dealt / 2), (this.dmgStat[row + re[1]] += dealt / 2);
     else this.dmgStat[row + (o.as ?? el)] += dealt;
@@ -2920,7 +2919,7 @@ export class World {
       for (let q = 0; q < 4; q++) this.drops.add(D_EMBER, mx + R.range(-36, 36), my + R.range(-16, 16), 1, 0, 0);
     } else {
       // an armoury: a weapon on its altar, steeped in an element
-      const pool = this.weaponsOpen((id) => id !== this.hero.weapon && id !== "spell" && !WEAPONS[id].el), weapon = R.pick(pool.length ? pool : WEAPON_IDS);
+      const pool = this.weaponsOpen((id) => id !== this.hero.weapon && !WEAPONS[id].el), weapon = R.pick(pool.length ? pool : WEAPON_IDS);
       // ...better than any out on the floor: rare at the least
       const rarity = Math.max(2, rollRarity(R.next(), this.floor, 0.35));
       this.racks.push({ x: Math.round(mx), y: Math.round(my), weapon, el: rarity >= MYTHIC ? UNIQUES[weapon].el : R.pick(ELEMENTS), legend: false, rarity, progress: 0, armed: true });
@@ -3024,11 +3023,10 @@ export class World {
   }
 
   // ============================================================================================ quests
-  /** How many different elements the hero can deal right now (relics, the weapon's, the spellbook's three). */
+  /** How many different elements the hero can deal right now (relics, the weapon's). */
   private elementsAtHand(): number {
     const els = new Set<El>(this.relics.map((r) => RELICS[r.kind].el));
     if (this.weaponEl) els.add(this.weaponEl);
-    if (this.hero.weapon === "spell") [El.Fire, El.Frost, El.Storm].forEach((e) => els.add(e));
     return els.size;
   }
   /** The hero steps up to the spirit and takes its task. */
@@ -3154,9 +3152,8 @@ export class World {
   relicLevel(kind: RelicKind): number {
     return this.relics.find((r) => r.kind === kind)?.level ?? 0;
   }
-  /** The elements the weapon in hand deals: its own, or the spellbook's three. */
+  /** The elements the weapon in hand deals: its own. */
   weaponElements(): El[] {
-    if (this.hero.weapon === "spell") return [El.Fire, El.Frost, El.Storm];
     return this.weaponEl ? [this.weaponEl] : [];
   }
   /** Ready to become legendary: an element in the weapon, a relic of that element at its last level. */

@@ -985,23 +985,24 @@ SYM.w_bow = (p) => {
 };
 
 SYM.w_spell = (p) => {
-  halo(p, 0, -8, 14, "#c684ff", 0.4);
+  // the Sorceress's frost staff: a pale haft banded in silver, a silver crook curled round a long glowing crystal
+  halo(p, 9, -9, 12, "#9bdcff", 0.45);
   const a = new Art();
-  // a heavy tome: pages, then the cover with gold corners and a glowing sign
-  a.add(S.poly([[-12, 4], [8, 1], [13, 4], [13, 14], [-7, 17], [-12, 14]]), "paper", T.lin(-12, 4, 13, 17, 0.95, 0.5));
-  a.add(S.poly([[-13, 3], [7, 0], [7, 12], [-13, 15]]), "cloth", T.lin(-13, 0, 7, 15, 0.95, 0.4));
-  a.add(S.poly([[7, 0], [12, 3], [12, 15], [7, 12]]), "cloth", 0.25);
-  for (const [x, y] of [[-12, 4], [5, 1.5], [-12, 13], [5, 10.6]]) a.add(S.disc(x + 0.5, y, 1.6), "gold", 0.85, { onto: true });
-  a.add(S.ell(-3, 7.6, 3.4, 2.6, -0.15), "void", 1, { onto: true, flat: true });
-  a.add(S.ell(-3, 7.6, 1.6, 1.2, -0.15), "void", 0.4, { onto: true, flat: true });
-  // the three elements it holds, rising over it
-  flame(a, -8, -7, 2.4, 7, { lean: 1 });
-  a.add(S.poly([[0, -16], [2.4, -9], [0, -5], [-2.4, -9]]), "ice", (x) => (x < 0 ? 0.92 : 0.45));
-  bolt(a, [[9, -14], [6, -9], [9, -8], [6, -3]], 2.2);
+  a.add(S.seg(-17, 17, 4, -4, 2.6), "wood", T.cyl(-17, 17, 4, -4, 1.3));
+  for (const t of [0.15, 0.55]) {
+    const x = lerp(-17, 4, t), y = lerp(17, -4, t);
+    a.add(S.seg(x - 1, y + 1, x + 1, y - 1, 3.4), "steel", 0.85);
+  }
+  // the crook, curling up and over from the haft's end
+  a.add(S.seg(3, -3, 3, -11, 1.6), "steel", 0.8);
+  a.add(S.seg(3, -11, 8, -15, 1.6), "steel", 0.9);
+  a.add(S.seg(8, -15, 13, -13, 1.5), "steel", 0.7);
+  // the crystal: a long diamond leaning with the haft, lit on its upper face
+  a.add(S.poly([[11, -17], [15, -10], [11, -2], [7, -9]]), "ice", (x) => (x < 11 ? 0.95 : 0.5), { flat: true, rim: 0.5 });
   a.draw(p);
-  specks(p, [[-12, -2, "#c69cfa"], [12, -4, "#c69cfa"], [4, -2, "#ead0ff"]]);
+  glint(p, 10, -12, 2, "#ffffff");
+  for (const [x, y] of [[16, -16], [5, -16], [16, -4]]) glint(p, x, y, 1, "#effaff");
 };
-
 SYM.w_claws = (p) => {
   const a = new Art();
   // three curved blades rising from the knuckles of a bracer

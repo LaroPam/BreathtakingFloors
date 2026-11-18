@@ -1049,6 +1049,8 @@ export interface Blow {
   arc: number;
   push: number;
   stun?: number;
+  /** Shots: how many leave at once, in a fan (the frost staff's third cast). */
+  fan?: number;
   /** The effect: turned to the aim around the chest ("rotate") or only mirrored left and right ("flip"). */
   fxMode?: "rotate" | "flip";
 }
@@ -1134,13 +1136,15 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     speed: 1.15, oneHand: false, ranged: true, range: 250,
     blows: [{ kind: "arrow", dmg: 16, reach: 0, arc: 0, push: 50 }],
   },
+  // the Sorceress's frost staff (it took the Book of Elements' place, which set off too many reactions on its own;
+  // the id stays "spell" so that saves, unlocks and records keep it)
   spell: {
-    id: "spell", name: { ru: "КНИГА СТИХИЙ", en: "BOOK OF ELEMENTS" }, g: "f", desc: { ru: "ОГОНЬ, ЛЁД И МОЛНИЯ ПО ОЧЕРЕДИ", en: "FIRE, ICE AND LIGHTNING IN TURN" },
-    speed: 0.9, oneHand: false, ranged: true, range: 220,
+    id: "spell", name: { ru: "ПОСОХ СТУЖИ", en: "FROST STAFF" }, g: "m", desc: { ru: "ЛЕДЯНЫЕ КОПЬЯ ПРОБИВАЮТ ВРАГОВ, КАЖДОЕ ТРЕТЬЕ - ВЕЕРОМ", en: "ICE LANCES PIERCE FOES; EVERY THIRD CAST IS A FAN" },
+    el: El.Frost, speed: 0.95, oneHand: false, ranged: true, range: 220,
     blows: [
-      { kind: "fire", dmg: 14, reach: 26, arc: 0, push: 70 },
-      { kind: "frost", dmg: 12, reach: 0, arc: 0, push: 40 },
-      { kind: "storm", dmg: 18, reach: 24, arc: 0, push: 30 },
+      { kind: "frost", dmg: 14, reach: 0, arc: 0, push: 40 },
+      { kind: "frost", dmg: 14, reach: 0, arc: 0, push: 40 },
+      { kind: "frost", dmg: 11, reach: 0, arc: 0, push: 50, fan: 3 },
     ],
   },
   // the arms the tower's update brought (each opened by a deed: UNLOCKS)
@@ -1189,7 +1193,7 @@ export const WEAPON_IDS = Object.keys(WEAPONS) as WeaponId[];
 /**
  * Legendary weapons: a weapon steeped in an element, held with a relic of the same element at its last level, can
  * be forged anew (a chest always offers it). It keeps its kind, takes a name, hits 40% harder and gains a signature:
- * blades end every combo in a wave of their element, the bow's arrows split on a hit, the spellbook casts twice.
+ * blades end every combo in a wave of their element, the bow's arrows split on a hit, the frost staff looses one more lance.
  */
 export const LEGENDS: Record<WeaponId, Text> = {
   sword: { ru: "КЛИНОК ЗАРИ", en: "DAWNBLADE" },
@@ -1201,7 +1205,7 @@ export const LEGENDS: Record<WeaponId, Text> = {
   claws: { ru: "КОГТИ БУРИ", en: "STORM TALONS" },
   whip: { ru: "ПЛЕТЬ ВУЛКАНА", en: "VOLCANO LASH" },
   bow: { ru: "НЕБЕСНЫЙ ЛУК", en: "SKYBOW" },
-  spell: { ru: "КНИГА БУРЬ", en: "TOME OF TEMPESTS" },
+  spell: { ru: "ПОСОХ ПОЛЯРНОЙ НОЧИ", en: "POLAR NIGHT STAFF" },
   flail: { ru: "ЦЕП ПРЕИСПОДНЕЙ", en: "INFERNAL FLAIL" },
   glaive: { ru: "ЛУННАЯ ГЛЕФА", en: "MOON GLAIVE" },
   crossbow: { ru: "ОСАДНЫЙ АРБАЛЕТ", en: "SIEGE CROSSBOW" },
@@ -1213,7 +1217,7 @@ export const legendDesc = (id: WeaponId): Text =>
   id === "bow"
     ? { ru: "+40% УРОНА. СТРЕЛА ПРИ ПОПАДАНИИ РАСЩЕПЛЯЕТСЯ НАДВОЕ", en: "+40% DAMAGE. AN ARROW SPLITS IN TWO WHEN IT HITS" }
     : id === "spell"
-      ? { ru: "+40% УРОНА. КАЖДОЕ ЗАКЛИНАНИЕ ЗВУЧИТ ДВАЖДЫ", en: "+40% DAMAGE. EVERY SPELL IS CAST TWICE" }
+      ? { ru: "+40% УРОНА. КАЖДЫЙ ВЫСТРЕЛ - НА ОДНО КОПЬЁ БОЛЬШЕ", en: "+40% DAMAGE. EVERY CAST LOOSES ONE MORE LANCE" }
       : { ru: "+40% УРОНА. КОНЕЦ КАЖДОЙ СЕРИИ УДАРОВ - ВОЛНА СТИХИИ", en: "+40% DAMAGE. EVERY COMBO ENDS IN A WAVE OF ITS ELEMENT" };
 
 /** Weapons found deeper down can carry an element: their blows apply it (and set off reactions). */
@@ -1260,7 +1264,7 @@ export function rollRarity(r01: number, floor: number, bonus = 0): number {
 export type Perk = "crit" | "reach" | "haste" | "vamp";
 export interface UniqueWeapon {
   name: Text;
-  /** Its element (None: the weapon's own, or the spellbook's three). */
+  /** Its element (None: the weapon's own). */
   el: El;
   perk: Perk;
 }
@@ -1280,7 +1284,7 @@ export const UNIQUES: Record<WeaponId, UniqueWeapon> = {
   claws: { name: { ru: "КОГТИ ЗАТМЕНИЯ", en: "ECLIPSE CLAWS" }, el: El.Void, perk: "crit" },
   whip: { name: { ru: "ПЛЕТЬ ПРЕИСПОДНЕЙ", en: "HELL'S LASH" }, el: El.None, perk: "vamp" },
   bow: { name: { ru: "ЗАКАТНЫЙ ЛУК", en: "SUNSET BOW" }, el: El.Fire, perk: "crit" },
-  spell: { name: { ru: "КНИГА ПЕПЛА", en: "BOOK OF ASHES" }, el: El.None, perk: "reach" },
+  spell: { name: { ru: "ПОСОХ ИЗМОРОЗИ", en: "HOARFROST STAFF" }, el: El.None, perk: "reach" },
   flail: { name: { ru: "ЖЕРНОВ БУРИ", en: "STORM MILLSTONE" }, el: El.Storm, perk: "reach" },
   glaive: { name: { ru: "СЕРП ЛУНЫ", en: "MOON SICKLE" }, el: El.Frost, perk: "crit" },
   crossbow: { name: { ru: "ЖАЛО ВИВЕРНЫ", en: "WYVERN'S STING" }, el: El.Venom, perk: "crit" },
@@ -1340,8 +1344,8 @@ export const HEROES: HeroDef[] = [
 
   },
   {
-    id: "mage", cost: 500, name: { ru: "ЧАРОДЕЙКА", en: "SORCERESS" }, title: { ru: "ОГОНЬ, ЛЁД И ГРОЗА", en: "FIRE, ICE AND STORM" },
-    perk: { ru: "ЗАКЛИНАНИЯ ЧЕРЕДУЮТ СТИХИИ И САМИ ВЫЗЫВАЮТ РЕАКЦИИ", en: "HER SPELLS TAKE TURNS AND SET OFF REACTIONS" },
+    id: "mage", cost: 500, name: { ru: "ЧАРОДЕЙКА", en: "SORCERESS" }, title: { ru: "ВЛАДЫЧИЦА СТУЖИ", en: "MISTRESS OF FROST" },
+    perk: { ru: "ПО ЗАМОРОЖЕННЫМ ВРАГАМ ОНА БЬЁТ НА 40% СИЛЬНЕЕ", en: "SHE HITS FROZEN FOES 40% HARDER" },
     weapon: "spell", hearts: 4, speed: 0.98, dashCd: 3.5, dashes: 1, lantern: 1, light: "wisp", lightColor: [0.55, 0.85, 1],
     might: 1, haste: 0.95, crit: 0.05,
     ability: { name: { ru: "БУРЯ СТИХИЙ", en: "ELEMENTAL STORM" }, desc: { ru: "ОГОНЬ, ЛЁД И МОЛНИЯ ПО ОЧЕРЕДИ БЬЮТ В САМЫЕ ГУСТЫЕ ТОЛПЫ И САМИ ВЫЗЫВАЮТ РЕАКЦИИ", en: "FIRE, ICE AND LIGHTNING STRIKE THE THICKEST CROWDS IN TURN AND SET OFF REACTIONS" } },
