@@ -100,9 +100,18 @@ void main() {
   else if (v_layer > -1.5) { float d = clamp(1.0 - length(v_local), 0.0, 1.0); t = vec4(1.0, 1.0, 1.0, d * d); }
   else if (v_layer > -2.5) { if (dot(v_local, v_local) > 1.0) discard; t = vec4(1.0); }
   else t = vec4(1.0);
+  // a flash below -1 is a sprite crumbling (-1 - u, u from 1 whole to 0 gone): its texels drop out one by one in a
+  // scattered order, the top going first, each keeping its colour and charring dark the moment before it goes
+  if (tex && v_flash < -1.0) {
+    float u = -v_flash - 1.0;
+    vec2 texel = floor(v_uv * vec2(textureSize(u_tex, 0).xy));
+    float n = fract(sin(dot(texel, vec2(12.9898, 78.233))) * 43758.5453) * 0.75 + (0.5 - v_local.y * 0.5) * 0.25;
+    if (n > u * 1.05) discard;
+    if (u * 1.05 - n < 0.1) t.rgb *= 0.45;
+  }
   // a negative flash is a sprite materialising (-u, u from 0 to 1): its texels appear one by one in a scattered
   // order, each first as grey matter, then taking its colour; the newest glint pale
-  if (tex && v_flash < 0.0) {
+  else if (tex && v_flash < 0.0) {
     float u = -v_flash;
     vec2 texel = floor(v_uv * vec2(textureSize(u_tex, 0).xy));
     float n = fract(sin(dot(texel, vec2(12.9898, 78.233))) * 43758.5453) * 0.8 + (0.5 - v_local.y * 0.5) * 0.2;

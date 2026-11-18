@@ -9,7 +9,7 @@ import { text } from "../engine/text";
 import { AI, DOORS, giftFor, placeDef, EL_COLOR, ENEMIES, fullWeaponName, LEGENDS, questDef, RARITIES, RelicKind, WEAPONS, type GateKind, type PlaceId } from "./defs";
 import { t as tr, tx } from "./i18n";
 import { FLOOR, LOOK_BRIDGE, LOOK_ICE, LOOK_VEIN, PIT, WALL } from "./map";
-import { lanceTravel, LANCE_FADE, LANCE_STUCK, B_BOLT, B_CHAKRAM, BULLET_ANIMS, EYE_H, FLOOR_SQ, LUNGE_DASH, SPAWN_T, type BossBrain, poolSpread, HERO_HIT_Y, HERO_R, B_CRESCENT, B_FIREBALL, B_LANCE, B_SICKLE, B_PETAL, B_SHARD, B_BUBBLE, B_TORNADO, B_BIRD, B_BLADE, B_DRAGON, CINE_DUR, D_CHEST, D_EMBER, D_GREEN, D_HEART, D_RED, STAR_EVERY, TILE, type World } from "./world";
+import { lanceTravel, LANCE_FADE, LANCE_STUCK, B_BOLT, B_CHAKRAM, BULLET_ANIMS, EYE_H, FLOOR_SQ, LUNGE_DASH, SPAWN_T, type BossBrain, poolSpread, HERO_HIT_Y, HERO_R, B_CRESCENT, B_FIREBALL, B_LANCE, B_SICKLE, B_PETAL, B_SHARD, B_BUBBLE, B_TORNADO, B_BIRD, B_BLADE, B_DRAGON, CINE_DUR, CRUMBLE_T, D_CHEST, D_EMBER, D_GREEN, D_HEART, D_RED, STAR_EVERY, TILE, type World } from "./world";
 
 export class Scene {
   back = new Batch();
@@ -254,6 +254,33 @@ function clipUp(b: Batch, r: Rect, x: number, y: number, h: number): void {
   b.push(x, y, r[5], top, r[3], bottom - top, r[1], r[2] + (top - r[6]), 1, 1, 0, r[0], 0xffffffff, 0, y);
 }
 const DECOR_LIGHT: Record<string, [number, string, number]> = { candle: [40, "#ffb060", 0.55], mushrooms: [34, "#3ad0c8", 0.4], crystal: [44, "#62c8f4", 0.45] };
+
+/** Where the burning eyes have been lately (world positions, the time each was there). */
+const eyeTrail: { x: number; y: number; t: number }[] = [];
+/**
+ * The hero's eyes burning with the heat of the killing (0 to 1): a neon red glint where they are, a glow about them,
+ * and a trail of their light along where they have just been, fading over a fifth of a second.
+ */
+function eyesAflame(s: Scene, heat: number, x: number, y: number, face: number, time: number): void {
+  const last = eyeTrail[eyeTrail.length - 1];
+  if (!last || Math.hypot(last.x - x, last.y - y) > 0.6) eyeTrail.push({ x, y, t: time });
+  while (eyeTrail.length && time - eyeTrail[0].t > 0.22) eyeTrail.shift();
+  if (heat < 0.06) return;
+  const k = Math.min(1, (heat - 0.06) / 0.5), flick = 0.85 + 0.15 * Math.sin(time * 23);
+  // the trail: two strands of red light, thin and fading towards their end
+  if (k > 0.2)
+    for (let q = 1; q < eyeTrail.length; q++) {
+      const a = eyeTrail[q - 1], b = eyeTrail[q], u = 1 - (time - a.t) / 0.22;
+      if (u <= 0) continue;
+      s.glow.line(a.x, a.y, b.x, b.y, u > 0.5 ? 2 : 1, rgbaf(1, 0.12, 0.18, 0.9 * u * Math.min(1, (k - 0.2) / 0.5)));
+    }
+  // the eyes: a slit of neon red over the face, hotter (towards pink-white) the hotter the killing, and its bloom
+  const ex = Math.round(x), ey = Math.round(y), x0 = ex - (face < 0 ? 2 : 0);
+  s.front.rect(x0, ey, 3, 1, rgbaf(1, 0.12 + 0.55 * k * k, 0.2 + 0.4 * k * k, Math.min(1, 0.4 + k) * flick), 1e6);
+  s.glow.rect(x0 - 1, ey, 5, 1, rgbaf(1, 0.15, 0.22, 0.85 * k * flick));
+  s.glow.light(ex, ey, 4 + 5 * k, 3 + 3 * k, rgbaf(1, 0.12, 0.18, 0.8 * k * flick));
+  s.illum.light(ex, ey, 12 + 14 * k, 9 + 10 * k, rgbaf(1, 0.1, 0.12, 0.3 * k));
+}
 
 export function drawWorld(s: Scene, w: World, camX: number, camY: number, viewW: number, viewH: number, time: number): void {
   const h = w.hero, B = w.place, inView = (x: number, y: number, m = 40) => x > camX - m && x < camX + viewW + m && y > camY - m && y < camY + viewH + m * 2;
@@ -839,6 +866,10 @@ export function drawWorld(s: Scene, w: World, camX: number, camY: number, viewW:
       s.back.disc(h.x, h.y, 9 * Math.abs(sx), 3, C_SHADOW);
       drawAnim(s, a, 0, h.x, h.y, { frame: fi, sx: sx * (1 + squash), sy: sy * (1 - squash), rot, key: h.y, alpha: blink ? 0.45 : fade, flash });
     }
+    // the killing's heat: the eyes burn neon red, and as he moves their light trails behind him and fades
+    const eye = a.eyes?.[fi];
+    if (eye && show && !h.dead) eyesAflame(s, w.heat, h.x + eye[0] * h.face * Math.abs(sx), h.y + eye[1] * sy, h.face, time);
+    else eyeTrail.length = 0;
     // the light: a lantern in the free hand or at the belt, swinging; or a wisp floating at the shoulder
     const hand = a.hands?.[fi] ?? [8, -20, 5, -15];
     // the weapon hand, for the world to throw an element's sparks from; the element glows there
@@ -1017,10 +1048,11 @@ export function drawWorld(s: Scene, w: World, camX: number, camY: number, viewW:
     }
   }
 
-  // ---- the dying: their last frame flashes white and squashes away
+  // ---- the dying crumble: their last frame falls apart texel by texel from the top down, in its own colours, each
+  // bit charring the moment before it goes (the sprite shader's crumbling), sinking a little as it does
   for (const c of w.corpses) {
-    const k = c.t / 0.2;
-    drawAnim(s, anim(c.anim), 0, c.x, c.y, { frame: c.frame, sx: c.flip * c.scale * (1 + k * 0.7), sy: c.scale * Math.max(0.05, 1 - k), flash: 1, alpha: 1 - k * 0.6, key: c.y, glow: 0 });
+    const k = Math.min(1, c.t / CRUMBLE_T), u = 1 - k;
+    drawAnim(s, anim(c.anim), 0, c.x, c.y + k * 2, { frame: c.frame, sx: c.flip * c.scale, sy: c.scale * (1 - 0.06 * k), flash: -1 - Math.max(0.002, u), key: c.y, glow: 0 });
   }
 
   // ---- the weapon artifacts' things in the world

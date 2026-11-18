@@ -15,6 +15,8 @@ export interface HeroImage {
   color: Uint32Array;
   light: Uint32Array | null;
   hands: [number, number, number, number];
+  /** Where the eyes are, from the feet. */
+  eye: [number, number];
   edge: boolean;
 }
 export function heroImage(look: Look, pose: Pose): HeroImage;

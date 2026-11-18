@@ -99,6 +99,8 @@ export interface Relic {
 export const SRC_WEAPON = 0, SRC_DASH = 1, SRC_RELIC = 2, SRC_REACT = 26, SRC_STATUS = 27, SRC_ABILITY = 28, SRC_WAVE = 29, SRC_PARRY = 30, SRC_OTHER = 31, SRC_N = 32;
 /** Elements per source in World.dmgStat. */
 export const SRC_ELS = 7;
+/** How long a slain foe takes to crumble away (s). */
+export const CRUMBLE_T = 0.42;
 const GREY_MATTER = [rgba("#8a8698"), rgba("#a8a4b8"), rgba("#6a6678"), rgba("#c8c4d4")];
 /**
  * A warning: where a boss's blow, burst or beam will land, shown on the floor a moment before it does (draw.ts
@@ -617,6 +619,12 @@ export class World {
   runes: { x: number; y: number; t: number; dmg: number; r: number }[] = [];
   /** The rainbow's sweep (the prism's evolution): its angle, how far round it has gone (-1: resting). */
   rainbow = { a: 0, done: -1, t: 0 };
+  /**
+   * The killing's heat (0 to 1): each kill stokes it, and the hero's eyes burn neon red with it, trailing their light
+   * (draw.ts); it cools once the killing stops.
+   */
+  heat = 0;
+  heatT = 0;
   /** The blood fang's string of kills; the phoenix's breath between birds. */
   fangKills = 0;
   birdCd = 0;
@@ -652,12 +660,13 @@ export class World {
   }
   /**
    * How the weapon in hand looks with the weapon artifacts held: steeped in the strongest one's colour
-   * ("~ff7a2a~0", strongly from its last level), white-hot once one has evolved; "" with none.
+   * ("~ff7a2a~0", strongly from its last level), white-hot and reshaped once one has evolved ("~white~1~8"); "" with none.
    */
   weaponLook(): string {
     const top = this.topRelic();
     if (!top) return "";
-    if (top.evo) return "~white~1";
+    // (evolved: white-hot and in the evolution's new form, see rig.js evolvedForm)
+    if (top.evo) return `~${RELICS[top.kind].color.slice(1)}~1~${top.kind}`;
     return `~${RELICS[top.kind].color.slice(1)}~${top.level >= 5 ? 1 : 0}`;
   }
   /** The colour the weapon's own light takes from the strongest weapon artifact (or none). */
@@ -885,6 +894,7 @@ export class World {
     this.arcs = [];
     this.pools = [];
     this.blades = [];
+    this.heat = 0;
     this.stars = [];
     this.constellations = [];
     this.flowers = [];
@@ -1459,7 +1469,7 @@ export class World {
     for (const g of this.ghosts) g.life -= dt;
     this.ghosts = this.ghosts.filter((g) => g.life > 0);
     for (const c of this.corpses) c.t += dt;
-    this.corpses = this.corpses.filter((c) => c.t < 0.2);
+    this.corpses = this.corpses.filter((c) => c.t < CRUMBLE_T);
     const h = this.hero;
     if (h.dead) {
       const was = h.deathT;
@@ -2599,8 +2609,12 @@ export class World {
     if (re) (this.dmgStat[row + re[0]] += dealt / 2), (this.dmgStat[row + re[1]] += dealt / 2);
     else this.dmgStat[row + (o.as ?? el)] += dealt;
     E.hp[i] -= dmg;
-    E.flash[i] = 0.07;
-    E.struck[i] = 0;
+    // only a blow of the weapon itself makes a foe flash white and recoil (the owner: burning, poison and the
+    // artifacts show in their own colours, not as a white blink)
+    if (this.src === SRC_WEAPON) {
+      E.flash[i] = 0.07;
+      E.struck[i] = 0;
+    }
     // a critical blow of the hero's own lands heavier: a jolt (no catch of the frame: the owner wants the fight to
     // run on unbroken)
     if (o.crit && (this.src === SRC_WEAPON || this.src === SRC_DASH)) {
@@ -2764,6 +2778,8 @@ export class World {
     this.body(i);
     const cx = this.bx, cy = this.by;
     this.kills++;
+    this.heat = Math.min(1, this.heat + 0.035);
+    this.heatT = 0;
     this.gainOd(0.45);
     // a mythic scythe or whip feeds the hand that holds it
     if (h0.rarity >= MYTHIC && UNIQUES[h0.weapon].perk === "vamp" && ++h0.vampKills >= 30) {
@@ -2776,7 +2792,7 @@ export class World {
       else if (this.quest.kind === "bounty" && E.uid[i] === this.quest.uid) this.endQuest(true);
     }
     const a = this.enemyAnims[type];
-    if (this.corpses.length < 40) this.corpses.push({ anim: d.anim, frame: frameAt(a, E.t[i]), x, y, flip: E.face[i], scale: d.scale, t: 0 });
+    if (this.corpses.length < 60) this.corpses.push({ anim: d.anim, frame: frameAt(a, E.t[i]), x, y, flip: E.face[i], scale: d.scale, t: 0 });
     // the Reaper takes a heart back for every 25 souls
     const h = this.hero;
     if (h.def.id === "reaper" && !h.dead && ++h.harvest >= 25) {
@@ -2795,12 +2811,16 @@ export class World {
     }
     // the weapon artifacts' turn: a firebird, a last burst of venom, the blood fang's tally
     this.artsOnKill(x, y, E.poison[i] > 0);
-    // a puff where it fell: an elite's always; a common foe's smaller, and in a thick fight mostly just its sparks
-    // (the owner: the puffs clouded the screen)
-    let puffs = 0;
-    for (const f of this.fx) if (f.anim === "poof") puffs++;
-    if (d.elite || (puffs < 3 && this.rng.chance(0.5))) this.addFx("poof", cx, cy + this.bry, { sx: d.scale * (d.elite ? 1.2 : 0.4), sy: d.scale * (d.elite ? 1.2 : 0.4), glow: 0.25 });
-    this.burst(cx, cy, d.elite ? 18 : 6, rgba(d.glow || "#c8c0d8"), 70, 0.45, 120);
+    // it crumbles away (draw.ts: texel by texel back into grey matter) and its dust falls, a little of its own light
+    // in it; an elite goes in a puff besides (the owner: no clouds for the common horde)
+    if (d.elite) this.addFx("poof", cx, cy + this.bry, { sx: d.scale * 1.2, sy: d.scale * 1.2, glow: 0.25 });
+    if (this.parts.n < 2200) {
+      const n = d.elite ? 18 : 10, glowC = rgba(d.glow || "#c8c0d8");
+      for (let q = 0; q < n; q++) {
+        const px = cx + this.rng.range(-this.brx, this.brx), py = cy + this.rng.range(-this.bry, this.bry * 0.6);
+        this.parts.add(px, py, this.rng.range(-22, 22), this.rng.range(-38, -6), this.rng.range(0.35, 0.75), q % 4 === 0 ? glowC : this.rng.pick(GREY_MATTER), this.rng.chance(0.3) ? 2 : 1, 210, q % 4 === 0 ? 1 : 0);
+      }
+    }
     // soul shards: the value broken into the fewest pieces
     let v = d.xp * (d.ai < AI.Boss && !d.elite ? HORDE.xp : 1) * this.mod.xp * this.xpMul * (this.mutator === "swarm" ? 1.33 : 1);
     while (v > 0) {
@@ -4021,6 +4041,9 @@ export class World {
     const h = this.hero, E = this.enemies, m = this.stats.might;
     for (const r of this.relics) r.timer -= dt;
     this.birdCd -= dt;
+    // the heat of the killing cools: slowly while it goes on, quickly a moment after it stops
+    this.heatT += dt;
+    this.heat = Math.max(0, this.heat - dt * (this.heatT > 1.2 ? 0.22 : 0.02));
     // ---- spectral blades circling the hero, cutting what they pass through
     if (this.blades.length) {
       const bl = this.relicOf(RelicKind.Blades), L = bl?.level ?? 1, R = L >= 3 ? 36 : 30;

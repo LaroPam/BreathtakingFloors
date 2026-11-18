@@ -114,6 +114,8 @@ export interface HeroAnim extends Anim {
   poses: Pose[];
   drawn: boolean[];
   hands: [number, number, number, number][];
+  /** Where the eyes are in each frame drawn (from the feet). */
+  eyes: [number, number][];
 }
 const EMPTY: Frame = [null, null];
 const PAD = 1;
@@ -136,13 +138,14 @@ export class HeroSprites {
     let a = this.anims.get(key);
     if (!a) {
       // (a weapon id may carry a weapon artifact's steeping: "sword~fire~1", the sword in fire, strongly)
-      const [wid, inf, strong] = weapon.split("~");
+      // (and, once a weapon artifact has evolved, the evolution's new form: "sword~ffe08a~1~8")
+      const [wid, inf, strong, evo] = weapon.split("~");
       // ("a1+s", "a1_run+s": the blow drawn smooth, see SMOOTH)
       const smooth = name.endsWith("+s"), nm = smooth ? name.slice(0, -2) : name;
       const raw = smooth ? (nm.endsWith("_run") ? smoothRun(wid, nm.slice(0, -4)) : smoothPoses(posesOf(wid, nm))) : posesOf(wid, nm);
-      const base = raw, poses = inf ? base.map((p) => ({ ...p, infuse: inf, infuseStrong: strong === "1" })) : base;
+      const base = raw, poses = inf ? base.map((p) => ({ ...p, infuse: inf, infuseStrong: strong === "1", ...(evo ? { evoForm: +evo } : {}) })) : base;
       const fps = fpsOf(nm) * (smooth ? SMOOTH : 1), n = poses.length;
-      a = { key, name: key, look: LOOKS[look] ?? LOOKS.knight, poses, fps, loop: loops(name), cut: false, frames: new Array(n).fill(EMPTY), drawn: new Array(n).fill(false), hands: [], dur: n / fps };
+      a = { key, name: key, look: LOOKS[look] ?? LOOKS.knight, poses, fps, loop: loops(name), cut: false, frames: new Array(n).fill(EMPTY), drawn: new Array(n).fill(false), hands: [], eyes: [], dur: n / fps };
       this.anims.set(key, a);
     }
     return a;
@@ -188,6 +191,7 @@ export class HeroSprites {
     const light = img.light ? this.put(img.w, img.h, img.light, img.ox, img.oy) : null;
     a.frames[f] = [color, light];
     a.hands[f] = img.hands;
+    a.eyes[f] = img.eye;
     a.drawn[f] = true;
     this.stats.drawn++;
     this.stats.ms += performance.now() - t0;

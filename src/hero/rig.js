@@ -951,6 +951,106 @@ function finish(S) {
   return out;
 }
 
+// ---- an evolved weapon's new form: drawn over the weapon along its spine (the blade, the head, the bow's limbs), in
+// the evolution's own matter (World.weaponLook carries which: "sword~ffe08a~1~8")
+const spineLine = (i0, i1, k, w) => { const out = []; for (let i = i0; i <= i1; i += 0.8) out.push([i, k, w]); return out; };
+const spineLineK = (i, k0, k1, w) => { const out = []; for (let k = k0; k <= k1; k += 0.8) out.push([i, k, w]); return out; };
+const spineRing = (c, R, w) => { const out = []; for (let a = 0; a < Math.PI * 2; a += 0.14) out.push([c + Math.cos(a) * R, Math.sin(a) * R, w]); return out; };
+/** Each weapon's spine: points along it (i along the weapon, k across) and its half-width there. */
+const SPINE = {
+  sword: spineLine(3.2, 27, 0, 2.2), greatsword: spineLine(3.2, 33, 0, 3), dagger: spineLine(2.6, 12, 0, 1.3), spear: spineLine(24, 46, 0, 1.6),
+  hammer: spineLineK(23, -9, 9, 4), claw: spineLine(1.6, 12, 1.3, 0.9), flail: spineLine(10, 26, 0, 3.4), glaive: spineLine(30.8, 46, 1.6, 2.6),
+  staff: spineLine(18, 34, 0, 2.2), frost: spineLine(20, 35, 0, 2.2), bell: spineLine(6, 17, 0, 3.6), handle: spineLine(-2, 6.4, 0, 1), crossbow: spineLine(-2, 14, 0, 1.4),
+  scythe: Array.from({ length: 30 }, (_, n) => { const u = n / 29; return [31.5 - u * u * 12, u * 28 + 0.8, 3.2 * (1 - u) + 0.5]; }),
+  bow: Array.from({ length: 36 }, (_, n) => { const u = n / 17.5 - 1; return [6 * (1 - u * u) - 1, u * 17, 0.8]; }),
+  chakram: spineRing(6.5, 6, 1.4),
+};
+const EC = (h) => hex(h);
+const FLAME = ["#fffbe0", "#fff0a0", "#ffd060", "#ff9a2a", "#ff5a1a", "#c8281a"].map(EC);
+const RAINBOW = ["#ff4a4a", "#ff9a2a", "#ffe03c", "#6ad83a", "#4ab8ff", "#6a5aff", "#c070ff"].map(EC);
+const ICE = ["#ffffff", "#e0f6ff", "#a8e0ff", "#68b8f0"].map(EC);
+const NIGHT = EC("#141838"), STAR = EC("#fff6c0"), STAR2 = EC("#ffffff"), SILVER = EC("#e8eeff"), SILVERD = EC("#9aa4c8");
+const BOLT = EC("#fff8b0"), BOLTH = EC("#ffffff"), VINE = EC("#3a9a3a"), VINED = EC("#226a26"), PETAL = EC("#ff8ac0"), PETALH = EC("#ffd0e8"), POLLEN = EC("#fff09a");
+const VOID = EC("#0e0614"), VOIDR = EC("#b070ff"), VOIDH = EC("#e0b0ff");
+/** A small hash: the same pose always gets the same flicker. */
+const hash = (a, b) => { const x = Math.sin(a * 127.1 + b * 311.7) * 43758.5453; return x - Math.floor(x); };
+function evolvedForm(T0, wid, form, q) {
+  const pts = SPINE[wid];
+  if (!pts) return;
+  // (on both faces of the weapon, a little proud of its steel, so it shows whichever way the weapon turns)
+  const T = (i, k, c, glow = false) => (T0(i, k, c, 0.9, glow), T0(i, k, c, -0.9, glow));
+  // (a seed from the pose, so the frames of a swing flicker differently)
+  const seed = Math.round(((q.wind ?? 0) * 7 + (q.sway ?? 0) * 13 + (q.crouch ?? 0) * 3 + (q.fx ?? 0) + (q.fy ?? 0) * 0.7 + (q.sa ?? 0) * 5) * 10);
+  const n = pts.length;
+  pts.forEach(([i, k0, w], j) => {
+    const h = hash(j, seed), u = j / Math.max(1, n - 1);
+    switch (form) {
+      case 8: // the Crown of Flame: the blade aglow, tongues of fire licking up both edges, a plume off the end
+        for (let k = -w * 0.5; k <= w * 0.5 + 0.01; k += 0.4) T(i, k0 + k, FLAME[1 + (j % 2)], true);
+        for (const sd of [-1, 1]) {
+          const len = 2 + h * 3.4 + (u > 0.85 ? 3 : 0);
+          for (let d = 0; d <= len; d += 0.4) T(i + d * 0.55, k0 + sd * (w + d * 0.9), FLAME[Math.min(5, Math.floor((d / len) * 5.9))], true);
+        }
+        break;
+      case 16: // the Rainbow: the blade banded in every colour, bright, a glint of white at each band's edge
+        for (let k = -w; k <= w + 0.01; k += 0.4) T(i, k0 + k, RAINBOW[Math.floor(u * 7 * 2) % 7], true);
+        if (j % 3 === 0) T(i, k0 + w + 0.6, STAR2, true);
+        break;
+      case 17: // the Constellation: the blade turned to night sky, stars in it and about it
+        for (let k = -w * 0.8; k <= w * 0.8 + 0.01; k += 0.4) T(i, k0 + k, NIGHT);
+        if (h > 0.55) T(i, k0 + (h - 0.77) * w * 3, h > 0.85 ? STAR2 : STAR, true);
+        if (j % 7 === 3) {
+          const sk = k0 + (h > 0.5 ? 1 : -1) * (w + 2.4 + h * 1.6);
+          for (const [di, dk] of [[0, 0], [0.7, 0], [-0.7, 0], [1.4, 0], [-1.4, 0], [0, 0.7], [0, -0.7], [0, 1.4], [0, -1.4]]) T(i + di, sk + dk, di || dk ? STAR : STAR2, true);
+        }
+        break;
+      case 9: { // the Endless Ricochet: a mirror-bright blade, silver threads strung zigzag along both sides
+        for (let k = -w * 0.4; k <= w * 0.4 + 0.01; k += 0.4) T(i, k0 + k, SILVER, true);
+        const z = (j % 6) / 5;
+        for (const sd of [-1, 1]) T(i, k0 + sd * (w + 1 + (z < 0.5 ? z : 1 - z) * 4), j % 3 ? SILVER : SILVERD, true);
+        break;
+      }
+      case 2: { // the Sky Tempest: lightning crackling down both edges and through the blade, forking now and then
+        if (j % 2 === 0) T(i, k0 + (hash(j, seed + 9) - 0.5) * w, BOLTH, true);
+        for (const sd of [-1, 1]) {
+          const off = w + 0.8 + hash(j * 3 + sd, seed) * 2.4;
+          T(i, k0 + sd * off, hash(j, seed + sd) > 0.5 ? BOLTH : BOLT, true);
+          if (hash(j * 7, seed) > 0.82) for (let d = 0; d < 3.4; d += 0.4) T(i + d, k0 + sd * (off + d), BOLT, true);
+        }
+        break;
+      }
+      case 1: // the Permafrost: the blade sheathed in ice, spikes of it grown off the edges, longer towards the end
+        for (let k = -w; k <= w + 0.01; k += 0.4) T(i, k0 + k, hash(j, k * 9) > 0.6 ? ICE[0] : ICE[2], true);
+        if (j % 3 === 0)
+          for (const sd of [-1, 1]) {
+            const len = 2 + u * 4 + h * 2;
+            for (let d = 0; d <= len; d += 0.35) T(i + d * 0.6, k0 + sd * (w + d), ICE[Math.min(3, Math.floor((d / len) * 3.9))], true);
+          }
+        break;
+      case 20: { // the Garden of Blades: a thick vine wound round the spine, flowers open along it
+        const vk = Math.sin(j * 0.9) * (w + 0.8);
+        for (const o of [-0.4, 0, 0.4]) T(i, k0 + vk + o, Math.cos(j * 0.9) > 0 ? VINE : VINED);
+        if (j % 5 === 2) {
+          const fk = k0 + vk + (h > 0.5 ? 1.2 : -1.2);
+          for (const [di, dk] of [[0.8, 0], [-0.8, 0], [0, 0.8], [0, -0.8], [0.8, 0.8], [-0.8, -0.8], [0.8, -0.8], [-0.8, 0.8]]) T(i + di, fk + dk, h > 0.5 ? PETAL : PETALH, true);
+          T(i, fk, POLLEN, true);
+        }
+        break;
+      }
+      case 5: // the Black Hole: a core of nothing down the blade, a violet rim burning round it, a dark orb at the end
+        for (let k = -w * 0.8; k <= w * 0.8 + 0.01; k += 0.4) T(i, k0 + k, VOID);
+        for (const sd of [-1, 1]) (T(i, k0 + sd * (w + 0.3), h > 0.6 ? VOIDH : VOIDR, true), h > 0.8 && T(i, k0 + sd * (w + 1.2), VOIDR, true));
+        if (j === n - 1)
+          for (let a = 0; a < Math.PI * 2; a += 0.25) {
+            T(i + 2.6 + Math.cos(a) * 2.6, k0 + Math.sin(a) * 2.6, VOIDH, true);
+            for (let r = 0; r < 2; r += 0.4) T(i + 2.6 + Math.cos(a) * r, k0 + Math.sin(a) * r, VOID);
+          }
+        break;
+    }
+  });
+}
+/** Where the eyes are in the head's own frame: on the face, forward of the head's middle. */
+const EYE_AT = [3, 0.1, 0];
 const turnAll = (S, a) => {
   const R = rotY(-a), P = (v) => mv(R, v);
   for (const f of Object.values(S.B)) { f.t = P(f.t); f.R = mm(R, f.R); }
@@ -995,16 +1095,21 @@ function render(L, pose) {
   curDim = 0;
   clipBody = false;
   if (S.W) S.W.draw(infused(along(S.armN.end, S.axis, S.side, PART.weapon), q.infuse, q.infuseStrong), q, S.armF.end);
+  if (S.W && q.evoForm != null) evolvedForm(along(S.armN.end, S.axis, S.side, PART.weapon), q.weapon, q.evoForm, q);
   if (S.OW) {
     const sb = q.sb ?? Math.PI;
     let ax = [Math.cos(sb), -Math.sin(sb), 0], sd = [-Math.sin(sb), -Math.cos(sb), 0];
     if (whole) { const R = rotY(-whole); ax = mv(R, ax); sd = mv(R, sd); }
     S.OW.draw(along(S.armF.end, ax, sd, PART.offWeapon), q, S.armF.end);
+    if (q.evoForm != null) evolvedForm(along(S.armF.end, ax, sd, PART.offWeapon), q.offWeapon, q.evoForm, q);
   }
   clipWeapon = false;
   const out = finish(S);
-  // where the hands are, in screen terms (y down), for the game to hang a lantern and sparks on
+  // where the hands are, in screen terms (y down), for the game to hang a lantern and sparks on; and the eyes, for it to
+  // light them
   out.hands = [Math.round(S.armN.end[0]), Math.round(-S.armN.end[1]), Math.round(S.armF.end[0]), Math.round(-S.armF.end[1])];
+  const eye = add(S.B.head.t, mv(S.B.head.R, EYE_AT));
+  out.eye = [Math.round(eye[0]), Math.round(-eye[1])];
   LOOK = null;
   return out;
 }
@@ -1031,10 +1136,10 @@ export function heroImage(L, pose) {
     color[p] = r.color[i];
     if (r.light[i]) (light ??= new Uint32Array(w * h))[p] = r.light[i];
   }
-  const hands = [r.hands[0] + dx, r.hands[1] + dy, r.hands[2] + dx, r.hands[3] + dy];
+  const hands = [r.hands[0] + dx, r.hands[1] + dy, r.hands[2] + dx, r.hands[3] + dy], eye = [r.eye[0] + dx, r.eye[1] + dy];
   // a pixel on the scratch grid's border may have been cut off (tools/check/clip.mjs looks for these)
   const edge = r.x0 <= -OX + 1 || r.y0 <= -OY + 1 || r.x1 >= BW - OX - 2 || r.y1 >= BH - OY - 2;
-  return { w, h, ox: r.x0 + dx, oy: r.y0 + dy, color, light, hands, edge };
+  return { w, h, ox: r.x0 + dx, oy: r.y0 + dy, color, light, hands, eye, edge };
 }
 
 /**
