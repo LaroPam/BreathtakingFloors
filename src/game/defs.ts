@@ -703,6 +703,11 @@ export const RELIC_MAX = 5;
  * A common foe's health and soul shards against the old numbers; how many stand on a floor in its wave; the ring
  * that closes round the hero from the wave's second stage on.
  */
+/**
+ * A boss's health by its tier (x): the weapon artifacts and their evolutions make the hero several times stronger by
+ * the tower's top, so the later guardians hold out longer (the bot's boss times against the targets in PLAN-BRANCHES).
+ */
+export const BOSS_TIER_HP = [1, 1, 1.1, 1.4, 1.7, 1.7];
 export const HORDE = {
   hp: 0.65,
   xp: 0.5,

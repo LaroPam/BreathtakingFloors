@@ -8,7 +8,7 @@ import { rgba, rgbaf } from "../engine/renderer";
 import {
   AI, depthOf, placeDef, El, EL_COLOR, EN, ENEMIES, evolutionOf, heroDef, mainStop, nextStop, PLACE_FLOORS, QUESTS, RELIC_MAX, RELICS, RelicKind, reactionFor, roster, WEAPON_IDS, WEAPONS,
   type PlaceDef, type PlaceId, type Stop, type GateKind, giftFor, DOORS, type DoorKind, MINIS, type MiniMove, type Blow, type HeroDef, type Modifier, type QuestKind, type Reaction, type StatId, type TaskId, type WeaponId, type WeaponDef, MYTHIC, RARITIES, rollRarity, UNIQUES, type Perk,
-  HORDE, COINS,
+  HORDE, COINS, BOSS_TIER_HP,
 } from "./defs";
 import { getLang, t as tr, tx } from "./i18n";
 import { Bullets, Drops, Enemies, Grid, Particles, TEAM_FOE, TEAM_HERO } from "./pools";
@@ -1395,7 +1395,8 @@ export class World {
     const boss = d.ai >= AI.Boss && d.ai !== AI.Mini, late = boss ? (d.ai === AI.LastLight ? 1.2 : 1.15) : 1 + Math.min(1.2, this.time / 180);
     // (a common foe of the horde is weaker one by one: there are many more of them)
     const horde = d.ai < AI.Boss && !d.elite ? HORDE.hp : 1;
-    const hp = d.hp * tough * horde * (1 + 0.4 * (f - 1)) * late * curse * (boss && this.firstBoss ? 0.75 : 1);
+    const tierHp = boss ? BOSS_TIER_HP[Math.min(BOSS_TIER_HP.length - 1, this.place.tier)] : 1;
+    const hp = d.hp * tough * horde * (1 + 0.4 * (f - 1)) * late * curse * tierHp * (boss && this.firstBoss ? 0.75 : 1);
     const i = this.enemies.add(type, x, y, hp, this.rng.next(), this.mod.speed * (HORDE.speed + Math.min(9, f - 1) * HORDE.speedPerFloor) * this.rng.range(0.9, 1.1) * (this.curse ? 1.2 : 1) * (this.mutator === "haste" ? 1.25 : 1));
     if (i >= 0) {
       this.enemies.face[i] = this.hero.x < x ? -1 : 1;
