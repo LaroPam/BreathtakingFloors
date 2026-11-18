@@ -579,7 +579,7 @@ export class Renderer {
     // (held unless the screen really changed: a phone's browser bar coming and going must not flip the interface
     // between two sizes, which made it swim)
     const raw = Math.min(cw, ch) / span;
-    const scale = Math.max(1, this.color && Math.abs(raw - this.scale) < 0.7 ? this.scale : Math.round(raw));
+    const scale = Math.max(1, this.color && Math.abs(raw - this.scale) < 0.6 ? this.scale : Math.round(raw));
     const wscale = scale >= 3 ? scale - 1 : scale;
     // the safe frame in game pixels (rounded out, so nothing of the interface reaches into the insets)
     const k = cw / Math.max(1, this.canvas.clientWidth) / scale, [it, ir, ib, il] = this.insets;

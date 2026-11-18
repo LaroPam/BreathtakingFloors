@@ -8,7 +8,7 @@ import { rgba, rgbaf } from "../engine/renderer";
 import {
   AI, depthOf, placeDef, El, EL_COLOR, EN, ENEMIES, evolutionOf, heroDef, mainStop, nextStop, PLACE_FLOORS, QUESTS, RELIC_MAX, RELICS, RelicKind, reactionFor, roster, WEAPON_IDS, WEAPONS,
   type PlaceDef, type PlaceId, type Stop, type GateKind, giftFor, DOORS, type DoorKind, MINIS, type MiniMove, type Blow, type HeroDef, type Modifier, type QuestKind, type Reaction, type StatId, type TaskId, type WeaponId, type WeaponDef, MYTHIC, RARITIES, rollRarity, UNIQUES, type Perk,
-  HORDE,
+  HORDE, COINS,
 } from "./defs";
 import { getLang, t as tr, tx } from "./i18n";
 import { Bullets, Drops, Enemies, Grid, Particles, TEAM_FOE, TEAM_HERO } from "./pools";
@@ -20,7 +20,7 @@ export const TILE = 16;
 export const B_CRESCENT = 0, B_LANCE = 1, B_ORB_RED = 2, B_ORB_VIOLET = 3, B_ORB_GREEN = 4, B_ORB_BLUE = 5;
 export const BULLET_ANIMS = ["crescent", "ice_lance", "orb_red", "orb_violet", "orb_green", "orb_blue"];
 // drop kinds
-export const D_BLUE = 0, D_GREEN = 1, D_RED = 2, D_HEART = 3, D_CHEST = 4, D_EMBER = 5;
+export const D_BLUE = 0, D_GREEN = 1, D_RED = 2, D_HEART = 3, D_CHEST = 4, D_EMBER = 5, D_COIN = 6;
 export const B_ARROW = 6, B_FIREBALL = 7;
 /** A crossbow's bolt (drawn as a heavier arrow), a chakram (drawn by draw.ts, turning). */
 export const B_BOLT = 8, B_CHAKRAM = 9;
@@ -734,6 +734,8 @@ export class World {
   cleared = false;
   won = false;
   embersBonus = 0;
+  /** The run's coins, for the merchant on the stairs (they do not outlive the run). */
+  coins = 0;
   /** Mouse aim target in world coordinates, when aiming with a mouse. */
   aimTarget: { x: number; y: number } | null = null;
   autoAim = false;
@@ -2214,6 +2216,19 @@ export class World {
     }
   }
 
+  /** A weapon bought from the merchant on the stairs: in hand at once (the one held stays with him). */
+  takeWeapon(weapon: WeaponId, el: El, rarity: number): void {
+    const h = this.hero;
+    this.weaponPerk(-1);
+    h.weapon = weapon;
+    h.weaponEl = el;
+    h.legend = false;
+    h.rarity = rarity;
+    this.weaponPerk(1);
+    h.atk = -1;
+    h.comboT = 0;
+    this.ev.weapon(h.weapon, h.weaponEl, h.rarity);
+  }
   /** The ghost smith's work: the weapon in hand a quality better or worse (never into a mythic one). */
   reforge(delta: number): void {
     const h = this.hero;
@@ -2836,6 +2851,12 @@ export class World {
     // hearts are rare: a kill now and then, an elite sometimes
     if (this.rng.chance(d.elite ? 0.15 : 0.003)) this.drops.add(D_HEART, x, y, 1, 0, -20);
     const boss = d.ai >= AI.Boss && d.ai !== AI.Mini;
+    // the run's coins: a plain foe now and then, more from the strong ones
+    if (d.ai === AI.Mini) this.spillCoins(x, y, COINS.mini);
+    else if (boss) this.spillCoins(x, y, COINS.boss);
+    else if (type === EN.mimic) this.spillCoins(x, y, COINS.mimic);
+    else if (d.elite) this.spillCoins(x, y, COINS.elite);
+    else if (this.rng.chance(COINS.kill)) this.spillCoins(x, y, 1);
     // a miniboss pays like a hoard: a chest, a heart, embers and red crystals
     if (d.ai === AI.Mini) {
       this.mini = null;
@@ -2886,6 +2907,9 @@ export class World {
       for (let k = 0; k < 5; k++) this.addFx("explosion", x + this.rng.range(-30, 30), y + this.rng.range(-20, 10), { delay: k * 0.15 });
       this.embersBonus += 25 * (this.floor / 3);
       this.pendingLevels += 1;
+      // and its hoard: a chest, given at once (the portal opens where it fell)
+      this.pendingChests++;
+      this.addFx("chest", this.hero.x, this.hero.y + 6, { glow: 0.9 });
       // a guardian's heart: one more for the climb ahead, and it is full
       const h = this.hero;
       h.maxHp += 1;
@@ -2899,6 +2923,15 @@ export class World {
       return;
     }
     E.remove(i);
+  }
+
+  /** Coins spilled about a spot: the sum in a few pieces that fly out and settle. */
+  spillCoins(x: number, y: number, total: number): void {
+    const n = Math.max(1, Math.min(8, Math.round(total / 2))), each = total / n;
+    for (let q = 0; q < n; q++) {
+      const a = this.rng.range(-Math.PI, 0), s = n > 1 ? this.rng.range(30, 80) : 20;
+      this.drops.add(D_COIN, x, y - 4, each, Math.cos(a) * s, Math.sin(a) * s);
+    }
   }
 
   // ============================================================================================ urns, chests, the altar
@@ -3091,11 +3124,13 @@ export class World {
       // a vault behind a gate: a chest on a dais, a heart, and more embers than any cache
       this.drops.add(D_CHEST, mx, my, 1, 0, 0);
       this.drops.add(D_HEART, mx + R.range(-30, 30), my + R.range(-10, 10), 1, 0, 0);
+      this.spillCoins(mx, my + 8, COINS.vault);
       for (let q = 0; q < 16; q++) this.drops.add(D_EMBER, mx + R.range(-44, 44), my + R.range(-18, 18), 1, 0, 0);
       for (let q = 0; q < 4; q++) this.drops.add(D_RED, mx + R.range(-44, 44), my + R.range(-18, 18), 20, 0, 0);
     } else if (room.kind === "treasure") {
       // a hoard: a chest in the middle, embers and gems about it
       this.drops.add(D_CHEST, mx, my, 1, 0, 0);
+      this.spillCoins(mx, my + 8, COINS.treasure);
       for (let q = 0; q < 10; q++) this.drops.add(D_EMBER, mx + R.range(-40, 40), my + R.range(-18, 18), 1, 0, 0);
       for (let q = 0; q < 3; q++) this.drops.add(D_RED, mx + R.range(-40, 40), my + R.range(-18, 18), 20, 0, 0);
     } else if (room.kind === "guardian") {
@@ -3214,6 +3249,7 @@ export class World {
       const a = R.range(-Math.PI, 0), s = R.range(20, 60);
       this.drops.add(kind, u.x, u.y - 4, value, Math.cos(a) * s, Math.sin(a) * s);
     };
+    if (R.chance(COINS.urn)) spill(D_COIN, R.int(1, 3));
     if (r < 0.34) for (let q = R.int(1, 3); q > 0; q--) spill(D_EMBER, 1);
     else if (r < 0.74) for (let q = R.int(2, 4); q > 0; q--) spill(this.floor >= 4 && R.chance(0.3) ? D_GREEN : D_BLUE, this.floor >= 4 ? 5 : 1);
     else if (r < 0.76 && h.hp < h.maxHp) spill(D_HEART, 1);
@@ -3313,6 +3349,7 @@ export class World {
       // the spirit's thanks: a chest at the hero's feet, embers for the forge (and a heart for the untouched)
       this.pendingChests++;
       this.embersBonus += 5 + this.floor * 2;
+      this.spillCoins(h.x, h.y, COINS.quest + this.floor);
       if (q.kind === "untouched" && h.hp < h.maxHp) h.hp++;
       this.addFx("chest", h.x, h.y + 6, { glow: 0.9 });
       this.addFx("heal_ring", h.x, h.y, { tint: rgba("#9ad4ff"), glow: 0.8 });
@@ -5897,7 +5934,11 @@ export class World {
         D.vx[i] = D.vy[i] = 0;
       }
       if (d < 10 && D.pulled[i]) {
-        if (kind === D_EMBER) {
+        if (kind === D_COIN) {
+          this.coins += D.value[i];
+          this.audio.play("coin", 1.25);
+          this.parts.add(h.x + this.rng.range(-3, 3), h.y - 18, 0, -30, 0.4, rgba("#ffe08a"), 1, 0, 1);
+        } else if (kind === D_EMBER) {
           this.embersBonus += D.value[i] * (1 + this.stats.compass * 0.85);
           this.audio.play("coin");
           this.parts.add(h.x + this.rng.range(-3, 3), h.y - 18, 0, -30, 0.4, rgba("#ffc23d"), 1, 0, 1);

@@ -8,7 +8,7 @@ import { anim, FONTS, frameAt, hasAnim, icon, type Anim, type Rect } from "../en
 import { heroSprites, initHeroSprites, lookId, type HeroAnim, type HeroSprites } from "./heroSprites";
 import { fitScale, measure, text, wrap, type FontName } from "../engine/text";
 import { dayNumber, weekNumber, type Board, type BoardName, type Platform, type Product } from "../platform/platform";
-import { ACHIEVEMENTS, heroDef, combine, DEPTH, floorText, PLACE_FLOORS, EL_COLOR, LEGENDS, legendDesc, type WeaponId, EL_NAME, ENEMIES, EVOLUTIONS, evolutionOf, FORGE, questDef, TASK_BONUS, TASKS, type TaskId, type ForgeId, SHOP, type ShopItem, HEROES, WEAPONS, weaponName, MODIFIERS, MUTATORS, NO_MODIFIER, REACTIONS, RELIC_MAX, RELIC_SLOTS, ARTIFACT_SLOTS, RELICS, relicDesc, STATS, El, fullWeaponName, STAIR_EVENTS, type Outcome, type StairEvent, MYTHIC, PERK_TEXT, RARITIES, UNIQUES, type Modifier, type PlaceId, type GiftId, giftDef, giftFor, giftFrom, GIFTS, DOORS, GIFTS_IN_TOWER, PLACES, UNLOCKS, arsenalName, ARSENAL, unlockOf, TIERS, placeDef, depthOf, type GateKind, type Reaction, RelicKind, type StatId } from "./defs";
+import { ACHIEVEMENTS, heroDef, combine, DEPTH, floorText, PLACE_FLOORS, EL_COLOR, LEGENDS, legendDesc, type WeaponId, EL_NAME, ENEMIES, EVOLUTIONS, evolutionOf, FORGE, questDef, TASK_BONUS, TASKS, type TaskId, type ForgeId, SHOP, type ShopItem, HEROES, WEAPONS, weaponName, MODIFIERS, MUTATORS, NO_MODIFIER, REACTIONS, RELIC_MAX, RELIC_SLOTS, ARTIFACT_SLOTS, RELICS, relicDesc, STATS, El, fullWeaponName, STAIR_EVENTS, type Outcome, type StairEvent, MYTHIC, PERK_TEXT, RARITIES, UNIQUES, type Modifier, type PlaceId, type GiftId, giftDef, giftFor, giftFrom, GIFTS, DOORS, GIFTS_IN_TOWER, PLACES, UNLOCKS, arsenalName, ARSENAL, unlockOf, TIERS, placeDef, depthOf, type GateKind, type Reaction, RelicKind, type StatId, COINS, rollRarity } from "./defs";
 import { drawWorld, Scene } from "./draw";
 import { ascent } from "./ascent";
 import { getLang, langFor, setLang, t, tx, type Lang } from "./i18n";
@@ -20,6 +20,8 @@ import { CINE_DUR, LUNGE_DASH, SRC_ABILITY, SRC_DASH, SRC_ELS, SRC_N, SRC_PARRY,
 
 type StatRow = { ic: Rect; name: string; col: number; sum: number; segs: [number, number][] };
 type State = "title" | "heroes" | "forge" | "shop" | "daily" | "records" | "tasks" | "settings" | "card" | "play" | "spin" | "pick" | "pause" | "book" | "stairs" | "dead" | "won" | "stats" | "gift" | "arsenal" | "credits" | "gifts" | "atlas" | "start";
+/** A thing the merchant on the stairs sells: a weapon artifact (new, or a level of one held) or a weapon. */
+type Good = { price: number; sold: boolean } & ({ relic: RelicKind; level: number } | { weapon: WeaponId; el: El; rarity: number });
 type Choice = { type: "relic"; kind: RelicKind; level: number } | { type: "stat"; id: StatId } | { type: "evo"; kind: RelicKind } | { type: "legend"; weapon: WeaponId } | { type: "rest" };
 
 /**
@@ -234,6 +236,11 @@ export class Game {
    * (its marker sweeping over the odds and stopping), then what came of it. Its floor modifiers hold for the next
    * floor only; the events met are not met again in the run.
    */
+  /**
+   * The merchant on the stairs: weapon artifacts (new ones while a slot is free, else levels of those held) and a
+   * weapon, for the run's coins; `done` once the player goes on to the stairs.
+   */
+  merchant: { goods: Good[]; done: boolean } | null = null;
   private stairEvent: { ev: StairEvent; phase: "ask" | "roll" | "done"; pick: number; t: number; roll: number; win: boolean; applied: boolean; adBusy?: boolean; tick?: number } | null = null;
   private eventMods: Modifier[] = [];
   private eventsSeen: string[] = [];
@@ -956,7 +963,52 @@ export class Game {
     const fresh = STAIR_EVENTS.filter((e) => !this.eventsSeen.includes(e.id));
     this.stairEvent = fresh.length && this.runRng.chance(0.75) ? { ev: fresh[this.runRng.int(0, fresh.length - 1)], phase: "ask", pick: -1, t: 0, roll: 0, win: false, applied: false } : null;
     if (this.stairEvent) this.eventsSeen.push(this.stairEvent.ev.id);
+    this.stockMerchant();
     this.transition(() => this.setState("stairs"));
+  }
+
+  /** What the merchant on these stairs has: three weapon artifacts and a weapon, dearer the deeper. */
+  private stockMerchant(): void {
+    const w = this.world, R = this.runRng, k = 1 + COINS.perFloor * (w.floor - 1), goods: Good[] = [];
+    const fresh = RELICS.filter((d) => !w.relicLevel(d.kind) && !w.locked.has(`relic:${d.kind}`)).map((d) => d.kind);
+    const held = w.relics.filter((r) => !r.evo && r.level < RELIC_MAX).map((r) => r.kind);
+    for (let n = 0; n < 3; n++) {
+      // new ones while a slot is free (two of the three, if something held can be raised), else levels
+      const free = w.relics.length < RELIC_SLOTS && fresh.length, raise = held.length && (!free || n === 2);
+      if (raise) {
+        const kind = held.splice(R.int(0, held.length - 1), 1)[0];
+        goods.push({ relic: kind, level: w.relicLevel(kind) + 1, price: Math.round(COINS.level * k), sold: false });
+      } else if (free) goods.push({ relic: fresh.splice(R.int(0, fresh.length - 1), 1)[0], level: 1, price: Math.round(COINS.artifact * k), sold: false });
+    }
+    // a weapon, a quality a little better than the altars' (never a mythic one: those are found)
+    const pool = w.weaponsOpen((id) => id !== w.hero.weapon);
+    if (pool.length) {
+      const weapon = pool[R.int(0, pool.length - 1)], rarity = Math.min(MYTHIC - 1, rollRarity(R.next(), w.floor, 0.1));
+      const el = w.floor >= 2 && !WEAPONS[weapon].el && R.chance(0.3) ? R.pick([El.Fire, El.Frost, El.Storm, El.Venom, El.Holy, El.Void]) : El.None;
+      goods.push({ weapon, el, rarity, price: Math.round(COINS.weapon * k * (1 + 0.3 * rarity)), sold: false });
+    }
+    this.merchant = { goods, done: false };
+  }
+  /** Can the hero take this good now (a new artifact needs a free slot; a level, the one before it)? */
+  private canTake(g: Good): boolean {
+    const w = this.world;
+    if ("weapon" in g) return true;
+    return g.level === 1 ? w.relics.length < RELIC_SLOTS && !w.relicLevel(g.relic) : w.relicLevel(g.relic) === g.level - 1;
+  }
+  /** Buy the merchant's good i with the run's coins: it is the hero's at once. */
+  buy(i: number): boolean {
+    const m = this.merchant, w = this.world, g = m?.goods[i];
+    if (!g || g.sold || w.coins < g.price || !this.canTake(g)) {
+      this.audio.play("deny");
+      return false;
+    }
+    w.coins -= g.price;
+    g.sold = true;
+    if ("weapon" in g) w.takeWeapon(g.weapon, g.el, g.rarity);
+    else this.apply({ type: "relic", kind: g.relic, level: g.level });
+    this.audio.play("coin");
+    this.audio.play("chest");
+    return true;
   }
 
   private descend(mod: Modifier): void {
@@ -1241,8 +1293,9 @@ export class Game {
 
   // =========================================================================================== the roulette
   /**
-   * What an upgrade can be right now, with weights: new relics, relic levels and, on a level-up, artifacts. A new
-   * relic or artifact only while a slot of its kind is free; the ones held come up more often, to be raised.
+   * What an upgrade can be right now, with weights. New weapon artifacts come only out of chests (and the start's
+   * gift: `relicsOnly`), while a slot is free; a level-up raises the ones held, evolves them, and gives or raises the
+   * artifacts of the lower row (the owner: found in chests or bought, raised by levels).
    */
   private pool(relicsOnly: boolean, evolutions = true): [Choice, number][] {
     const w = this.world, out: [Choice, number][] = [];
@@ -1255,8 +1308,9 @@ export class Game {
     const slotsFree = w.relics.length < RELIC_SLOTS;
     for (const def of RELICS) {
       const lv = w.relicLevel(def.kind);
-      if (lv === 0 && slotsFree && !w.locked.has(`relic:${def.kind}`)) out.push([{ type: "relic", kind: def.kind, level: 1 }, relicsOnly ? 10 : 6]);
-      else if (lv > 0 && lv < RELIC_MAX) out.push([{ type: "relic", kind: def.kind, level: lv + 1 }, relicsOnly ? 12 : 8]);
+      if (lv === 0 && relicsOnly && slotsFree && !w.locked.has(`relic:${def.kind}`)) out.push([{ type: "relic", kind: def.kind, level: 1 }, 14]);
+      // (a chest with a slot free mostly brings a new one; a full row, a level of one held)
+      else if (lv > 0 && lv < RELIC_MAX) out.push([{ type: "relic", kind: def.kind, level: lv + 1 }, relicsOnly ? (slotsFree ? 3 : 12) : 8]);
     }
     if (!relicsOnly) {
       const artFree = w.artifacts.length < ARTIFACT_SLOTS;
@@ -1278,7 +1332,15 @@ export class Game {
     return pool[pool.length - 1][0];
   }
   private startSpin(kind: Spin["kind"]): void {
-    const pool = this.pool(kind !== "level"), winner = this.roll(pool);
+    const pool = this.pool(kind !== "level");
+    let winner = this.roll(pool);
+    // a newcomer's first chest brings a weapon artifact that fills the screen (the ring of fire, the storm stone or
+    // the ice shard): the game shows early what it becomes
+    const w = this.world;
+    if (kind === "chest" && w.showcase && !w.relics.length) {
+      const showy = [RelicKind.Fire, RelicKind.Storm, RelicKind.Frost].filter((k) => !w.locked.has(`relic:${k}`));
+      if (showy.length) winner = { type: "relic", kind: showy[this.runRng.int(0, showy.length - 1)], level: 1 };
+    }
     // a long strip of badges, the winner placed near its end; a chest's sure evolution stops among ordinary relics
     const filler = pool.every(([c]) => c.type === "evo" || c.type === "legend") ? this.pool(true, false) : pool;
     const n = 30 + this.runRng.int(0, 6), reel: Choice[] = [];
@@ -1378,13 +1440,6 @@ export class Game {
     }
     // the sure thing goes in the middle, where the eye lands
     if (ready.length && out.length === 3) [out[0], out[1]] = [out[1], out[0]];
-    // a newcomer's first level-up of a run offers a weapon artifact that fills the screen (the ring of fire, the storm
-    // stone or the ice shard), in the middle: the game shows early what it becomes
-    const w = this.world;
-    if (kind === "level" && w.showcase && !w.relics.length && !ready.length && out.length) {
-      const showy = [RelicKind.Fire, RelicKind.Storm, RelicKind.Frost].filter((k) => !w.locked.has(`relic:${k}`));
-      if (showy.length && !out.some((c) => c.type === "relic" && showy.includes(c.kind))) out[out.length === 3 ? 1 : 0] = { type: "relic", kind: showy[this.runRng.int(0, showy.length - 1)], level: 1 };
-    }
     return out;
   }
   private startPick(kind: Pick["kind"]): void {
@@ -2238,6 +2293,7 @@ export class Game {
       kills: w.kills,
       runTime: w.runTime,
       embersBonus: w.embersBonus,
+      coins: w.coins,
       dmg: [...w.dmgStat],
       pendingLevels: w.pendingLevels,
       pendingChests: w.pendingChests,
@@ -2307,6 +2363,7 @@ export class Game {
       w.kills = r.kills;
       w.runTime = r.runTime;
       w.embersBonus = r.embersBonus;
+      w.coins = r.coins ?? 0;
       w.dmgStat.set(r.dmg.slice(0, w.dmgStat.length));
       w.reactionsSeen = new Set(r.reactions);
       w.seen = new Set(r.seenFoes);
@@ -4153,6 +4210,10 @@ export class Game {
       this.drawEvent();
       return;
     }
+    if (this.merchant && !this.merchant.done) {
+      this.drawMerchant();
+      return;
+    }
     let th = this.heading(t("cleared"), 8, H >= 300 ? 2 : 1, C.gold, 1, t("stairs"));
     // what the path so far adds up to, under the heading: risks in red, rewards in green
     const [risk, gain] = this.pathSummary();
@@ -4198,6 +4259,55 @@ export class Game {
     if (button(ui, this.menu, now, statsUp ? 6 : Math.round(W / 2 - 60), statsUp ? 6 : H - 24, statsUp ? 96 : 120, statsUp ? 16 : 18, t("stats"), { icon: icon("hud", "trophy") })) this.openStats("stairs", n);
   }
 
+
+  /**
+   * The merchant: the run's coins at the top, a card a good (its badge, name, what it is and does, its price), and
+   * on to the stairs. Cards side by side where they fit, else two to a row.
+   */
+  private drawMerchant(): void {
+    const ui = this.ui, W = this.r.w, H = this.r.h, now = this.now, w = this.world, m = this.merchant!, ranged = WEAPONS[w.hero.weapon].ranged;
+    const th = this.heading(t("merchant"), 8, H >= 300 ? 2 : 1, C.gold, 1, t("merchantSub"));
+    const purse = String(Math.floor(w.coins)), pw = measure(purse) + 14, py = 8 + th + 3;
+    ui.image(icon("hud", "coin"), Math.round(W / 2 - pw / 2) + 4, py + 4);
+    text(ui, purse, Math.round(W / 2 + pw / 2), py, { align: "right", color: C.gold, shadow: C.ink });
+    const n = m.goods.length, cols = W >= n * 104 + (n - 1) * 6 + 12 ? n : 2, rows = Math.ceil(n / cols);
+    const cw = Math.min(150, Math.floor((W - 12 - (cols - 1) * 6) / cols)), top = py + 14;
+    const ch = Math.min(150, Math.floor((H - 28 - top - (rows - 1) * 6) / rows)), x0 = Math.round(W / 2 - (cols * cw + (cols - 1) * 6) / 2);
+    m.goods.forEach((g, k) => {
+      const x = x0 + (k % cols) * (cw + 6), y0 = top + Math.floor(k / cols) * (ch + 6);
+      const { focused, hit, idx } = this.menu.item(x, y0, cw, ch, now);
+      const y = y0 - (focused && !g.sold ? 2 : 0) + Math.round((1 - this.menu.appear(now, idx)) * 10);
+      const can = !g.sold && w.coins >= g.price && this.canTake(g);
+      let ic: string, name: string, kind: string, desc: string, col: number;
+      if ("weapon" in g) {
+        ic = `w_${g.weapon}`, name = tx(fullWeaponName(g.weapon, g.el, g.rarity)), kind = t("weaponGood"), desc = tx(WEAPONS[g.weapon].desc);
+        col = g.rarity > 0 ? rgba(RARITIES[g.rarity].color) : C.goldLight;
+      } else {
+        const def = RELICS[g.relic];
+        ic = RELIC_ICON[g.relic], name = tx(def.name), kind = g.level === 1 ? t("newRelic") : `${t("relic")} · ${t("lv")} ${g.level}`, desc = g.level === 1 ? tx(relicDesc(def, ranged)) : tx(def.levels[Math.min(def.levels.length - 1, g.level - 2)]);
+        col = rgba(def.color);
+      }
+      if (focused && can) glowUi(ui, x + cw / 2, y + ch / 2, cw * 0.7, ch * 0.7, col, 0.25);
+      frame(ui, x, y, cw, ch, { edge: focused && !g.sold ? col : undefined });
+      const dim = g.sold ? 0x66ffffff : 0xffffffff;
+      ui.image(icon("items", ic), x + cw / 2, y + 24, 1, 1, 0, dim);
+      let line = y + 46;
+      for (const l of wrap(name, cw - 10).slice(0, 2)) (text(ui, l, x + cw / 2, line, { align: "center", color: g.sold ? C.dim : col, shadow: C.ink }), (line += 10));
+      for (const l of wrap(kind, cw - 10, "mini").slice(0, 1)) (text(ui, l, x + cw / 2, line, { font: "mini", align: "center", color: C.goldDim }), (line += 8));
+      const room = Math.max(0, Math.floor((y + ch - 16 - line) / 8));
+      for (const l of wrap(desc, cw - 10, "mini").slice(0, room)) (text(ui, l, x + cw / 2, line, { font: "mini", align: "center", color: g.sold ? C.dim : C.text }), (line += 8));
+      // the price, or why it cannot be had
+      const label = g.sold ? t("sold") : !this.canTake(g) ? t("noRoom") : String(g.price);
+      const lw = measure(label) + (g.sold || !this.canTake(g) ? 0 : 11), lx = Math.round(x + cw / 2 - lw / 2);
+      if (!g.sold && this.canTake(g)) ui.image(icon("hud", "coin"), lx + 4, y + ch - 7);
+      text(ui, label, lx + lw, y + ch - 12, { align: "right", color: g.sold ? C.dim : can ? C.gold : C.red, shadow: C.ink });
+      if (hit) this.buy(k);
+    });
+    if (button(ui, this.menu, now, Math.round(W / 2 - 60), H - 22, 120, 18, t("onward"), { primary: true, icon: icon("hud", "play") }) || this.input.pressed("back")) {
+      m.done = true;
+      this.menu.open(now, 0);
+    }
+  }
 
   private drawWon(): void {
     const ui = this.ui, W = this.r.w, H = this.r.h, res = this.lastResult;

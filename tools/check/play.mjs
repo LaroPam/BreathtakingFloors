@@ -158,6 +158,15 @@ for (const hero of heroes) {
         if (G.state === "stairs" && !B.descending) {
           B.descending = true;
           G.stairEvent = null;
+          // the merchant: buy what the coins reach, in a random order, and count it
+          if (G.merchant) {
+            const order = G.merchant.goods.map((_, k) => k).sort(() => B.rnd() - 0.5);
+            for (const k of order) {
+              const price = G.merchant.goods[k].price;
+              if (G.buy(k)) (B.bought = (B.bought || 0) + 1), (B.spent = (B.spent || 0) + price);
+            }
+            G.merchant.done = true;
+          }
           G.descend(G.stairs[Math.floor(B.rnd() * G.stairs.length)]);
         }
         if (G.state === "stats" || G.state === "pause") G.setState("play");
@@ -306,7 +315,7 @@ for (const hero of heroes) {
       for (const e of [...new Set(errors)].slice(0, 5)) problem(hero, `page error: ${e}`);
       if (slow.length) console.log(`  slow  ${hero}: ${slow.slice(0, 3).join("; ")}${slow.length > 3 ? ` (+${slow.length - 3})` : ""}`);
       const played = await page.evaluate(() => (window.__bot.frames / 3600).toFixed(1));
-      const extra = await page.evaluate(() => `gifts ${window.__game.save.gifts.join(",") || "none"}, ${window.__bot.gates ?? 0} gate(s) opened, bosses ${(window.__bot.fights ?? []).join(", ") || "-"}`);
+      const extra = await page.evaluate(() => { const B = window.__bot, w = window.__game.world; return `gifts ${window.__game.save.gifts.join(",") || "none"}, ${B.gates ?? 0} gate(s) opened, bosses ${(B.fights ?? []).join(", ") || "-"}, coins ${Math.round(w.coins + (B.spent ?? 0))} (spent ${B.spent ?? 0} on ${B.bought ?? 0}), artifacts ${w.relics.map((r) => `${r.kind}:${r.level}${r.evo ? "*" : ""}`).join(" ") || "none"}`; });
       // per tier: its floors' mean time, the hero's level at its end, the hits taken a floor, damage a second
       const tiers = await page.evaluate(() => {
         const R = ["", "I", "II", "III", "IV", "✦"], by = new Map();

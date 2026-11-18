@@ -9,7 +9,7 @@ import { text } from "../engine/text";
 import { AI, DOORS, giftFor, placeDef, EL_COLOR, ENEMIES, fullWeaponName, LEGENDS, questDef, RARITIES, RELICS, RelicKind, WEAPONS, type GateKind, type PlaceId } from "./defs";
 import { t as tr, tx } from "./i18n";
 import { FLOOR, LOOK_BRIDGE, LOOK_ICE, LOOK_VEIN, PIT, WALL } from "./map";
-import { lanceTravel, LANCE_FADE, LANCE_STUCK, B_BOLT, B_CHAKRAM, BULLET_ANIMS, EYE_H, FLOOR_SQ, LUNGE_DASH, SPAWN_T, type BossBrain, poolSpread, HERO_HIT_Y, HERO_R, B_CRESCENT, B_FIREBALL, B_LANCE, B_SICKLE, B_PETAL, B_SHARD, B_BUBBLE, B_TORNADO, B_BIRD, B_BLADE, B_DRAGON, CINE_DUR, CRUMBLE_T, D_CHEST, D_EMBER, D_GREEN, D_HEART, D_RED, STAR_EVERY, TILE, type World } from "./world";
+import { lanceTravel, LANCE_FADE, LANCE_STUCK, B_BOLT, B_CHAKRAM, BULLET_ANIMS, EYE_H, FLOOR_SQ, LUNGE_DASH, SPAWN_T, type BossBrain, poolSpread, HERO_HIT_Y, HERO_R, B_CRESCENT, B_FIREBALL, B_LANCE, B_SICKLE, B_PETAL, B_SHARD, B_BUBBLE, B_TORNADO, B_BIRD, B_BLADE, B_DRAGON, CINE_DUR, CRUMBLE_T, D_CHEST, D_COIN, D_EMBER, D_GREEN, D_HEART, D_RED, STAR_EVERY, TILE, type World } from "./world";
 
 export class Scene {
   back = new Batch();
@@ -84,6 +84,7 @@ const hash = (x: number, y: number) => {
   return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
 };
 
+const C_COIN = rgba("#f4c25a"), C_COIN_RIM = rgba("#b07a2a"), C_COIN_GLINT = rgba("#fff3c4");
 const C_SHADOW = rgba("#000000", 0.38);
 /** How far ahead of the hand a lance is let go (world.ts): it shows from there, growing, rather than inside the hero. */
 const LANCE_OUT = 4;
@@ -756,6 +757,17 @@ export function drawWorld(s: Scene, w: World, camX: number, camY: number, viewW:
       continue;
     }
     const bob = Math.sin(time * 4 + i) * 1.2;
+    if (k === D_COIN) {
+      // a coin of the run, turning as it floats: a gold piece that narrows and widens, a glint on its face
+      const turn = Math.abs(Math.cos(time * 4.5 + i * 0.7)), cw = 1 + Math.round(turn * 3), cy = Math.round(y - 4 + bob);
+      const x0 = Math.round(x - cw / 2);
+      s.back.disc(x, y + 1, 3, 1.2, C_SHADOW);
+      s.color.rect(x0, cy - 2, cw, 5, C_COIN_RIM, y);
+      if (cw > 2) s.color.rect(x0 + 1, cy - 1, cw - 2, 3, C_COIN, y);
+      if (cw > 1) s.glow.rect(x0 + (cw > 2 ? 1 : 0), cy - 2, 1, 1, C_COIN_GLINT);
+      s.illum.light(x, cy, 10, 8, rgbaf(1, 0.85, 0.4, 0.25));
+      continue;
+    }
     if (k === D_EMBER) {
       // an ember: a small coal for the forge, glowing
       drawAnim(s, emberA, time * 1.4 + i * 0.3, x, y + bob, { key: y, glow: 0.9, sx: 0.7, sy: 0.7 });

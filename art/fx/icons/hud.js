@@ -5,7 +5,7 @@ import { hex } from "../../../pixelfx/src/core/index.js";
 
 export const IDS = ["heart", "heart_empty", "stamina", "xp", "overdrive", "skull", "time", "brazier", "brazier_cold", "boss", "lock", "ember", "daily", "crown", "scroll",
   // on buttons
-  "play", "anvil", "globe", "speaker", "mute", "back", "resume", "book", "flag", "gear", "trophy", "urn", "curse", "secret"];
+  "play", "anvil", "globe", "speaker", "mute", "back", "resume", "book", "flag", "gear", "trophy", "urn", "curse", "secret", "coin"];
 
 export const meta = {
   name: "HUD icons",
@@ -64,6 +64,11 @@ const ICONS = {
   ember: [
     ["...k...", "..kyk..", "..kyk..", ".kyfyk.", ".kfwfk.", "kofwfok", "kofffok", ".kooook", "..kkkk."],
     { k: "#0b0a12", w: "#ffffff", f: "#fff3a6", y: "#ffc23d", o: "#f2561d" },
+  ],
+  // a coin of the run: a stamped gold piece, lit from the top left
+  coin: [
+    ["..kkkkk..", ".kyhhyyk.", "kyhyyyyok", "kyhydyyok", "kyydddyok", "kyyydyyok", "kyyyyyook", ".koooook.", "..kkkkk.."],
+    { k: "#0b0a12", y: "#f4c25a", h: "#fff3c4", o: "#b07a2a", d: "#c8902a" },
   ],
   daily: [
     [".k...k...", "kkkkkkkkk", "krrrrrrrk", "kwwwwwwwk", "kwkwkwkwk", "kwwwwwwwk", "kwkwkyywk", "kwwwwyywk", "kkkkkkkkk"],

@@ -909,6 +909,19 @@ export interface EventChoice {
   win: Outcome;
   lose?: Outcome;
 }
+/**
+ * The run's coins (spent with the merchant on the stairs, gone when the run ends): what drops them and how many, and
+ * the merchant's prices, which grow with the depth.
+ */
+export const COINS = {
+  /** A plain foe drops a coin now and then; an elite, a miniboss, a mimic, a boss a handful. */
+  kill: 0.06, elite: 4, mini: 14, mimic: 8, boss: 30,
+  /** A spirit's task done; a hoard and a vault behind the walls; an urn now and then. */
+  quest: 8, treasure: 12, vault: 18, urn: 0.3,
+  /** Prices: a new weapon artifact, a level of one held, a weapon; each plus so much per floor of depth. */
+  artifact: 28, level: 16, weapon: 34, perFloor: 0.12,
+};
+
 export interface StairEvent {
   id: string;
   title: Text;

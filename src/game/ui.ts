@@ -572,7 +572,7 @@ export function drawHud(b: Batch, w: World, W: number, H: number, time: number, 
   // boss, or the portal), leaving the top of the screen to the floor
   // (a narrow screen, a phone upright: the plate stands in the room between the vitals and the timer, and says only
   // the floor's number: its name was on the floor's card a moment ago, and would not fit there)
-  const narrow = W < 300, timerW = quiet ? 0 : Math.max(measure(fmtTime(w.time)), measure(String(w.kills))) + 26;
+  const narrow = W < 300, timerW = quiet ? 0 : Math.max(measure(fmtTime(w.time)), measure(String(w.kills)), measure(String(Math.floor(w.coins)))) + 26;
   const floorLine = w.place.single ? tx(w.place.name) : narrow ? `${t("floor")} ${w.floor}` : `${t("floor")} ${w.floor}  ·  ${tx(floorText(w.stop).name)}`, bi = w.bossIndex();
   const intro = Math.max(0, Math.min(1, (6.5 - w.time) / 0.5)), e = intro * intro * (3 - 2 * intro);
   const bossName = bi >= 0 ? tx(ENEMIES[w.enemies.type[bi]].name) : "";
@@ -616,14 +616,17 @@ export function drawHud(b: Batch, w: World, W: number, H: number, time: number, 
       if (fill > 0) b.rect(x - 4, row + 5, Math.round(8 * Math.min(1, fill)), 1, rgba("#ffc040"));
     }
 
-  // ---- how long, how many: a plate at the top right (not while the first run's lessons are on: one thing at a time)
+  // ---- how long, how many, how rich: a plate at the top right (not while the first run's lessons are on: one thing
+  // at a time). The coins are the run's own, for the merchant on the stairs.
   if (!quiet) {
-    const tm = fmtTime(w.time), kills = String(w.kills), rw = Math.max(measure(tm), measure(kills)) + 22;
-    plate(b, W - rw - 2, 9, rw, 25);
+    const tm = fmtTime(w.time), kills = String(w.kills), coins = String(Math.floor(w.coins)), rw = Math.max(measure(tm), measure(kills), measure(coins)) + 22;
+    plate(b, W - rw - 2, 9, rw, 36);
     b.image(icon("hud", "time"), W - rw + 6, 16);
     text(b, tm, W - 7, 12, { align: "right", color: C.text, shadow: C.ink });
     b.image(icon("hud", "skull"), W - rw + 6, 27);
     text(b, kills, W - 7, 23, { align: "right", color: C.dim, shadow: C.ink });
+    b.image(icon("hud", "coin"), W - rw + 6, 38);
+    text(b, coins, W - 7, 34, { align: "right", color: C.gold, shadow: C.ink });
   }
 
   // ---- the boss: its name in blackletter over a framed bar in quarters, the hit it just took fading pale
@@ -766,7 +769,7 @@ export function drawTouch(b: Batch, input: Input, w: World, W: number, H: number
     b.disc(s.ox + s.x * R, s.oy + s.y * R, 10, 10, rgba("#0b0a12", 0.4));
     b.disc(s.ox + s.x * R, s.oy + s.y * R, 8, 8, rgba("#e8e4f0", 0.35));
   }
-  const dashX = W - 34, dashY = H - 34, ultX = W - 34, ultY = H - 82, pauseX = W - 16, pauseY = 46;
+  const dashX = W - 34, dashY = H - 34, ultX = W - 34, ultY = H - 82, pauseX = W - 16, pauseY = 58;
   input.zones = [
     { name: "dash", x: dashX, y: dashY, r: 22 },
     { name: "ult", x: ultX, y: ultY, r: 20 },

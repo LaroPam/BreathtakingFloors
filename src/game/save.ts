@@ -103,6 +103,8 @@ export interface RunSave {
   kills: number;
   runTime: number;
   embersBonus: number;
+  /** The run's coins, for the merchant (saves from before them have none). */
+  coins?: number;
   dmg: number[];
   pendingLevels: number;
   pendingChests: number;
