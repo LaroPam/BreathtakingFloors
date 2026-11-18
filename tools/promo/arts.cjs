@@ -47,6 +47,7 @@ CLIPS.push({ name: 'panel', kind: -1, hero: 0, place: 'crypt', level: 3, panel: 
       s.tutorial = false;
       s.runs = 12;
       s.gifts = ['shade', 'ember', 'beacon', 'rime', 'forge'];
+      for (const id of ['ranger', 'mage']) if (!s.unlocked.includes(id)) s.unlocked.push(id);
       g.input.poll = () => {};
       g.unlock = () => {};
       g.heroIdx = c.hero;

@@ -631,6 +631,23 @@ export class World {
    */
   wArts: { kind: WArt; level: number }[] = [];
   wArtEvo = false;
+  /**
+   * How the weapon in hand looks with the weapon artifacts held: steeped in the strongest one's colours ("~fire~0"),
+   * strongly at its last level, white-hot once the Ring of Fire has evolved; "" with none.
+   */
+  weaponLook(): string {
+    if (!this.wArts.length) return "";
+    if (this.wArtEvo) return "~white~1";
+    const top = this.wArts.reduce((a, b) => (b.level > a.level ? b : a));
+    return `~${["fire", "ricochet", "storm", "frost"][top.kind]}~${top.level >= 5 ? 1 : 0}`;
+  }
+  /** The colour the weapon's own light takes from the strongest weapon artifact (or none). */
+  artColor(): string | null {
+    if (!this.wArts.length) return null;
+    if (this.wArtEvo) return "#ffe08a";
+    const top = this.wArts.reduce((a, b) => (b.level > a.level ? b : a));
+    return ["#ff7a2a", "#e8edf6", "#ffe36a", "#78ccf4"][top.kind];
+  }
   private wLv(k: WArt): number {
     return this.wArts.find((a) => a.kind === k)?.level ?? 0;
   }

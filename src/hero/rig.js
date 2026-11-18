@@ -390,6 +390,31 @@ function costumeApi(S) {
 }
 
 // ---- what they hold: drawn along the handle from the fist, through the same depth buffer, in their own colours
+/**
+ * A weapon steeped in a weapon artifact's power (the game's stage 2 prototype): its steel and its string take the
+ * element's colours and their bright parts glow in them; strong (level 5, or evolved), the whole blade does.
+ */
+const INFUSE = {
+  fire: { hi: "#fff4c0", a: "#ffc060", b: "#ff7a2a", d: "#b8401a", string: "#ffb040" },
+  frost: { hi: "#ffffff", a: "#d8f4ff", b: "#78ccf4", d: "#3a7ab8", string: "#9bdcff" },
+  storm: { hi: "#ffffff", a: "#fff4a0", b: "#ffd84a", d: "#7a5ad0", string: "#fff08a" },
+  ricochet: { hi: "#ffffff", a: "#ffffff", b: "#d8e0f4", d: "#8a96b8", string: "#f4f8ff" },
+  white: { hi: "#ffffff", a: "#fff8e0", b: "#ffe0a0", d: "#ff8a3a", string: "#fff4c0" },
+};
+/** The steeping of the weapon being drawn (for the parts a weapon plots itself, as a bow's string). */
+let INF = null;
+function infused(T, kind, strong) {
+  const m = INFUSE[kind];
+  INF = m ? { ...m, strong: !!strong } : null;
+  if (!m) return T;
+  // the steel and the gold fittings (guards, tips, bands) take the colours; the bright ones glow
+  const map = new Map([[STEEL.hi, hex(m.hi)], [STEEL.a, hex(m.a)], [STEEL.b, hex(m.b)], [STEEL.d, hex(m.d)], [ARMS.string, hex(m.string)], [STEEL.gold, hex(m.a)], [STEEL.goldD, hex(m.b)]]);
+  const glows = new Set(strong ? [STEEL.hi, STEEL.a, STEEL.b, ARMS.string, STEEL.gold, STEEL.goldD] : [STEEL.hi, STEEL.a, ARMS.string, STEEL.gold]);
+  const T2 = (i, k, c, lift = 0, glow = false) => T(i, k, map.get(c) ?? c, lift, glow || glows.has(c));
+  T2.at = T.at;
+  T2.at3 = T.at3;
+  return T2;
+}
 function along(H, axis, side, part) {
   const n = cross(axis, side);
   const T = (i, k, c, lift = 0, glow = false) => {
@@ -513,13 +538,15 @@ const WEAPONS = {
       const k = u * 17, i = 6 * (1 - u * u) - 1;
       T(i, k, Math.abs(u) > 0.85 ? STEEL.goldD : STEEL.wood);
       T(i + 0.8, k, STEEL.woodD);
+      // steeped: runes of the element glowing along the limbs
+      if (INF && Math.abs(Math.sin(u * 9)) > (INF.strong ? 0.55 : 0.85)) T(i - 0.3, k, hex(INF.a), 0.3, true);
     }
     const tipA = T.at(-1, -17), tipB = T.at(-1, 17), mid = q.pull ? off : T.at(-1, 0);
     const line = (A, B2, c) => {
       const n = Math.max(2, Math.ceil(len(sub(B2, A)) / 0.4));
       for (let k = 0; k <= n; k++) {
         const P = lerp3(A, B2, k / n);
-        plot(idx(Math.round(P[0]), Math.round(P[1])), P[2] + 0.05, 2, 0, PART.weapon, -1, c ?? STEEL.a);
+        plot(idx(Math.round(P[0]), Math.round(P[1])), P[2] + 0.05, 2, INF && !c ? -1 : 0, PART.weapon, -1, c ?? (INF ? hex(INF.string) : STEEL.a));
       }
     };
     line(tipA, mid);
@@ -952,7 +979,7 @@ function render(L, pose) {
   if (L.costume) L.costume(costumeApi(S));
   curDim = 0;
   clipBody = false;
-  if (S.W) S.W.draw(along(S.armN.end, S.axis, S.side, PART.weapon), q, S.armF.end);
+  if (S.W) S.W.draw(infused(along(S.armN.end, S.axis, S.side, PART.weapon), q.infuse, q.infuseStrong), q, S.armF.end);
   if (S.OW) {
     const sb = q.sb ?? Math.PI;
     let ax = [Math.cos(sb), -Math.sin(sb), 0], sd = [-Math.sin(sb), -Math.cos(sb), 0];

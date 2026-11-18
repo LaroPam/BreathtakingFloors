@@ -752,8 +752,9 @@ export function drawWorld(s: Scene, w: World, camX: number, camY: number, viewW:
   }
 
   // ---- the hero, drawn in their own look (src/game/heroSprites.ts), and the light they carry
-  const hs = heroSprites(), wid = h.weapon, look = lookId(h.def.id, h.victor);
-  const run = hs.anim(look, wid, "run"), idle = hs.anim(look, wid, "idle"), dash = hs.anim(look, wid, "dash"), hurt = hs.anim(look, wid, "hurt");
+  // (the frames show the weapon steeped in a weapon artifact's colours when one is held: World.weaponLook)
+  const hs = heroSprites(), wid = h.weapon, wl = wid + w.weaponLook(), look = lookId(h.def.id, h.victor);
+  const run = hs.anim(look, wl, "run"), idle = hs.anim(look, wl, "idle"), dash = hs.anim(look, wl, "dash"), hurt = hs.anim(look, wl, "hurt");
   const [gr, gg, gb] = GHOST_TINT[h.def.id] ?? [0.48, 0.82, 1];
   if (w.ghosts.length) hs.ready(dash, 0);
   for (const g of w.ghosts) {
@@ -763,7 +764,7 @@ export function drawWorld(s: Scene, w: World, camX: number, camY: number, viewW:
   let lightX = h.x, lightY = h.y - 14;
   if (h.dead) {
     // the fall: a stagger, the knees, the floor; then the body fades as the soul rises
-    const death = hs.anim(look, wid, "death"), fi = hs.ready(death, Math.floor(h.deathT * 8));
+    const death = hs.anim(look, wl, "death"), fi = hs.ready(death, Math.floor(h.deathT * 8));
     const alpha = Math.max(0, Math.min(1, 1 - (h.deathT - 1.6) / 0.8));
     if (alpha > 0) {
       s.back.disc(h.x, h.y, 10, 3, C_SHADOW);
@@ -773,8 +774,8 @@ export function drawWorld(s: Scene, w: World, camX: number, camY: number, viewW:
     let a: HeroAnim, fi: number;
     const runPhase = frameAt(run, h.runT);
     if (h.atk >= 0) {
-      const base = hs.anim(look, wid, `a${h.atk}`), f = Math.min(base.frames.length - 1, Math.floor(h.atkT * 20));
-      if (h.moving) (a = hs.anim(look, wid, `a${h.atk}_run`), fi = f * 8 + runPhase);
+      const base = hs.anim(look, wl, `a${h.atk}`), f = Math.min(base.frames.length - 1, Math.floor(h.atkT * 20));
+      if (h.moving) (a = hs.anim(look, wl, `a${h.atk}_run`), fi = f * 8 + runPhase);
       else (a = base, fi = f);
     } else if (h.dashT > 0) (a = dash, fi = frameAt(dash, time));
     else if (h.hurtT > 0) (a = hurt, fi = 0);
@@ -827,11 +828,13 @@ export function drawWorld(s: Scene, w: World, camX: number, camY: number, viewW:
     // the weapon hand, for the world to throw an element's sparks from; the element glows there
     h.handX = h.x + hand[0] * h.face;
     h.handY = h.y + hand[1];
-    const el = w.weaponEl;
-    if (el && show) {
-      const c = rgba(EL_COLOR[el]), p = 0.75 + 0.25 * Math.sin(time * 8);
+    const el = w.weaponEl, artC = w.artColor();
+    if ((el || artC) && show) {
+      const c = artC ? rgba(artC) : rgba(EL_COLOR[el]), p = 0.75 + 0.25 * Math.sin(time * 8);
       s.glow.light(h.handX, h.handY, 5 * p, 5 * p, withAlpha(c, 0.45));
-      s.illum.light(h.handX, h.handY, 34 * p, 28 * p, withAlpha(c, 0.3));
+      s.illum.light(h.handX, h.handY, 34 * p, 28 * p, withAlpha(c, artC ? 0.4 : 0.3));
+      // (a weapon artifact's sparks shed off the weapon as it moves)
+      if (artC && (h.moving || h.atk >= 0) && Math.sin(time * 37 + h.x) > 0.6) w.parts.add(h.handX + Math.sin(time * 53) * 6, h.handY + Math.cos(time * 41) * 5, Math.sin(time * 13) * 20, -25 - 15 * Math.abs(Math.sin(time * 7)), 0.35, c, 1, 0, 1);
     }
     // the Knight's ward: a ring of light turning round him, fading as it ends
     if (w.ward > 0 && show) {

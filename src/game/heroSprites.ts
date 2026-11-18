@@ -98,7 +98,10 @@ export class HeroSprites {
     const w = name === "death" ? "" : weapon, key = `${look}|${w}|${name}`;
     let a = this.anims.get(key);
     if (!a) {
-      const poses = posesOf(weapon, name), fps = fpsOf(name), n = poses.length;
+      // (a weapon id may carry a weapon artifact's steeping: "sword~fire~1", the sword in fire, strongly)
+      const [wid, inf, strong] = weapon.split("~");
+      const base = posesOf(wid, name), poses = inf ? base.map((p) => ({ ...p, infuse: inf, infuseStrong: strong === "1" })) : base;
+      const fps = fpsOf(name), n = poses.length;
       a = { key, name: key, look: LOOKS[look] ?? LOOKS.knight, poses, fps, loop: loops(name), cut: false, frames: new Array(n).fill(EMPTY), drawn: new Array(n).fill(false), hands: [], dur: n / fps };
       this.anims.set(key, a);
     }

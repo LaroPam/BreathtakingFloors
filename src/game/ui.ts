@@ -480,7 +480,23 @@ export function drawHud(b: Batch, w: World, W: number, H: number, time: number, 
   const hy = py + 38, el = w.weaponEl;
   slot(b, 2, hy, 24, h.legend ? rgbaf(1, 0.85 + 0.15 * Math.sin(time * 5), 0.45, 1) : h.rarity > 0 ? rgba(RARITIES[h.rarity].color) : el ? rgba(EL_COLOR[el]) : C.goldDim);
   if (h.legend) glow(b, 14, hy + 12, 16, 16, C.gold, 0.35);
+  // with weapon artifacts held the weapon's badge is steeped in the strongest one's colour: a halo, a rim, sparks,
+  // and a pip for each artifact along the slot's foot
+  const artC = w.artColor();
+  if (artC) {
+    const ac = rgba(artC), p = 0.7 + 0.3 * Math.sin(time * 6);
+    glow(b, 14, hy + 12, 18, 18, ac, 0.45 * p);
+    slot(b, 2, hy, 24, ac);
+  }
   b.image(icon("icons", `w_${h.weapon}`), 14, hy + 12);
+  if (artC) {
+    const ac = rgba(artC);
+    for (let q = 0; q < 3; q++) {
+      const u = (time * 0.9 + q / 3) % 1, x = Math.round(6 + ((q * 7 + 3) % 16)), y = Math.round(hy + 20 - u * 18);
+      b.rect(x, y, 1, 1, withAlpha(ac, 1 - u));
+    }
+    w.wArts.forEach((a, k) => b.rect(5 + k * 4, hy + 22, 3, 1, rgba(["#ff7a2a", "#e8edf6", "#ffe36a", "#78ccf4"][a.kind])));
+  }
   if (h.legend) {
     // a small gold star in the top corner
     b.rect(5, hy + 2, 3, 1, C.ink), b.rect(6, hy + 1, 1, 3, C.ink);
