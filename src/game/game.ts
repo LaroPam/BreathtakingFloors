@@ -16,7 +16,6 @@ import { Rng } from "./rng";
 import { TEAM_FOE } from "./pools";
 import { defaultSave, sanitize, type RunSave, type SaveData } from "./save";
 import { bar, button, slider, C, divider, glow as glowUi, drawHud, drawPointers, drawTouch, fmtTime, frame, header , medallion, Menu, panel, para, plate , slot, type ButtonOpts } from "./ui";
-import { drawStyledHud, STYLED_PARTS, type HudStyle } from "./hudStyles";
 import { CINE_DUR, LUNGE_DASH, SRC_ABILITY, SRC_DASH, SRC_ELS, SRC_N, SRC_PARRY, SRC_REACT, SRC_RELIC, SRC_STATUS, SRC_WAVE, SRC_WEAPON, World } from "./world";
 
 type StatRow = { ic: Rect; name: string; col: number; sum: number; segs: [number, number][] };
@@ -91,7 +90,7 @@ const STEP = 1 / 60;
 /** A level reached: the world slows into the choice over this long rather than stopping dead. */
 const LVL_SLOW = 0.45;
 /** On a touch screen, how far above the bottom edge the in-game bars and buttons stay (a phone's own controls). */
-const TOUCH_INSET = 14;
+const TOUCH_INSET = 8;
 /** A run started on a later tier's place: the levels it is given at once (about what the tiers passed by give). */
 const START_LEVELS = [0, 8, 15];
 /** Embers for each guardian beaten, by its tier. */
@@ -213,8 +212,6 @@ export class Game {
   private demoCam: [number, number] = [0, 0];
   /** World pixels to interface pixels this frame (the world in play is drawn finer than the interface). */
   private viewK = 1;
-  /** A test hook: draw a mock-up of another style of HUD (hudStyles.ts) instead of the plates. */
-  hudStyle: HudStyle | "" = "";
   private bookNote = "";
   private bookNoteT = -9;
   private bookShake = -1;
@@ -1418,6 +1415,7 @@ export class Game {
     heroSprites().update(this.state === "play" ? 2.5 : 7);
     const input = this.input;
     input.setScale(this.r.scale);
+    input.setOffset(this.r.safeL, this.r.safeT);
     input.poll();
     if (input.mode === "touch") this.touch = true;
     else if (input.mode === "kbm" && input.mouse.moved) this.touch = false;
@@ -1538,6 +1536,11 @@ export class Game {
   }
 
   // =========================================================================================== drawing
+  /** A fill over the whole screen, out to its very edges (past the interface's safe frame). */
+  private fillScreen(color: number): void {
+    const R = this.r;
+    this.ui.rect(-R.safeL, -R.safeT, R.fullW, R.fullH, color);
+  }
   private draw(): void {
     // an open card in the books shows its own small world in place of the paused one
     const demo = this.state === "book" && this.card && this.card.t > 0.3 ? this.demo : null;
@@ -1552,14 +1555,17 @@ export class Game {
     // between floors the floor behind is gone: the stairwell down to the next one takes its place
     // between floors the floor behind is gone: the climb up to the next one takes its place
     const climbing = this.state === "stairs" || (this.state === "stats" && this.statsFrom[0] === "stairs");
-    const down = climbing ? ascent(s, W, H, this.now, w.place, (w.next() ?? w.stop).place, this.climbFrame()) : null;
+    const FW = this.r.fullW, FH = this.r.fullH;
+    const down = climbing ? ascent(s, FW, FH, this.now, w.place, (w.next() ?? w.stop).place, this.climbFrame()) : null;
     // the world in play is drawn finer than the interface (a wider view); the books' small worlds, the climb between
     // floors and the title keep the interface's scale (the title's view centred on the same spot)
     const zoom = !down && !demo && this.state !== "title", ws = zoom ? this.r.wscale : this.r.scale;
-    const VW = zoom ? this.r.ww : W, VH = zoom ? this.r.wh : H;
+    const VW = zoom ? this.r.ww : FW, VH = zoom ? this.r.wh : FH;
     this.viewK = ws / this.r.scale;
     const cx = down ? 0 : demo ? this.demoCam[0] : this.camX + (this.r.ww - VW) / 2 + sx, cy = down ? 0 : demo ? this.demoCam[1] : this.camY + (this.r.wh - VH) / 2 + sy;
     if (!down) drawWorld(s, w, cx, cy, VW, VH, this.now);
+    // (the same camera for what the interface draws at a spot of the world: its frame starts at the safe inset)
+    const ucx = cx + this.r.safeL / this.viewK, ucy = cy + this.r.safeT / this.viewK;
     // (the horde comes from beyond the edge of what the player sees)
     if (zoom && w === this.world) (w.viewHW = VW / 2), (w.viewHH = VH / 2);
 
@@ -1602,19 +1608,14 @@ export class Game {
           this.input.zones = [];
           break;
         }
-        drawPointers(ui, w, cx, cy, W, H, this.now, this.viewK);
+        drawPointers(ui, w, ucx, ucy, W, H, this.now, this.viewK);
         // (on a touch screen the bars and buttons along the bottom keep clear of its edge, where a phone or the page
         // around the game may have its own controls)
         const hudH = this.touch ? H - TOUCH_INSET : H;
-        const hudStyle = this.hudStyle || (this.save.hud as HudStyle | "");
-        if (hudStyle) {
-          // (another style of HUD on trial, for the owner to choose: hudStyles.ts; set in the settings)
-          drawHud(ui, w, W, hudH, this.now, this.banner, this.touch, this.weekly ? "trophy" : this.daily ? "daily" : "", this.save.tutorial && !this.daily, STYLED_PARTS);
-          drawStyledHud(hudStyle, ui, w, W, hudH, this.now, [(w.hero.x - cx) * this.viewK, (w.hero.y - cy) * this.viewK]);
-        } else drawHud(ui, w, W, hudH, this.now, this.banner, this.touch, this.weekly ? "trophy" : this.daily ? "daily" : "", this.save.tutorial && !this.daily);
+        drawHud(ui, w, W, hudH, this.now, this.banner, this.touch, this.weekly ? "trophy" : this.daily ? "daily" : "", this.save.tutorial && !this.daily);
         if (this.touch) drawTouch(ui, this.input, w, W, hudH, this.now);
         else this.input.zones = [];
-        this.drawLevelRing(cx, cy);
+        this.drawLevelRing(ucx, ucy);
         this.drawTutorial();
         this.drawHint();
         // the reticle stands in for the pointer while aiming with the mouse
@@ -1638,7 +1639,7 @@ export class Game {
     else if (this.state !== "heroes") this.menu.end(this.state === "stairs" || (this.state === "pick" && this.pickRow), this.state !== "settings");
     // a screen comes up out of the dark
     const since = this.now - this.menu.openedAt;
-    if (this.state !== "play" && this.state !== "card" && !over && since < 0.2) ui.rect(0, 0, W, H, rgba("#07060c", (1 - since / 0.2) * 0.7));
+    if (this.state !== "play" && this.state !== "card" && !over && since < 0.2) this.fillScreen(rgba("#07060c", (1 - since / 0.2) * 0.7));
     // the system pointer hides while the reticle aims
     // no aiming with the mouse: in play the pointer only gets in the way of the view
     const cursor = this.state === "play" && this.input.mode === "kbm" && !this.touch ? "none" : "default";
@@ -2103,8 +2104,9 @@ export class Game {
     const c = this.world.cine!, ui = this.ui, W = this.r.w, H = this.r.h, d = ENEMIES[c.type];
     const inK = Math.min(1, c.t / 0.35), outK = Math.min(1, (CINE_DUR - c.t) / 0.35), k = Math.min(inK, outK);
     const bar = Math.round(H * 0.13 * (1 - (1 - k) ** 3));
-    ui.rect(0, 0, W, bar, rgba("#000000"));
-    ui.rect(0, H - bar, W, bar, rgba("#000000"));
+    const R = this.r;
+    ui.rect(-R.safeL, -R.safeT, R.fullW, bar + R.safeT, rgba("#000000"));
+    ui.rect(-R.safeL, H - bar, R.fullW, bar + R.safeB, rgba("#000000"));
     if (c.t < 0.9) return;
     // the name slams in from big to its size, then the title under it
     const name = tx(d.name), u = Math.min(1, (c.t - 0.9) / 0.18), sc = fitScale(name, "title", W - 30, W >= 420 && H >= 360 ? 3 : 2), a = Math.min(1, (c.t - 0.9) * 6) * outK;
@@ -2168,7 +2170,7 @@ export class Game {
    */
   private drawGifts(): void {
     const ui = this.ui, W = this.r.w, H = this.r.h, now = this.now, have = this.save.gifts;
-    ui.rect(0, 0, W, H, rgba("#07060c", 0.72));
+    this.fillScreen(rgba("#07060c", 0.72));
     const th = this.heading(t("gifts"), 6, H >= 300 ? 2 : 1, C.gold, 1, `${have.length}/${GIFTS.length}`);
     const short = H < 260, sel = GIFTS[Math.min(GIFTS.length - 1, this.giftSel)], own = have.includes(sel.id), col = rgba(sel.color);
     // the row of them at the bottom, above the way back
@@ -2421,7 +2423,7 @@ export class Game {
    */
   private drawAtlas(): void {
     const ui = this.ui, W = this.r.w, H = this.r.h, now = this.now, sv = this.save;
-    ui.rect(0, 0, W, H, rgba("#07060c", 0.72));
+    this.fillScreen(rgba("#07060c", 0.72));
     const th = this.heading(t("atlas"), 6, H >= 300 ? 2 : 1, C.gold, 1, t("atlasExplored").replace("{p}", String(this.explored())));
     const P = ATLAS_ORDER.map(placeDef), reached = (id: PlaceId) => sv.places.includes(id);
     // side by side on a landscape screen (on a low one the way back under the panel, the tower down to the bottom), the
@@ -2615,7 +2617,7 @@ export class Game {
    */
   private drawCardBack(): void {
     const ui = this.ui, W = this.r.w, H = this.r.h, B = this.world.place, now = this.now, cy = Math.round(H * 0.38);
-    ui.rect(0, 0, W, H, rgba("#07060c"));
+    this.fillScreen(rgba("#07060c"));
     // a faint glow of the biome's light from below
     const [ar, ag, ab] = B.ambient;
     for (let k = 0; k < 8; k++) ui.rect(0, Math.round(H * (0.55 + k * 0.06)), W, Math.ceil(H * 0.06), rgbaf(ar * 0.12, ag * 0.12, ab * 0.16, 0.04 + k * 0.025));
@@ -2736,8 +2738,8 @@ export class Game {
   private drawSettings(): void {
     const ui = this.ui, W = this.r.w, H = this.r.h, now = this.now, sv = this.save;
     const th = this.heading(t("settings"), 8, H >= 300 ? 2 : 1);
-    // seven rows: one column, or two side by side on a short wide screen (a phone held wide)
-    const two = H < 240 && W >= 320, per = two ? 4 : 7, rh = two ? 22 : H < 240 ? 19 : 22;
+    // six rows: one column, or two side by side on a short wide screen (a phone held wide)
+    const two = H < 240 && W >= 320, per = two ? 3 : 6, rh = two ? 22 : H < 240 ? 19 : 22;
     const pw = two ? Math.floor((Math.min(480, W - 24) - 14) / 2) : Math.min(300, W - 24);
     const left = Math.round(W / 2 - (two ? pw + 7 : pw / 2)), top = 8 + th + 8;
     frame(ui, left - 10, top - 8, (two ? pw * 2 + 14 : pw) + 20, rh * per + 12);
@@ -2764,15 +2766,6 @@ export class Game {
         this.applySettings();
         this.persist();
       }
-    }
-    // the HUD on trial: the plates or one of the styles the owner is choosing between (hudStyles.ts)
-    const HUDS = ["", "lantern", "reliquary", "hero"] as const, HUD_NAME = ["hudPlain", "hudLantern", "hudReliquary", "hudHero"] as const;
-    const hi = Math.max(0, HUDS.indexOf(sv.hud as HudStyle));
-    [px, y] = at(i);
-    if (button(ui, this.menu, now, px, y, pw, 18, `${t("hudStyle")}: ${t(HUD_NAME[hi])}`, { icon: icon("hud", "gear") })) {
-      sv.hud = HUDS[(hi + 1) % HUDS.length];
-      this.applySettings();
-      this.persist();
     }
     // the way to the game's support (the stores ask for one), as set for this build
     if (SUPPORT) text(ui, `${t("support")}: ${SUPPORT}`, W / 2, H - 38, { font: "mini", align: "center", color: C.dim });
@@ -2876,7 +2869,7 @@ export class Game {
    */
   private drawCredits(): void {
     const ui = this.ui, W = this.r.w, H = this.r.h, w = this.world, T = this.creditsT, now = this.now;
-    ui.rect(0, 0, W, H, rgba("#07060c", Math.min(1, T * 1.5)));
+    this.fillScreen(rgba("#07060c", Math.min(1, T * 1.5)));
     const lines: [string, "title" | "big" | "mini", number][] = [
       [t("creditsDone"), "title", C.gold],
       ["", "big", C.text],
@@ -3522,7 +3515,7 @@ export class Game {
   private drawStats(): void {
     const ui = this.ui, W = this.r.w, H = this.r.h, now = this.now;
     const { total, sources, els } = this.statData();
-    if (this.statsFrom[0] !== "stairs") ui.rect(0, 0, W, H, rgba("#07060c", 0.55));
+    if (this.statsFrom[0] !== "stairs") this.fillScreen(rgba("#07060c", 0.55));
     const th = this.heading(t("stats"), 6, H >= 300 ? 2 : 1, C.gold, 1, `${t("statsTotal")}: ${fmtNum(total)}`);
     const top = 6 + th + 6, bottom = H - 30;
     if (!sources.length) text(ui, t("statsNone"), W / 2, H / 2 - 10, { align: "center", color: C.dim });
@@ -3754,7 +3747,7 @@ export class Game {
       }
     const n = Math.max(1, Math.ceil(dt / STEP - 1e-6));
     for (let k = 0; k < n; k++) d.step(dt / n);
-    this.demoCam = [Math.round(h.x - (wx + ww / 2)), Math.round(h.y - 14 - (wy + wh / 2))];
+    this.demoCam = [Math.round(h.x - (wx + this.r.safeL + ww / 2)), Math.round(h.y - 14 - (wy + this.r.safeT + wh / 2))];
   }
   private openCard(idx: number, from: [number, number, number, number]): void {
     const kindOf = (el: El) => RELICS.findIndex((r) => r.el === el) as RelicKind;
@@ -3791,7 +3784,7 @@ export class Game {
       this.drawCard2();
       return;
     }
-    ui.rect(0, 0, W, H, rgba("#07060c", 0.5));
+    this.fillScreen(rgba("#07060c", 0.5));
     const th = this.heading(evo ? t("bookEvo") : t("bookEl"), 6, H >= 300 ? 2 : 1, C.gold, 1, evo ? t("evoHint") : t("elHint"));
     const n = evo ? EVOLUTIONS.length : REACTIONS.length, gap = 6, tH = evo ? 84 : 78, minW = evo ? 150 : 86, avail = H - 30 - (6 + th + 8);
     // as few columns as let the rows fit the height, the tiles never narrower than their badges
@@ -3879,10 +3872,11 @@ export class Game {
       return;
     }
     // the card round the window: the fight shows through it
-    ui.rect(0, 0, W, wy, bg);
-    ui.rect(0, wy + wh, W, H - wy - wh, bg);
-    ui.rect(0, wy, wx, wh, bg);
-    ui.rect(wx + ww, wy, W - wx - ww, wh, bg);
+    const R = this.r, L0 = -R.safeL, T0 = -R.safeT, R1 = W + R.safeR, B1 = H + R.safeB;
+    ui.rect(L0, T0, R1 - L0, wy - T0, bg);
+    ui.rect(L0, wy + wh, R1 - L0, B1 - wy - wh, bg);
+    ui.rect(L0, wy, wx - L0, wh, bg);
+    ui.rect(wx + ww, wy, R1 - wx - ww, wh, bg);
     const reveal = Math.min(1, (c.t - 0.32) / 0.3);
     if (reveal < 1) ui.rect(wx, wy, ww, wh, withAlpha(bg, 1 - reveal));
     frame(ui, 0, 0, W, H, { edge: C.gold, fill: 0, shadow: false });

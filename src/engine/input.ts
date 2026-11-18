@@ -68,11 +68,18 @@ export class Input {
   setScale(scale: number): void {
     this.scale = scale;
   }
+  /** Where the interface's safe frame starts (game pixels): pointer positions come out in its coordinates. */
+  setOffset(x: number, y: number): void {
+    this.offX = x;
+    this.offY = y;
+  }
+  private offX = 0;
+  private offY = 0;
 
   private gamePos(e: PointerEvent): [number, number] {
     // canvas pixels per CSS pixel, as the renderer sized it, then game pixels
     const r = this.canvas.getBoundingClientRect(), k = this.canvas.width / Math.max(1, r.width);
-    return [((e.clientX - r.left) * k) / this.scale, ((e.clientY - r.top) * k) / this.scale];
+    return [((e.clientX - r.left) * k) / this.scale - this.offX, ((e.clientY - r.top) * k) / this.scale - this.offY];
   }
 
   private key(e: KeyboardEvent, down: boolean): void {

@@ -387,10 +387,24 @@ export interface Lighting {
 export class Renderer {
   readonly gl: WebGL2RenderingContext;
   readonly canvas: HTMLCanvasElement;
-  /** The view in game pixels (art pixels), and how many screen pixels one game pixel takes: the interface's. */
+  /**
+   * The interface's frame in game pixels (art pixels), and how many screen pixels one game pixel takes. The frame is
+   * the safe part of the screen: clear of a phone's notch, rounded corners and home bar (the safe-area insets), and
+   * on a touch screen a small margin in from every edge besides (`insets`, set by main.ts). The interface is laid out
+   * in it (`w` by `h`) and drawn shifted by (`safeL`, `safeT`); `fullW` by `fullH` is the whole canvas, which the
+   * world and the fills that dim the whole screen cover.
+   */
   w = 320;
   h = 180;
   scale = 1;
+  fullW = 320;
+  fullH = 180;
+  safeL = 0;
+  safeT = 0;
+  safeR = 0;
+  safeB = 0;
+  /** CSS pixels the interface keeps clear of each edge: top, right, bottom, left. */
+  insets: [number, number, number, number] = [0, 0, 0, 0];
   /**
    * The world in play is drawn a step finer than the interface (one screen pixel less per game pixel), so the view
    * takes in more of the floor and the horde while the text and buttons keep their size: `wscale`, and the view in
@@ -562,13 +576,22 @@ export class Renderer {
     if (css * dpr * dpr > 4.2e6) dpr = Math.sqrt(4.2e6 / Math.max(1, css));
     const cw = Math.max(1, Math.floor(this.canvas.clientWidth * dpr)), ch = Math.max(1, Math.floor(this.canvas.clientHeight * dpr));
     const shortCss = Math.min(this.canvas.clientWidth, this.canvas.clientHeight), span = 220 + 120 * Math.max(0, Math.min(1, (shortCss - 420) / 380));
-    const scale = Math.max(1, Math.round(Math.min(cw, ch) / span));
+    // (held unless the screen really changed: a phone's browser bar coming and going must not flip the interface
+    // between two sizes, which made it swim)
+    const raw = Math.min(cw, ch) / span;
+    const scale = Math.max(1, this.color && Math.abs(raw - this.scale) < 0.7 ? this.scale : Math.round(raw));
     const wscale = scale >= 3 ? scale - 1 : scale;
-    if (this.canvas.width === cw && this.canvas.height === ch && scale === this.scale && wscale === this.wscale && this.color) return false;
-    this.canvas.width = cw;
-    this.canvas.height = ch;
-    this.w = Math.ceil(cw / scale);
-    this.h = Math.ceil(ch / scale);
+    // the safe frame in game pixels (rounded out, so nothing of the interface reaches into the insets)
+    const k = cw / Math.max(1, this.canvas.clientWidth) / scale, [it, ir, ib, il] = this.insets;
+    const sT = Math.ceil(it * k), sR = Math.ceil(ir * k), sB = Math.ceil(ib * k), sL = Math.ceil(il * k);
+    if (this.canvas.width === cw && this.canvas.height === ch && scale === this.scale && wscale === this.wscale && this.color && sT === this.safeT && sR === this.safeR && sB === this.safeB && sL === this.safeL) return false;
+    if (this.canvas.width !== cw) this.canvas.width = cw;
+    if (this.canvas.height !== ch) this.canvas.height = ch;
+    this.fullW = Math.ceil(cw / scale);
+    this.fullH = Math.ceil(ch / scale);
+    [this.safeT, this.safeR, this.safeB, this.safeL] = [sT, sR, sB, sL];
+    this.w = this.fullW - sL - sR;
+    this.h = this.fullH - sT - sB;
     this.scale = scale;
     this.wscale = wscale;
     this.ww = Math.ceil(cw / wscale);
@@ -660,7 +683,8 @@ export class Renderer {
 
     gl.bindVertexArray(null);
 
-    this.drawBatch(ui, 0, 0, false);
+    // (the interface in its safe frame)
+    this.drawBatch(ui, -this.safeL, -this.safeT, false);
   }
 
   /** The stairwell into the colour target, under whatever the world draws over it. */

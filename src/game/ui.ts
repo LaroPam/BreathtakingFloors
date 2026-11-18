@@ -431,30 +431,14 @@ export function reticle(b: Batch, x: number, y: number, time: number, hot: boole
 }
 
 // ------------------------------------------------------------------------------------------------ the HUD
-const NONE = new Set<string>();
-/**
- * A batch that draws nothing while a part of the HUD named in `skip` is being drawn (a mock-up of another style draws
- * those parts itself: hudStyles.ts). The part is told by `hudPart`, set as drawHud goes from one to the next.
- */
-let hudPart = "";
-function skipping(b: Batch, skip: Set<string>): Batch {
-  return new Proxy(b, {
-    get(t, k) {
-      const v = Reflect.get(t, k);
-      return typeof v === "function" ? (...a: unknown[]) => (skip.has(hudPart) ? undefined : v.apply(t, a)) : v;
-    },
-  });
-}
 /** What the boss's bar showed a moment ago (for the pale strip of the hit it just took). */
 let bossLag = 1;
 
 /** The heads-up display during a run, gathered into plates: who you are (left), where you are (centre), how long (right). */
-export function drawHud(b: Batch, w: World, W: number, H: number, time: number, banner: { text: string; t: number; color: number; sub?: string } | null, touch: boolean, seal: "" | "daily" | "trophy", quiet = false, skip: Set<string> = NONE): void {
+export function drawHud(b: Batch, w: World, W: number, H: number, time: number, banner: { text: string; t: number; color: number; sub?: string } | null, touch: boolean, seal: "" | "daily" | "trophy", quiet = false): void {
   const h = w.hero;
-  if (skip.size) b = skipping(b, skip);
 
   // ---- experience: a framed bar across the top, the level on a badge at its left end
-  hudPart = "xp";
   const need = w.levelNeed();
   bar(b, 18, 3, W - 22, 3, h.xp / need, rgba("#2a6ad0"), rgba("#9ad4ff"), { well: rgba("#0c1222"), shimmer: time * 0.9, ticks: 10 });
   const lvl = String(h.level), lw = Math.max(13, measure(lvl) + 6);
@@ -462,7 +446,6 @@ export function drawHud(b: Batch, w: World, W: number, H: number, time: number, 
   text(b, lvl, 1 + lw / 2, 3, { align: "center", color: C.sky, shadow: C.ink });
 
   // ---- vitals: hearts, the dash, overdrive, on a plate
-  hudPart = "vitals";
   const hearts = Math.min(12, h.maxHp), fury = w.fury, furyW = fury > 1.01 ? 22 : 0;
   const pw = Math.max(92, 10 + hearts * 10 + furyW), py = 15;
   plate(b, 2, py, pw, 35);
@@ -493,7 +476,6 @@ export function drawHud(b: Batch, w: World, W: number, H: number, time: number, 
   }
 
   // ---- the hotbar: the weapon in a gold-rimmed slot (an element's gem in its corner), then a slot per relic
-  hudPart = "hotbar";
   const hy = py + 38, el = w.weaponEl;
   slot(b, 2, hy, 24, h.legend ? rgbaf(1, 0.85 + 0.15 * Math.sin(time * 5), 0.45, 1) : h.rarity > 0 ? rgba(RARITIES[h.rarity].color) : el ? rgba(EL_COLOR[el]) : C.goldDim);
   if (h.legend) glow(b, 14, hy + 12, 16, 16, C.gold, 0.35);
@@ -561,7 +543,6 @@ export function drawHud(b: Batch, w: World, W: number, H: number, time: number, 
   }
 
   // ---- the spirit's quest: a plate under the hotbar with its name, the count, the clock
-  hudPart = "quest";
   const q = w.quest;
   if (q) {
     const a = q.state === "active" ? 1 : Math.max(0, Math.min(1, (3 - q.endT) / 0.6)), qy = hy + (held.length ? 54 : 28), qw = 132;
@@ -587,7 +568,6 @@ export function drawHud(b: Batch, w: World, W: number, H: number, time: number, 
   }
 
   // ---- where you are: the floor on a plate at the top centre, with what to do on it under the name
-  hudPart = "floor";
   // the floor's name on its plate for the first seconds; then the plate draws in to just the braziers (or the
   // boss, or the portal), leaving the top of the screen to the floor
   // (a narrow screen, a phone upright: the plate stands in the room between the vitals and the timer, and says only
@@ -637,7 +617,6 @@ export function drawHud(b: Batch, w: World, W: number, H: number, time: number, 
     }
 
   // ---- how long, how many: a plate at the top right (not while the first run's lessons are on: one thing at a time)
-  hudPart = "time";
   if (!quiet) {
     const tm = fmtTime(w.time), kills = String(w.kills), rw = Math.max(measure(tm), measure(kills)) + 22;
     plate(b, W - rw - 2, 9, rw, 25);
@@ -648,7 +627,6 @@ export function drawHud(b: Batch, w: World, W: number, H: number, time: number, 
   }
 
   // ---- the boss: its name in blackletter over a framed bar in quarters, the hit it just took fading pale
-  hudPart = "boss";
   if (bi >= 0) {
     // (on a touch screen it ends short of the dash button on the right)
     const R = touch ? W - 62 : W - 22, bw = Math.min(280, R - 30), bx = Math.round((22 + R - bw) / 2);
@@ -666,7 +644,6 @@ export function drawHud(b: Batch, w: World, W: number, H: number, time: number, 
     if (shut && Math.sin(time * 6) > -0.4) text(b, t("invulnerable"), bx + bw, by - 12, { font: "mini", align: "right", color: rgba("#c8d4ff"), shadow: C.ink });
   } else bossLag = 1;
   // ---- a miniboss: its name over a smaller bar, above the boss's if both are up
-  hudPart = "mini";
   const mi = w.miniIndex();
   if (mi >= 0) {
     const R = touch ? W - 62 : W - 22, bw = Math.min(200, R - 40), bx = Math.round((22 + R - bw) / 2);
@@ -678,7 +655,6 @@ export function drawHud(b: Batch, w: World, W: number, H: number, time: number, 
   }
 
   // a banner on a band of darkness; it holds a little longer when it carries a line of what to do under it
-  hudPart = "banner";
   // (on a wide screen it sits in the middle column between the plates, on a tall one below them)
   const life = banner?.sub ? 3.4 : 2.2;
   if (banner && banner.t < life) {

@@ -31,8 +31,6 @@ export interface SaveData {
   shake: boolean;
   numbers: boolean;
   flashes: boolean;
-  /** The HUD on trial: "" the plates, or one of the styles the owner is choosing between (hudStyles.ts). */
-  hud: string;
   /** Lifetime counters (achievements read them) and the achievements earned. */
   stats: Record<string, number>;
   ach: string[];
@@ -140,7 +138,6 @@ export const defaultSave = (): SaveData => ({
   shake: true,
   numbers: true,
   flashes: true,
-  hud: "",
   stats: {},
   ach: [],
   purchases: [],
@@ -221,7 +218,6 @@ export function sanitize(raw: unknown): SaveData {
     shake: bool(r.shake, d.shake),
     numbers: bool(r.numbers, d.numbers),
     flashes: bool(r.flashes, d.flashes),
-    hud: typeof r.hud === "string" && ["lantern", "reliquary", "hero"].includes(r.hud) ? r.hud : "",
     stats: counts(r.stats),
     ach: strs(r.ach),
     purchases: strs(r.purchases),
