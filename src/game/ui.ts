@@ -653,7 +653,7 @@ export function drawHud(b: Batch, w: World, W: number, H: number, time: number, 
 }
 
 /** Arrows at the edge of the screen pointing to what the player must find: the cold brazier, the spirit, the bounty, the portal, the open stairs. */
-export function drawPointers(b: Batch, w: World, camX: number, camY: number, W: number, H: number, time: number): void {
+export function drawPointers(b: Batch, w: World, camX: number, camY: number, W: number, H: number, time: number, viewK = 1): void {
   const targets: [number, number, number][] = [];
   for (const q of w.braziers) if (!q.lit) targets.push([q.x, q.y - 20, rgba("#ffae35")]);
   if (w.spirit?.state === "offer") targets.push([w.spirit.x, w.spirit.y - 20, rgba("#9ad4ff")]);
@@ -663,7 +663,8 @@ export function drawPointers(b: Batch, w: World, camX: number, camY: number, W: 
   if (w.stairs?.open) targets.push([w.stairs.x, w.stairs.y - 10, rgba("#9ae0ff")]);
   const cx = W / 2, cy = H / 2;
   for (const [x, y, col] of targets) {
-    const sx = x - camX, sy = y - camY;
+    // (world pixels to the interface's: the world in play is drawn finer)
+    const sx = (x - camX) * viewK, sy = (y - camY) * viewK;
     if (sx > 8 && sy > 8 && sx < W - 8 && sy < H - 8) continue;
     const dx = sx - cx, dy = sy - cy, k = Math.min((W / 2 - 16) / Math.abs(dx || 1), (H / 2 - 16) / Math.abs(dy || 1));
     const px = cx + dx * k, py = cy + dy * k, a = Math.atan2(dy, dx), bob = Math.sin(time * 6) * 2;

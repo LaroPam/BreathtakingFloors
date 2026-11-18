@@ -208,6 +208,8 @@ export class Game {
   private card: { idx: number; t: number; dir: 1 | -1; from: [number, number, number, number] } | null = null;
   private demo: World | null = null;
   private demoCam: [number, number] = [0, 0];
+  /** World pixels to interface pixels this frame (the world in play is drawn finer than the interface). */
+  private viewK = 1;
   private bookNote = "";
   private bookNoteT = -9;
   private bookShake = -1;
@@ -655,8 +657,8 @@ export class Game {
     w.braziers[0].y = w.hero.y + 6;
     w.braziers[0].lit = true;
     w.braziers[0].litT = 5;
-    this.camX = w.hero.x - this.r.w / 2;
-    this.camY = w.hero.y - 20 - this.r.h / 2;
+    this.camX = w.hero.x - this.r.ww / 2;
+    this.camY = w.hero.y - 20 - this.r.wh / 2;
   }
 
   private setState(s: State, focus = 0): void {
@@ -1438,8 +1440,8 @@ export class Game {
         this.transition(() => {
           w.hero.arriveT = 0;
           w.addFx("beam", w.hero.x, w.hero.y, { glow: 1, key: 2 });
-          this.camX = w.hero.x - this.r.w / 2;
-          this.camY = w.hero.y - 20 - this.r.h / 2;
+          this.camX = w.hero.x - this.r.ww / 2;
+          this.camY = w.hero.y - 20 - this.r.wh / 2;
           this.setState("play");
         });
       }
@@ -1504,7 +1506,8 @@ export class Game {
   }
 
   private updateCamera(dt: number): void {
-    const w = this.world, h = w.hero, W = this.r.w, H = this.r.h, c = w.cine;
+    // (the camera works in the view of play, which takes in more of the floor than the interface's)
+    const w = this.world, h = w.hero, W = this.r.ww, H = this.r.wh, c = w.cine;
     const lead = this.state === "play" ? 18 : 0;
     // during a boss's entrance the camera goes to it and holds, then comes back
     const look = c && c.t < CINE_DUR - 0.45;
@@ -1545,8 +1548,13 @@ export class Game {
     // between floors the floor behind is gone: the climb up to the next one takes its place
     const climbing = this.state === "stairs" || (this.state === "stats" && this.statsFrom[0] === "stairs");
     const down = climbing ? ascent(s, W, H, this.now, w.place, (w.next() ?? w.stop).place, this.climbFrame()) : null;
-    const cx = down ? 0 : demo ? this.demoCam[0] : this.camX + sx, cy = down ? 0 : demo ? this.demoCam[1] : this.camY + sy;
-    if (!down) drawWorld(s, w, cx, cy, W, H, this.now);
+    // the world in play is drawn finer than the interface (a wider view); the books' small worlds, the climb between
+    // floors and the title keep the interface's scale (the title's view centred on the same spot)
+    const zoom = !down && !demo && this.state !== "title", ws = zoom ? this.r.wscale : this.r.scale;
+    const VW = zoom ? this.r.ww : W, VH = zoom ? this.r.wh : H;
+    this.viewK = ws / this.r.scale;
+    const cx = down ? 0 : demo ? this.demoCam[0] : this.camX + (this.r.ww - VW) / 2 + sx, cy = down ? 0 : demo ? this.demoCam[1] : this.camY + (this.r.wh - VH) / 2 + sy;
+    if (!down) drawWorld(s, w, cx, cy, VW, VH, this.now);
 
     const dim = this.state !== "play" && this.state !== "title" && !down && !demo;
     // a choice or a chest dims the floor smoothly, and a choice made lets it light up again as the game goes on
@@ -1587,7 +1595,7 @@ export class Game {
           this.input.zones = [];
           break;
         }
-        drawPointers(ui, w, cx, cy, W, H, this.now);
+        drawPointers(ui, w, cx, cy, W, H, this.now, this.viewK);
         // (on a touch screen the bars and buttons along the bottom keep clear of its edge, where a phone or the page
         // around the game may have its own controls)
         const hudH = this.touch ? H - TOUCH_INSET : H;
@@ -1625,7 +1633,7 @@ export class Game {
     if (this.r.canvas.style.cursor !== cursor) this.r.canvas.style.cursor = cursor;
     this.drawToast(this.dt);
     this.drawWipe();
-    this.r.render(s, ui, cx, cy, light, [0.025, 0.02, 0.045]);
+    this.r.render(s, ui, cx, cy, light, [0.025, 0.02, 0.045], undefined, ws);
   }
 
   /** The world's word to the player (what to do now), on a plate low in the middle: it fades in, holds, fades out. */
@@ -1650,7 +1658,7 @@ export class Game {
   /** The slow-down into a level: a ring of gold closing on the hero, the screen's edges warming. */
   private drawLevelRing(cx: number, cy: number): void {
     if (this.lvlT <= 0) return;
-    const ui = this.ui, h = this.world.hero, u = 1 - this.lvlT / LVL_SLOW, x = h.x - cx, y = h.y - 16 - cy, R = 70 * (1 - u) + 14;
+    const ui = this.ui, h = this.world.hero, u = 1 - this.lvlT / LVL_SLOW, x = (h.x - cx) * this.viewK, y = (h.y - 16 - cy) * this.viewK, R = 70 * (1 - u) + 14;
     const col = rgbaf(1, 0.85, 0.4, 0.9 * Math.min(1, u * 3));
     for (let k = 0; k < 40; k++) {
       const a = (k / 40) * Math.PI * 2 + u * 2;

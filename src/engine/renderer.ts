@@ -378,10 +378,18 @@ export interface Lighting {
 export class Renderer {
   readonly gl: WebGL2RenderingContext;
   readonly canvas: HTMLCanvasElement;
-  /** The view in game pixels (art pixels), and how many screen pixels one game pixel takes. */
+  /** The view in game pixels (art pixels), and how many screen pixels one game pixel takes: the interface's. */
   w = 320;
   h = 180;
   scale = 1;
+  /**
+   * The world in play is drawn a step finer than the interface (one screen pixel less per game pixel), so the view
+   * takes in more of the floor and the horde while the text and buttons keep their size: `wscale`, and the view in
+   * game pixels at it (`ww`, `wh`). A small screen, where the interface is already at its finest, keeps one scale.
+   */
+  wscale = 1;
+  ww = 320;
+  wh = 180;
   private sprite: WebGLProgram;
   private composite: WebGLProgram;
   private well: WebGLProgram;
@@ -546,12 +554,16 @@ export class Renderer {
     const cw = Math.max(1, Math.floor(this.canvas.clientWidth * dpr)), ch = Math.max(1, Math.floor(this.canvas.clientHeight * dpr));
     const shortCss = Math.min(this.canvas.clientWidth, this.canvas.clientHeight), span = 220 + 120 * Math.max(0, Math.min(1, (shortCss - 420) / 380));
     const scale = Math.max(1, Math.round(Math.min(cw, ch) / span));
-    if (this.canvas.width === cw && this.canvas.height === ch && scale === this.scale && this.color) return false;
+    const wscale = scale >= 3 ? scale - 1 : scale;
+    if (this.canvas.width === cw && this.canvas.height === ch && scale === this.scale && wscale === this.wscale && this.color) return false;
     this.canvas.width = cw;
     this.canvas.height = ch;
     this.w = Math.ceil(cw / scale);
     this.h = Math.ceil(ch / scale);
     this.scale = scale;
+    this.wscale = wscale;
+    this.ww = Math.ceil(cw / wscale);
+    this.wh = Math.ceil(ch / wscale);
     this.color = this.target(this.color);
     this.glow = this.target(this.glow);
     this.illum = this.target(this.illum);
@@ -569,15 +581,15 @@ export class Renderer {
     gl.bufferSubData(gl.ARRAY_BUFFER, 0, b.f, 0, b.n * FLOATS);
   }
 
-  private drawBatch(b: Batch, camX: number, camY: number, additive: boolean): void {
+  private drawBatch(b: Batch, camX: number, camY: number, additive: boolean, scale = this.scale): void {
     if (!b.n) return;
     const gl = this.gl;
     b.sort();
     this.upload(b);
     gl.useProgram(this.sprite);
-    gl.uniform2f(this.loc["s.u_camDev"]!, Math.round(camX * this.scale), Math.round(camY * this.scale));
+    gl.uniform2f(this.loc["s.u_camDev"]!, Math.round(camX * scale), Math.round(camY * scale));
     gl.uniform2f(this.loc["s.u_res"]!, this.canvas.width, this.canvas.height);
-    gl.uniform1f(this.loc["s.u_scale"]!, this.scale);
+    gl.uniform1f(this.loc["s.u_scale"]!, scale);
     gl.uniform1f(this.loc["s.u_page"]!, PAGE_SIZE);
     gl.uniform1i(this.loc["s.u_tex"]!, 0);
     gl.uniform1i(this.loc["s.u_additive"]!, additive ? 1 : 0);
@@ -591,26 +603,29 @@ export class Renderer {
     gl.bindVertexArray(null);
   }
 
-  /** Draw a frame: the world's three layers lit and put together on the screen, the UI over it. */
-  render(world: { back: Batch; color: Batch; front: Batch; glow: Batch; illum: Batch }, ui: Batch, camX: number, camY: number, light: Lighting, clear: [number, number, number], well?: Well): void {
+  /**
+   * Draw a frame: the world's three layers lit and put together on the screen, the UI over it. The world is drawn
+   * at `wscale` (the wider view of play) or, for the screens that show it framed like the interface, at `scale`.
+   */
+  render(world: { back: Batch; color: Batch; front: Batch; glow: Batch; illum: Batch }, ui: Batch, camX: number, camY: number, light: Lighting, clear: [number, number, number], well?: Well, ws = this.wscale): void {
     const gl = this.gl;
     gl.viewport(0, 0, this.canvas.width, this.canvas.height);
     gl.bindFramebuffer(gl.FRAMEBUFFER, this.color.fb);
     gl.clearColor(clear[0], clear[1], clear[2], 1);
     gl.clear(gl.COLOR_BUFFER_BIT);
-    if (well) this.drawWell(well, camX, camY);
-    this.drawBatch(world.back, camX, camY, false);
-    this.drawBatch(world.color, camX, camY, false);
-    this.drawBatch(world.front, camX, camY, false);
+    if (well) this.drawWell(well, camX, camY, ws);
+    this.drawBatch(world.back, camX, camY, false, ws);
+    this.drawBatch(world.color, camX, camY, false, ws);
+    this.drawBatch(world.front, camX, camY, false, ws);
 
     gl.bindFramebuffer(gl.FRAMEBUFFER, this.glow.fb);
     gl.clearColor(0, 0, 0, 1);
     gl.clear(gl.COLOR_BUFFER_BIT);
-    this.drawBatch(world.glow, camX, camY, true);
+    this.drawBatch(world.glow, camX, camY, true, ws);
 
     gl.bindFramebuffer(gl.FRAMEBUFFER, this.illum.fb);
     gl.clear(gl.COLOR_BUFFER_BIT);
-    this.drawBatch(world.illum, camX, camY, true);
+    this.drawBatch(world.illum, camX, camY, true, ws);
 
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     gl.disable(gl.BLEND);
@@ -626,8 +641,8 @@ export class Renderer {
     gl.uniform3f(this.loc["c.u_ambient"]!, ...light.ambient);
     gl.uniform1f(this.loc["c.u_steps"]!, light.steps);
     gl.uniform2f(this.loc["c.u_res"]!, this.canvas.width, this.canvas.height);
-    gl.uniform2f(this.loc["c.u_camDev"]!, Math.round(camX * this.scale), Math.round(camY * this.scale));
-    gl.uniform1f(this.loc["c.u_scale"]!, this.scale);
+    gl.uniform2f(this.loc["c.u_camDev"]!, Math.round(camX * ws), Math.round(camY * ws));
+    gl.uniform1f(this.loc["c.u_scale"]!, ws);
     gl.uniform1f(this.loc["c.u_vignette"]!, light.vignette);
     gl.uniform3f(this.loc["c.u_tint"]!, ...light.tint);
     gl.uniform1f(this.loc["c.u_tintK"]!, light.tintK);
@@ -640,13 +655,13 @@ export class Renderer {
   }
 
   /** The stairwell into the colour target, under whatever the world draws over it. */
-  private drawWell(w: Well, camX: number, camY: number): void {
+  private drawWell(w: Well, camX: number, camY: number, ws: number): void {
     const gl = this.gl, L = (n: string) => this.loc["w." + n]!;
     gl.disable(gl.BLEND);
     gl.useProgram(this.well);
     gl.uniform2f(L("u_res"), this.canvas.width, this.canvas.height);
-    gl.uniform1f(L("u_scale"), this.scale);
-    gl.uniform2f(L("u_camDev"), Math.round(camX * this.scale), Math.round(camY * this.scale));
+    gl.uniform1f(L("u_scale"), ws);
+    gl.uniform2f(L("u_camDev"), Math.round(camX * ws), Math.round(camY * ws));
     gl.uniform2f(L("u_center"), w.center[0], w.center[1]);
     gl.uniform1f(L("u_a0"), w.a0);
     gl.uniform1f(L("u_t"), w.t);
