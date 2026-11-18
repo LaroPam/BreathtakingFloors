@@ -614,7 +614,7 @@ export const RELICS: RelicDef[] = [
     kind: RelicKind.Quake, el: El.None, color: "#d8a868", icon: "quake", name: L("УДАРНАЯ ВОЛНА", "SHOCKWAVE"),
     melee: L("УДАР РАСКАЛЫВАЕТ ЗЕМЛЮ ВОЛНОЙ ВПЕРЁД", "BLOWS SPLIT THE GROUND IN A WAVE AHEAD"),
     ranged: L("ПОПАДАНИЕ ОТБРАСЫВАЕТ ВСЕХ ВОКРУГ ВОЛНОЙ", "A HIT THROWS BACK ALL AROUND IN A WAVE"),
-    levels: [L("ВОЛНА ДАЛЬШЕ", "A LONGER WAVE"), L("ДОБИВАЮЩИЙ УДАР - КОЛЬЦО ВОЛН", "A FINISHING BLOW SENDS A RING"), L("ВОЛНА ДАЛЬШЕ И СИЛЬНЕЕ", "A LONGER, HARDER WAVE"), L("ОГЛУШАЕТ", "STUNS")],
+    levels: [L("ВОЛНА ДАЛЬШЕ", "A LONGER WAVE"), L("ДОБИВАЮЩИЙ УДАР - КОЛЬЦО ВОЛН, ВОЛНА ОГЛУШАЕТ", "A FINISHING BLOW SENDS A RING; THE WAVE STUNS"), L("ВОЛНА ДАЛЬШЕ И СИЛЬНЕЕ", "A LONGER, HARDER WAVE"), L("ОГЛУШАЕТ ДОЛЬШЕ", "STUNS LONGER")],
   },
   {
     kind: RelicKind.Rune, el: El.None, color: "#ff6ad8", icon: "rune", name: L("ВЗРЫВНАЯ РУНА", "BLAST RUNE"),
@@ -674,7 +674,7 @@ export const RELICS: RelicDef[] = [
     kind: RelicKind.Bloom, el: El.None, color: "#ff8ac0", icon: "bloom", name: L("ЦВЕТУЩИЙ ШИП", "BLOOMING THORN"),
     melee: L("ПОПАДАНИЕ САЖАЕТ ЦВЕТОК, ОН РАСПУСКАЕТСЯ ЛЕПЕСТКАМИ-ЛЕЗВИЯМИ", "A HIT PLANTS A FLOWER THAT BLOOMS INTO BLADED PETALS"),
     ranged: L("ПОПАДАНИЕ САЖАЕТ ЦВЕТОК, ОН РАСПУСКАЕТСЯ ЛЕПЕСТКАМИ-ЛЕЗВИЯМИ", "A HIT PLANTS A FLOWER THAT BLOOMS INTO BLADED PETALS"),
-    levels: [L("+1 ЦВЕТОК", "+1 FLOWER"), L("+2 ЛЕПЕСТКА", "+2 PETALS"), L("ЛЕПЕСТКИ ОСТРЕЕ", "SHARPER PETALS"), L("+2 ЛЕПЕСТКА, ЦВЕТЫ БЫСТРЕЕ", "+2 PETALS, QUICKER FLOWERS")],
+    levels: [L("+2 ЦВЕТКА", "+2 FLOWERS"), L("+2 ЛЕПЕСТКА", "+2 PETALS"), L("ЛЕПЕСТКИ ОСТРЕЕ, +1 ЦВЕТОК", "SHARPER PETALS, +1 FLOWER"), L("+2 ЛЕПЕСТКА, ЦВЕТЫ БЫСТРЕЕ", "+2 PETALS, QUICKER FLOWERS")],
   },
   {
     kind: RelicKind.Moon, el: El.None, color: "#c8d8ff", icon: "moon", name: L("ЛУННЫЙ СЕРП", "MOON SICKLE"),

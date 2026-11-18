@@ -3685,11 +3685,12 @@ export class World {
         }
         case RelicKind.Fire: {
           // waves of fire thrown along the blow, the ground burning where they pass; evolved, a whole ring of them
-          const n = evo ? 10 : 1 + (L >= 3 ? 1 : 0) + (L >= 5 ? 1 : 0), step = evo ? (Math.PI * 2) / n : 0.34;
+          // (the bench: ten waves a blow, each through three, set the whole floor alight; six, through two, still ring it)
+          const n = evo ? 6 : 1 + (L >= 3 ? 1 : 0) + (L >= 5 ? 1 : 0), step = evo ? (Math.PI * 2) / n : 0.34;
           Bu.artCur = 1 << RelicKind.Fire;
           for (let q = 0; q < n; q++) {
             const ang = evo ? dir + q * step : dir + (q - (n - 1) / 2) * step;
-            Bu.add(TEAM_HERO, B_CRESCENT, cx + Math.cos(ang) * 14, cy + Math.sin(ang) * 14, Math.cos(ang) * 210, Math.sin(ang) * 210, 0.4 + 0.04 * L, dmg * (0.22 + 0.04 * L), 9, El.Fire, 3);
+            Bu.add(TEAM_HERO, B_CRESCENT, cx + Math.cos(ang) * 14, cy + Math.sin(ang) * 14, Math.cos(ang) * 210, Math.sin(ang) * 210, 0.4 + 0.04 * L, dmg * (evo ? 0.3 : 0.22 + 0.04 * L), 9, El.Fire, evo ? 2 : 3);
           }
           Bu.artCur = 0;
           if (evo) (this.addFx("explosion_s", cx, cy + 8, { glow: 1, sx: 1.2, sy: 1.2 }), (this.shake = Math.max(this.shake, 0.3)));
@@ -3702,7 +3703,7 @@ export class World {
           break;
         }
         case RelicKind.Quake: {
-          const n = 4 + L + (L >= 4 ? 2 : 0), d2 = dmg * (0.3 + 0.06 * L), stun = L >= 5 ? 0.5 : 0;
+          const n = 4 + L + (L >= 4 ? 2 : 0), d2 = dmg * (0.3 + 0.06 * L), stun = L >= 5 ? 0.5 : L >= 3 ? 0.25 : 0;
           this.quakes.push({ x: h.x + Math.cos(dir) * 14, y: h.y + Math.sin(dir) * 10, dx: Math.cos(dir), dy: Math.sin(dir) * 0.8, n, t: 0, every: 0.045, dmg: d2, stun, ice: false });
           if (fin && L >= 3)
             for (let q = 0; q < 8; q++) {
@@ -3914,9 +3915,9 @@ export class World {
             // the crown's shot bursts into a ring of fire where it strikes
             this.addFx("explosion_s", x, y + 8, { glow: 1, sx: 1.1, sy: 1.1 });
             this.blast(x, y, 34, dmg * 0.8, El.Fire, 60);
-            for (let q = 0; q < 6; q++) {
-              const a = (q / 6) * Math.PI * 2;
-              this.firePools.push({ x: x + Math.cos(a) * 22, y: y + 14 + Math.sin(a) * 16, r: 12, t: 0, life: 2, dmg: 7 * this.stats.might, tick: 0, ember: true });
+            for (let q = 0; q < 4 && this.firePools.length < 50; q++) {
+              const a = (q / 4) * Math.PI * 2;
+              this.firePools.push({ x: x + Math.cos(a) * 22, y: y + 14 + Math.sin(a) * 16, r: 11, t: 0, life: 1.2, dmg: 3.5 * this.stats.might, tick: 0, ember: true });
             }
           }
           break;
@@ -4057,9 +4058,9 @@ export class World {
   private plantFlower(x: number, y: number, dmg: number): void {
     const r = this.relicOf(RelicKind.Bloom);
     if (!r) return;
-    const L = r.level, max = r.evo ? 14 : L >= 2 ? 4 : 3;
+    const L = r.level, max = r.evo ? 14 : L >= 4 ? 6 : L >= 2 ? 5 : 3;
     if (this.flowers.length >= max) return;
-    this.flowers.push({ x, y: y + 12, t: 0, open: L >= 5 ? 0.45 : 0.7, dmg: dmg * (0.15 + (L >= 4 ? 0.06 : 0)) });
+    this.flowers.push({ x, y: y + 12, t: 0, open: L >= 5 ? 0.45 : 0.7, dmg: dmg * (0.26 + (L >= 4 ? 0.08 : 0)) });
   }
   /** The dragon's bite: fiery jaws snap shut ahead of the hero, a cone of breath at its last level. */
   private dragonBite(cx: number, cy: number, dir: number, dmg: number, L: number): void {
@@ -4249,7 +4250,7 @@ export class World {
             if (dx * dx + dy * dy > 18 * 18) return;
             if (ENEMIES[E.type[i]].ai < AI.Boss) {
               if (q.ice) E.frozen[i] = Math.max(E.frozen[i], 1.2);
-              else (E.kx[i] += q.dx * 110 - q.dy * 40, E.ky[i] += q.dy * 110 + q.dx * 40);
+              else (E.kx[i] += q.dx * 70 - q.dy * 25, E.ky[i] += q.dy * 70 + q.dx * 25);
               if (q.stun) E.stun[i] = Math.max(E.stun[i], q.stun);
             }
             this.damage(i, q.dmg, q.ice ? El.Frost : El.None, { quiet: this.rng.chance(0.6) });
@@ -5750,7 +5751,7 @@ export class World {
           if (B.art[i] & (1 << RelicKind.Fire)) {
             // (a blade's wave of fire leaves a thinner line of embers than a shot's trail)
             const L = Math.max(1, this.relicLevel(RelicKind.Fire)), evo = this.evolved(RelicKind.Fire), wave = B.kind[i] === B_CRESCENT, k = wave ? 0.45 : 1;
-            if (this.firePools.length < 90 && (!wave || this.rng.chance(0.6))) this.firePools.push({ x, y: y + 14, r: evo ? 11 : 7 + L, t: 0, life: evo ? 1.8 : 0.8 + (L >= 2 ? 0.5 : 0) + 0.15 * L, dmg: (evo ? 6 : 3 + (L >= 4 ? 2 : 0) + 0.6 * L) * k * this.stats.might, tick: 0, ember: true });
+            if (this.firePools.length < (evo ? 50 : 90) && (!wave || this.rng.chance(0.6))) this.firePools.push({ x, y: y + 14, r: evo ? 9 : 7 + L, t: 0, life: evo ? 1.1 : 0.8 + (L >= 2 ? 0.5 : 0) + 0.15 * L, dmg: (evo ? 3.5 : 3 + (L >= 4 ? 2 : 0) + 0.6 * L) * k * this.stats.might, tick: 0, ember: true });
           }
           if (B.art[i] & (1 << RelicKind.Aurora) && this.ribbons.length < 60) {
             const L = Math.max(1, this.relicLevel(RelicKind.Aurora)), px = x - B.vx[i] * 0.07, py = y - B.vy[i] * 0.07;
