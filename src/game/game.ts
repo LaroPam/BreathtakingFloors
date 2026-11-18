@@ -1752,7 +1752,7 @@ export class Game {
       case "start": this.drawStart(); break;
     }
     if (this.state === "title") this.menu.grid(this.titleCols, 1);
-    else if (this.state !== "heroes") this.menu.end(this.state === "stairs" || (this.state === "pick" && this.pickRow), this.state !== "settings");
+    else if (this.state !== "heroes") this.menu.end(this.state === "stairs" || (this.state === "pick" && this.pickRow) || this.resetAsk, this.state !== "settings" || this.resetAsk);
     // a screen comes up out of the dark
     const since = this.now - this.menu.openedAt;
     if (this.state !== "play" && this.state !== "card" && !over && since < 0.2) this.fillScreen(rgba("#07060c", (1 - since / 0.2) * 0.7));
@@ -2896,8 +2896,10 @@ export class Game {
   private drawSettings(): void {
     const ui = this.ui, W = this.r.w, H = this.r.h, now = this.now, sv = this.save;
     const th = this.heading(t("settings"), 8, H >= 300 ? 2 : 1);
-    // seven rows: one column, or two side by side on a short wide screen (a phone held wide)
-    const two = H < 240 && W >= 320, per = two ? 4 : 7, rh = two ? 22 : H < 240 ? 19 : 22;
+    if (this.resetAsk) return this.drawResetAsk(8 + th + 8);
+    if (this.focusNext >= 0) (this.menu.focus = this.focusNext), (this.focusNext = -1);
+    // eight rows: one column, or two side by side where one would not fit above the way back (a phone held wide)
+    const two = 8 + th + 8 + 8 * 22 + 4 + (SUPPORT ? 44 : 32) > H && W >= 320, per = two ? 4 : 8, rh = two ? 22 : H < 240 ? 19 : 22;
     const pw = two ? Math.floor((Math.min(480, W - 24) - 14) / 2) : Math.min(300, W - 24);
     const left = Math.round(W / 2 - (two ? pw + 7 : pw / 2)), top = 8 + th + 8;
     frame(ui, left - 10, top - 8, (two ? pw * 2 + 14 : pw) + 20, rh * per + 12);
@@ -2928,9 +2930,65 @@ export class Game {
     // the story told again (the first run's opening, and why each hero goes down)
     [px, y] = at(6);
     if (button(ui, this.menu, now, px, y, pw, 18, t("story"), { icon: icon("hud", "book") })) (this.storyT = 0), this.setState("story");
+    // starting over (from the title only, not mid-run): asked again on a second step
+    [px, y] = at(7);
+    if (this.settingsFrom === "title" && button(ui, this.menu, now, px, y, pw, 18, t("resetProgress"), { color: rgba("#e8a0a8") })) (this.resetAsk = true), this.menu.open(now, 0);
     // the way to the game's support (the stores ask for one), as set for this build
     if (SUPPORT) text(ui, `${t("support")}: ${SUPPORT}`, W / 2, H - 38, { font: "mini", align: "center", color: C.dim });
     if (button(ui, this.menu, now, Math.round(W / 2 - 50), H - 26, 100, 18, t("back"), { icon: icon("hud", "back") }) || this.input.pressed("back")) this.setState(this.settingsFrom, this.settingsFrom === "title" ? this.titleSlot("settings") : 6);
+  }
+
+  /** The settings' reset asked about: a second step, in the game itself (a browser's confirm() is ignored in the
+   *  stores' sandboxed frames). */
+  private resetAsk = false;
+  /** A focus to take once the screen's items are laid out again (a dialog closed: back to the row that opened it). */
+  private focusNext = -1;
+  /**
+   * Everything earned starts over: embers, heroes, the forge, records, tasks, the run in progress, the lessons and the
+   * opening. What stays is the player's own: language and the settings, and the lasting purchases (and the tokens of
+   * consumables already delivered, so none is given twice). Kept at once on whatever store the platform uses.
+   */
+  private async resetProgress(): Promise<void> {
+    const old = this.save, fresh = defaultSave();
+    Object.assign(fresh, {
+      lang: old.lang, sound: old.sound, music: old.music, autofire: old.autofire, vol: { ...old.vol }, shake: old.shake, numbers: old.numbers, flashes: old.flashes,
+      purchases: [...old.purchases], delivered: [...old.delivered], funnel: [...old.funnel], born: old.born,
+    });
+    if (fresh.purchases.includes("heroes_all")) for (const hd of HEROES) if (!fresh.unlocked.includes(hd.id)) fresh.unlocked.push(hd.id);
+    this.save = fresh;
+    this.checkUnlocks(true);
+    this.heroIdx = 0;
+    this.daily = this.weekly = false;
+    this.tutDoneT = -1;
+    this.newWorld();
+    this.attract();
+    this.audio.play("click");
+    const kept = await this.platform.save(this.save, true);
+    this.toasts.push({ id: "reset", t: 0, note: t(kept ? "resetDone" : "resetLocal") });
+    this.setState("title", this.titleSlot("play"));
+  }
+  /** The second step: what goes and what stays, and the two ways out (back is the safe one, and has the focus). */
+  private drawResetAsk(top: number): void {
+    const ui = this.ui, W = this.r.w, H = this.r.h, now = this.now, pw = Math.min(300, W - 24), x = Math.round(W / 2 - pw / 2);
+    const lines = wrap(t("resetAsk"), pw - 20), keep = wrap(t("resetKeep"), pw - 20, "mini");
+    const ph = 14 + lines.length * 11 + 6 + keep.length * 8 + 8 + 18 + 10, y = Math.round(Math.max(top, (H - ph) / 2 - 6));
+    frame(ui, x, y, pw, ph, { edge: C.red, corners: true });
+    let ly = y + 10;
+    for (const l of lines) (text(ui, l, W / 2, ly, { align: "center", color: C.text, shadow: C.ink }), (ly += 11));
+    ly += 6;
+    for (const l of keep) (text(ui, l, W / 2, ly, { font: "mini", align: "center", color: C.dim }), (ly += 8));
+    ly += 8;
+    const bw = Math.floor((pw - 30) / 2);
+    if (button(ui, this.menu, now, x + 10, ly, bw, 18, t("back"), { icon: icon("hud", "back") }) || this.input.pressed("back")) {
+      this.resetAsk = false;
+      this.menu.open(now, 0);
+      this.focusNext = 7;
+      return;
+    }
+    if (button(ui, this.menu, now, x + pw - 10 - bw, ly, bw, 18, t("resetYes"), { color: C.red })) {
+      this.resetAsk = false;
+      void this.resetProgress();
+    }
   }
 
   private storyT = 0;
