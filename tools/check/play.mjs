@@ -6,6 +6,7 @@
 //   npm run check:play                      every hero, the whole tower
 //   npm run check:play -- --heroes=mage,ranger --floors=4 --seed=7
 //   npm run check:play -- --heroes=shadow --from=9         from a deeper floor (with the levels a run would have)
+//   npm run check:play -- --heroes=knight --floors=3 --cpu=4   a weak phone: the processor slowed four times
 //   npm run check:play -- --branch=ashen                   every hero turns off the main way there (cistern, ashen,
 //                                                          no; by default the heroes take turns: none, cistern, ashen)
 //
@@ -61,6 +62,8 @@ const problem = (hero, what) => (failed++, console.log(`  FAIL  ${hero}: ${what}
 
 for (const hero of heroes) {
   const page = await browser.newPage({ viewport: { width: 640, height: 360 } }), errors = [];
+  // --cpu=4: a weak phone, the processor slowed that many times (Chrome DevTools Protocol), as Game-Kit's check does
+  if (+args.cpu > 1) await (await page.context().newCDPSession(page)).send("Emulation.setCPUThrottlingRate", { rate: +args.cpu });
   page.on("pageerror", (e) => errors.push(e.message));
   page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
   // the page's own loop stands still: the bot steps the game itself
