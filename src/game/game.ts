@@ -37,6 +37,9 @@ interface Spin {
   /** Time since it stopped (negative while spinning). */
   held: number;
   tick: number;
+  /** A chest's reward spun again for an ad (once a chest), and an ad on screen now. */
+  rerolled?: boolean;
+  adBusy?: boolean;
 }
 /**
  * A choice of upgrades: a level-up (anything) or the start of a run (relics). The cards come up in a quarter of a
@@ -1331,13 +1334,15 @@ export class Game {
     for (const [c, wt] of pool) if ((x -= wt) <= 0) return c;
     return pool[pool.length - 1][0];
   }
-  private startSpin(kind: Spin["kind"]): void {
-    const pool = this.pool(kind !== "level");
+  private startSpin(kind: Spin["kind"], not?: Choice): void {
+    // (spun again for an ad: anything but what it gave the first time)
+    const all = this.pool(kind !== "level"), pool = not ? all.filter(([c]) => iconKey(c) !== iconKey(not)) : all;
+    if (!pool.length) pool.push(...all);
     let winner = this.roll(pool);
     // a newcomer's first chest brings a weapon artifact that fills the screen (the ring of fire, the storm stone or
     // the ice shard): the game shows early what it becomes
     const w = this.world;
-    if (kind === "chest" && w.showcase && !w.relics.length) {
+    if (kind === "chest" && w.showcase && !w.relics.length && !not) {
       const showy = [RelicKind.Fire, RelicKind.Storm, RelicKind.Frost].filter((k) => !w.locked.has(`relic:${k}`));
       if (showy.length) winner = { type: "relic", kind: showy[this.runRng.int(0, showy.length - 1)], level: 1 };
     }
@@ -1381,7 +1386,27 @@ export class Game {
       return;
     }
     sp.held += dt;
+    // with a spin again on offer the player decides, by its two buttons (keys and the pad move between them); else it
+    // is taken soon
+    if (this.canReroll(sp)) return;
     if (sp.held > 1.6 || (skip && sp.held > 0.3)) this.take(sp.reel[sp.target], sp.kind);
+  }
+  /** A chest's reward can be spun again for an ad: once a chest, and not a sure evolution or legend. */
+  private canReroll(sp: Spin): boolean {
+    const c = sp.reel[sp.target];
+    return sp.kind === "chest" && !sp.rerolled && c.type !== "evo" && c.type !== "legend" && this.platform.canShowRewarded() && this.pool(true).length > 1;
+  }
+  /** Watch an ad, and the chest spins again (its lid already open) for something else. */
+  private async reroll(): Promise<void> {
+    const sp = this.spin;
+    if (!sp || sp.adBusy || !this.canReroll(sp)) return;
+    sp.adBusy = true;
+    const ok = await this.platform.showRewarded().finally(() => (sp.adBusy = false));
+    if (this.spin !== sp) return;
+    if (!ok) return this.adMissed();
+    this.startSpin("chest", sp.reel[sp.target]);
+    const again = this.spin as Spin | null;
+    if (again) (again.rerolled = true), (again.t = SPIN_OPEN - 0.1);
   }
   private take(c: Choice, kind: Spin["kind"] | Pick["kind"]): void {
     const w = this.world;
@@ -3468,6 +3493,12 @@ export class Game {
       text(ui, name, W / 2, y, { align: "center", scale: W >= 420 ? 2 : 1, color: withAlpha(C.gold, a), outline: true, shadow: withAlpha(rgba("#3a1a10"), a) });
       y += W >= 420 ? 20 : 12;
       para(ui, desc, Math.round(W / 2 - 140), y, 280, withAlpha(C.text, a), "center");
+      // take it, or spin again for an ad
+      if (this.canReroll(sp) && sp.held > 0.3) {
+        const by = Math.min(H - 22, cy + 42 - 6 + chh + 6), bw = Math.min(130, Math.floor((W - 30) / 2)), now = this.now;
+        if (button(ui, this.menu, now, Math.round(W / 2 - bw - 4), by, bw, 18, t("take"), { primary: true, icon: icon("hud", "play"), disabled: !!sp.adBusy }) && !sp.adBusy) this.take(c, sp.kind);
+        if (button(ui, this.menu, now, Math.round(W / 2 + 4), by, bw, 18, t("rerollAd"), { color: C.green, icon: icon("hud", "play"), disabled: !!sp.adBusy }) && !sp.adBusy) void this.reroll();
+      }
     }
   }
 
@@ -4270,7 +4301,7 @@ export class Game {
     const purse = String(Math.floor(w.coins)), pw = measure(purse) + 14, py = 8 + th + 3;
     ui.image(icon("hud", "coin"), Math.round(W / 2 - pw / 2) + 4, py + 4);
     text(ui, purse, Math.round(W / 2 + pw / 2), py, { align: "right", color: C.gold, shadow: C.ink });
-    const n = m.goods.length, cols = W >= n * 104 + (n - 1) * 6 + 12 ? n : 2, rows = Math.ceil(n / cols);
+    const n = m.goods.length, cols = W >= n * 92 + (n - 1) * 6 + 12 ? n : 2, rows = Math.ceil(n / cols);
     const cw = Math.min(150, Math.floor((W - 12 - (cols - 1) * 6) / cols)), top = py + 14;
     const ch = Math.min(150, Math.floor((H - 28 - top - (rows - 1) * 6) / rows)), x0 = Math.round(W / 2 - (cols * cw + (cols - 1) * 6) / 2);
     m.goods.forEach((g, k) => {
@@ -4284,7 +4315,7 @@ export class Game {
         col = g.rarity > 0 ? rgba(RARITIES[g.rarity].color) : C.goldLight;
       } else {
         const def = RELICS[g.relic];
-        ic = RELIC_ICON[g.relic], name = tx(def.name), kind = g.level === 1 ? t("newRelic") : `${t("relic")} · ${t("lv")} ${g.level}`, desc = g.level === 1 ? tx(relicDesc(def, ranged)) : tx(def.levels[Math.min(def.levels.length - 1, g.level - 2)]);
+        ic = RELIC_ICON[g.relic], name = tx(def.name), kind = g.level === 1 ? t("newRelic") : `${t("lv")} ${g.level - 1} » ${g.level}`, desc = g.level === 1 ? tx(relicDesc(def, ranged)) : tx(def.levels[Math.min(def.levels.length - 1, g.level - 2)]);
         col = rgba(def.color);
       }
       if (focused && can) glowUi(ui, x + cw / 2, y + ch / 2, cw * 0.7, ch * 0.7, col, 0.25);

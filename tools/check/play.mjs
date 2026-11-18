@@ -155,6 +155,8 @@ for (const hero of heroes) {
         h.hp = h.maxHp;
         // the screens between the fights
         if (G.state === "pick" && G.pick && G.pick.chosen < 0 && G.pick.t > 0.3) G.pick.chosen = Math.floor(B.rnd() * G.pick.options.length);
+        // a chest that could be spun again for an ad waits for the player: the bot takes what it gave
+        if (G.state === "spin" && G.spin && G.spin.held > 0.6) G.take(G.spin.reel[G.spin.target], G.spin.kind);
         if (G.state === "stairs" && !B.descending) {
           B.descending = true;
           G.stairEvent = null;
