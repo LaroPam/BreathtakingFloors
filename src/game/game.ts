@@ -1555,6 +1555,8 @@ export class Game {
     this.viewK = ws / this.r.scale;
     const cx = down ? 0 : demo ? this.demoCam[0] : this.camX + (this.r.ww - VW) / 2 + sx, cy = down ? 0 : demo ? this.demoCam[1] : this.camY + (this.r.wh - VH) / 2 + sy;
     if (!down) drawWorld(s, w, cx, cy, VW, VH, this.now);
+    // (the horde comes from beyond the edge of what the player sees)
+    if (zoom && w === this.world) (w.viewHW = VW / 2), (w.viewHH = VH / 2);
 
     const dim = this.state !== "play" && this.state !== "title" && !down && !demo;
     // a choice or a chest dims the floor smoothly, and a choice made lets it light up again as the game goes on

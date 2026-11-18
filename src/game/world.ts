@@ -751,6 +751,12 @@ export class World {
   moveX = 0;
   moveY = 0;
   private spawnAcc = 0;
+  /**
+   * Half the view in play (world px), as the game draws it this frame: the horde comes from beyond it, whatever the
+   * screen (a phone held up sees much less of the floor than a wide monitor).
+   */
+  viewHW = 240;
+  viewHH = 135;
   /** Time since the horde last closed in a ring round the hero. */
   private ringT = 0;
   /** The floor's wave: lit at the brazier, it lasts `left` of `total` seconds (survive it), `n` its stage (1-3). */
@@ -1226,6 +1232,31 @@ export class World {
       return [c * TILE + 8, r * TILE + 8];
     }
     return [m.start[0] * TILE + 8, m.start[1] * TILE + 8];
+  }
+  /**
+   * Where something coming from direction `a` (from the hero) can step in from beyond the view's edge: just past it,
+   * or, where the room ends sooner, as far out as there is open floor the horde can walk from (out of the dark by
+   * the walls). Null if that way is all wall close by.
+   */
+  private viewEdgePoint(a: number, margin: number): [number, number] | null {
+    const h = this.hero, F = this.toHero, c = Math.cos(a), s = Math.sin(a);
+    const edge = Math.min(this.viewHW / Math.max(0.01, Math.abs(c)), this.viewHH / Math.max(0.01, Math.abs(s)));
+    // from just beyond the edge inwards, in steps of half a tile, no nearer than a little way off the hero
+    for (let d = edge + margin + this.rng.range(0, 40); d >= Math.min(120, edge * 0.7); d -= 8) {
+      const x = h.x + c * d, y = h.y + s * d;
+      if (x < 20 || y < 24 || x > this.w - 20 || y > this.h - 12 || !this.free(x, y, 12)) continue;
+      const raw = F.at(Math.floor(x / TILE), Math.floor(y / TILE));
+      if (raw < Flow.FAR && (raw / 10) * TILE < d * 1.6 + 48) return [x, y];
+    }
+    return null;
+  }
+  /** A point beyond the view's edge in some direction (see viewEdgePoint), or one at about that distance. */
+  private beyondView(margin: number): [number, number] {
+    for (let k = 0; k < 24; k++) {
+      const p = this.viewEdgePoint(this.rng.range(0, Math.PI * 2), margin);
+      if (p) return p;
+    }
+    return this.edgePoint(Math.min(this.viewHW, this.viewHH) + margin);
   }
   spawnAt(type: number, x: number, y: number): number {
     const d = ENEMIES[type], f = this.floor;
@@ -5836,14 +5867,17 @@ export class World {
    */
   private ringOfFoes(): void {
     const h = this.hero, f = this.floor, n = Math.min(HORDE.ringMax, HORDE.ring + HORDE.ringPerFloor * f), type = this.pickEnemy(0), TAU = Math.PI * 2, a0 = this.rng.range(0, TAU);
+    // along the edge of the view (an ellipse the view's shape), so the whole circle is seen closing in
+    const rx = Math.max(HORDE.ringR * 0.6, this.viewHW * 0.92), ry = Math.max(HORDE.ringR * 0.5, this.viewHH * 0.9);
     for (let k = 0; k < n; k++) {
-      const a = a0 + (k / n) * TAU, r = HORDE.ringR + this.rng.range(-12, 12), x = h.x + Math.cos(a) * r, y = h.y + Math.sin(a) * r * 0.75;
+      const a = a0 + (k / n) * TAU, j = this.rng.range(0.94, 1.04), x = h.x + Math.cos(a) * rx * j, y = h.y + Math.sin(a) * ry * j;
       if (x < 20 || y < 24 || x > this.w - 20 || y > this.h - 12 || !this.free(x, y, 10)) continue;
       this.spawnAt(type, x, y);
     }
   }
   private spawnPack(type: number, far: boolean): void {
-    const d = ENEMIES[type], h = this.hero, R = this.rng, f = this.floor, dist = far ? 280 : 190, TAU = Math.PI * 2;
+    // (they come from beyond the view's edge, whatever the screen; the wanderers between waves from further still)
+    const d = ENEMIES[type], h = this.hero, R = this.rng, f = this.floor, margin = far ? 140 : 28, TAU = Math.PI * 2;
     // between waves the wanderers come one or two at a time, never a whole pack
     let room = far ? R.int(1, 2) : 99;
     const at = (x: number, y: number) => {
@@ -5851,7 +5885,7 @@ export class World {
       if (this.spawnAt(type, x, y) >= 0) room--;
     };
     if (d.elite) {
-      const [x, y] = this.edgePoint(dist);
+      const [x, y] = this.beyondView(margin);
       return at(x, y);
     }
     switch (d.ai) {
@@ -5859,23 +5893,23 @@ export class World {
       case AI.Swooper: {
         const sides = R.int(2, 3), n = R.int(1, 2) + (f >= 4 ? 1 : 0), base = R.range(0, TAU);
         for (let s = 0; s < sides; s++) {
-          const a = base + (s * TAU) / sides + R.range(-0.3, 0.3);
-          for (let k = 0; k < n; k++) at(h.x + Math.cos(a) * (dist + R.range(0, 40)), h.y + Math.sin(a) * dist * 0.75 + R.range(-16, 16));
+          const p = this.viewEdgePoint(base + (s * TAU) / sides + R.range(-0.3, 0.3), margin);
+          if (p) for (let k = 0; k < n; k++) at(p[0] + R.range(-14, 14), p[1] + R.range(-12, 12));
         }
         return;
       }
       case AI.Shooter: {
-        const [x, y] = this.edgePoint(dist), n = R.int(2, 3), side = Math.atan2(h.y - y, h.x - x) + Math.PI / 2;
+        const [x, y] = this.beyondView(margin), n = R.int(2, 3), side = Math.atan2(h.y - y, h.x - x) + Math.PI / 2;
         for (let k = 0; k < n; k++) at(x + Math.cos(side) * (k - (n - 1) / 2) * 26, y + Math.sin(side) * (k - (n - 1) / 2) * 26);
         return;
       }
       case AI.Slither: {
-        const [x, y] = this.edgePoint(dist), n = R.int(3, 4), a = Math.atan2(y - h.y, x - h.x);
+        const [x, y] = this.beyondView(margin), n = R.int(3, 4), a = Math.atan2(y - h.y, x - h.x);
         for (let k = 0; k < n; k++) at(x + Math.cos(a) * k * 16, y + Math.sin(a) * k * 16);
         return;
       }
       case AI.Phantom: {
-        const n = R.int(2, 3), r = Math.max(this.lanternR + 40, far ? dist : 0);
+        const n = R.int(2, 3), r = Math.max(this.lanternR + 40, far ? 280 : 0);
         for (let k = 0; k < n; k++) {
           const a = R.range(0, TAU);
           at(h.x + Math.cos(a) * r, h.y + Math.sin(a) * r * 0.8);
@@ -5884,26 +5918,26 @@ export class World {
       }
       case AI.Leaper:
       case AI.Drifter: {
-        const [x, y] = this.edgePoint(dist);
+        const [x, y] = this.beyondView(margin);
         at(x, y);
         at(x + R.range(-24, 24), y + R.range(-18, 18));
         return;
       }
       case AI.Bomber: {
         for (let k = R.int(1, 2); k > 0; k--) {
-          const [x, y] = this.edgePoint(dist);
+          const [x, y] = this.beyondView(margin);
           at(x, y);
         }
         return;
       }
       case AI.Turret:
       case AI.Healer: {
-        const [x, y] = this.edgePoint(dist);
+        const [x, y] = this.beyondView(margin);
         return at(x, y);
       }
       default: {
         // a clump, bigger deeper down
-        const [x, y] = this.edgePoint(dist), n = R.int(5, 8) + Math.floor(f / 2);
+        const [x, y] = this.beyondView(margin), n = R.int(5, 8) + Math.floor(f / 2);
         for (let k = 0; k < n; k++) {
           const a = R.range(0, TAU), r = R.range(0, 24);
           at(x + Math.cos(a) * r, y + Math.sin(a) * r * 0.8);
