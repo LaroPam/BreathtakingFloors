@@ -1444,6 +1444,14 @@ export class World {
       this.shake = Math.max(this.shake, 0.9);
       this.addFx("slam", c.x, c.y + 4, { sx: 1.2, sy: 1.2, glow: 0.9 });
       this.burst(c.x, c.y - 20, 30, rgba(ENEMIES[c.type].glow || "#f53cd1"), 140, 0.8, 60);
+      // and its own way of coming out (draw.ts bossEntrance draws what led up to it)
+      const kind = this.brain?.kind;
+      if (kind === "warden") (this.burst(c.x, c.y - 10, 40, rgba("#8a82a8"), 180, 0.9, 240), this.burst(c.x, c.y - 10, 20, rgba("#4a4458"), 120, 1, 240), this.dust(c.x, c.y, 18, 60));
+      else if (kind === "treant") (this.burst(c.x, c.y - 30, 30, rgba("#6aa83a"), 120, 1.2, 40), this.dust(c.x, c.y, 20, 70));
+      else if (kind === "eye") (this.burst(c.x, c.y - EYE_H, 40, rgba("#c684ff"), 160, 0.8, 0), (this.flash = Math.max(this.flash, 0.6)));
+      else if (kind === "well") (this.burst(c.x, c.y - 12, 50, rgba("#9ad8ff"), 170, 0.9, 260), this.addFx("heal_ring", c.x, c.y, { tint: rgba("#5ac8ff"), glow: 0.9, sx: 1.6, sy: 1.6 }));
+      else if (kind === "forge") (this.burst(c.x, c.y - 6, 60, rgba("#ffae35"), 220, 0.9, 260), this.dust(c.x, c.y, 24, 90), (this.shake = 1.4), this.audio.play("boom", 0.6));
+      else if (kind === "light") ((this.flash = 1), this.burst(c.x, c.y - 30, 40, rgba("#fff6c4"), 160, 1, 0));
     }
     if (c.t >= CINE_DUR) {
       this.cine = null;
@@ -6136,8 +6144,13 @@ export class World {
       if (i < 0) return;
       this.mini = { uid: this.enemies.uid[i], act: "idle", t: 0, cd: 1.2, n: 0, plan: 0, init: false, sx: x, sy: y, ax: x, ay: y, lift: 0, enraged: false };
       this.addFx("spawn", x, y, { sx: 1.6, sy: 1.6, glow: 1, tint: col });
+      // its arrival lands: a blow on the floor, a ring of its light running out, the frame catching for a beat
+      this.addFx("slam", x, y + 4, { sx: 1, sy: 1, glow: 0.8 });
+      this.addFx("heal_ring", x, y, { tint: col, glow: 0.9, sx: 1.4, sy: 1.4 });
+      this.dust(x, y, 12, 60);
       this.burst(x, y - 12, 30, col, 140, 0.6);
-      this.shake = Math.max(this.shake, 0.6);
+      this.shake = Math.max(this.shake, 0.8);
+      this.hitstop = Math.max(this.hitstop, 0.1);
       this.audio.play("boom", 0.9);
     });
   }
@@ -6651,7 +6664,7 @@ export class World {
       this.brain = null;
       this.brainFor(i);
     }
-    this.addFx("spawn", x, y, { sx: 1.5, sy: 1.5 });
+    // (no puff of magic: each comes its own way, draw.ts bossEntrance)
     this.audio.play("portal", 0.6);
     this.shake = 0.5;
     // the world holds still while it enters (game.ts turns the camera to it and draws its name)

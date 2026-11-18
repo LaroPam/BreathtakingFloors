@@ -228,6 +228,8 @@ export class Game {
   /** The plates at the top right waiting their turn: achievements, and things opened for the runs (`open`). */
   private toasts: { id: string; t: number; open?: boolean; porch?: { streak: number; gift: number }; note?: string }[] = [];
   private startSpins = 0;
+  /** The boss whose entrance is on (or -1): when it ends, it is marked seen, and the next time a touch skips it. */
+  private cineType = -1;
   /** The forge's rerolls left this run, and its second wind (unused). */
   private rerolls = 0;
   private secondWind = false;
@@ -1501,6 +1503,15 @@ export class Game {
     input.poll();
     if (input.mode === "touch") this.touch = true;
     else if (input.mode === "kbm" && input.mouse.moved) this.touch = false;
+    // a boss's entrance seen once can be cut short with a touch or a key; seen to the end, it is remembered
+    const cw = this.world?.cine;
+    if (cw) {
+      this.cineType = cw.type;
+      if (this.save.stats[`intro_${cw.type}`] && cw.t > 0.3 && cw.t < CINE_DUR - 0.35 && (input.click || input.pressed("confirm") || input.pressed("dash") || input.pressed("back"))) cw.t = CINE_DUR - 0.35;
+    } else if (this.cineType >= 0) {
+      this.save.stats[`intro_${this.cineType}`] = 1;
+      this.cineType = -1;
+    }
     if (this.banner) this.banner.t += dt;
 
     const w = this.world;
@@ -1641,7 +1652,9 @@ export class Game {
     const down = climbing ? ascent(s, FW, FH, this.now, w.place, (w.next() ?? w.stop).place, this.climbFrame()) : null;
     // the world in play is drawn finer than the interface (a wider view); the books' small worlds, the climb between
     // floors and the title keep the interface's scale (the title's view centred on the same spot)
-    const zoom = !down && !demo && this.state !== "title", ws = zoom ? this.r.wscale : this.r.scale;
+    // (a boss's entrance cuts in closer, and back out as its bars go)
+    const close = !!w.cine && w.cine.t < CINE_DUR - 0.3;
+    const zoom = !down && !demo && this.state !== "title" && !close, ws = zoom ? this.r.wscale : this.r.scale;
     const VW = zoom ? this.r.ww : FW, VH = zoom ? this.r.wh : FH;
     this.viewK = ws / this.r.scale;
     const cx = down ? 0 : demo ? this.demoCam[0] : this.camX + (this.r.ww - VW) / 2 + sx, cy = down ? 0 : demo ? this.demoCam[1] : this.camY + (this.r.wh - VH) / 2 + sy;

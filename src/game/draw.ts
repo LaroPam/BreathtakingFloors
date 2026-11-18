@@ -1498,6 +1498,103 @@ export function drawWorld(s: Scene, w: World, camX: number, camY: number, viewW:
 }
 
 // ============================================================================================ bosses
+/**
+ * A boss's entrance before its roar (ENT_T): the warden in a sarcophagus that shakes and cracks, the treant rising
+ * out of roots, the void eye opening in the dark, the well mistress rising from rings of water, the forgemaster
+ * falling with an anvil, the last light coming down a pillar of light. Draws its own scenery and says how to draw
+ * the boss: hidden, or moved, squashed, faded, tinted. After the roar it bursts out (a pop) and stands.
+ */
+const ENT_T = 0.9;
+function bossEntrance(s: Scene, kind: BossBrain["kind"], t: number, x: number, y: number, d: { glow?: string; scale: number }, time: number): { hide?: boolean; dx?: number; dy?: number; sx?: number; sy?: number; alpha?: number; tint?: number } | null {
+  const k = Math.min(1, t / ENT_T), col = rgba(d.glow || "#f53cd1"), ease = (u: number) => 1 - (1 - u) ** 3;
+  if (t >= ENT_T) {
+    // the forgemaster's anvil stays where it fell till the bars go, then fades
+    if (kind === "forge" && t < CINE_DUR) drawAnvil(s, x + 40, y, y, Math.min(1, (CINE_DUR - t) / 0.35));
+    // out: a pop, a little bigger for a beat
+    const u = (t - ENT_T) / 0.22;
+    if (u >= 1) return null;
+    const pop = 1 + 0.18 * Math.sin(Math.min(1, u) * Math.PI);
+    return { sx: pop, sy: pop };
+  }
+  if (kind === "warden") {
+    // a stone coffin on the floor, shaking harder and cracking as it comes
+    const sh = Math.round(Math.sin(time * 60) * 2 * k * k), W = 66, H = 32, x0 = Math.round(x - W / 2) + sh, y0 = Math.round(y - H);
+    s.back.disc(x, y + 1, 40, 9, C_SHADOW);
+    s.color.rect(x0 - 1, y0 - 1, W + 2, H + 2, rgba("#14121a"), y);
+    s.color.rect(x0, y0, W, H, rgba("#4a4458"), y);
+    // the lid, lifting a hair at each knock from inside
+    const lid = Math.round(Math.max(0, Math.sin(time * 18)) * 2 * k);
+    s.color.rect(x0 - 2, y0 - lid, W + 4, 9, rgba("#6a6480"), y + 0.01);
+    s.color.rect(x0 - 2, y0 - lid, W + 4, 2, rgba("#9a94b4"), y + 0.01);
+    s.color.rect(x0, y0 + H - 4, W, 4, rgba("#2a2634"), y);
+    // a carved face on the lid
+    s.color.rect(x0 + W / 2 - 6, y0 + 2 - lid, 12, 5, rgba("#b2aec4"), y + 0.02);
+    s.color.rect(x0 + W / 2 - 4, y0 + 3 - lid, 2, 2, rgba("#1a1622"), y + 0.03), s.color.rect(x0 + W / 2 + 2, y0 + 3 - lid, 2, 2, rgba("#1a1622"), y + 0.03);
+    for (let q = 0; q < Math.floor(k * 8); q++) {
+      const cx = x0 + 6 + ((q * 13) % (W - 12)), cy = y0 + 11 + ((q * 7) % (H - 16));
+      s.color.rect(cx, cy, 1, 4, rgba("#1a1622"), y + 0.01), s.color.rect(cx + 1, cy + 3, 3, 1, rgba("#1a1622"), y + 0.01);
+    }
+    s.illum.light(x, y - 12, 50 * k, 30 * k, withAlpha(col, 0.5 * k));
+    return { hide: true };
+  }
+  if (kind === "treant") {
+    // roots worming up out of the floor round the spot, the tree rising out of the ground after them
+    for (let q = 0; q < 9; q++) {
+      const a = (q / 9) * Math.PI * 2 + 0.4, r0 = 30 + (q % 3) * 7, gx = x + Math.cos(a) * r0, gy = y + Math.sin(a) * r0 * 0.4, hgt = Math.round(ease(Math.max(0, Math.min(1, k * 1.6 - q * 0.05))) * (26 + (q % 3) * 12));
+      for (let j = 0; j < hgt; j++) {
+        const wdt = j > hgt * 0.7 ? 2 : j > hgt * 0.35 ? 4 : 5, rx = Math.round(gx + Math.sin(j * 0.3 + q) * 3 - wdt / 2);
+        s.color.rect(rx - 1, Math.round(gy - j), wdt + 2, 1, rgba("#1c0e06"), gy);
+        s.color.rect(rx, Math.round(gy - j), wdt, 1, rgba(j % 5 ? "#5a3418" : "#7a4a24"), gy + 0.01);
+      }
+      s.back.disc(gx, gy + 1, 6, 2, C_SHADOW);
+    }
+    const up = ease(Math.max(0, Math.min(1, (k - 0.25) / 0.75)));
+    return up <= 0.02 ? { hide: true } : { sy: up, alpha: 0.4 + 0.6 * up };
+  }
+  if (kind === "eye") {
+    // the dark comes first, then the lid parts
+    const open = ease(Math.max(0, Math.min(1, (k - 0.35) / 0.65)));
+    s.illum.light(x, y - EYE_H, 70 * k, 50 * k, withAlpha(col, 0.35 * k + 0.25 * Math.sin(time * 8) * k));
+    return open <= 0.02 ? { hide: true } : { sy: 0.08 + 0.92 * open, alpha: Math.min(1, k * 2) };
+  }
+  if (kind === "well") {
+    // rings of water spreading on the floor, and she rises out of them
+    for (let q = 0; q < 3; q++) {
+      const u = (k * 1.4 + q * 0.33) % 1, r = 10 + u * 42;
+      for (let a = 0; a < 28; a++) {
+        const an = (a / 28) * Math.PI * 2;
+        s.back.rect(Math.round(x + Math.cos(an) * r), Math.round(y + Math.sin(an) * r * 0.36), 2, 1, rgbaf(0.55, 0.85, 1, 0.75 * (1 - u)));
+      }
+    }
+    const up = ease(Math.max(0, Math.min(1, (k - 0.3) / 0.7)));
+    return up <= 0.02 ? { hide: true } : { sy: up, alpha: 0.5 + 0.5 * up, tint: rgbaf(0.7 + 0.3 * up, 0.85 + 0.15 * up, 1, 1) };
+  }
+  if (kind === "forge") {
+    // it falls from above, faster and faster, with its anvil beside it; their shadows grow on the floor
+    const fall = 1 - k * k, dy = -Math.round(240 * fall);
+    s.back.disc(x, y + 1, 30 * (0.3 + 0.7 * k), 7 * (0.3 + 0.7 * k), C_SHADOW);
+    s.back.disc(x + 40, y + 2, 14 * (0.3 + 0.7 * k), 4 * (0.3 + 0.7 * k), C_SHADOW);
+    drawAnvil(s, x + 40, y + dy * 1.1, y);
+    return { dy };
+  }
+  // the last light: a pillar of light down from above, and it comes down inside it
+  const wpx = Math.round(4 + 26 * ease(k));
+  s.glow.rect(Math.round(x - wpx / 2), Math.round(y - 320), wpx, 320, rgbaf(1, 0.95, 0.75, 0.35 + 0.3 * k));
+  s.glow.rect(Math.round(x - wpx / 6), Math.round(y - 320), Math.max(1, Math.round(wpx / 3)), 320, rgbaf(1, 1, 0.95, 0.5 + 0.4 * k));
+  s.illum.light(x, y - 40, 60 + 40 * k, 120, rgbaf(1, 0.95, 0.7, 0.6 * k));
+  const down = ease(Math.max(0, Math.min(1, (k - 0.2) / 0.8)));
+  return down <= 0.02 ? { hide: true } : { dy: -Math.round(140 * (1 - down)), alpha: down };
+}
+/** The forgemaster's anvil: an iron block on a waist and a foot, its face lit. (After the entrance it is gone.) */
+function drawAnvil(s: Scene, x: number, y: number, key: number, a = 1): void {
+  const X = Math.round(x), Y = Math.round(y), c = (h: string) => rgba(h, a);
+  s.color.rect(X - 15, Y - 25, 30, 8, c("#504e62"), key);
+  s.color.rect(X - 21, Y - 25, 7, 4, c("#504e62"), key);
+  s.color.rect(X - 15, Y - 25, 30, 2, c("#9c9ab0"), key);
+  s.color.rect(X - 6, Y - 17, 12, 9, c("#363444"), key);
+  s.color.rect(X - 12, Y - 8, 24, 8, c("#211f2a"), key);
+  s.color.rect(X - 12, Y - 8, 24, 1, c("#504e62"), key);
+}
 const BOSS_ART = { warden: "warden", treant: "treant", eye: "voideye", light: "lastlight", well: "wellmistress", forge: "forgemaster" } as const;
 /** A boss's pose for what it is doing. */
 function bossPose(b: BossBrain): string {
@@ -1535,8 +1632,11 @@ function drawBoss(s: Scene, w: World, i: number, b: BossBrain, time: number): vo
   }
   // untouchable while it summons: a cold shimmer over it
   const tint = b.invuln ? rgbaf(0.75 + 0.15 * Math.sin(time * 6), 0.8, 1, 1) : 0xffffffff;
+  // its entrance (the world holds while it comes): each its own way, all of it whole by the roar
+  const ent = w.cine ? bossEntrance(s, b.kind, w.cine.t, x, y, d, time) : null;
+  if (ent && ent.hide) return;
   // a light flash when hit: a boss is hit all the time, a full one would keep it white
-  drawAnim(s, a, E.t[i], x + shake, y + lift, { sx: face * d.scale, sy: d.scale * sq, tint, flash: hit * 0.22, key: y, glow: 0.9 });
+  drawAnim(s, a, E.t[i], x + shake + (ent?.dx ?? 0), y + lift + (ent?.dy ?? 0), { sx: face * d.scale * (ent?.sx ?? 1), sy: d.scale * sq * (ent?.sy ?? 1), tint: ent?.tint ?? tint, flash: hit * 0.22, key: y, glow: 0.9, alpha: ent?.alpha ?? 1 });
   if (b.kind === "eye" && pose !== "closed") {
     const ia = anim(`voideye_${b.phase}_iris`), ex = x, ey = y - EYE_H, dx = h.x - ex, dy = h.y - 14 - ey, dd = Math.hypot(dx, dy) || 1;
     const k = pose === "charge" ? 4 : 8;
