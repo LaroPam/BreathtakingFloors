@@ -397,8 +397,7 @@ const eyeTrail: { x: number; y: number; t: number }[] = [];
  * of their colours rising about him, all growing with how much he holds (levels; an evolved one counts for seven).
  */
 function powerAura(s: Scene, w: World, x: number, y: number, time: number): void {
-  let P = 0;
-  for (const r of w.relics) P += r.evo ? 7 : r.level;
+  const P = w.power();
   if (P < 3) return;
   const k = Math.min(1, (P - 2) / 24), R = w.relics;
   const main = w.artColor() ?? RELICS[R[0].kind].color, breath = 0.85 + 0.15 * Math.sin(time * 2.6);
@@ -1333,7 +1332,8 @@ export function drawWorld(s: Scene, w: World, camX: number, camY: number, viewW:
   }
 
   // ---- bullets
-  const Bu = w.bullets, banims = BULLET_ANIMS.map((n) => anim(n));
+  // (the hero's shots are drawn bigger with the power held: World.powerK)
+  const Bu = w.bullets, banims = BULLET_ANIMS.map((n) => anim(n)), heroK = w.powerK();
   for (let i = 0; i < Bu.n; i++) {
     const x = Bu.x[i], y = Bu.y[i];
     if (!inView(x, y, 20)) continue;
@@ -1406,7 +1406,7 @@ export function drawWorld(s: Scene, w: World, camX: number, camY: number, viewW:
     }
     // the hero's shots grow out of the hand over their first instant; the enemies' are drawn big and ringed in
     // dark so they read against anything
-    const grow = (Bu.team[i] === TEAM_HERO ? Math.min(1, 0.3 + (Bu.t[i] / 0.09) * 0.7) : orb ? 1.5 : 1) * (k === B_BOLT ? 1.4 : 1);
+    const grow = (Bu.team[i] === TEAM_HERO ? Math.min(1, 0.3 + (Bu.t[i] / 0.09) * 0.7) * heroK : orb ? 1.5 : 1) * (k === B_BOLT ? 1.4 : 1);
     if (orb) s.color.disc(x, y, 6, 6, rgba("#0b0a12", 0.55), y + 13);
     // (a crescent with an element takes its colour: a wave of fire, of frost)
     const tintC = k === B_CRESCENT && Bu.el[i] ? rgba(EL_COLOR[Bu.el[i] as keyof typeof EL_COLOR]) : undefined;

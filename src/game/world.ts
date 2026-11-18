@@ -652,6 +652,16 @@ export class World {
   statLevels: Partial<Record<StatId, number>> = {};
   /** Rings of fire on the floor, and embers a fiery blow or shot leaves behind it (`ember`, drawn as live flame). */
   firePools: { x: number; y: number; r: number; t: number; life: number; dmg: number; tick: number; ember?: boolean }[] = [];
+  /** How much the hero holds: the weapon artifacts' levels, an evolved one counting seven. */
+  power(): number {
+    let P = 0;
+    for (const r of this.relics) P += r.evo ? 7 : r.level;
+    return P;
+  }
+  /** How much bigger the hero's blows and shots are drawn with that power: up to a third (only seen; reach is the same). */
+  powerK(): number {
+    return 1 + 0.3 * Math.max(0, Math.min(1, (this.power() - 2) / 24));
+  }
   /** The strongest weapon artifact (the highest level; an evolved one first), or none. */
   topRelic(): Relic | null {
     let top: Relic | null = null;
@@ -1995,12 +2005,14 @@ export class World {
     // an element colours the blow's trail (the fire whip's own fire is already in its art)
     const tint = h.weaponEl ? elTint(h.weaponEl) : 0xffffffff;
     if (hit === 0 && hasAnim(fxName)) {
-      // the trail goes with the hero (a whip's crack, a sword's arc do not hang where the blow began)
-      if (B.fxMode === "flip") this.addFx(fxName, h.x, h.y + 1, { sx: h.face * (0.9 + 0.1 * s.reach), front: false, key: 3, glow: 0.9, tint, follow: [0, 1] });
+      // the trail goes with the hero (a whip's crack, a sword's arc do not hang where the blow began); it grows with
+      // the power held
+      const pk = this.powerK();
+      if (B.fxMode === "flip") this.addFx(fxName, h.x, h.y + 1, { sx: h.face * (0.9 + 0.1 * s.reach) * pk, sy: pk, front: false, key: 3, glow: 0.9, tint, follow: [0, 1] });
       else {
         // turned to the blow around the chest; mirrored when it goes left so its crescent stays upright
         const sy = Math.cos(dir) < 0 ? -1 : 1, c = Math.cos(dir), sn = Math.sin(dir), ly = -22 * sy;
-        this.addFx(fxName, cx + ly * sn, cy - ly * c, { rot: dir, sy, front: false, key: 3, glow: 0.9, sx: 0.9 + 0.1 * s.reach, tint, follow: [ly * sn, -18 - ly * c] });
+        this.addFx(fxName, cx + ly * sn, cy - ly * c, { rot: dir, sy: sy * pk, front: false, key: 3, glow: 0.9, sx: (0.9 + 0.1 * s.reach) * pk, tint, follow: [ly * sn, -18 - ly * c] });
       }
     }
     let hits = 0;
