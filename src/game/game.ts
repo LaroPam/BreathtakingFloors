@@ -1215,7 +1215,9 @@ export class Game {
   /** The plate of the newest achievement: slides in, holds, slides away; the next waits its turn. */
   private drawToast(dt: number): void {
     const tst = this.toasts[0];
-    if (!tst) return;
+    // (not over the screens between floors: their headings are at the top, and on a phone a plate would cover them;
+    // it waits for the next floor)
+    if (!tst || this.state === "stairs") return;
     tst.t += dt;
     if (tst.t > 3.4) {
       this.toasts.shift();
@@ -4083,27 +4085,38 @@ export class Game {
   private drawEvent(): void {
     const ui = this.ui, W = this.r.w, H = this.r.h, now = this.now, se = this.stairEvent!, ev = se.ev;
     se.t += this.dt;
-    const pw = Math.min(480, W - 12), px = Math.round(W / 2 - pw / 2), a = Math.min(1, se.t / 0.25), rise = Math.round((1 - a) * 12);
+    // (the panel stands still: no sliding in, and one height from the question to the result, so nothing moves under
+    // the player's eyes between the steps)
+    const pw = Math.min(480, W - 12), px = Math.round(W / 2 - pw / 2), rise = 0;
     const lines = (list: [string, boolean][], w: number) => list.flatMap(([l, good]) => wrap(l, w, "mini").map((q): [string, boolean] => [q, good]));
+    // the wheel's step: its strip, the result under it (the taller of a win and a loss), the buttons
+    const SH = H < 300 ? 60 : 84, resW = pw - 16, adOk = this.platform.canShowRewarded();
+    const rollH = (ch: (typeof ev.choices)[number]) => {
+      const sure = ch.chance >= 1, outs = sure ? [ch.win] : [ch.win, ch.lose ?? {}];
+      const resH = Math.max(...outs.map((o, k) => 14 + lines(this.outcomeLines(o), resW - 8).length * 9 + 6 + (k === 1 && adOk ? (resW >= 260 ? 22 : 44) : 22)));
+      return 24 + (sure ? 0 : SH + 8) + resH + 8;
+    };
+    const rollMax = Math.max(...ev.choices.map(rollH));
     const oddsColor = (ch: number) => (ch >= 1 ? C.text : ch >= 0.7 ? C.green : ch >= 0.5 ? C.gold : C.red);
+    // the question's step: the story, a card a choice; the panel takes the taller of the two steps
+    const textLines = wrap(tx(ev.text), pw - 20), n = ev.choices.length, gap = 6;
+    const side = pw >= 340 && n * 110 <= pw - 16, cw = side ? Math.floor((pw - 16 - (n - 1) * gap) / n) : pw - 16;
+    // each card: its label and odds, then what follows (side by side: the good above the bad; stacked: in two columns)
+    const cards = ev.choices.map((c) => {
+      const win = this.outcomeLines(c.win), lose = c.lose ? this.outcomeLines(c.lose) : [];
+      // the label: in the big letters if it fits beside the odds, else small, on two lines if it must
+      const room = cw - 14 - measure(`${Math.round(c.chance * 100)}%`, "mini"), big = measure(tx(c.label)) <= room;
+      const label = big ? [tx(c.label)] : wrap(tx(c.label), room, "mini").slice(0, 2), extra = big ? 0 : (label.length - 1) * 8;
+      if (side) {
+        const L = [...lines(win, cw - 10), ...lines(lose, cw - 10)];
+        return { left: L, right: [] as [string, boolean][], h: 20 + extra + L.length * 8 + 6, label, big, extra };
+      }
+      const half = Math.floor((cw - 16) / 2), Lw = lines(win, half), Ll = lines(lose, half);
+      return { left: Lw, right: Ll, h: 19 + extra + Math.max(Lw.length, Ll.length) * 8 + 5, label, big, extra };
+    });
+    const cardsH = side ? Math.max(...cards.map((c) => c.h)) : cards.reduce((sum, c) => sum + c.h, 0) + (n - 1) * 4;
+    const head = 22 + textLines.length * 10 + 6, ph = Math.max(head + cardsH + 8, rollMax), py = Math.max(4, H - 6 - ph);
     if (se.phase === "ask") {
-      const textLines = wrap(tx(ev.text), pw - 20), n = ev.choices.length, gap = 6;
-      const side = pw >= 340 && n * 110 <= pw - 16, cw = side ? Math.floor((pw - 16 - (n - 1) * gap) / n) : pw - 16;
-      // each card: its label and odds, then what follows (side by side: the good above the bad; stacked: in two columns)
-      const cards = ev.choices.map((c) => {
-        const win = this.outcomeLines(c.win), lose = c.lose ? this.outcomeLines(c.lose) : [];
-        // the label: in the big letters if it fits beside the odds, else small, on two lines if it must
-        const room = cw - 14 - measure(`${Math.round(c.chance * 100)}%`, "mini"), big = measure(tx(c.label)) <= room;
-        const label = big ? [tx(c.label)] : wrap(tx(c.label), room, "mini").slice(0, 2), extra = big ? 0 : (label.length - 1) * 8;
-        if (side) {
-          const L = [...lines(win, cw - 10), ...lines(lose, cw - 10)];
-          return { left: L, right: [] as [string, boolean][], h: 20 + extra + L.length * 8 + 6, label, big, extra };
-        }
-        const half = Math.floor((cw - 16) / 2), Lw = lines(win, half), Ll = lines(lose, half);
-        return { left: Lw, right: Ll, h: 19 + extra + Math.max(Lw.length, Ll.length) * 8 + 5, label, big, extra };
-      });
-      const cardsH = side ? Math.max(...cards.map((c) => c.h)) : cards.reduce((sum, c) => sum + c.h, 0) + (n - 1) * 4;
-      const head = 22 + textLines.length * 10 + 6, ph = head + cardsH + 8, py = Math.max(4, H - 6 - ph);
       frame(ui, px, py + rise, pw, ph, { edge: C.gold });
       text(ui, tx(ev.title), W / 2, py + rise + 7, { align: "center", color: C.gold, shadow: C.ink });
       textLines.forEach((l, k) => text(ui, l, W / 2, py + rise + 20 + k * 10, { align: "center", color: C.text }));
@@ -4144,10 +4157,8 @@ export class Game {
     const second = !se.win && !sure && this.platform.canShowRewarded();
     // the wheel across the panel's whole width (only its top shows, a big wheel turning past the pointer), and
     // under it what came of it; the panel keeps one size from the first turn to the result
-    const res = se.win ? c.win : c.lose ?? {}, resW = pw - 16, resLines = lines(this.outcomeLines(res), resW - 8);
-    const btnH = second ? (resW >= 260 ? 22 : 44) : 22, resH = 14 + resLines.length * 9 + 6 + btnH;
-    const SH = sure ? 0 : H < 300 ? 60 : 84, body = (sure ? 0 : SH + 8) + resH;
-    const ph = 24 + body + 8, py = Math.max(4, H - 6 - ph), top = py + rise;
+    const res = se.win ? c.win : c.lose ?? {}, resLines = lines(this.outcomeLines(res), resW - 8);
+    const top = py + rise;
     frame(ui, px, top, pw, ph, { edge: C.gold });
     text(ui, tx(ev.title), W / 2, top + 7, { align: "center", color: C.gold, shadow: C.ink });
     text(ui, tx(c.label), W / 2, top + 17, { font: "mini", align: "center", color: C.goldLight });
@@ -4286,9 +4297,9 @@ export class Game {
     const total = vertical ? n * ch + 8 : ch, top = Math.max(8 + th + 8, H - 30 - total), statsUp = top + total > H - 28;
     this.stairs.forEach((m, k) => {
       const x = vertical ? Math.round(W / 2 - cw / 2) : Math.round(W / 2 - (n * cw + 12) / 2 + k * (cw + 12));
-      const { focused, hit, idx } = this.menu.item(x, vertical ? top + k * (ch + 8) : top, cw, ch, now);
-      // the card rises a little when chosen, and slides in with the screen
-      const y = (vertical ? top + k * (ch + 8) : top) - (focused ? 2 : 0) + Math.round((1 - this.menu.appear(now, idx)) * 10);
+      const { focused, hit } = this.menu.item(x, vertical ? top + k * (ch + 8) : top, cw, ch, now);
+      // the card rises a little when chosen (no sliding in: the screens between floors stand still)
+      const y = (vertical ? top + k * (ch + 8) : top) - (focused ? 2 : 0);
       if (focused) glowUi(ui, x + cw / 2, y + ch / 2, cw * 0.7, ch * 0.75, C.gold, 0.25);
       frame(ui, x, y, cw, ch, { edge: focused ? C.gold : undefined });
       let line = y + 9;
@@ -4328,8 +4339,8 @@ export class Game {
     const ch = Math.min(150, Math.floor((H - 28 - top - (rows - 1) * 6) / rows)), x0 = Math.round(W / 2 - (cols * cw + (cols - 1) * 6) / 2);
     m.goods.forEach((g, k) => {
       const x = x0 + (k % cols) * (cw + 6), y0 = top + Math.floor(k / cols) * (ch + 6);
-      const { focused, hit, idx } = this.menu.item(x, y0, cw, ch, now);
-      const y = y0 - (focused && !g.sold ? 2 : 0) + Math.round((1 - this.menu.appear(now, idx)) * 10);
+      const { focused, hit } = this.menu.item(x, y0, cw, ch, now);
+      const y = y0 - (focused && !g.sold ? 2 : 0);
       const can = !g.sold && w.coins >= g.price && this.canTake(g);
       let ic: string, name: string, kind: string, desc: string, col: number;
       if ("weapon" in g) {
