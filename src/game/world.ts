@@ -1608,7 +1608,6 @@ export class World {
     this.addFx("slam", x, y + 2, { tint: rgba("#ff8a3a"), glow: 0.9, sx: 0.7, sy: 0.7 });
     this.burst(x, y - 4, 14, rgba("#ffb060"), 120, 0.4);
     this.shake = Math.max(this.shake, 0.35);
-    this.hitstop = Math.max(this.hitstop, 0.02);
     this.audio.play("boom", 1.4);
   }
 
@@ -1625,7 +1624,6 @@ export class World {
       this.damage(i, 11 * k * s.edge * s.might * (crit ? 2 : 1), this.weaponEl, { crit });
       this.addFx(crit ? "crit" : "hit_spark", ex, ey + 10, { rot: Math.atan2(h.dashDy, h.dashDx), sx: 0.6, sy: 0.6, glow: 0.8, key: 2 });
       this.burst(ex, ey, 4, rgba("#e05aff"), 70, 0.3);
-      this.hitstop = Math.max(this.hitstop, 0.015);
       this.audio.play("hit", 1.2);
     });
   }
@@ -1999,7 +1997,6 @@ export class World {
     if (hits && wel) this.audio.play(EL_SFX[wel], 1.1);
     if (hits) {
       const heavy = B.push >= 140;
-      this.hitstop = Math.max(this.hitstop, heavy ? 0.05 : of > 3 ? 0.012 : 0.025);
       this.shake = Math.max(this.shake, heavy ? 0.25 : 0.1);
       this.audio.play("hit", heavy ? 0.6 : 1);
     }
@@ -2187,7 +2184,6 @@ export class World {
     const h = this.hero, R = 120, dmg = this.abilityDmg(60, 25);
     this.addFx("smite", h.x, h.y, { glow: 1.1 });
     this.addFx("frost_nova", h.x, h.y, { tint: rgba("#fff0c0"), glow: 0.7 });
-    this.hitstop = 0.12;
     this.shake = 1;
     this.flash = 1;
     const E = this.enemies;
@@ -2253,7 +2249,6 @@ export class World {
     this.addFx("fx_scythe_1", h.x, h.y - 14, { sx: 2.8, sy: 2.8, tint: rgba("#9af0a0"), glow: 1, key: 2 });
     this.addFx("spawn", h.x, h.y, { tint: rgba("#4ab868"), glow: 0.8, sx: 1.6, sy: 1.6 });
     this.shake = 0.8;
-    this.hitstop = 0.1;
     let souls = 0;
     for (let i = E.n - 1; i >= 0; i--) {
       const ex = E.x[i], ey = E.y[i];
@@ -2462,9 +2457,9 @@ export class World {
     else this.dmgStat[row + (o.as ?? el)] += dealt;
     E.hp[i] -= dmg;
     E.flash[i] = 0.07;
-    // a critical blow of the hero's own lands heavier: a longer catch, a jolt
+    // a critical blow of the hero's own lands heavier: a jolt (no catch of the frame: the owner wants the fight to
+    // run on unbroken)
     if (o.crit && (this.src === SRC_WEAPON || this.src === SRC_DASH)) {
-      this.hitstop = Math.max(this.hitstop, 0.035);
       this.shake = Math.max(this.shake, 0.15);
     }
     if (!o.quiet && (this.numbers || o.crit)) {
@@ -2572,7 +2567,6 @@ export class World {
       this.questStep("alchemy");
       this.audio.play("reaction");
       this.gainOd(3);
-      this.hitstop = Math.max(this.hitstop, 0.025);
       this.shake = Math.max(this.shake, 0.25);
       const sc = r.radius > 0 ? Math.max(0.6, r.radius / 50) : 1;
       this.addFx(r.fx, x, E.y[i], { sx: sc, sy: sc, glow: 0.9 });
@@ -2651,9 +2645,8 @@ export class World {
       }
     }
     this.audio.play("kill", d.elite ? 0.6 : 1);
-    // an elite going down is an event: the world catches its breath, the floor jolts
+    // an elite going down is an event: the floor jolts
     if (d.elite && d.ai < AI.Boss) {
-      this.hitstop = Math.max(this.hitstop, 0.07);
       this.shake = Math.max(this.shake, 0.35);
     }
     // the Plague Cauldron: a poisoned foe bursts into a pool of its own
@@ -2684,7 +2677,6 @@ export class World {
       this.drops.add(D_HEART, x + this.rng.range(-20, 20), y, 1, 0, -20);
       for (let q = 0; q < 8; q++) this.drops.add(D_EMBER, x, y - 4, 1, this.rng.range(-70, 70), this.rng.range(-80, -10));
       this.embersBonus += 6 + this.floor * 2;
-      this.hitstop = Math.max(this.hitstop, 0.12);
       this.shake = Math.max(this.shake, 0.7);
       this.audio.play("boom", 0.8);
       for (let k = 0; k < 3; k++) this.addFx("explosion", x + this.rng.range(-18, 18), y + this.rng.range(-14, 6), { delay: k * 0.12 });
@@ -2739,7 +2731,6 @@ export class World {
       } else this.openPortal(...this.portalSpot());
       return;
     }
-    if (d.elite) this.hitstop = Math.max(this.hitstop, 0.06);
     E.remove(i);
   }
 
