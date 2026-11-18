@@ -1167,9 +1167,9 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     id: "spell", name: { ru: "ПОСОХ СТУЖИ", en: "FROST STAFF" }, g: "m", desc: { ru: "ЛЕДЯНЫЕ КОПЬЯ ПРОБИВАЮТ ВРАГОВ, КАЖДОЕ ТРЕТЬЕ - ВЕЕРОМ", en: "ICE LANCES PIERCE FOES; EVERY THIRD CAST IS A FAN" },
     el: El.Frost, speed: 0.95, oneHand: false, ranged: true, range: 220,
     blows: [
-      { kind: "frost", dmg: 14, reach: 0, arc: 0, push: 40 },
-      { kind: "frost", dmg: 14, reach: 0, arc: 0, push: 40 },
-      { kind: "frost", dmg: 11, reach: 0, arc: 0, push: 50, fan: 3 },
+      { kind: "frost", dmg: 11, reach: 0, arc: 0, push: 40 },
+      { kind: "frost", dmg: 11, reach: 0, arc: 0, push: 40 },
+      { kind: "frost", dmg: 9, reach: 0, arc: 0, push: 50, fan: 3 },
     ],
   },
   // the arms the tower's update brought (each opened by a deed: UNLOCKS)
@@ -1370,7 +1370,7 @@ export const HEROES: HeroDef[] = [
   },
   {
     id: "mage", cost: 500, name: { ru: "ЧАРОДЕЙКА", en: "SORCERESS" }, title: { ru: "ВЛАДЫЧИЦА СТУЖИ", en: "MISTRESS OF FROST" },
-    perk: { ru: "ПО ЗАМОРОЖЕННЫМ ВРАГАМ ОНА БЬЁТ НА 40% СИЛЬНЕЕ", en: "SHE HITS FROZEN FOES 40% HARDER" },
+    perk: { ru: "ПО ЗАМОРОЖЕННЫМ ВРАГАМ ОНА БЬЁТ НА 25% СИЛЬНЕЕ", en: "SHE HITS FROZEN FOES 25% HARDER" },
     weapon: "spell", hearts: 4, speed: 0.98, dashCd: 3.5, dashes: 1, lantern: 1, light: "wisp", lightColor: [0.55, 0.85, 1],
     might: 1, haste: 0.95, crit: 0.05,
     ability: { name: { ru: "БУРЯ СТИХИЙ", en: "ELEMENTAL STORM" }, desc: { ru: "ОГОНЬ, ЛЁД И МОЛНИЯ ПО ОЧЕРЕДИ БЬЮТ В САМЫЕ ГУСТЫЕ ТОЛПЫ И САМИ ВЫЗЫВАЮТ РЕАКЦИИ", en: "FIRE, ICE AND LIGHTNING STRIKE THE THICKEST CROWDS IN TURN AND SET OFF REACTIONS" } },

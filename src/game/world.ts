@@ -2451,7 +2451,7 @@ export class World {
     if (this.src === SRC_ABILITY && d.ai >= AI.Boss) dmg *= 0.35;
     if (E.hex[i] > 0) dmg *= 1.3;
     // (the Sorceress's perk: she hits a frozen foe much harder)
-    if (E.frozen[i] > 0) dmg *= this.hero.def.id === "mage" ? 1.4 : 1.15;
+    if (E.frozen[i] > 0) dmg *= this.hero.def.id === "mage" ? 1.25 : 1.15;
     const dealt = Math.max(0, Math.min(dmg, E.hp[i])), row = this.src * SRC_ELS, re = this.src === SRC_REACT && o.as === undefined ? this.reactEls : null;
     if (re) (this.dmgStat[row + re[0]] += dealt / 2), (this.dmgStat[row + re[1]] += dealt / 2);
     else this.dmgStat[row + (o.as ?? el)] += dealt;
