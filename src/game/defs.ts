@@ -1109,6 +1109,8 @@ export interface Blow {
   fan?: number;
   /** The effect: turned to the aim around the chest ("rotate") or only mirrored left and right ("flip"). */
   fxMode?: "rotate" | "flip";
+  /** A finishing blow: it comes only last in a combo (World.planCombo). */
+  fin?: boolean;
 }
 export interface WeaponDef {
   id: WeaponId;
@@ -1116,7 +1118,13 @@ export interface WeaponDef {
   /** Grammatical gender of the Russian name (for "Пламенный меч", "Ледяная коса"...). */
   g: "m" | "f" | "n" | "pl";
   desc: Text;
+  /**
+   * Its blows. A combo is a few of the others in a fresh random order, then one of the finishers (`fin`): never the
+   * same chain twice running. A weapon without finishers mixes all its blows.
+   */
   blows: Blow[];
+  /** How many blows come before the finisher (least, most); 2 to 3 if not said. */
+  combo?: [number, number];
   /** An element every blow carries, whatever the altar gave (the fire whip). */
   el?: El;
   /** How fast its animations play (1 = 20 fps). */
@@ -1129,20 +1137,25 @@ export interface WeaponDef {
 }
 export const WEAPONS: Record<WeaponId, WeaponDef> = {
   sword: {
-    id: "sword", name: { ru: "МЕЧ", en: "SWORD" }, g: "m", desc: { ru: "ТРИ УДАРА: РУБЯЩИЙ, ОБРАТНЫЙ, ВЫПАД", en: "THREE BLOWS: CUT, BACKCUT, THRUST" },
+    id: "sword", name: { ru: "МЕЧ", en: "SWORD" }, g: "m", desc: { ru: "РУБИТ, КРУЖИТ И ЗАВЕРШАЕТ СЕРИЮ ВЫПАДОМ ИЛИ УДАРОМ СВЕРХУ", en: "CUTS AND WHIRLS, ENDS EACH COMBO WITH A THRUST OR AN OVERHEAD BLOW" },
     speed: 1, oneHand: true, ranged: false, range: 58,
     blows: [
       { kind: "arc", dmg: 12, reach: 46, arc: 1.25, push: 70, fxMode: "rotate" },
       { kind: "arc", dmg: 11, reach: 46, arc: 1.25, push: 60, fxMode: "rotate" },
-      { kind: "arc", dmg: 20, reach: 58, arc: 0.5, push: 150, fxMode: "rotate" },
+      { kind: "arc", dmg: 20, reach: 58, arc: 0.5, push: 150, fxMode: "rotate", fin: true },
+      { kind: "around", dmg: 12, reach: 48, arc: 0, push: 90, fxMode: "flip" },
+      { kind: "arc", dmg: 22, reach: 54, arc: 1.3, push: 160, stun: 0.2, fxMode: "rotate", fin: true },
+      { kind: "arc", dmg: 16, reach: 46, arc: 0.9, push: 120, fxMode: "flip" },
     ],
   },
   hammer: {
     id: "hammer", name: { ru: "БОЕВОЙ МОЛОТ", en: "WARHAMMER" }, g: "m", desc: { ru: "МЕДЛЕННО, НО ОГЛУШАЕТ И РАСКИДЫВАЕТ", en: "SLOW, BUT STUNS AND SCATTERS" },
-    speed: 0.8, oneHand: false, ranged: false, range: 62,
+    speed: 0.8, oneHand: false, ranged: false, range: 62, combo: [1, 2],
     blows: [
-      { kind: "front", dmg: 34, reach: 36, arc: 30, push: 190, stun: 0.6, fxMode: "flip" },
+      { kind: "front", dmg: 34, reach: 36, arc: 30, push: 190, stun: 0.6, fxMode: "flip", fin: true },
       { kind: "arc", dmg: 26, reach: 56, arc: 1.5, push: 150, stun: 0.3, fxMode: "rotate" },
+      { kind: "arc", dmg: 28, reach: 58, arc: 1.6, push: 170, fxMode: "rotate" },
+      { kind: "around", dmg: 24, reach: 54, arc: 0, push: 150, stun: 0.2, fxMode: "flip" },
     ],
   },
   spear: {
@@ -1151,6 +1164,8 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     blows: [
       { kind: "arc", dmg: 17, reach: 76, arc: 0.32, push: 90, fxMode: "rotate" },
       { kind: "arc", dmg: 13, reach: 62, arc: 1.5, push: 110, fxMode: "rotate" },
+      { kind: "arc", dmg: 8, reach: 64, arc: 0.9, push: 50, fxMode: "rotate" },
+      { kind: "around", dmg: 14, reach: 66, arc: 0, push: 130, fxMode: "flip", fin: true },
     ],
   },
   scythe: {
@@ -1158,13 +1173,20 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     speed: 0.85, oneHand: false, ranged: false, range: 56,
     blows: [
       { kind: "arc", dmg: 18, reach: 56, arc: 1.6, push: 80, fxMode: "rotate" },
-      { kind: "around", dmg: 15, reach: 54, arc: 0, push: 110, fxMode: "flip" },
+      { kind: "around", dmg: 16, reach: 54, arc: 0, push: 110, fxMode: "flip", fin: true },
+      { kind: "arc", dmg: 15, reach: 58, arc: 1.6, push: 100, fxMode: "rotate" },
+      { kind: "arc", dmg: 20, reach: 56, arc: 1.2, push: 120, stun: 0.2, fxMode: "rotate" },
     ],
   },
   daggers: {
-    id: "daggers", name: { ru: "ПАРНЫЕ КИНЖАЛЫ", en: "TWIN DAGGERS" }, g: "pl", desc: { ru: "ВИХРЬ ИЗ СЕМИ БЫСТРЫХ УДАРОВ", en: "A FLURRY OF SEVEN QUICK STABS" },
+    id: "daggers", name: { ru: "ПАРНЫЕ КИНЖАЛЫ", en: "TWIN DAGGERS" }, g: "pl", desc: { ru: "БЫСТРЫЕ ВЫПАДЫ И ВИХРЬ ИЗ СЕМИ УДАРОВ В КОНЦЕ", en: "QUICK STABS, THEN A FLURRY OF SEVEN" },
     speed: 1.1, oneHand: false, ranged: false, range: 40,
-    blows: [{ kind: "arc", dmg: 6, reach: 38, arc: 0.95, push: 22, fxMode: "rotate" }],
+    blows: [
+      { kind: "arc", dmg: 6, reach: 38, arc: 0.95, push: 22, fxMode: "rotate", fin: true },
+      { kind: "arc", dmg: 13, reach: 40, arc: 1.1, push: 40, fxMode: "rotate" },
+      { kind: "arc", dmg: 26, reach: 44, arc: 0.5, push: 90, fxMode: "rotate" },
+      { kind: "around", dmg: 13, reach: 40, arc: 0, push: 50, fxMode: "flip" },
+    ],
   },
   greatsword: {
     id: "greatsword", name: { ru: "ДВУРУЧНЫЙ МЕЧ", en: "GREATSWORD" }, g: "m", desc: { ru: "ТЯЖЁЛЫЙ РАЗРУБ И ВИХРЬ НА ВСЕ СТОРОНЫ", en: "A HEAVY CLEAVE AND A WHIRL ALL ROUND" },
@@ -1172,6 +1194,8 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     blows: [
       { kind: "arc", dmg: 30, reach: 62, arc: 1.4, push: 170, stun: 0.25, fxMode: "rotate" },
       { kind: "around", dmg: 22, reach: 60, arc: 0, push: 140, fxMode: "flip" },
+      { kind: "arc", dmg: 22, reach: 60, arc: 1.3, push: 130, fxMode: "rotate" },
+      { kind: "front", dmg: 28, reach: 36, arc: 30, push: 200, stun: 0.5, fxMode: "flip", fin: true },
     ],
   },
   claws: {
@@ -1179,68 +1203,95 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     speed: 1.15, oneHand: false, ranged: false, range: 42,
     blows: [
       { kind: "arc", dmg: 8, reach: 40, arc: 1.1, push: 30, fxMode: "rotate" },
-      { kind: "arc", dmg: 20, reach: 44, arc: 0.8, push: 160, stun: 0.3, fxMode: "flip" },
+      { kind: "arc", dmg: 20, reach: 44, arc: 0.8, push: 160, stun: 0.3, fxMode: "flip", fin: true },
+      { kind: "arc", dmg: 10, reach: 42, arc: 1.1, push: 40, fxMode: "rotate" },
+      { kind: "arc", dmg: 8, reach: 40, arc: 0.95, push: 26, fxMode: "rotate" },
     ],
   },
   whip: {
-    id: "whip", name: { ru: "ОГНЕННЫЙ КНУТ", en: "FIRE WHIP" }, g: "m", desc: { ru: "ДЛИННЫЙ ЩЕЛЧОК, ЖЖЁТ ВСЕХ НА ЛИНИИ", en: "A LONG CRACK THAT BURNS ALL ALONG IT" },
-    speed: 1, oneHand: true, ranged: false, range: 84, el: El.Fire,
-    blows: [{ kind: "arc", dmg: 15, reach: 84, arc: 0.22, push: 60, fxMode: "rotate" }],
+    id: "whip", name: { ru: "ОГНЕННЫЙ КНУТ", en: "FIRE WHIP" }, g: "m", desc: { ru: "ДЛИННЫЙ ЩЕЛЧОК И ОГНЕННОЕ КОЛЬЦО, ЖЖЁТ ВСЕХ", en: "A LONG CRACK AND A RING OF FIRE, BURNS ALL IT TOUCHES" },
+    speed: 1, oneHand: true, ranged: false, range: 84, el: El.Fire, combo: [1, 2],
+    blows: [
+      { kind: "arc", dmg: 15, reach: 84, arc: 0.22, push: 60, fxMode: "rotate" },
+      { kind: "around", dmg: 13, reach: 56, arc: 0, push: 100, fxMode: "flip", fin: true },
+      { kind: "arc", dmg: 12, reach: 64, arc: 1.4, push: 80, fxMode: "rotate" },
+    ],
   },
   bow: {
     id: "bow", name: { ru: "ДЛИННЫЙ ЛУК", en: "LONGBOW" }, g: "m", desc: { ru: "СТРЕЛЫ ПРОБИВАЮТ ВРАГОВ НАСКВОЗЬ", en: "ARROWS GO STRAIGHT THROUGH" },
     speed: 1.15, oneHand: false, ranged: true, range: 250,
-    blows: [{ kind: "arrow", dmg: 16, reach: 0, arc: 0, push: 50 }],
+    // a full draw, a snap shot (quicker, lighter), one from the knee
+    blows: [
+      { kind: "arrow", dmg: 16, reach: 0, arc: 0, push: 50 },
+      { kind: "arrow", dmg: 12, reach: 0, arc: 0, push: 40 },
+      { kind: "arrow", dmg: 16, reach: 0, arc: 0, push: 50 },
+    ],
   },
   // the Sorceress's frost staff (it took the Book of Elements' place, which set off too many reactions on its own;
   // the id stays "spell" so that saves, unlocks and records keep it)
   spell: {
     id: "spell", name: { ru: "ПОСОХ СТУЖИ", en: "FROST STAFF" }, g: "m", desc: { ru: "ЛЕДЯНЫЕ КОПЬЯ ПРОБИВАЮТ ВРАГОВ, КАЖДОЕ ТРЕТЬЕ - ВЕЕРОМ", en: "ICE LANCES PIERCE FOES; EVERY THIRD CAST IS A FAN" },
-    el: El.Frost, speed: 0.95, oneHand: false, ranged: true, range: 220,
+    el: El.Frost, speed: 0.95, oneHand: false, ranged: true, range: 220, combo: [2, 2],
     blows: [
       { kind: "frost", dmg: 11, reach: 0, arc: 0, push: 40 },
       { kind: "frost", dmg: 11, reach: 0, arc: 0, push: 40 },
-      { kind: "frost", dmg: 9, reach: 0, arc: 0, push: 50, fan: 3 },
+      { kind: "frost", dmg: 9, reach: 0, arc: 0, push: 50, fan: 3, fin: true },
     ],
   },
   // the arms the tower's update brought (each opened by a deed: UNLOCKS)
   flail: {
     id: "flail", name: { ru: "ЦЕП", en: "FLAIL" }, g: "m", desc: { ru: "РАЗМАХ ПО КРУГУ И ТЯЖЁЛЫЙ УДАР ОБ ЗЕМЛЮ", en: "A SWING ALL ROUND AND A HEAVY BLOW TO THE GROUND" },
-    speed: 0.9, oneHand: true, ranged: false, range: 60,
+    speed: 0.9, oneHand: true, ranged: false, range: 60, combo: [1, 2],
     blows: [
       { kind: "around", dmg: 15, reach: 58, arc: 0, push: 120, fxMode: "flip" },
-      { kind: "front", dmg: 32, reach: 34, arc: 32, push: 190, stun: 0.5, fxMode: "flip" },
+      { kind: "front", dmg: 32, reach: 34, arc: 32, push: 190, stun: 0.5, fxMode: "flip", fin: true },
+      { kind: "arc", dmg: 18, reach: 60, arc: 1.5, push: 130, fxMode: "rotate" },
+      { kind: "arc", dmg: 22, reach: 58, arc: 1.1, push: 150, stun: 0.2, fxMode: "rotate" },
     ],
   },
   glaive: {
     id: "glaive", name: { ru: "ГЛЕФА", en: "GLAIVE" }, g: "f", desc: { ru: "ДЛИННЫЕ РЕЖУЩИЕ ДУГИ", en: "LONG CUTTING ARCS" },
-    speed: 0.9, oneHand: false, ranged: false, range: 80,
+    speed: 0.9, oneHand: false, ranged: false, range: 80, combo: [1, 2],
     blows: [
       { kind: "arc", dmg: 17, reach: 76, arc: 1.5, push: 100, fxMode: "rotate" },
-      { kind: "arc", dmg: 24, reach: 80, arc: 1.2, push: 150, stun: 0.2, fxMode: "rotate" },
+      { kind: "arc", dmg: 24, reach: 80, arc: 1.2, push: 150, stun: 0.2, fxMode: "rotate", fin: true },
+      { kind: "around", dmg: 16, reach: 70, arc: 0, push: 120, fxMode: "flip" },
+      { kind: "arc", dmg: 20, reach: 84, arc: 0.3, push: 110, fxMode: "rotate" },
     ],
   },
   crossbow: {
     id: "crossbow", name: { ru: "АРБАЛЕТ", en: "CROSSBOW" }, g: "m", desc: { ru: "ТЯЖЁЛЫЕ БОЛТЫ ПРОБИВАЮТ ВСЕХ НА ПУТИ", en: "HEAVY BOLTS THROUGH ALL IN THEIR WAY" },
     speed: 0.7, oneHand: false, ranged: true, range: 260,
-    blows: [{ kind: "bolt", dmg: 34, reach: 0, arc: 0, push: 140 }],
+    blows: [
+      { kind: "bolt", dmg: 34, reach: 0, arc: 0, push: 140 },
+      { kind: "bolt", dmg: 34, reach: 0, arc: 0, push: 140 },
+    ],
   },
   staff: {
     id: "staff", name: { ru: "ПОСОХ ГРОЗЫ", en: "STORM STAFF" }, g: "m", desc: { ru: "МОЛНИЯ ПЕРЕСКАКИВАЕТ С ВРАГА НА ВРАГА", en: "LIGHTNING LEAPS FROM FOE TO FOE" },
     speed: 0.85, oneHand: false, ranged: true, range: 200,
-    blows: [{ kind: "chain", dmg: 15, reach: 80, arc: 0, push: 30 }],
+    blows: [
+      { kind: "chain", dmg: 15, reach: 80, arc: 0, push: 30 },
+      { kind: "chain", dmg: 15, reach: 80, arc: 0, push: 30 },
+    ],
   },
   chakram: {
     id: "chakram", name: { ru: "ЧАКРА", en: "CHAKRAM" }, g: "f", desc: { ru: "ЛЕТИТ, РЕЖЕТ ВСЕХ НА ПУТИ И ВОЗВРАЩАЕТСЯ", en: "FLIES OUT, CUTS ALL IN ITS WAY, COMES BACK" },
     speed: 0.95, oneHand: true, ranged: true, range: 170,
-    blows: [{ kind: "chakram", dmg: 13, reach: 150, arc: 0, push: 50 }],
+    // thrown overhand, or backhand sidelong (a frame quicker, a little lighter)
+    blows: [
+      { kind: "chakram", dmg: 13, reach: 150, arc: 0, push: 50 },
+      { kind: "chakram", dmg: 11, reach: 150, arc: 0, push: 50 },
+    ],
   },
   bell: {
     id: "bell", name: { ru: "КОЛОКОЛ", en: "BELL" }, g: "m", desc: { ru: "ЗВОН РАСХОДИТСЯ КРУГАМИ И ОГЛУШАЕТ", en: "ITS PEAL SPREADS IN RINGS AND STUNS" },
-    speed: 0.85, oneHand: true, ranged: false, range: 66,
+    speed: 0.85, oneHand: true, ranged: false, range: 66, combo: [1, 2],
     blows: [
       { kind: "around", dmg: 11, reach: 64, arc: 0, push: 90, stun: 0.5, fxMode: "flip" },
-      { kind: "around", dmg: 18, reach: 88, arc: 0, push: 140, stun: 0.9, fxMode: "flip" },
+      { kind: "around", dmg: 18, reach: 88, arc: 0, push: 140, stun: 0.9, fxMode: "flip", fin: true },
+      { kind: "around", dmg: 13, reach: 70, arc: 0, push: 100, stun: 0.4, fxMode: "flip" },
+      { kind: "around", dmg: 13, reach: 64, arc: 0, push: 110, stun: 0.6, fxMode: "flip" },
     ],
   },
 };

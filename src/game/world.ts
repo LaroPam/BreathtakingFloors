@@ -7,7 +7,7 @@ import type { Audio } from "../engine/audio";
 import { rgba, rgbaf } from "../engine/renderer";
 import {
   AI, depthOf, placeDef, El, EL_COLOR, EN, ENEMIES, evolutionOf, heroDef, mainStop, nextStop, PLACE_FLOORS, QUESTS, RELIC_MAX, RELICS, RelicKind, reactionFor, roster, WEAPON_IDS, WEAPONS,
-  type PlaceDef, type PlaceId, type Stop, type GateKind, giftFor, DOORS, type DoorKind, MINIS, type MiniMove, type Blow, type HeroDef, type Modifier, type QuestKind, type Reaction, type StatId, type TaskId, type WeaponId, MYTHIC, RARITIES, rollRarity, UNIQUES, type Perk,
+  type PlaceDef, type PlaceId, type Stop, type GateKind, giftFor, DOORS, type DoorKind, MINIS, type MiniMove, type Blow, type HeroDef, type Modifier, type QuestKind, type Reaction, type StatId, type TaskId, type WeaponId, type WeaponDef, MYTHIC, RARITIES, rollRarity, UNIQUES, type Perk,
   HORDE,
   WArt,
 } from "./defs";
@@ -544,13 +544,19 @@ export class Hero {
   wantUlt = false;
   /** The player is asking for blows (a held button or an aiming stick); otherwise the sword swings by itself. */
   attacking = false;
-  /** The blow in progress (-1 for none), its time, its direction, whether it has landed, the next in the combo. */
+  /**
+   * The blow in progress (-1 for none), its time, its direction, whether it has landed; the combo: its chain of blows
+   * (planned for this weapon), how far along it is, how long it waits for the next blow, the blow before.
+   */
   atk = -1;
   atkT = 0;
   atkDir = 0;
   atkHit = false;
+  chain: number[] = [];
+  chainOf: WeaponId | "" = "";
   combo = 0;
   comboT = 0;
+  lastBlow = -1;
   /** The lantern's swing (radians) and how fast it swings. */
   lanternA = 0;
   lanternV = 0;
@@ -1784,7 +1790,12 @@ export class World {
         }
       }
       if (!cause) return;
-      h.atk = h.comboT > 0 ? h.combo % W.blows.length : 0;
+      if (h.comboT <= 0 || h.combo >= h.chain.length || h.chainOf !== h.weapon) {
+        h.chain = this.planCombo(W);
+        h.chainOf = h.weapon;
+        h.combo = 0;
+      }
+      h.atk = h.chain[h.combo];
       h.atkT = 0;
       h.hitsDone = 0;
       h.atkDir = Math.atan2(h.aimY, h.aimX);
@@ -1799,10 +1810,29 @@ export class World {
       h.hitsDone++;
     }
     if (frame >= frames) {
-      h.combo = (h.atk + 1) % W.blows.length;
+      h.lastBlow = h.atk;
+      h.combo++;
       h.comboT = 0.5;
       h.atk = -1;
     }
+  }
+
+  /**
+   * A weapon's next combo: some of its blows in a fresh random order (never opening with the one that just ended the
+   * last combo), as many as the weapon's `combo` says, then one of its finishers. So no two chains in a row look the
+   * same, and the heavy blow still comes last. A weapon without finishers mixes all its blows.
+   */
+  private planCombo(W: WeaponDef): number[] {
+    const open: number[] = [], fin: number[] = [];
+    W.blows.forEach((b, i) => (b.fin ? fin : open).push(i));
+    for (let i = open.length - 1; i > 0; i--) {
+      const j = this.rng.int(0, i);
+      [open[i], open[j]] = [open[j], open[i]];
+    }
+    if (open.length > 1 && open[0] === this.hero.lastBlow) open.push(open.shift()!);
+    const [lo, hi] = W.combo ?? [2, 3], chain = fin.length ? open.slice(0, Math.min(open.length, this.rng.int(lo, hi))) : open;
+    if (fin.length) chain.push(fin[this.rng.int(0, fin.length - 1)]);
+    return chain;
   }
 
   /** Where the blow comes from: the chest, or for shots and spells the casting hand at this frame. */
@@ -1987,8 +2017,8 @@ export class World {
     // the bell's peal: a ring of sound out to the blow's reach (two for its great toll)
     if (h.weapon === "bell" && hit === 0) {
       this.soundRings.push({ x: h.x, y: h.y - 8, r: 6, R, t: 0 });
-      if (k === 1) this.soundRings.push({ x: h.x, y: h.y - 8, r: 0, R: R * 0.7, t: -0.08 });
-      this.audio.play("holy", k === 1 ? 0.7 : 1);
+      if (B.fin) this.soundRings.push({ x: h.x, y: h.y - 8, r: 0, R: R * 0.7, t: -0.08 });
+      this.audio.play("holy", B.fin ? 0.7 : 1);
     }
     // urns in the blow's reach break
     if (B.kind === "front") this.smashUrns(fx, fy, R);
@@ -2021,7 +2051,7 @@ export class World {
       this.deflected(cut);
     }
     // a legendary blade ends its combo in a wave of its element
-    if (h.legend && hit === of - 1 && k === W.blows.length - 1) {
+    if (h.legend && hit === of - 1 && h.combo === h.chain.length - 1) {
       const col = rgba(EL_COLOR[wel || El.Fire]);
       for (let q = -1; q <= 1; q++) {
         const a = dir + q * 0.22;

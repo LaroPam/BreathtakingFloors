@@ -38,6 +38,22 @@ const IRON = ["#16141c", "#2e2c38", "#4e4c5c", "#7e7c8e", "#b4b2c4", "#e4e2ee", 
 const BLADE = ["#3a1a0a", "#8a3a12", "#d8701c", "#ffb43a", "#ffe08a", "#fff6d0", "#ffffff"];
 const STEEL = ["#1a2030", "#34405a", "#5a6a8a", "#8aa0c4", "#c4d4ec", "#eef4ff", "#ffffff"];
 const SOUL = ["#0c1e14", "#14402a", "#1f6a3e", "#3aa060", "#7ee88a", "#c8ffc4", "#ffffff"];
+const EMBER = ["#3a1408", "#7a2a10", "#c4501a", "#f08a2a", "#ffc94a", "#fff2a8", "#ffffff"];
+const VIOLET = ["#1a0a2a", "#3e1e6a", "#6a3aa8", "#a06ae0", "#e0b0ff", "#ffffff"];
+
+// The act-times sampled for each kind of blow (the frame of the blow is marked by `hits`). Every weapon takes several
+// of these on its own model, so its combo can be mixed (World.planCombo) rather than one chain over and over.
+const AT = {
+  slash: [-0.3, -0.16, -0.06, 0, 0.06, 0.22, 0.45],
+  double: [-0.18, -0.08, -0.02, 0, 0.06, 0.17, 0.4],
+  thrust: [-0.24, -0.12, -0.04, 0, 0.07, 0.3, 0.55],
+  hammer: [-0.44, -0.3, -0.18, -0.06, 0.06, 0.15, 0.4, 0.7],
+  cleave: [-0.3, -0.12, 0.05, 0.2, 0.28, 0.335, 0.6, 0.9],
+  sweep: [-0.34, -0.2, -0.08, 0.02, 0.06, 0.1, 0.35, 0.62],
+  spin: [-0.2, -0.08, 0.0, 0.05, 0.09, 0.13, 0.17, 0.4],
+  flurry: [-0.14, -0.03, 0.0, 0.06, 0.11, 0.17, 0.22, 0.28, 0.33, 0.37, 0.45],
+  upper: [-0.16, -0.06, 0.0, 0.04, 0.08, 0.18, 0.3, 0.5],
+};
 
 // the crossbow: aimed level at the shoulder in both hands; loosed, it kicks up and back, then settles
 const XB_AIM = { ...READY, weapon: "crossbow", two: true, fx: 9, fy: -22, sa: 0.02, turn: 0.3, crouch: 3, lean: 1 };
@@ -51,6 +67,19 @@ const XBOW = {
   ],
 };
 
+// and braced low on one knee, from the hip: the kick throws it higher
+const XB_LOW = { ...XB_AIM, crouch: 8, lean: 3, fx: 10, fy: -16, sa: 0.06, ffx: 9, fbx: -8 };
+const XBOW_LOW = {
+  poses: [
+    [-0.3, { ...XB_AIM, crouch: 5 }],
+    [-0.06, XB_LOW],
+    [0, { ...XB_LOW, fx: 7, fy: -18, sa: -0.34, lean: -1 }, "snap"],
+    [0.12, { ...XB_LOW, fx: 8, fy: -17, sa: -0.16, lean: 1 }],
+    [0.42, { ...XB_AIM, crouch: 5 }],
+  ],
+};
+const XB_FRAMES = [{}, {}, { loaded: false }, { loaded: false }, { loaded: false }, { loaded: false }, {}];
+
 /**
  * Each weapon: its stance (`guard`, what the hands hold), whether the far hand is free for a lantern, and its blows.
  * A blow: act and sample times, hit frames, its effect (pixelfx id, options, how long to bake it).
@@ -63,6 +92,10 @@ export const WEAPONS = {
       { act: SLASH, times: [-0.3, -0.16, -0.06, 0, 0.06, 0.22, 0.45], hits: [3], fx: "melee/sword-slash", opts: { palette: BLADE } },
       { act: DOUBLE, times: [-0.18, -0.08, -0.02, 0, 0.06, 0.17, 0.4], hits: [3], fx: "melee/double-slash", opts: { palette: BLADE } },
       { act: THRUST, times: [-0.24, -0.12, -0.04, 0, 0.07, 0.3, 0.55], hits: [3], fx: "melee/thrust", opts: { reach: 46 } },
+      { act: SPIN, times: AT.spin, hits: [6], fx: "melee/spin-slash", maxT: 0.45, opts: { palette: BLADE, radius: 40 }, weapon: "sword" },
+      { act: CLEAVE, times: AT.cleave, hits: [5], fx: "melee/heavy-cleave", maxT: 0.6, opts: { palette: BLADE }, weapon: "sword" },
+      // a rising cut: the blade low and forward in the crouch, up past the face on the leap
+      { act: UPPERCUT, times: AT.upper, hits: [4], fx: "melee/uppercut", maxT: 0.5, opts: { palette: BLADE }, weapon: "sword", frames: [0.5, 0.8, 0.95, -0.3, -1.35, -1.5, -1.4, -1.05].map((sa) => ({ sa })) },
     ],
   },
   hammer: {
@@ -71,6 +104,8 @@ export const WEAPONS = {
     attacks: [
       { act: HAMMER, times: [-0.44, -0.3, -0.18, -0.06, 0.06, 0.15, 0.4, 0.7], hits: [5], fx: "melee/hammer-smash", maxT: 0.7 },
       { act: CLEAVE, times: [-0.3, -0.12, 0.05, 0.2, 0.28, 0.335, 0.6, 0.9], hits: [5], fx: "melee/heavy-cleave", maxT: 0.6, weapon: "hammer" },
+      { act: SWEEP, times: AT.sweep, hits: [5], fx: "melee/spear-sweep", maxT: 0.5, opts: { palette: IRON }, weapon: "hammer" },
+      { act: SPIN, times: AT.spin, hits: [6], fx: "melee/spin-slash", maxT: 0.45, opts: { palette: IRON }, weapon: "hammer" },
     ],
   },
   spear: {
@@ -79,6 +114,8 @@ export const WEAPONS = {
     attacks: [
       { act: THRUST, times: [-0.24, -0.12, -0.04, 0, 0.07, 0.3, 0.55], hits: [3], fx: "melee/thrust", opts: { reach: 66, palette: STEEL }, weapon: "spear" },
       { act: SWEEP, times: [-0.34, -0.2, -0.08, 0.02, 0.06, 0.1, 0.35, 0.62], hits: [5], fx: "melee/spear-sweep", maxT: 0.5 },
+      { act: DOUBLE, times: AT.double, hits: [3, 5], fx: "melee/double-slash", opts: { palette: STEEL }, weapon: "spear" },
+      { act: SPIN, times: AT.spin, hits: [6], fx: "melee/spin-slash", maxT: 0.45, opts: { palette: STEEL, radius: 52 }, weapon: "spear" },
     ],
   },
   scythe: {
@@ -87,6 +124,8 @@ export const WEAPONS = {
     attacks: [
       { act: REAP, times: [-0.26, -0.1, 0.0, 0.08, 0.14, 0.2, 0.3, 0.45], hits: [4], fx: "melee/scythe-reap", maxT: 0.55, opts: { palette: SOUL } },
       { act: SPIN, times: [-0.2, -0.08, 0.0, 0.05, 0.09, 0.13, 0.17, 0.4], hits: [6], fx: "melee/spin-slash", maxT: 0.45, opts: { palette: SOUL }, weapon: "scythe" },
+      { act: SWEEP, times: AT.sweep, hits: [5], fx: "melee/spear-sweep", maxT: 0.5, opts: { palette: SOUL }, weapon: "scythe" },
+      { act: CLEAVE, times: AT.cleave, hits: [5], fx: "melee/heavy-cleave", maxT: 0.6, opts: { palette: SOUL }, weapon: "scythe" },
     ],
   },
   daggers: {
@@ -94,6 +133,9 @@ export const WEAPONS = {
     oneHand: false,
     attacks: [
       { act: FLURRY, times: [-0.14, -0.03, 0.0, 0.06, 0.11, 0.17, 0.22, 0.28, 0.33, 0.37, 0.45], hits: [3, 4, 5, 6, 7, 8, 9], fx: "melee/dagger-flurry", maxT: 0.55 },
+      { act: DOUBLE, times: AT.double, hits: [3, 5], fx: "melee/double-slash", opts: { palette: VIOLET }, extra: { offWeapon: "dagger", sb: -0.9 } },
+      { act: THRUST, times: AT.thrust, hits: [3], fx: "melee/thrust", opts: { reach: 40, palette: VIOLET }, extra: { offWeapon: "dagger", sb: -0.9 } },
+      { act: SPIN, times: AT.spin, hits: [5, 6], fx: "melee/spin-slash", maxT: 0.45, opts: { palette: VIOLET, radius: 36 }, extra: { offWeapon: "dagger", sb: -0.9 } },
     ],
   },
   greatsword: {
@@ -102,6 +144,8 @@ export const WEAPONS = {
     attacks: [
       { act: CLEAVE, times: [-0.3, -0.12, 0.05, 0.2, 0.28, 0.335, 0.6, 0.9], hits: [5], fx: "melee/heavy-cleave", maxT: 0.6, opts: { palette: BLADE } },
       { act: SPIN, times: [-0.2, -0.08, 0.0, 0.05, 0.09, 0.13, 0.17, 0.4], hits: [6], fx: "melee/spin-slash", maxT: 0.45, opts: { palette: BLADE }, weapon: "greatsword" },
+      { act: SLASH, times: AT.slash, hits: [3], fx: "melee/sword-slash", opts: { palette: BLADE }, weapon: "greatsword", extra: { two: true } },
+      { act: HAMMER, times: AT.hammer, hits: [5], fx: "melee/hammer-smash", maxT: 0.7, opts: { palette: BLADE }, weapon: "greatsword" },
     ],
   },
   claws: {
@@ -110,6 +154,8 @@ export const WEAPONS = {
     attacks: [
       { act: CLAW, times: [-0.2, -0.05, 0.0, 0.04, 0.08, 0.12, 0.25, 0.42], hits: [3, 4, 5], fx: "melee/claw-swipe", maxT: 0.45, opts: { palette: ["#1a0a2a", "#3e1e6a", "#6a3aa8", "#a06ae0", "#e0b0ff", "#ffffff"] } },
       { act: UPPERCUT, times: [-0.16, -0.06, 0.0, 0.04, 0.08, 0.18, 0.3, 0.5], hits: [4], fx: "melee/uppercut", maxT: 0.5, weapon: "claw", extra: { offWeapon: "claw", sb: -0.9 } },
+      { act: DOUBLE, times: AT.double, hits: [3, 5], fx: "melee/double-slash", opts: { palette: VIOLET }, weapon: "claw", extra: { offWeapon: "claw", sb: -0.9 } },
+      { act: FLURRY, times: AT.flurry, hits: [3, 5, 7, 9], fx: "melee/dagger-flurry", maxT: 0.55, opts: { palette: VIOLET }, weapon: "claw", extra: { offWeapon: "claw" } },
     ],
   },
   whip: {
@@ -117,6 +163,8 @@ export const WEAPONS = {
     oneHand: true,
     attacks: [
       { act: WHIP, times: [-0.22, -0.08, 0.02, 0.06, 0.12, 0.17, 0.21, 0.26, 0.44, 0.7], hits: [6], fx: "melee/whip-crack", maxT: 0.55, opts: { length: 64 } },
+      { act: SPIN, times: AT.spin, hits: [6], fx: "melee/spin-slash", maxT: 0.45, opts: { palette: EMBER, radius: 50 }, weapon: "handle" },
+      { act: SWEEP, times: AT.sweep, hits: [5], fx: "melee/spear-sweep", maxT: 0.5, opts: { palette: EMBER }, weapon: "handle" },
     ],
   },
   // the new arms (the tower's update): a flail swung round and brought down, a glaive's long sweeps, a crossbow's
@@ -127,6 +175,8 @@ export const WEAPONS = {
     attacks: [
       { act: SPIN, times: [-0.2, -0.08, 0.0, 0.05, 0.09, 0.13, 0.17, 0.4], hits: [6], fx: "melee/spin-slash", maxT: 0.45, opts: { palette: IRON }, weapon: "flail" },
       { act: HAMMER, times: [-0.44, -0.3, -0.18, -0.06, 0.06, 0.15, 0.4, 0.7], hits: [5], fx: "melee/hammer-smash", maxT: 0.7, weapon: "flail" },
+      { act: SWEEP, times: AT.sweep, hits: [5], fx: "melee/spear-sweep", maxT: 0.5, opts: { palette: IRON }, weapon: "flail" },
+      { act: CLEAVE, times: AT.cleave, hits: [5], fx: "melee/heavy-cleave", maxT: 0.6, opts: { palette: IRON }, weapon: "flail" },
     ],
   },
   glaive: {
@@ -135,23 +185,34 @@ export const WEAPONS = {
     attacks: [
       { act: SWEEP, times: [-0.34, -0.2, -0.08, 0.02, 0.06, 0.1, 0.35, 0.62], hits: [5], fx: "melee/spear-sweep", maxT: 0.5, opts: { palette: STEEL }, weapon: "glaive" },
       { act: CLEAVE, times: [-0.3, -0.12, 0.05, 0.2, 0.28, 0.335, 0.6, 0.9], hits: [5], fx: "melee/heavy-cleave", maxT: 0.6, opts: { palette: STEEL }, weapon: "glaive" },
+      { act: SPIN, times: AT.spin, hits: [6], fx: "melee/spin-slash", maxT: 0.45, opts: { palette: STEEL, radius: 54 }, weapon: "glaive" },
+      { act: THRUST, times: AT.thrust, hits: [3], fx: "melee/thrust", opts: { reach: 72, palette: STEEL }, weapon: "glaive" },
     ],
   },
   crossbow: {
     guard: XB_AIM,
     oneHand: false,
     // the bolt goes on the third frame; the string stays forward until it is drawn back again at the end
-    attacks: [{ act: XBOW, times: [-0.2, -0.08, 0, 0.05, 0.12, 0.24, 0.42], hits: [2], weapon: "crossbow", frames: [{}, {}, { loaded: false }, { loaded: false }, { loaded: false }, { loaded: false }, {}] }],
+    attacks: [
+      { act: XBOW, times: [-0.2, -0.08, 0, 0.05, 0.12, 0.24, 0.42], hits: [2], weapon: "crossbow", frames: XB_FRAMES },
+      { act: XBOW_LOW, times: [-0.2, -0.08, 0, 0.05, 0.12, 0.24, 0.42], hits: [2], weapon: "crossbow", frames: XB_FRAMES },
+    ],
   },
   staff: {
     guard: { ...READY, weapon: "staff", fx: 11, fy: -22, bx: 7, by: -16, sa: -1.3, turn: 0.3 },
     oneHand: false,
-    attacks: [{ act: THRUST, times: [-0.24, -0.12, -0.04, 0, 0.07, 0.3, 0.55], hits: [3], weapon: "staff" }],
+    attacks: [
+      { act: THRUST, times: [-0.24, -0.12, -0.04, 0, 0.07, 0.3, 0.55], hits: [3], weapon: "staff" },
+      { act: LIGHTNING, times: [0.1, 0.32, 0.6, 0.76, 0.86, 1.2, 1.7], hits: [3], weapon: "staff", extra: { sa: -1.45 } },
+    ],
   },
   chakram: {
     guard: { ...READY, weapon: "chakram", fx: 12, fy: -21, bx: 5, by: -15, sa: -0.4, turn: 0.35 },
     oneHand: true,
-    attacks: [{ act: FIREBALL, times: [0.5, 0.7, 0.85, 0.92, 0.95, 1.05, 1.25, 1.39], hits: [4], weapon: "chakram" }],
+    attacks: [
+      { act: FIREBALL, times: [0.5, 0.7, 0.85, 0.92, 0.95, 1.05, 1.25, 1.39], hits: [4], weapon: "chakram" },
+      { act: SLASH, times: AT.slash, hits: [3], weapon: "chakram" },
+    ],
   },
   bell: {
     guard: { ...READY, weapon: "bell", fx: 12, fy: -22, bx: 5, by: -15, sa: -1.1, turn: 0.35 },
@@ -160,12 +221,20 @@ export const WEAPONS = {
       // (its rings of sound are drawn by the game, spreading from the hero)
       { act: SLASH, times: [-0.3, -0.16, -0.06, 0, 0.06, 0.22, 0.45], hits: [3], weapon: "bell" },
       { act: HAMMER, times: [-0.44, -0.3, -0.18, -0.06, 0.06, 0.15, 0.4, 0.7], hits: [5], weapon: "bell" },
+      { act: SPIN, times: AT.spin, hits: [6], weapon: "bell" },
+      { act: UPPERCUT, times: AT.upper, hits: [4], weapon: "bell" },
     ],
   },
   bow: {
     guard: { ...READY, weapon: "bow", fx: 12, fy: -20, bx: 6, by: -17, sa: -0.4, turn: 0.3 },
     oneHand: false,
-    attacks: [{ act: ARROW, times: [-0.14, 0.02, 0.18, 0.36, 0.5, 0.56, 0.72, 1.0], hits: [5] }],
+    attacks: [
+      { act: ARROW, times: [-0.14, 0.02, 0.18, 0.36, 0.5, 0.56, 0.72, 1.0], hits: [5] },
+      // a snap shot: the draw cut short
+      { act: ARROW, times: [0.12, 0.3, 0.46, 0.56, 0.72, 1.0], hits: [3] },
+      // down on one knee, leaning into the draw
+      { act: ARROW, times: [-0.14, 0.02, 0.18, 0.36, 0.5, 0.56, 0.72, 1.0], hits: [5], extra: { crouch: 8, lean: 2, ffx: 9, fbx: -8 } },
+    ],
   },
   spell: {
     // the Sorceress's frost staff: two thrusts of the crystal at the foe, then a wide sweep that looses a fan
@@ -173,7 +242,7 @@ export const WEAPONS = {
     oneHand: false,
     attacks: [
       { act: THRUST, times: [-0.24, -0.12, -0.04, 0, 0.07, 0.3, 0.55], hits: [3], weapon: "frost" },
-      { act: THRUST, times: [-0.2, -0.1, -0.03, 0, 0.06, 0.28, 0.5], hits: [3], weapon: "frost" },
+      { act: ICELANCE, times: [0.2, 0.5, 0.68, 0.74, 0.8, 1.0, 1.3], hits: [3], weapon: "frost", extra: { sa: -1.3 } },
       { act: SLASH, times: [-0.3, -0.16, -0.06, 0, 0.06, 0.22, 0.45], hits: [3], weapon: "frost" },
     ],
   },

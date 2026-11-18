@@ -12,8 +12,8 @@
 
 import { BOOT_PAGES, PAGE_SIZE, PAGE_URLS, type Rect } from "./atlas";
 
-/** Pages of the texture array kept for images made while the game runs. */
-export const DYNAMIC_PAGES = 3;
+/** Pages of the texture array kept for images made while the game runs (a hero's whole set of smooth blows takes ~3). */
+export const DYNAMIC_PAGES = 5;
 
 const FLOATS = 15; // per instance: pos(2) off(2) size(2) uv(2) scale(2) rot layer color(packed) flash palette
 const BYTES = FLOATS * 4;

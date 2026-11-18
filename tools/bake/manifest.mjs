@@ -44,11 +44,12 @@ const WALL = {
 };
 
 /**
- * What the game needs only later in a run: the garden's and the frost's own art and the bosses. Their images go on
- * pages of their own at the end of the atlas, which the game loads in the background once it has started (the menu,
- * the heroes' gear, the crypt and every effect come first).
+ * What the game needs only later in a run: the garden's and the frost's own art, the bosses, and the trails of every
+ * weapon's blows but the sword's (the first run's). Their images go on pages of their own at the end of the atlas,
+ * which the game loads in the background once it has started (the menu, the heroes' gear, the crypt and the other
+ * effects come first; a blow whose trail is not loaded yet goes without it).
  */
-const LATE = /mini_(frog|moth|eye|ghost|sunskull|spark|jelly|eel|slag|cinder)|garden|frost|heart|beyond|cistern|ashen|_ash\b|forgemaster|torch_ember|gatew_|gater_|gateh_|gatex_|_tide\b|wellmistress|^splash$|^geyser$|^whirl$|door_|_pale\b|_ice\b|_ice_|_moss|_spore|_bog|_void|_sun\b|treant|voideye|warden|lastlight|crystal|mushroom|grass/;
+const LATE = /^fx_(?!sword_)|mini_(frog|moth|eye|ghost|sunskull|spark|jelly|eel|slag|cinder)|garden|frost|heart|beyond|cistern|ashen|_ash\b|forgemaster|torch_ember|gatew_|gater_|gateh_|gatex_|_tide\b|wellmistress|^splash$|^geyser$|^whirl$|door_|_pale\b|_ice\b|_ice_|_moss|_spore|_bog|_void|_sun\b|treant|voideye|warden|lastlight|crystal|mushroom|grass/;
 export const isLate = (name) => LATE.test(name);
 
 export const ANIMS = [
