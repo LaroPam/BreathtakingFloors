@@ -1742,6 +1742,19 @@ export class World {
             break;
           }
       }
+      // a cracked stretch of wall found and near: the weapon goes at it by itself, a bow or a staff as much as a blade
+      // (on a phone there is no button to strike at will)
+      const sc = this.secret;
+      if (!cause && sc && sc.hp > 0 && sc.seen > 0.5) {
+        const tx = sc.x + TILE, ty = sc.y - 10, dx = tx - h.x, dy = ty - (h.y - 18), d = Math.hypot(dx, dy) || 1;
+        if (d < (W.ranged ? 120 : W.blows[0].reach * s.reach + 20)) {
+          h.aimX = dx / d;
+          h.aimY = dy / d;
+          // (no foe to aim at: the shot goes where the hero faces, at the wall)
+          this.target = { x: tx, y: ty, r: 0 };
+          cause = true;
+        }
+      }
       if (!cause) return;
       h.atk = h.comboT > 0 ? h.combo % W.blows.length : 0;
       h.atkT = 0;
@@ -1853,7 +1866,12 @@ export class World {
         pts.push(x1, y1);
         return pts;
       };
-      if (j < 0) this.arcs.push({ pts: jag(tx0, ty0, tx0 + Math.cos(dir) * 40, ty0 + Math.sin(dir) * 40), life: 0.1, color: rgba(EL_COLOR[el]) });
+      if (j < 0) {
+        // nothing to leap to: a short bolt before the staff, which breaks an urn or a cracked wall it reaches
+        const ex = tx0 + Math.cos(dir) * 40, ey = ty0 + Math.sin(dir) * 40;
+        this.arcs.push({ pts: jag(tx0, ty0, ex, ey), life: 0.1, color: rgba(EL_COLOR[el]) });
+        this.smashUrns(ex, ey, 16);
+      }
       for (let q = 0; q <= jumps && j >= 0; q++) {
         const E2 = this.enemies, uid = E2.uid[j];
         hit.add(uid);
@@ -4852,9 +4870,11 @@ export class World {
       // columns stop enemy bullets (and the hero's lances), not his crescents
       if (B.kind[i] === B_CHAKRAM && B.team[i] === TEAM_HERO) {
         // (a wall only turns a chakram home; coming home it passes over everything)
-        if (!B.grazed[i] && this.map.wall(x, y + 14)) (B.grazed[i] = 1), B.hits.fill(0, i * 4, i * 4 + 4), this.burst(x, y, 4, rgba("#e8edf6"), 40, 0.2);
+        if (!B.grazed[i] && this.map.wall(x, y + 14)) (B.grazed[i] = 1), B.hits.fill(0, i * 4, i * 4 + 4), this.burst(x, y, 4, rgba("#e8edf6"), 40, 0.2), this.hitSecret(x, y + 14, 12, 0, Math.PI);
       } else if (B.grazed[i] !== LANCE_STUCK || !lance) {
         if (this.map.wall(x, y + 14) || (B.kind[i] !== B_CRESCENT && this.pillars.some((p) => (x - p.x) ** 2 + (y + 14 - p.y) ** 2 < (p.r + 2) ** 2))) {
+          // (the hero's shots break a cracked stretch of wall as a blade does)
+          if (B.team[i] === TEAM_HERO) this.hitSecret(x, y + 14, 12, 0, Math.PI);
           if (lance) {
             // the lance sticks where it struck, chips frost off the stone and melts away there
             if (!spent) this.addFx("hit_frost", x, y + 10, { rot: Math.atan2(-B.vy[i], -B.vx[i]), sx: 0.5, sy: 0.5, glow: 0.6 });
