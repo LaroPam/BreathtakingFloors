@@ -1799,7 +1799,9 @@ export class Game {
     }
     // (low in the middle: clear of the floor's plate at the top and of the touch controls at the corners)
     // the button, or a key: Enter (Space is the dash, so not that), Backspace, a pad's B; the key is named on the button
-    const label = this.skipKey() + t("introSkip"), bw = Math.max(90, measure(label) + 30), keyed = this.skipPressed();
+    // (the key only once the opening has shown for a moment: a press left over from the title or the floor's card
+    // must not skip what the player has not yet seen)
+    const label = this.skipKey() + t("introSkip"), bw = Math.max(90, measure(label) + 30), keyed = it.t > 1 && this.skipPressed();
     if (button(ui, this.menu, now, Math.round(W / 2 - bw / 2), H - (this.touch ? 30 : 22), bw, 16, label, { icon: icon("hud", "play") }) || keyed) {
       if (keyed) this.keySkipT = now;
       this.world.endIntro();
