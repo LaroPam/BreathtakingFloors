@@ -403,18 +403,37 @@ export function slot(b: Batch, x: number, y: number, s: number, edge?: number): 
   inset(b, x, y, s, s, edge);
 }
 
-/** A band of darkness across the screen behind a banner, fading out to its ends, a gold thread above and below. */
-function band(b: Batch, W: number, y: number, h: number, a: number, color: number): void {
-  const steps = 10;
+/**
+ * A band of darkness behind a banner from x0 to x1 (the whole screen, or the room between the HUD's columns),
+ * fading out to its ends, a thread of the banner's colour above and below.
+ */
+function band(b: Batch, x0: number, x1: number, y: number, h: number, a: number, color: number): void {
+  const steps = 10, half = (x1 - x0) / 2, sw = Math.ceil(half / steps) + 1;
   for (let k = 0; k < steps; k++) {
-    const x0 = Math.round((W / 2) * (k / steps)), al = a * (k / steps) * 0.75;
-    b.rect(x0, y, Math.ceil(W / 2 / steps) + 1, h, rgba("#05040a", al));
-    b.rect(W - x0 - Math.ceil(W / 2 / steps) - 1, y, Math.ceil(W / 2 / steps) + 1, h, rgba("#05040a", al));
-    b.rect(x0, y - 1, Math.ceil(W / 2 / steps) + 1, 1, withAlpha(color, al * 0.7));
-    b.rect(W - x0 - Math.ceil(W / 2 / steps) - 1, y - 1, Math.ceil(W / 2 / steps) + 1, 1, withAlpha(color, al * 0.7));
-    b.rect(x0, y + h, Math.ceil(W / 2 / steps) + 1, 1, withAlpha(color, al * 0.7));
-    b.rect(W - x0 - Math.ceil(W / 2 / steps) - 1, y + h, Math.ceil(W / 2 / steps) + 1, 1, withAlpha(color, al * 0.7));
+    const l = Math.round(x0 + half * (k / steps)), r = Math.round(x1 - half * (k / steps)) - sw, al = a * (k / steps) * 0.75;
+    for (const x of [l, r]) {
+      b.rect(x, y, sw, h, rgba("#05040a", al));
+      b.rect(x, y - 1, sw, 1, withAlpha(color, al * 0.7));
+      b.rect(x, y + h, sw, 1, withAlpha(color, al * 0.7));
+    }
   }
+}
+
+/**
+ * Where the HUD stands this frame (in interface pixels), so that what comes and goes over the fight (a banner, the
+ * lessons, a hint, a note) finds room beside it and never lies on it: the left column (vitals, weapon, artifacts,
+ * the spirit's quest) ends at leftR and leftB, the stack at the top centre (the floor's plate, the wave's) at topB,
+ * the right column (the stats, or the touch buttons) begins at rightL, and a banner showing ends at bannerB.
+ */
+export const hudBox = { leftR: 0, leftB: 0, topB: 0, rightL: 0, bannerB: 0 };
+/**
+ * Room for something w wide over the fight, from y0 down: the lane between the HUD's columns where it fits there,
+ * else the whole width below the left column (a phone held upright). Returns its centre x, its width, the top y.
+ */
+export function hudLane(W: number, w: number, y0: number): { cx: number; room: number; y: number } {
+  const L = hudBox.leftR, R = hudBox.rightL;
+  if (R - L >= Math.min(w, 200)) return { cx: Math.round((L + R) / 2), room: R - L, y: y0 };
+  return { cx: Math.round(W / 2), room: W - 16, y: Math.max(y0, hudBox.leftB + 6) };
 }
 
 /** The aiming reticle that stands in for the mouse pointer during a run. */
@@ -567,6 +586,11 @@ export function drawHud(b: Batch, w: World, W: number, H: number, time: number, 
     b.rect(7, qy + 20, Math.round((qw - 12) * Math.max(0, Math.min(1, k))), 1, withAlpha(accent, a));
   }
 
+  // (the left column's extent: the vitals' plate, the weapon and its artifacts, the boosts, the quest)
+  hudBox.leftR = Math.max(2 + pw, w.relics.length ? 30 + RELIC_SLOTS * 22 : 28, held.length ? 30 + ARTIFACT_SLOTS * 22 : 0, q ? 134 : 0) + 6;
+  hudBox.leftB = Math.max(py + 35, hy + 24, held.length ? ay + 24 : 0, q ? hy + (held.length ? 54 : 28) + 24 : 0);
+  hudBox.rightL = touch ? W - 62 : W - 8;
+
   // ---- where you are: the floor on a plate at the top centre, with what to do on it under the name
   // the floor's name on its plate for the first seconds; then the plate draws in to just the braziers (or the
   // boss, or the portal), leaving the top of the screen to the floor
@@ -602,6 +626,8 @@ export function drawHud(b: Batch, w: World, W: number, H: number, time: number, 
   // the week's rule, under the plate, for the whole run
   const mut = w.mutator && MUTATORS.find((m) => m.id === w.mutator);
   if (mut) text(b, tx(mut.name), cxF, under, { font: "mini", align: "center", color: rgba("#ff9a8a"), shadow: C.ink });
+  hudBox.topB = under + (mut ? 10 : 0);
+  hudBox.bannerB = hudBox.topB;
   if (w.portal) text(b, t("portalOpen"), cxF, row - 3, { font: "mini", align: "center", color: rgba("#c684ff") });
   else if (bi >= 0) {
     b.image(icon("hud", "boss"), cxF - measure(bossName, "mini") / 2 - 8, row);
@@ -658,16 +684,21 @@ export function drawHud(b: Batch, w: World, W: number, H: number, time: number, 
   }
 
   // a banner on a band of darkness; it holds a little longer when it carries a line of what to do under it
-  // (on a wide screen it sits in the middle column between the plates, on a tall one below them)
+  // (under the plates at the top centre, in the lane between the HUD's columns; on a phone held upright, where
+  // there is no such lane, across the screen below the left column)
   const life = banner?.sub ? 3.4 : 2.2;
   if (banner && banner.t < life) {
     const a = Math.min(1, banner.t * 6, (life - banner.t) * 2), tall = H > W * 1.1;
-    const room = tall ? W - 16 : W - 2 * 150, sc = fitScale(banner.text, "big", room, 2), lh = 7 * sc;
-    const y = Math.round((tall ? H * 0.24 : 44) - Math.max(0, 0.15 - banner.t) * 40);
-    const subLines = banner.sub ? wrap(banner.sub, Math.max(room, 160)) : [];
-    band(b, W, y - 6, lh + 13 + subLines.length * 10, a, banner.color);
-    text(b, banner.text, W / 2, y, { align: "center", scale: sc, color: withAlpha(banner.color, a), shadow: withAlpha(C.ink, a), outline: true });
-    subLines.forEach((l, k) => text(b, l, W / 2, y + lh + 6 + k * 10, { align: "center", color: withAlpha(C.text, a), shadow: withAlpha(C.ink, a), outline: true }));
+    const ln = hudLane(W, measure(banner.text, "big") * 2 + 16, Math.max(hudBox.topB + 8, tall ? Math.round(H * 0.24) : 0));
+    const inLane = ln.room < W - 16, x0 = inLane ? hudBox.leftR : 0, x1 = inLane ? hudBox.rightL : W;
+    const room = ln.room - 12, sc = fitScale(banner.text, "big", room, 2), lh = 7 * sc;
+    const y = Math.round(ln.y - Math.max(0, 0.15 - banner.t) * 40);
+    const subLines = banner.sub ? wrap(banner.sub, room) : [];
+    const bh = lh + 13 + subLines.length * 10;
+    band(b, x0, x1, y - 6, bh, a, banner.color);
+    text(b, banner.text, ln.cx, y, { align: "center", scale: sc, color: withAlpha(banner.color, a), shadow: withAlpha(C.ink, a), outline: true });
+    subLines.forEach((l, k) => text(b, l, ln.cx, y + lh + 6 + k * 10, { align: "center", color: withAlpha(C.text, a), shadow: withAlpha(C.ink, a), outline: true }));
+    hudBox.bannerB = y - 6 + bh + 2;
   }
 }
 

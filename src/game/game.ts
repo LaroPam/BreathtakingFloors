@@ -15,7 +15,7 @@ import { getLang, langFor, setLang, t, tx, type Lang } from "./i18n";
 import { Rng } from "./rng";
 import { TEAM_FOE } from "./pools";
 import { defaultSave, sanitize, type RunSave, type SaveData } from "./save";
-import { bar, button, slider, C, divider, glow as glowUi, drawHud, drawPointers, drawTouch, fmtTime, frame, header , medallion, Menu, panel, para, plate , slot, type ButtonOpts } from "./ui";
+import { bar, button, slider, C, divider, glow as glowUi, drawHud, drawPointers, drawTouch, fmtTime, frame, header , hudBox, medallion, Menu, panel, para, plate , slot, type ButtonOpts } from "./ui";
 import { CINE_DUR, LUNGE_DASH, SRC_ABILITY, SRC_DASH, SRC_ELS, SRC_N, SRC_PARRY, SRC_REACT, SRC_RELIC, SRC_STATUS, SRC_WAVE, SRC_WEAPON, World } from "./world";
 
 type StatRow = { ic: Rect; name: string; col: number; sum: number; segs: [number, number][] };
@@ -1223,20 +1223,31 @@ export class Game {
     this.persist();
   }
   /** The plate of the newest achievement: slides in, holds, slides away; the next waits its turn. */
+  /**
+   * Where a note stands, sliding in from the right: at the top right between screens; in play in the lane between the
+   * HUD's columns just under the plates at the top centre (on a phone held upright, below the left column).
+   */
+  private toastAt(w: number, e: number): [number, number] {
+    const W = this.r.w;
+    if (this.state !== "play") return [Math.round(W - 4 - w * e), 6];
+    const L = hudBox.leftR, R = hudBox.rightL, lane = R - L >= w + 8, x0 = Math.round(lane ? (L + R) / 2 - w / 2 : W / 2 - w / 2);
+    return [Math.round(x0 + (1 - e) * (W - x0)), lane ? hudBox.topB + 4 : hudBox.leftB + 4];
+  }
   private drawToast(dt: number): void {
     const tst = this.toasts[0];
     // (not over the screens between floors: their headings are at the top, and on a phone a plate would cover them;
-    // it waits for the next floor)
+    // it waits for the next floor; nor in play while a banner speaks: one word at a time, it waits for that too)
     if (!tst || this.state === "stairs") return;
+    if (this.state === "play" && tst.t === 0 && hudBox.bannerB > hudBox.topB) return;
     tst.t += dt;
     if (tst.t > 3.4) {
       this.toasts.shift();
       return;
     }
-    const ui = this.ui, W = this.r.w, k = Math.min(1, tst.t / 0.25, (3.4 - tst.t) / 0.25), e = 1 - (1 - Math.max(0, k)) ** 3;
+    const ui = this.ui, k = Math.min(1, tst.t / 0.25, (3.4 - tst.t) / 0.25), e = 1 - (1 - Math.max(0, k)) ** 3;
     if (tst.open) {
       // something opened for the runs: its badge, "opened", its name, and where it is to be found
-      const name = tx(arsenalName(tst.id)), w = Math.max(150, measure(name) + 44), x = Math.round(W - 4 - w * e), y = this.state === "play" ? 38 : 6;
+      const name = tx(arsenalName(tst.id)), w = Math.max(150, measure(name) + 44), [x, y] = this.toastAt(w, e);
       frame(ui, x, y, w, 28, { edge: C.green });
       slot(ui, x + 4, y + 4, 20, C.goldDim);
       ui.image(icon("icons", arsenalIcon(tst.id)), x + 14, y + 14, 0.8, 0.8);
@@ -1248,7 +1259,7 @@ export class Game {
     }
     if (tst.note) {
       // a plain word from the game (an ad that did not come)
-      const w = measure(tst.note, "mini") + 16, x = Math.round(W - 4 - w * e), y = this.state === "play" ? 38 : 6;
+      const w = measure(tst.note, "mini") + 16, [x, y] = this.toastAt(w, e);
       frame(ui, x, y, w, 15, { edge: C.edge });
       text(ui, tst.note, x + w / 2, y + 4, { font: "mini", align: "center", color: C.text });
       return;
@@ -1256,7 +1267,7 @@ export class Game {
     if (tst.porch) {
       // the fire at the threshold: its day in the row as seven embers, the lit ones up to today, and the gift
       const { streak, gift } = tst.porch, head = t("porchDay").replace("{n}", String(streak));
-      const w = Math.max(170, 35 + measure(t("porch")) + 10 + measure(`+${gift}`) + 18, 35 + measure(head, "mini") + 8), x = Math.round(W - 4 - w * e), y = this.state === "play" ? 38 : 6;
+      const w = Math.max(170, 35 + measure(t("porch")) + 10 + measure(`+${gift}`) + 18, 35 + measure(head, "mini") + 8), [x, y] = this.toastAt(w, e);
       frame(ui, x, y, w, 34, { edge: C.gold });
       slot(ui, x + 4, y + 4, 26, C.goldDim);
       ui.image(icon("hud", "brazier"), x + 17, y + 17, 2, 2);
@@ -1274,7 +1285,7 @@ export class Game {
       return;
     }
     const a = ACHIEVEMENTS.find((q) => q.id === tst.id)!;
-    const name = tx(a.name), w = Math.max(150, measure(name) + 44), x = Math.round(W - 4 - w * e), y = this.state === "play" ? 38 : 6;
+    const name = tx(a.name), w = Math.max(150, measure(name) + 44), [x, y] = this.toastAt(w, e);
     frame(ui, x, y, w, 28, { edge: C.gold });
     slot(ui, x + 4, y + 4, 20, C.goldDim);
     ui.image(icon(a.icon[0], a.icon[1]), x + 14, y + 14, a.icon[0] === "icons" ? 0.8 : 1, a.icon[0] === "icons" ? 0.8 : 1);
@@ -1809,14 +1820,22 @@ export class Game {
     if (!hint || hint.t < 0 || this.world.intro) return;
     const ui = this.ui, W = this.r.w, H = this.r.h, a = Math.max(0, Math.min(1, hint.t / 0.45, (hint.dur - hint.t) / 0.7));
     if (a <= 0) return;
-    // (on a phone held sideways it keeps clear of the dash and ability buttons at the right, as the lessons do; held
-    // upright they are below it)
-    const side = this.touch && W > H, room = side ? W - 84 : W - 16, cx = side ? Math.min(W / 2, 8 + room / 2) : W / 2;
-    const lines = wrap(hint.text, Math.min(room - 24, 360)), lw = Math.min(room, Math.max(...lines.map((l) => measure(l))) + 20);
-    // above the first floor's lesson, if one is showing, never on it
-    // (above it where there is room under the HUD's plates, else just below it)
-    const tut = this.tutorShown(), hh = lines.length * 11 + 8, above = this.tutTop - hh - 6;
-    const at = !tut ? H * 0.68 : above >= 48 ? Math.min(H * 0.56, above) : this.tutBottom + 10;
+    // in the room the HUD leaves at its height (clear of the touch buttons, and of the left column where it reaches
+    // down so far); above the first floor's lesson if one is showing, never on it, and never on a banner or the plates
+    // at the top: below the lesson where there is no room above it
+    const tut = this.tutorShown(), ceil = Math.max(hudBox.topB, hudBox.bannerB) + 6, R = this.touch ? hudBox.rightL : W - 8;
+    const fit = (L: number) => {
+      const room = R - L, lines = wrap(hint.text, Math.min(room - 24, 360));
+      return { lines, lw: Math.min(room, Math.max(...lines.map((l) => measure(l))) + 20), hh: lines.length * 11 + 8, cx: Math.round((L + R) / 2) };
+    };
+    const place = (hh: number) => {
+      if (!tut) return Math.max(ceil, Math.round(H * 0.68));
+      const above = this.tutTop - hh - 6;
+      return above >= ceil ? Math.min(H * 0.56, above) : this.tutBottom + 10;
+    };
+    let f = fit(8), at = place(f.hh);
+    if (at - 5 < hudBox.leftB) (f = fit(hudBox.leftR)), (at = place(f.hh));
+    const { lines, lw, cx } = f;
     const y = Math.round(at + (1 - a) * 6);
     plate(ui, cx - lw / 2, y - 5, lw, lines.length * 11 + 8, withAlpha(C.gold, a));
     lines.forEach((l, k) => text(ui, l, cx, y + k * 11, { align: "center", color: withAlpha(rgba("#ffe8b0"), a), shadow: withAlpha(C.ink, a) }));
@@ -1969,19 +1988,33 @@ export class Game {
     const pad = this.input.mode === "pad" ? "P" : this.touch ? "T" : "K";
     const key = step === "move" ? `tutMove${pad}` : step === "dash" ? `tutDash${pad}` : step === "ult" ? `tutUlt${pad}` : step === "fight" ? "tutFight" : "tutGems";
     const done = this.tutDoneT >= 0, u = done ? this.tutDoneT : this.tutT;
-    // it rises in, and once done holds its tick, then sinks away
-    const a = done ? Math.min(1, (TUT_DONE - u) / 0.3) : Math.min(1, u / 0.35), rise = Math.round((1 - a) * 8);
-    if (a <= 0) return;
-    // (on a touch screen it keeps clear of the dash and ability buttons at the bottom right)
-    const room = this.touch ? W - 84 : W - 16;
+    // low over the fight, clear of the hero in the middle, in the room the HUD leaves at that height: on a phone held
+    // wide down between the thumbs, left of the touch buttons (and right of the left column where it reaches so far);
+    // held upright above the buttons, across the screen
     const count = step === "fight" ? ` ${this.tutKills < 0 ? 0 : Math.min(TUT_KILLS, Math.max(0, this.world.kills - this.tutKills))}/${TUT_KILLS}` : "";
-    const lines = wrap(t(key as Parameters<typeof t>[0]) + count, Math.min(room - 24, 300));
     const head = `${t("tutStep")} ${sv.tutStep + 1}/${TUTOR.length}`, tag = done ? t("tutDone") : head;
-    const lw = Math.min(room, Math.max(measure(tag, "mini"), ...lines.map((l) => measure(l))) + 24), lh = lines.length * 11 + 17;
-    const cxT = this.touch ? Math.min(W / 2, 8 + room / 2) : W / 2;
-    const x = Math.round(cxT - lw / 2), y = Math.round(H - (this.touch ? 74 + TOUCH_INSET : 26) - lh + rise);
-    this.tutTop = y;
-    this.tutBottom = y + lh;
+    const upright = this.touch && H > W, bottom = H - (this.touch ? (upright ? 114 : 30 + TOUCH_INSET) : 26);
+    // the way to skip them: a word beside the plate where there is room, else in the plate's own top row at the right
+    const sk = this.skipKey() + t("tutSkip"), sw = measure(sk, "mini") + 8;
+    const fit = (L: number, R: number) => {
+      const room = R - L, lines = wrap(t(key as Parameters<typeof t>[0]) + count, Math.min(room - 24, 300)), cx = Math.round((L + R) / 2);
+      const lw0 = Math.min(room, Math.max(measure(tag, "mini"), ...lines.map((l) => measure(l))) + 24), lh = lines.length * 11 + 17;
+      const side = cx + lw0 / 2 + 6 + sw <= R, lw = side ? lw0 : Math.min(room, Math.max(lw0, measure(head, "mini") + 2 * sw + 24));
+      return { lines, lw, lh, cx, top: bottom - lh, side };
+    };
+    const R = this.touch && !upright ? hudBox.rightL : W - 8;
+    let f = fit(8, R);
+    if (f.top < hudBox.leftB) f = fit(hudBox.leftR, R);
+    const { lines, lw, lh } = f, cxT = f.cx;
+    // (its place, kept whether it shows or not: a hint stands clear of it)
+    this.tutTop = f.top;
+    this.tutBottom = f.top + lh;
+    // it rises in, and once done holds its tick, then sinks away
+    // (one word at a time: where a banner reaches down over the lesson's place, the lesson steps aside until it is gone)
+    this.tutVeil += ((hudBox.bannerB > f.top ? 1 : 0) - this.tutVeil) * Math.min(1, this.dt * 10);
+    const a = (done ? Math.min(1, (TUT_DONE - u) / 0.3) : Math.min(1, u / 0.35)) * (1 - this.tutVeil), rise = Math.round((1 - a) * 8);
+    if (a <= 0.01) return;
+    const x = Math.round(cxT - lw / 2), y = Math.round(f.top + rise);
     const green = rgbaf(0.55, 1, 0.6, 1), gold = rgba("#ffd84a");
     // a step learnt: the plate flares green for an instant
     if (done) glowUi(ui, cxT, y + lh / 2, lw * 0.6, lh, green, 0.35 * Math.max(0, 1 - u / 0.5));
@@ -1993,10 +2026,10 @@ export class Game {
       const lit = k < sv.tutStep || (k === sv.tutStep && done);
       ui.rect(Math.round(cxT - TUTOR.length * 4 + k * 8 + 1), y + lh - 3, 5, 1, withAlpha(lit ? green : rgba("#5a5068"), a));
     }
-    // the lessons can be skipped (a click or a tap on the word beside the plate, or above it where there is no room)
+    // the lessons can be skipped (a click or a tap on the word beside the plate, or in its top row where there is no
+    // room beside it)
     if (done) return;
-    const sk = this.skipKey() + t("tutSkip"), sw = measure(sk, "mini") + 8, side = x + lw + 6 + sw <= W - 4;
-    const sx = side ? x + lw + 6 : x + lw - sw, sy = side ? y + 3 : y - 12;
+    const sx = f.side ? x + lw + 6 : x + lw - sw - 3, sy = f.side ? y + 3 : y + 2;
     frame(ui, sx, sy, sw, 11, { edge: rgba("#5a5068") });
     text(ui, sk, sx + sw / 2, sy + 2, { font: "mini", align: "center", color: withAlpha(rgba("#c8b8a0"), a) });
     const c = this.input.click;
@@ -2944,6 +2977,8 @@ export class Game {
   private resetAsk = false;
   /** A focus to take once the screen's items are laid out again (a dialog closed: back to the row that opened it). */
   private focusNext = -1;
+  /** How far the lesson's plate has stepped aside for a banner (0 shown, 1 hidden). */
+  private tutVeil = 0;
   /**
    * Everything earned starts over: embers, heroes, the forge, records, tasks, the run in progress, the lessons and the
    * opening. What stays is the player's own: language and the settings, and the lasting purchases (and the tokens of
