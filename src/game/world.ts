@@ -4532,6 +4532,8 @@ export class World {
       const held = E.frozen[i] > 0 || E.stun[i] > 0 || h.dead || (E.age[i] < SPAWN_T && d.ai < AI.Boss);
       if (!held || d.ai >= AI.Boss) E.t[i] += dt;
       E.flash[i] = Math.max(0, E.flash[i] - dt);
+      // (the time since the last blow: the white of the hit and the springy recoil fade by it, and only by it)
+      E.struck[i] += dt;
       E.reactCd[i] -= dt;
       E.orbitCd[i] -= dt;
       E.voidCd[i] -= dt;

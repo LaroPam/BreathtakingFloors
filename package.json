@@ -32,7 +32,8 @@
     "bench": "node tools/check/bench.mjs",
     "check:sdk": "node tools/check/sdk.mjs",
     "maps": "node --experimental-strip-types --no-warnings tools/maps.mjs",
-    "hero": "node tools/hero.mjs"
+    "hero": "node tools/hero.mjs",
+    "check:screens": "node tools/check/screens.mjs"
   },
   "devDependencies": {
     "typescript": "6.0.3",

@@ -5,7 +5,7 @@ import { hex } from "../../../pixelfx/src/core/index.js";
 
 export const IDS = ["heart", "heart_empty", "stamina", "xp", "overdrive", "skull", "time", "brazier", "brazier_cold", "boss", "lock", "ember", "daily", "crown", "scroll",
   // on buttons
-  "play", "anvil", "globe", "speaker", "mute", "back", "resume", "book", "flag", "gear", "trophy", "urn", "curse", "secret", "coin"];
+  "play", "ad", "anvil", "globe", "speaker", "mute", "back", "resume", "book", "flag", "gear", "trophy", "urn", "curse", "secret", "coin"];
 
 export const meta = {
   name: "HUD icons",
@@ -85,6 +85,11 @@ const ICONS = {
   play: [
     ["......kk", ".....kwk", "....kwk.", "k..kwk..", "kkkwk...", ".kyk....", "kykkk...", "kk......"],
     { k: "#0b0a12", w: "#e8edf6", y: "#f4d27a" },
+  ],
+  // a video ad: a small screen with a play sign (on every button that plays one, as the stores ask)
+  ad: [
+    [".kkkkkkk.", "kwwwwwwwk", "kwwgwwwwk", "kwwggwwwk", "kwwgggwwk", "kwwggwwwk", "kwwgwwwwk", "kwwwwwwwk", ".kkkkkkk."],
+    { k: "#0b0a12", w: "#e8e4f0", g: "#2a9a4a" },
   ],
   anvil: [
     [".........", "kkkkkkkk.", "kwwwwwiik", ".kiiiiiik", "..kddddk.", "...kddk..", "..kddddk.", ".kkkkkkkk"],

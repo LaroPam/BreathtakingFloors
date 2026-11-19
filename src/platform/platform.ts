@@ -78,6 +78,8 @@ export interface Platform {
   submitScore(score: number, board?: BoardName): void;
   /** A leaderboard to show, or null where the platform has none (the game then shows the player's own records). */
   leaderboard(board: BoardName): Promise<Board | null>;
+  /** Whether this platform keeps players' boards at all (where it does not, the game shows only the player's own). */
+  hasBoards(): boolean;
   /** Whether the player could sign in to get on the boards (a guest on Yandex), and doing it. */
   canSignIn(): boolean;
   signIn(): Promise<boolean>;
@@ -214,6 +216,9 @@ export abstract class BasePlatform implements Platform {
   submitScore(_score: number, _board?: BoardName): void {}
   async leaderboard(_board: BoardName): Promise<Board | null> {
     return null;
+  }
+  hasBoards(): boolean {
+    return false;
   }
   canSignIn(): boolean {
     return false;

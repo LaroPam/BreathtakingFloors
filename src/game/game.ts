@@ -1378,7 +1378,7 @@ export class Game {
   }
   private updateSpin(dt: number): void {
     const sp = this.spin!, input = this.input;
-    const skip = !!input.click || input.pressed("confirm") || input.pressed("dash");
+    const skip = !!input.click || input.pressed("confirm") || input.pressed("dash") || input.pressed("back");
     if (sp.held < 0) {
       const was = sp.t;
       sp.t += dt;
@@ -1400,7 +1400,8 @@ export class Game {
     sp.held += dt;
     // with a spin again on offer the player decides, by its two buttons (keys and the pad move between them); else it
     // is taken soon
-    if (this.canReroll(sp)) return;
+    // (the way back takes what it gave: the spin again is only ever the player's own pick)
+    if (this.canReroll(sp)) return void (input.pressed("back") && sp.held > 0.6 && !sp.adBusy && this.take(sp.reel[sp.target], sp.kind));
     if (sp.held > 1.6 || (skip && sp.held > 0.3)) this.take(sp.reel[sp.target], sp.kind);
   }
   /** A chest's reward can be spun again for an ad: once a chest, and not a sure evolution or legend. */
@@ -2296,7 +2297,7 @@ export class Game {
     y += para(ui, t("giftOpens").replace("{gate}", tx(def.gateName)), Math.round(cx - wid / 2), y + 2, wid, withAlpha(C.goldLight, a), "center") + 4;
     text(ui, t("giftForever"), cx, y + 2, { font: "mini", align: "center", color: withAlpha(C.dim, a) });
     // taken: back to the fight (not by a stray press in the first moment)
-    if (button(ui, this.menu, now, cx - 60, Math.min(H - 26, y + 18), 120, 18, t("giftTake"), { primary: true }) && g.t > 0.8) {
+    if ((button(ui, this.menu, now, cx - 60, Math.min(H - 26, y + 18), 120, 18, t("giftTake"), { primary: true }) || this.input.pressed("back")) && g.t > 0.8) {
       this.giftShow = null;
       this.setState("play");
     }
@@ -3204,30 +3205,9 @@ export class Game {
     if (button(ui, this.menu, now, Math.round(W / 2 - bw2 - 4), H - 24, bw2, 18, t("back"), { icon: icon("hud", "back") }) || this.input.pressed("back")) this.setState("title", this.titleSlot("arsenal"));
   }
 
-  /** Records: the platform's leaderboards (best runs, today's trial) and the player's own. */
-  private drawRecords(): void {
-    const ui = this.ui, W = this.r.w, H = this.r.h, now = this.now, tab = this.recordsTab;
-    const th = this.heading(t("records"), 8, H >= 320 ? 2 : 1);
-    const pw = Math.min(360, W - 16), px = Math.round(W / 2 - pw / 2);
-    // four tabs in a row; on a narrow screen (a phone upright) in two rows of two, so their names fit
-    const label = (name: string) => (name === "score" ? t("bestRuns") : name === "daily" ? t("dayTab") : name === "weekly" ? t("weekTab") : t("achievements"));
-    const per = measure(t("bestRuns"), "mini") + 14 > Math.floor((pw - 18) / 4) ? 2 : 4, tw = Math.floor((pw - 6 * (per - 1)) / per);
-    let y = 8 + th + 6;
-    for (const [k, name] of (["score", "daily", "weekly", "ach"] as const).entries()) {
-      const on = tab === name, tx0 = px + (k % per) * (tw + 6), ty0 = y + Math.floor(k / per) * 20;
-      if (button(ui, this.menu, now, tx0, ty0, tw, 16, label(name), { color: on ? C.gold : C.dim, font: "mini" })) (this.recordsTab = name, this.achPage = 0);
-      if (on) ui.rect(tx0 + 4, ty0 + 15, tw - 8, 1, C.gold);
-    }
-    if (per === 2) y += 20;
-    y += 22;
-    if (tab === "ach") {
-      this.drawAchievements(px, y, pw);
-      if (button(ui, this.menu, now, Math.round(W / 2 - 50), H - 24, 100, 18, t("back"), { icon: icon("hud", "back") }) || this.input.pressed("back")) {
-        this.boards = {};
-        this.setState("title", this.titleSlot("records"));
-      }
-      return;
-    }
+  /** The platform's board for a tab: the ten best and the player around their place, and a way to sign in. */
+  private drawBoard(tab: BoardName, px: number, pw: number, y: number): number {
+    const ui = this.ui, W = this.r.w, H = this.r.h, now = this.now;
     // ask once each time the screen opens (the boards allow a few requests a minute)
     if (this.boards[tab] === undefined) {
       this.boards[tab] = "loading";
@@ -3267,18 +3247,49 @@ export class Game {
           this.boards = {};
         });
     }
-    y += listH + 6;
+    return y + listH + 6;
+  }
+
+  /** Records: the platform's leaderboards (best runs, today's trial) and the player's own. */
+  private drawRecords(): void {
+    const ui = this.ui, W = this.r.w, H = this.r.h, now = this.now, tab = this.recordsTab;
+    const th = this.heading(t("records"), 8, H >= 320 ? 2 : 1);
+    const pw = Math.min(360, W - 16), px = Math.round(W / 2 - pw / 2);
+    // four tabs in a row; on a narrow screen (a phone upright) in two rows of two, so their names fit
+    const label = (name: string) => (name === "score" ? t("bestRuns") : name === "daily" ? t("dayTab") : name === "weekly" ? t("weekTab") : t("achievements"));
+    const per = measure(t("bestRuns"), "mini") + 14 > Math.floor((pw - 18) / 4) ? 2 : 4, tw = Math.floor((pw - 6 * (per - 1)) / per);
+    let y = 8 + th + 6;
+    for (const [k, name] of (["score", "daily", "weekly", "ach"] as const).entries()) {
+      const on = tab === name, tx0 = px + (k % per) * (tw + 6), ty0 = y + Math.floor(k / per) * 20;
+      if (button(ui, this.menu, now, tx0, ty0, tw, 16, label(name), { color: on ? C.gold : C.dim, font: "mini" })) (this.recordsTab = name, this.achPage = 0);
+      if (on) ui.rect(tx0 + 4, ty0 + 15, tw - 8, 1, C.gold);
+    }
+    if (per === 2) y += 20;
+    y += 22;
+    if (tab === "ach") {
+      this.drawAchievements(px, y, pw);
+      if (button(ui, this.menu, now, Math.round(W / 2 - 50), H - 24, 100, 18, t("back"), { icon: icon("hud", "back") }) || this.input.pressed("back")) {
+        this.boards = {};
+        this.setState("title", this.titleSlot("records"));
+      }
+      return;
+    }
+    // the players' board where the platform keeps one (elsewhere only the player's own records, and no word of
+    // another site: the stores do not allow pointing players to other platforms)
+    if (this.platform.hasBoards()) y = this.drawBoard(tab, px, pw, y);
     // the player's own records, whatever the platform
-    const sv = this.save, d = this.trialRecord(tab === "weekly");
-    text(ui, t("yourRecords"), px, y, { font: "mini", color: C.dim });
-    y += 9;
+    const sv = this.save, d = this.trialRecord(tab === "weekly"), own = !this.platform.hasBoards();
+    // (alone on the screen they stand larger, in a frame of their own)
+    if (own) (frame(ui, px, y, pw, 54), (y += 9));
+    text(ui, t("yourRecords"), own ? W / 2 : px, y, { font: "mini", color: C.dim, align: own ? "center" : "left" });
+    y += own ? 14 : 9;
     const pairs: [string, string][] = tab === "score"
       ? [[t("score"), String(sv.bestScore)], [t("bestFloorL"), String(sv.bestFloor)], [t("wins"), String(sv.wins ?? 0)], [t("runs"), String(sv.runs)]]
       : [[t(tab === "weekly" ? "weekBest" : "todayBest"), String(d?.best ?? 0)], [t("tries"), String(d?.tries ?? 0)]];
     const cw = Math.floor(pw / pairs.length);
     pairs.forEach(([label, value], k) => {
-      text(ui, value, px + k * cw + cw / 2, y, { align: "center", color: C.gold, outline: true });
-      text(ui, label, px + k * cw + cw / 2, y + 10, { font: "mini", align: "center", color: C.dim });
+      text(ui, value, px + k * cw + cw / 2, y, { align: "center", color: C.gold, outline: true, scale: own ? 2 : 1 });
+      text(ui, label, px + k * cw + cw / 2, y + (own ? 18 : 10), { font: "mini", align: "center", color: C.dim });
     });
     if (button(ui, this.menu, now, Math.round(W / 2 - 50), H - 24, 100, 18, t("back"), { icon: icon("hud", "back") }) || this.input.pressed("back")) {
       this.boards = {};
@@ -3657,9 +3668,11 @@ export class Game {
       para(ui, desc, Math.round(W / 2 - 140), y, 280, withAlpha(C.text, a), "center");
       // take it, or spin again for an ad
       if (this.canReroll(sp) && sp.held > 0.3) {
-        const by = Math.min(H - 22, cy + 42 - 6 + chh + 6), bw = Math.min(130, Math.floor((W - 30) / 2)), now = this.now;
+        // (the two of a size, the ad named on its button and marked with the video sign; shorter where it would not fit)
+        const room = Math.floor((W - 30) / 2), bw = Math.min(room, Math.max(130, measure(t("rerollAd")) + 28)), by = Math.min(H - 22, cy + 42 - 6 + chh + 6), now = this.now;
+        const again = measure(t("rerollAd")) + 28 <= bw ? t("rerollAd") : t("rerollAdShort");
         if (button(ui, this.menu, now, Math.round(W / 2 - bw - 4), by, bw, 18, t("take"), { primary: true, icon: icon("hud", "play"), disabled: !!sp.adBusy }) && !sp.adBusy) this.take(c, sp.kind);
-        if (button(ui, this.menu, now, Math.round(W / 2 + 4), by, bw, 18, t("rerollAd"), { color: C.green, icon: icon("hud", "play"), disabled: !!sp.adBusy }) && !sp.adBusy) void this.reroll();
+        if (button(ui, this.menu, now, Math.round(W / 2 + 4), by, bw, 18, again, { color: C.green, icon: icon("hud", "ad"), disabled: !!sp.adBusy }) && !sp.adBusy) void this.reroll();
       }
     }
   }
@@ -4343,7 +4356,7 @@ export class Game {
     const by = ry + 14 + resLines.length * 9 + 4;
     if (second && !se.applied) {
       const two = resW >= 260, bw = two ? Math.floor((resW - 8) / 2) : Math.min(200, resW);
-      if (button(ui, this.menu, now, two ? rx : Math.round(rc - bw / 2), by, bw, 18, t("evAdWin"), { color: C.green, icon: icon("hud", "play"), disabled: !!se.adBusy }) && !se.adBusy) {
+      if (button(ui, this.menu, now, two ? rx : Math.round(rc - bw / 2), by, bw, 18, t("evAdWin"), { color: C.green, icon: icon("hud", "ad"), disabled: !!se.adBusy }) && !se.adBusy) {
         se.adBusy = true;
         void this.platform.showRewarded().then((ok) => {
           se.adBusy = false;
@@ -4543,7 +4556,7 @@ export class Game {
     const cy = ty + th + sh + 6, rows: [string, string, string, number][] = [["skull", t("kills"), String(res.kills), C.text], ["time", t("time"), fmtTime(res.time), C.text], ["ember", t("earned"), `+${res.embers}`, C.gold], ...this.giftRow()];
     const acts: EndAct[] = [];
     // the embers twice over, for an ad of the player's choosing
-    if (!res.doubled && res.base > 0 && this.platform.canShowRewarded()) acts.push({ label: t("doubleEmbers"), opts: { color: C.gold, icon: icon("hud", "ember") }, go: () => void this.doubleEmbers() });
+    if (!res.doubled && res.base > 0 && this.platform.canShowRewarded()) acts.push({ label: t("doubleEmbers"), opts: { color: C.gold, icon: icon("hud", "ad") }, go: () => void this.doubleEmbers() });
     acts.push({ label: t("again"), opts: { primary: true, icon: icon("hud", "play") }, go: () => {
       this.newSkin = "";
       this.again();
@@ -4601,6 +4614,9 @@ export class Game {
       if (button(this.ui, this.menu, this.now, L.bx, at, L.bw, L.bh, a.label, this.adBusy ? { ...a.opts, disabled: true } : a.opts) && !this.adBusy && a.go()) return -1;
       at += L.bh + L.gap;
     }
+    // the way back (Backspace, Escape, a pad's B) leads where the last plain button does: to the title
+    const home = acts.find((a) => a.label === t("menu"));
+    if (home && !this.adBusy && this.menu.ready(this.now) && this.input.pressed("back") && home.go()) return -1;
     return at;
   }
 
@@ -4639,8 +4655,8 @@ export class Game {
     const cy = ty + th + 4, rows: [string, string, string, number][] = [["brazier", t("reached"), String(res.floor), C.gold], ["skull", t("kills"), String(res.kills), C.text], ["time", t("time"), fmtTime(res.time), C.text], ["ember", t("earned"), `+${res.embers}`, C.gold], ...this.giftRow()];
     const acts: EndAct[] = [];
     // the embers twice over, for an ad of the player's choosing; a second life, likewise
-    if (!res.doubled && res.base > 0 && this.platform.canShowRewarded()) acts.push({ label: t("doubleEmbers"), opts: { color: C.gold, icon: icon("hud", "ember") }, go: () => void this.doubleEmbers() });
-    if (!this.revived && this.platform.canShowRewarded() && (this.reviveOffered || this.reviveAllowed())) acts.push({ label: t("revive"), opts: { color: C.green, icon: icon("hud", "heart") }, go: () => void this.revive() });
+    if (!res.doubled && res.base > 0 && this.platform.canShowRewarded()) acts.push({ label: t("doubleEmbers"), opts: { color: C.gold, icon: icon("hud", "ad") }, go: () => void this.doubleEmbers() });
+    if (!this.revived && this.platform.canShowRewarded() && (this.reviveOffered || this.reviveAllowed())) acts.push({ label: t("revive"), opts: { color: C.green, icon: icon("hud", "ad") }, go: () => void this.revive() });
     acts.push({ label: t("again"), opts: { primary: true, icon: icon("hud", "play") }, go: () => {
       this.again();
       return true;

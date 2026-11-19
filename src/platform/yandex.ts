@@ -194,6 +194,9 @@ export class YandexPlatform extends BasePlatform {
       }
     })();
   }
+  override hasBoards(): boolean {
+    return !!this.sdk;
+  }
   override async leaderboard(board: BoardName): Promise<Board | null> {
     if (!this.sdk) return null;
     const cached = this.boardCache.get(board);
