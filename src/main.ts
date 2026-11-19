@@ -40,9 +40,11 @@ async function boot(): Promise<void> {
   // on a desktop the play area keeps within 2:1 (Yandex 1.6.2), bars of the page's colour either side
   const mobile = platform.isMobile();
   // the interface keeps to the safe part of the screen: the phone's own insets (notch, rounded corners, home bar: the
-  // page asks for them with viewport-fit=cover), and on a touch screen at least a small margin from every edge
-  const probe = document.createElement("div");
-  probe.style.cssText = "position:fixed;left:0;top:0;width:0;height:0;visibility:hidden;pointer-events:none;padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)";
+  // page asks for them with viewport-fit=cover), and on a touch screen at least a small margin from every edge. Inside
+  // the CrazyGames app the insets come as the CSS variables --safe-area-inset-* that its SDK sets (and updates on
+  // rotation) rather than through env() (docs.crazygames.com/resources/crazygames-app/): the larger of the two counts.
+  const probe = document.createElement("div"), side = (s: string) => `max(env(safe-area-inset-${s}, 0px), var(--safe-area-inset-${s}, 0px))`;
+  probe.style.cssText = `position:fixed;left:0;top:0;width:0;height:0;visibility:hidden;pointer-events:none;padding:${side("top")} ${side("right")} ${side("bottom")} ${side("left")}`;
   document.body.appendChild(probe);
   const touchScreen = mobile || matchMedia("(pointer: coarse)").matches, MARGIN = touchScreen ? 8 : 0;
   const safeInsets = (): [number, number, number, number] => {
