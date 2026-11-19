@@ -8,7 +8,7 @@ import { rgba, rgbaf } from "../engine/renderer";
 import {
   AI, depthOf, placeDef, El, EL_COLOR, EN, ENEMIES, evolutionOf, heroDef, mainStop, nextStop, PLACE_FLOORS, QUESTS, RELIC_MAX, RELICS, RelicKind, reactionFor, roster, WEAPON_IDS, WEAPONS,
   type PlaceDef, type PlaceId, type Stop, type GateKind, giftFor, DOORS, type DoorKind, MINIS, type MiniMove, type Blow, type HeroDef, type Modifier, type QuestKind, type Reaction, type StatId, type TaskId, type WeaponId, type WeaponDef, MYTHIC, RARITIES, rollRarity, UNIQUES, type Perk,
-  HORDE, COINS, BOSS_TIER_HP,
+  HORDE, COINS, BOSS_TIER_HP, FIRST_FLOOR_XP,
 } from "./defs";
 import { getLang, t as tr, tx } from "./i18n";
 import { Bullets, Drops, Enemies, Grid, Particles, TEAM_FOE, TEAM_HERO } from "./pools";
@@ -6031,7 +6031,9 @@ export class World {
           this.audio.play("heal");
           this.popup(h.x, h.y - 40, "+1", rgba("#ff8a9a"), true);
         } else {
-          h.xp += D.value[i] * (1 + this.stats.xp) * this.xpPace();
+          // (the first run's first floor gives twice the experience: a newcomer meets the first choice of upgrades
+          // in the first half minute, not after the floor)
+          h.xp += D.value[i] * (1 + this.stats.xp) * this.xpPace() * (this.gentle && this.floor === 1 ? FIRST_FLOOR_XP : 1);
           this.audio.play("pickup");
           while (h.xp >= this.levelNeed()) {
             h.xp -= this.levelNeed();

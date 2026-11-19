@@ -1813,9 +1813,13 @@ export class Game {
   private skipKey(): string {
     return this.touch ? "" : this.input.mode === "pad" ? "B - " : "ENTER - ";
   }
-  /** That key pressed: Enter (Space is the dash, so not that), Backspace, a pad's B (Escape pauses). */
+  /**
+   * That key pressed: Enter (Space is the dash, so not that), Backspace, a pad's B (Escape pauses). Only once the
+   * fight has been on screen for a moment: the Enter that took a card or passed the floor's card must not skip too.
+   */
   private skipPressed(): boolean {
     const input = this.input;
+    if (this.now - this.menu.openedAt < 0.5) return false;
     return (input.pressed("confirm") && !input.pressed("dash")) || (input.pressed("back") && !input.pressed("pause"));
   }
 

@@ -708,6 +708,9 @@ export const RELIC_MAX = 5;
  * the tower's top, so the later guardians hold out longer (the bot's boss times against the targets in PLAN-BRANCHES).
  */
 export const BOSS_TIER_HP = [1, 1, 1.1, 1.4, 1.7, 1.7];
+/** Experience on the first run's first floor (the lessons' floor), as a multiple: the first choice comes early. */
+export const FIRST_FLOOR_XP = 2;
+
 export const HORDE = {
   hp: 0.65,
   xp: 0.5,
