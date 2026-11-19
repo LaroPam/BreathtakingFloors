@@ -2015,8 +2015,10 @@ export class Game {
     const fit = (L: number, R: number) => {
       const room = R - L, lines = wrap(t(key as Parameters<typeof t>[0]) + count, Math.min(room - 24, 300)), cx = Math.round((L + R) / 2);
       const lw0 = Math.min(room, Math.max(measure(tag, "mini"), ...lines.map((l) => measure(l))) + 24), lh = lines.length * 11 + 17;
-      const side = cx + lw0 / 2 + 6 + sw <= R, lw = side ? lw0 : Math.min(room, Math.max(lw0, measure(head, "mini") + 2 * sw + 24));
-      return { lines, lw, lh, cx, top: bottom - lh, side };
+      // (beside it; else in its top row, where the row holds the step's tag and the word apart; else just above it)
+      const side = cx + lw0 / 2 + 6 + sw <= R, rowW = measure(head, "mini") + 2 * sw + 24, inRow = !side && rowW <= room;
+      const lw = inRow ? Math.max(lw0, rowW) : lw0;
+      return { lines, lw, lh, cx, top: bottom - lh, side, inRow };
     };
     const R = this.touch && !upright ? hudBox.rightL : W - 8;
     let f = fit(8, R);
@@ -2045,7 +2047,7 @@ export class Game {
     // the lessons can be skipped (a click or a tap on the word beside the plate, or in its top row where there is no
     // room beside it)
     if (done) return;
-    const sx = f.side ? x + lw + 6 : x + lw - sw - 3, sy = f.side ? y + 3 : y + 2;
+    const sx = f.side ? x + lw + 6 : x + lw - sw - (f.inRow ? 3 : 0), sy = f.side ? y + 3 : f.inRow ? y + 2 : y - 13;
     frame(ui, sx, sy, sw, 11, { edge: rgba("#5a5068") });
     text(ui, sk, sx + sw / 2, sy + 2, { font: "mini", align: "center", color: withAlpha(rgba("#c8b8a0"), a) });
     const c = this.input.click;
@@ -2073,9 +2075,12 @@ export class Game {
     const short = H < 260;
     const th = this.heading(t("title"), ty, (__PLATFORM__ === "pikabu" && getLang() === "ru") || short ? 2 : 3);
     text(ui, t("subtitle"), W / 2, ty + th + 2, { align: "center", color: rgba("#c8b8a0"), shadow: C.ink });
-    // (the plaques end above the line of embers and the fonts' authors)
-    const credits = short ? [] : wrap(t("fontCredits"), W - 16, "mini");
-    const items = this.titleItems(), top = ty + th + 14, bottom = H - 26 - credits.length * 8;
+    // (the plaques end above the lines at the foot: tomorrow's fire, the embers, a word on sound, the fonts' authors;
+    // where the plaques would not fit over all of them, the fonts' authors are in the settings instead)
+    const items = this.titleItems(), top = ty + th + 14;
+    const blocked = this.audio.blocked ? wrap(t("soundBlocked"), Math.min(W - 24, 360), "mini") : [];
+    const extra = (this.save.runs >= 1 ? 9 : 0) + blocked.length * 8;
+    let credits = short ? [] : wrap(t("fontCredits"), W - 16, "mini");
     // the first thing offered (going on with a saved run, or a new one) on a wide plaque with a brazier; the rest on
     // plaques with a bronze medallion each, a line of their state under the name: one column on a phone held upright,
     // two on a wide screen, three on a short one
@@ -2083,6 +2088,9 @@ export class Game {
     const pw = wide ? Math.min(460, W - 24) : Math.min(320, W - 16), px = Math.round(W / 2 - pw / 2);
     const mh = short ? 24 : 34, gap = short ? 3 : 4, cols = Math.max(1, Math.min(rest.length, wide ? (short ? 3 : 2) : 1));
     const rows = Math.ceil(rest.length / cols), cw = Math.floor((pw - (cols - 1) * 6) / cols);
+    if (top + mh + 6 + rows * 20 + (rows - 1) * gap > H - 26 - credits.length * 8 - extra) credits = [];
+    this.titleCredits = credits.length > 0;
+    const bottom = H - 26 - credits.length * 8 - extra;
     const rh = Math.max(16, Math.min(28, Math.floor((bottom - top - mh - 6 - (rows - 1) * gap) / rows)));
     const blockH = mh + (rows ? 6 + rows * rh + (rows - 1) * gap : 0);
     const y0 = Math.round(Math.max(top, Math.min(H * 0.4, bottom - blockH)));
@@ -2148,9 +2156,9 @@ export class Game {
     // tomorrow's fire at the threshold, once the player has played (a reason to come back)
     if (this.save.runs >= 1) text(ui, t("porchTomorrow").replace("{n}", String(this.porchTomorrow())), W / 2, H - 29 - (credits.length - 1) * 8, { font: "mini", align: "center", color: rgba("#ffb347") });
     // touched, and still no sound: say so (the browser or the page around the game kept it off)
-    if (this.audio.blocked) {
-      const lines = wrap(t("soundBlocked"), Math.min(W - 24, 360), "mini"), y0 = H - 32 - (credits.length - 1) * 8 - lines.length * 8;
-      lines.forEach((l, k) => text(ui, l, W / 2, y0 + k * 8, { font: "mini", align: "center", color: rgba("#ff9a8a"), shadow: C.ink }));
+    if (blocked.length) {
+      const y0 = H - 32 - (credits.length - 1) * 8 - (this.save.runs >= 1 ? 9 : 0) - blocked.length * 8;
+      blocked.forEach((l, k) => text(ui, l, W / 2, y0 + k * 8, { font: "mini", align: "center", color: rgba("#ff9a8a"), shadow: C.ink }));
     }
   }
 
@@ -2794,7 +2802,7 @@ export class Game {
     text(ui, tx(info.name), W / 2, cy - 32 + th + 4, { font: "title", align: "center", color: withAlpha(C.text, a), shadow: withAlpha(C.ink, a), outline: true });
     text(ui, `${tx(B.name)} · ${stage}/${PLACE_FLOORS}${stage === 1 && w.floor > 1 ? ` · ${t("newPlace")}` : ""}`, W / 2, cy - 32 + th + 19, { font: "mini", align: "center", color: withAlpha(stage === PLACE_FLOORS ? rgba("#ff9a8a") : C.goldDim, a) });
     // (a narrow screen wraps the line onto more rows, and the road down moves below them)
-    const lw = Math.min(300, W - 16), lh = para(ui, tx(info.lore), Math.round(W / 2 - lw / 2), cy - 32 + th + 30, lw, withAlpha(C.dim, a), "center");
+    const lw = Math.min(300, W < 320 ? W - 60 : W - 16), lh = para(ui, tx(info.lore), Math.round(W / 2 - lw / 2), cy - 32 + th + 30, lw, withAlpha(C.dim, a), "center");
     // the road down: the tower's floors on a thread, the bosses' marked, those behind lit, ours ringed
     const my = cy - 32 + th + 30 + Math.max(22, lh + 12), step = Math.min(18, Math.floor((W - 40) / DEPTH));
     const x0 = Math.round(W / 2 - ((DEPTH - 1) / 2) * step);
@@ -2830,13 +2838,14 @@ export class Game {
     const [ar, ag, ab] = B.ambient;
     for (let k = 0; k < 8; k++) ui.rect(0, Math.round(H * (0.55 + k * 0.06)), W, Math.ceil(H * 0.06), rgbaf(ar * 0.12, ag * 0.12, ab * 0.16, 0.04 + k * 0.025));
     // the torches
-    const torch = anim(B.torch), tc = rgba(B.torchLight), gap = Math.min(170, Math.round(W * 0.38));
+    // (on a narrow screen, a phone held upright, they stand small at its very edges, clear of the name and its lines)
+    const narrow = W < 320, torch = anim(B.torch), tc = rgba(B.torchLight), gap = narrow ? Math.round(W / 2 - 14) : Math.min(170, Math.round(W * 0.38)), ts = narrow ? 1 : 2;
     for (const side of [-1, 1]) {
       const x = Math.round(W / 2 + side * gap), y = cy - 4, f = 1 + Math.sin(now * 9 + side) * 0.06 + Math.sin(now * 23 + side * 3) * 0.04;
       ui.disc(x, y - 22, 46 * f, 40 * f, withAlpha(tc, 0.07));
       ui.disc(x, y - 22, 26 * f, 22 * f, withAlpha(tc, 0.1));
       const fr = torch.frames[frameAt(torch, now + side * 0.3)][0];
-      if (fr) ui.image(fr, x, y, 2, 2);
+      if (fr) ui.image(fr, x, y, ts, ts);
       // sparks rising off it
       for (let q = 0; q < 6; q++) {
         const ph = (now * 0.7 + q / 6 + (side > 0 ? 0.37 : 0)) % 1, sx = x + Math.sin(q * 5.3 + now * 2) * 4 * ph * 3;
@@ -2984,14 +2993,21 @@ export class Game {
     // starting over (from the title only, not mid-run): asked again on a second step
     [px, y] = at(7);
     if (this.settingsFrom === "title" && button(ui, this.menu, now, px, y, pw, 18, t("resetProgress"), { color: rgba("#e8a0a8") })) (this.resetAsk = true), this.menu.open(now, 0);
-    // the way to the game's support (the stores ask for one), as set for this build
+    // the way to the game's support (the stores ask for one), as set for this build; and the fonts' authors, where the
+    // title had no room for them, as far up as the rows leave room
     if (SUPPORT) text(ui, `${t("support")}: ${SUPPORT}`, W / 2, H - 38, { font: "mini", align: "center", color: C.dim });
+    if (!this.titleCredits) {
+      const cr = wrap(t("fontCredits"), W - 16, "mini"), cy = H - (SUPPORT ? 48 : 38) - (cr.length - 1) * 8;
+      if (cy > top - 8 + rh * per + 12 + 2) cr.forEach((l, k) => text(ui, l, W / 2, cy + k * 8, { font: "mini", align: "center", color: rgba("#5a5470") }));
+    }
     if (button(ui, this.menu, now, Math.round(W / 2 - 50), H - 26, 100, 18, t("back"), { icon: icon("hud", "back") }) || this.input.pressed("back")) this.setState(this.settingsFrom, this.settingsFrom === "title" ? this.titleSlot("settings") : 6);
   }
 
   /** The settings' reset asked about: a second step, in the game itself (a browser's confirm() is ignored in the
    *  stores' sandboxed frames). */
   private resetAsk = false;
+  /** Whether the title had room for the fonts' authors (else the settings show them). */
+  private titleCredits = true;
   /** A focus to take once the screen's items are laid out again (a dialog closed: back to the row that opened it). */
   private focusNext = -1;
   /** How far the lesson's plate has stepped aside for a banner (0 shown, 1 hidden). */

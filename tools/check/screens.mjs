@@ -13,7 +13,7 @@
 // keys table and any page errors. Needs the baked atlas (npm run bake).
 
 import { createServer } from "vite";
-import { writeFileSync, mkdirSync, readFileSync } from "node:fs";
+import { writeFileSync, mkdirSync, readFileSync, existsSync, rmSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
@@ -73,21 +73,22 @@ const SCREENS = [
   { id: "card", go: `g.heroIdx = 0; g.startRun()`, wait: 900 },
   { id: "start-pick", go: `g.heroIdx = 0; g.startRun(); g.cardT = 9; g.setState("play")`, wait: 1200 },
   { id: "play", run: true, go: ``, wait: 1500 },
-  { id: "pause", run: true, go: ` g.setState("pause")` },
-  { id: "book", run: true, go: ` g.setState("book")` },
-  { id: "pick", run: true, go: ` g.startPick("level")`, wait: 900 },
-  { id: "spin", run: true, go: ` g.startSpin("chest")`, wait: 2600 },
-  { id: "stairs", run: true, go: ` g.onFloorCleared()`, wait: 2200 },
-  { id: "merchant", run: true, go: ` g.world.coins = 60; g.onFloorCleared(); setTimeout(() => (window.__game.stairEvent = null), 900)`, wait: 2400 },
-  { id: "gift", run: true, go: ` g.giftShow = { id: "ember", t: 0 }; g.setState("gift")`, wait: 1200 },
-  { id: "dead", run: true, go: ` g.world.runTime = 300; g.world.kills = 420; g.onDeath()`, wait: 1600 },
-  { id: "stats", run: true, go: ` g.world.runTime = 300; for (let k = 0; k < g.world.dmgStat.length; k += 7) g.world.dmgStat[k] = 500 + k * 37; for (const r of [0, 1, 2]) g.world.addRelic(r); g.onDeath(); g.openStats("dead", 0)`, wait: 1200 },
-  { id: "won", run: true, go: ` g.world.runTime = 1500; g.world.kills = 3100; g.finishRun(true)`, wait: 1600 },
+  { id: "pause", run: true, go: `g.setState("pause")` },
+  { id: "book", run: true, go: `g.setState("book")` },
+  { id: "pick", run: true, go: `g.startPick("level")`, wait: 900 },
+  { id: "spin", run: true, go: `g.startSpin("chest")`, wait: 2600 },
+  { id: "stairs", run: true, go: `g.onFloorCleared()`, wait: 2200 },
+  { id: "merchant", run: true, go: `g.world.coins = 60; g.onFloorCleared(); setTimeout(() => (window.__game.stairEvent = null), 900)`, wait: 3600 },
+  { id: "gift", run: true, go: `g.giftShow = { id: "ember", t: 0 }; g.setState("gift")`, wait: 1200 },
+  { id: "dead", run: true, go: `g.world.runTime = 300; g.world.kills = 420; g.finishRun(false)`, wait: 1600 },
+  { id: "stats", run: true, go: `g.world.runTime = 300; for (let k = 0; k < g.world.dmgStat.length; k += 7) g.world.dmgStat[k] = 500 + k * 37; for (const r of [0, 1, 2]) g.world.addRelic(r); g.onDeath(); g.openStats("dead", 0)`, wait: 1200 },
+  { id: "won", run: true, go: `g.world.runTime = 1500; g.world.kills = 3100; g.finishRun(true)`, wait: 1600 },
   { id: "intro", go: `g.save.runs = 0; g.save.stats.intro = 0; g.save.tutorial = true; g.save.tutStep = 0; g.heroIdx = 0; g.startRun(); g.cardT = 9; g.setState("play")`, wait: 2500 },
   { id: "lesson", go: `g.save.runs = 1; g.save.stats.intro = 1; g.save.tutorial = true; g.save.tutStep = 0; g.heroIdx = 0; g.startRun(); g.startSpins = 0; g.pick = null; g.cardT = 9; g.setState("play")`, wait: 1500 },
 ].filter((s) => !ONLY || ONLY.split(",").includes(s.id));
 
-const server = await createServer({ root: ROOT, logLevel: "error", server: { port: 0, host: "127.0.0.1" } });
+// (no hot reload and no watching: an edit to the game while this runs must not reload the page mid-sweep)
+const server = await createServer({ root: ROOT, logLevel: "error", server: { port: 0, host: "127.0.0.1", hmr: false, watch: null } });
 await server.listen();
 const url = server.resolvedUrls.local[0];
 const browser = await chromium.launch({ args: ["--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader"] });
@@ -110,6 +111,8 @@ for (const size of sizes) {
   await page.goto(url);
   await page.waitForFunction(() => window.__game && window.__game.state === "title" && window.__game.now > 1, null, { timeout: 300000 });
   await page.evaluate(SETUP);
+  // (this size's shots afresh: no old one stands in for a screen that failed this time)
+  rmSync(join(OUT, size), { recursive: true, force: true });
   mkdirSync(join(OUT, size), { recursive: true });
   const enter = async (s) => {
     if (s.run) {
@@ -155,7 +158,8 @@ for (const size of sizes) {
   }
   // the contact sheet: every shot of this size on one page
   const cols = size.startsWith("phone") && size !== "phone-wide" ? 6 : 4, w = size.startsWith("phone") && size !== "phone-wide" ? 260 : 480;
-  const imgs = SCREENS.map((s) => `<figure><img src="data:image/png;base64,${readFileSync(join(OUT, size, `${s.id}.png`)).toString("base64")}"><figcaption>${s.id}</figcaption></figure>`).join("");
+  // (a screen whose shot failed is in the errors; the sheet goes on without it)
+  const imgs = SCREENS.filter((s) => existsSync(join(OUT, size, `${s.id}.png`))).map((s) => `<figure><img src="data:image/png;base64,${readFileSync(join(OUT, size, `${s.id}.png`)).toString("base64")}"><figcaption>${s.id}</figcaption></figure>`).join("");
   const sheet = await browser.newPage({ viewport: { width: cols * (w + 8) + 8, height: 400 } });
   await sheet.setContent(`<style>body{margin:0;padding:4px;background:#222;display:grid;grid-template-columns:repeat(${cols},${w}px);gap:8px;font:12px monospace;color:#ddd}figure{margin:0}img{width:${w}px;display:block}</style>${imgs}`);
   await sheet.screenshot({ path: join(OUT, `sheet-${size}.png`), fullPage: true });
