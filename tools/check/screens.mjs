@@ -50,8 +50,11 @@ const SETUP = `(() => {
 })()`;
 
 // Each screen: how to get there (run in the page, g = the game), and how long to let it settle before the shot.
-// (a run as a player meets it after the floor's card and the start's choice: those two have screens of their own)
-const RUN = `g.heroIdx = 0; g.daily = g.weekly = false; g.startRun(); g.startSpins = 0; g.pick = null; g.cardT = 9; g.setState("play"); g.world.hero.arriveT = 9;`;
+// A screen marked run: true is reached from a run in play, as a player meets it after the floor's card and the start's
+// choice (those two have screens of their own): the run is started first and given time to come up (the start goes
+// behind a wipe), then the start's choice is put away and the screen's own steps follow.
+const START_RUN = `g.heroIdx = 0; g.daily = g.weekly = false; g.startRun();`;
+const IN_PLAY = `g.startSpins = 0; g.pick = null; g.wipe = null; g.cardT = 9; g.setState("play"); g.world.hero.arriveT = 9;`;
 const SCREENS = [
   { id: "title", go: `g.setState("title")` },
   { id: "heroes", go: `g.setState("heroes")` },
@@ -69,16 +72,17 @@ const SCREENS = [
   { id: "credits", go: `g.creditsT = 0; g.setState("credits")` },
   { id: "card", go: `g.heroIdx = 0; g.startRun()`, wait: 900 },
   { id: "start-pick", go: `g.heroIdx = 0; g.startRun(); g.cardT = 9; g.setState("play")`, wait: 1200 },
-  { id: "play", go: `${RUN}`, wait: 1500 },
-  { id: "pause", go: `${RUN} g.setState("pause")` },
-  { id: "book", go: `${RUN} g.setState("book")` },
-  { id: "pick", go: `${RUN} g.startPick("level")`, wait: 900 },
-  { id: "spin", go: `${RUN} g.startSpin("chest")`, wait: 2600 },
-  { id: "stairs", go: `${RUN} g.onFloorCleared()`, wait: 2200 },
-  { id: "gift", go: `${RUN} g.giftShow = { id: "ember", t: 0 }; g.setState("gift")`, wait: 1200 },
-  { id: "dead", go: `${RUN} g.world.runTime = 300; g.world.kills = 420; g.onDeath()`, wait: 1600 },
-  { id: "stats", go: `${RUN} g.world.runTime = 300; g.onDeath(); g.openStats("dead", 0)`, wait: 1200 },
-  { id: "won", go: `${RUN} g.world.runTime = 1500; g.world.kills = 3100; g.finishRun(true)`, wait: 1600 },
+  { id: "play", run: true, go: ``, wait: 1500 },
+  { id: "pause", run: true, go: ` g.setState("pause")` },
+  { id: "book", run: true, go: ` g.setState("book")` },
+  { id: "pick", run: true, go: ` g.startPick("level")`, wait: 900 },
+  { id: "spin", run: true, go: ` g.startSpin("chest")`, wait: 2600 },
+  { id: "stairs", run: true, go: ` g.onFloorCleared()`, wait: 2200 },
+  { id: "merchant", run: true, go: ` g.world.coins = 60; g.onFloorCleared(); setTimeout(() => (window.__game.stairEvent = null), 900)`, wait: 2400 },
+  { id: "gift", run: true, go: ` g.giftShow = { id: "ember", t: 0 }; g.setState("gift")`, wait: 1200 },
+  { id: "dead", run: true, go: ` g.world.runTime = 300; g.world.kills = 420; g.onDeath()`, wait: 1600 },
+  { id: "stats", run: true, go: ` g.world.runTime = 300; for (let k = 0; k < g.world.dmgStat.length; k += 7) g.world.dmgStat[k] = 500 + k * 37; for (const r of [0, 1, 2]) g.world.addRelic(r); g.onDeath(); g.openStats("dead", 0)`, wait: 1200 },
+  { id: "won", run: true, go: ` g.world.runTime = 1500; g.world.kills = 3100; g.finishRun(true)`, wait: 1600 },
   { id: "intro", go: `g.save.runs = 0; g.save.stats.intro = 0; g.save.tutorial = true; g.save.tutStep = 0; g.heroIdx = 0; g.startRun(); g.cardT = 9; g.setState("play")`, wait: 2500 },
   { id: "lesson", go: `g.save.runs = 1; g.save.stats.intro = 1; g.save.tutorial = true; g.save.tutStep = 0; g.heroIdx = 0; g.startRun(); g.startSpins = 0; g.pick = null; g.cardT = 9; g.setState("play")`, wait: 1500 },
 ].filter((s) => !ONLY || ONLY.split(",").includes(s.id));
@@ -108,6 +112,11 @@ for (const size of sizes) {
   await page.evaluate(SETUP);
   mkdirSync(join(OUT, size), { recursive: true });
   const enter = async (s) => {
+    if (s.run) {
+      await page.evaluate(`(() => { const g = window.__game; ${START_RUN} })()`);
+      await page.waitForTimeout(1500);
+      await page.evaluate(`(() => { const g = window.__game; ${IN_PLAY} })()`);
+    }
     await page.evaluate(`(() => { const g = window.__game; g.resetAsk = false; g.wipe = null; g.toasts = []; ${s.go}; })()`);
     await page.waitForTimeout(s.wait ?? 700);
   };
