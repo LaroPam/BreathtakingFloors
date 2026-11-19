@@ -1389,6 +1389,8 @@ export class Game {
   }
   private updateSpin(dt: number): void {
     const sp = this.spin!, input = this.input;
+    // (Escape here is the way back, which takes the reward: not a pause as well once the run goes on, this frame)
+    if (input.pressed("back")) input.consume("pause");
     const skip = !!input.click || input.pressed("confirm") || input.pressed("dash") || input.pressed("back");
     if (sp.held < 0) {
       const was = sp.t;
@@ -2186,10 +2188,15 @@ export class Game {
     const pw = wide ? Math.min(300, Math.round(W * 0.5) - 20) : Math.min(340, W - 24);
     const abLines = wrap(tx(hero.ability.desc), pw - 4, "mini").length, perkLines = wrap(tx(hero.perk), pw - 4, "mini").length;
     const wdLines = wrap(tx(weapon.desc), pw - 24, "mini"), wdH = 24 + (wdLines.length - 1) * 8;
-    const whyLines = wrap(tx(hero.why), pw - 4, "mini").length;
-    const heightFor = (sc: number) => FONT_H * sc + 4 + 11 + whyLines * 8 + 3 + wdH + 11 + abLines * 8 + 4 + perkLines * 8 + 4 + 14 + 2 * 9 + 2;
+    // (beside the stage on a short wide screen the pane must end above the buttons: the name goes smaller first, then
+    // the hero's own line and the four bars give way, the line staying in the story screen and the bars in play)
+    let whyLines = wrap(tx(hero.why), pw - 4, "mini").length, barsH = 2 * 9 + 2;
+    const heightFor = (sc: number) => FONT_H * sc + 4 + 11 + (whyLines ? whyLines * 8 + 3 : 0) + wdH + 11 + abLines * 8 + 4 + perkLines * 8 + 4 + 14 + barsH;
     let ns = fitScale(tx(hero.name), "title", pw, 2);
-    if (wide && heightFor(ns) > by - 8 - top) ns = 1;
+    const paneRoom = by - 10 - top;
+    if (wide && heightFor(ns) > paneRoom) ns = 1;
+    if (wide && heightFor(ns) > paneRoom) whyLines = 0;
+    if (wide && heightFor(ns) > paneRoom) barsH = 0;
     const infoH = heightFor(ns), px = wide ? W - 12 - pw : Math.round(W / 2 - pw / 2), paneY = wide ? top + 6 : stripY - 10 - infoH;
     // the stage: everything left of the pane (or above it), down to the strip
     const sx0 = 8, sy0 = top, sw = wide ? px - 16 - sx0 : W - 16, sh = (wide ? stripY : paneY - 6) - 8 - sy0;
@@ -2243,7 +2250,7 @@ export class Game {
     text(ui, locked ? `${tx(hero.title)}  ·  ${t("locked")}` : tx(hero.title), px, y, { font: "mini", color: locked ? C.goldDim : C.dim });
     y += 11;
     // why they go down: their own line, in the lantern's colour
-    y += para(ui, tx(hero.why), px + 2, y, pw - 4, rgba("#f4c27a"), "left", 8, "mini") + 3;
+    if (whyLines) y += para(ui, tx(hero.why), px + 2, y, pw - 4, rgba("#f4c27a"), "left", 8, "mini") + 3;
     ui.image(icon("icons", `w_${hero.weapon}`), px + 10, y + 10);
     text(ui, tx(weapon.name), px + 24, y + 3, { color: C.text });
     wdLines.forEach((l, k) => text(ui, l, px + 24, y + 13 + k * 8, { font: "mini", color: C.dim }));
@@ -2263,10 +2270,12 @@ export class Game {
       ui.rect(bx2 + 42, by2 + 1, bw2, 3, C.ink);
       ui.rect(bx2 + 42, by2 + 1, Math.max(2, Math.round(bw2 * Math.max(0, Math.min(1, (v - lo) / (hi - lo))))), 3, col);
     };
-    stat(0, t("might"), hero.might, 0.7, 1.3, rgba("#ff8a5a"));
-    stat(1, t("haste"), hero.haste, 0.75, 1.35, rgba("#ffd27a"));
-    stat(2, t("speed"), hero.speed, 0.85, 1.2, C.green);
-    stat(3, t("crit"), hero.crit, 0, 0.3, rgba("#c684ff"));
+    if (barsH) {
+      stat(0, t("might"), hero.might, 0.7, 1.3, rgba("#ff8a5a"));
+      stat(1, t("haste"), hero.haste, 0.75, 1.35, rgba("#ffd27a"));
+      stat(2, t("speed"), hero.speed, 0.85, 1.2, C.green);
+      stat(3, t("crit"), hero.crit, 0, 0.3, rgba("#c684ff"));
+    }
 
     // ---- the six of them as portraits, the chosen one framed (on a landscape screen under the stage, the pane beside)
     const ty = stripY + 22, stripCx = wide ? cx : W / 2;

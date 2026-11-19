@@ -249,6 +249,11 @@ export class Input {
     this.move.y = my;
   }
 
+  /** Spend a press: the rest of this frame no longer sees it (one key, one action). */
+  consume(b: Button): void {
+    this.edges.delete(b);
+  }
+
   /** Was this button pressed since the last frame? */
   pressed(b: Button): boolean {
     return this.edges.has(b);
