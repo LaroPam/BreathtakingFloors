@@ -1741,7 +1741,7 @@ export class Game {
         // (in the dark of the opening, before the spirit's fire, nothing but the world and its words)
         if (!(w.intro && w.intro.given < 0)) drawHud(ui, w, W, hudH, this.now, this.banner, this.touch, this.weekly ? "trophy" : this.daily ? "daily" : "", this.save.tutorial && !this.daily);
         if (this.touch) drawTouch(ui, this.input, w, W, hudH, this.now);
-        else this.input.zones = [];
+        else (this.input.zones = []), this.drawPauseButton();
         this.drawLevelRing(ucx, ucy);
         this.drawIntro();
         this.drawTutorial();
@@ -1839,6 +1839,22 @@ export class Game {
     const y = Math.round(at + (1 - a) * 6);
     plate(ui, cx - lw / 2, y - 5, lw, lines.length * 11 + 8, withAlpha(C.gold, a));
     lines.forEach((l, k) => text(ui, l, cx, y + k * 11, { align: "center", color: withAlpha(rgba("#ffe8b0"), a), shadow: withAlpha(C.ink, a) }));
+  }
+
+  /**
+   * On a computer, a pause button where the touch screen has its own, under the stats, its key beside it (P: on the
+   * stores' pages Escape leaves fullscreen first, so the key the game names is P). The pointer shows when the mouse
+   * moves, to click it.
+   */
+  private drawPauseButton(): void {
+    if (this.world.intro || this.world.cine) return;
+    const ui = this.ui, W = this.r.w, x = W - 16, y = 58, m = this.input.mouse, c = this.input.click;
+    const over = this.now - this.mouseT < 2 && Math.abs(m.x - x) <= 10 && Math.abs(m.y - y) <= 10;
+    frame(ui, x - 9, y - 9, 18, 18, { corners: false, edge: over ? C.gold : undefined });
+    ui.rect(x - 3, y - 4, 2, 8, over ? C.goldLight : C.text);
+    ui.rect(x + 1, y - 4, 2, 8, over ? C.goldLight : C.text);
+    text(ui, "P", x - 13, y - 3, { font: "mini", align: "right", color: C.dim, shadow: C.ink });
+    if (c && Math.abs(c.x - x) <= 10 && Math.abs(c.y - y) <= 10) (this.audio.play("click"), this.setState("pause"));
   }
 
   /** The slow-down into a level: a ring of gold closing on the hero, the screen's edges warming. */

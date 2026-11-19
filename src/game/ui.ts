@@ -599,7 +599,8 @@ export function drawHud(b: Batch, w: World, W: number, H: number, time: number, 
   // (the left column's extent: the vitals' plate, the weapon and its artifacts, the boosts, the quest)
   hudBox.leftR = Math.max(2 + pw, w.relics.length ? 30 + RELIC_SLOTS * 22 : 28, held.length ? 30 + ARTIFACT_SLOTS * 22 : 0, q ? 134 : 0) + 6;
   hudBox.leftB = Math.max(py + 35, hy + 24, held.length ? ay + 24 : 0, q ? hy + (held.length ? 54 : 28) + 24 : 0);
-  hudBox.rightL = touch ? W - 62 : W - 8;
+  // (on a computer the right column is the stats and the pause button under them)
+  hudBox.rightL = touch ? W - 62 : W - 30;
 
   // ---- where you are: the floor on a plate at the top centre, with what to do on it under the name
   // the floor's name on its plate for the first seconds; then the plate draws in to just the braziers (or the
