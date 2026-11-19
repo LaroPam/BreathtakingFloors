@@ -59,6 +59,11 @@ export class Menu {
   begin(): void {
     this.count = 0;
   }
+  /** This frame's direction keys were spent by the screen itself (a list moving its pick): focus stays put. */
+  private held = false;
+  hold(): void {
+    this.held = true;
+  }
   ready(now: number): boolean {
     return now - this.openedAt > 0.35;
   }
@@ -89,6 +94,11 @@ export class Menu {
   /** Move focus with the keys or a pad; `sideways` lets the other pair of directions move it too (not on a screen of sliders). */
   end(horizontal = false, sideways = true): void {
     if (!this.count) return;
+    if (this.held) {
+      this.held = false;
+      this.focus = Math.min(this.focus, this.count - 1);
+      return;
+    }
     const i = this.input, n = this.count;
     const next = horizontal ? i.pressed("right") : i.pressed("down"), prev = horizontal ? i.pressed("left") : i.pressed("up");
     const alt = sideways && (horizontal ? i.pressed("down") : i.pressed("right")), altPrev = sideways && (horizontal ? i.pressed("up") : i.pressed("left"));

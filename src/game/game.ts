@@ -2883,7 +2883,8 @@ export class Game {
     const first = week ? wplan.week * 7 - 3 : plan.day, end = (week ? wplan.week * 7 + 4 : plan.day + 1) * 86400000;
     const dates = week ? `${dm(day(first))} – ${dm(day(first + 6))}` : `${dm(day(first))}.${day(first).getUTCFullYear()}`;
     const left = Math.max(0, end - Date.now()), m = Math.floor(left / 60000), hh = Math.floor(m / 60) % 24, dn = Math.floor(m / 1440);
-    const until = dn ? `${dn}${t("dShort")} ${hh}${t("hShort")}` : `${hh}${t("hShort")} ${m % 60}${t("mShort")}`;
+    // (hours and minutes as a clock: in the small letters Ч reads as a 4, "1Ч" as "14")
+    const until = `${dn ? `${dn}${t("dShort")} ` : ""}${hh}:${dd(m % 60)}`;
     text(ui, `${dates}  ·  ${t("endsIn")} ${until}`, W / 2, y, { font: "mini", align: "center", color: C.dim });
     y += 12;
     const pw = Math.min(330, W - 20);
@@ -3191,10 +3192,20 @@ export class Game {
     const ui = this.ui, W = this.r.w, H = this.r.h, now = this.now, keys = ARSENAL(), sv = this.save;
     const open = (k: string) => !unlockOf(k) || sv.opened.includes(k), count = keys.filter(open).length;
     const th = this.heading(t("arsenal"), 6, H >= 320 ? 2 : 1, C.gold, 1, `${t("openedOf")} ${count}/${keys.length}`);
-    const wide = W > H * 1.6 && H < 280, S = 22, G = 3, dark = rgbaf(0.15, 0.13, 0.2, 1), gridW = wide ? Math.round(W * 0.56) : Math.min(W - 16, 15 * (S + G));
-    const per = Math.max(5, Math.floor((gridW + G) / (S + G))), x0 = wide ? 10 : Math.round(W / 2 - (per * (S + G) - G) / 2);
-    let y = 6 + th + 6;
+    const wide = W > H * 1.6 && H < 280, dark = rgbaf(0.15, 0.13, 0.2, 1);
     const groups: [string, string[]][] = [[t("weapons"), keys.filter((k) => k.startsWith("weapon:"))], [t("relics"), keys.filter((k) => k.startsWith("relic:"))], [t("artifacts"), keys.filter((k) => k.startsWith("stat:"))]];
+    // tiles as large as fit above the buttons (with the card under them where it does not stand beside): a short
+    // screen, a store's small frame or a phone held wide, takes smaller ones rather than run under the buttons
+    let S = 22, G = 3, gridW = 0, per = 0;
+    for (; S >= 14; S--) {
+      G = S >= 18 ? 3 : 2;
+      gridW = wide ? Math.round(W * 0.56) : Math.min(W - 16, 15 * (S + G));
+      per = Math.max(5, Math.floor((gridW + G) / (S + G)));
+      const rows = groups.reduce((n, [, l]) => n + Math.ceil(l.length / per), 0);
+      if (6 + th + 6 + groups.length * 11 + rows * (S + G) + (wide ? 0 : 46) <= H - 28) break;
+    }
+    const x0 = wide ? 10 : Math.round(W / 2 - (per * (S + G) - G) / 2), ik = (0.75 * S) / 22;
+    let y = 6 + th + 6;
     let idx = 0;
     for (const [label, list] of groups) {
       text(ui, label, x0, y, { font: "mini", color: C.goldDim });
@@ -3204,7 +3215,7 @@ export class Game {
         const it = this.menu.item(x, ty, S, S, now), on = open(k), sel = it.focused || (this.input.mode === "touch" && this.arsenalSel === my);
         if (it.hit || it.focused) this.arsenalSel = my;
         slot(ui, x, ty, S, sel ? C.gold : on ? C.goldDim : C.edge);
-        ui.image(icon("icons", arsenalIcon(k)), x + S / 2, ty + S / 2, 0.75, 0.75, 0, on ? 0xffffffff : dark);
+        ui.image(icon("icons", arsenalIcon(k)), x + S / 2, ty + S / 2, ik, ik, 0, on ? 0xffffffff : dark);
         if (!on) ui.image(icon("hud", "lock"), x + S - 5, ty + S - 5, 0.6, 0.6, 0, rgbaf(0.75, 0.7, 0.85, 0.9));
       });
       y += Math.ceil(list.length / per) * (S + G) + 3;
@@ -3396,6 +3407,8 @@ export class Game {
   /** The forge item the player is looking at, and how far the list is scrolled. */
   private forgeSel = 0;
   private forgeScroll = 0;
+  /** A drag on the forge's list not yet a whole row. */
+  private forgeDrag = 0;
   /**
    * The forge: a list of every lasting upgrade on the left (its badge, its name, a pip per level), and on the right
    * the one picked, in full: its badge large, what it does, the level now and what the next gives, the price and the
@@ -3422,10 +3435,29 @@ export class Game {
     const cardX = narrow ? 10 : listX + listW + 8, cardW = narrow ? W - 20 : Math.min(260, W - cardX - 10);
     const listH = narrow ? Math.floor((bottomBar - top) * 0.48) : bottomBar - top - 4, rowH = 19, rows = Math.max(3, Math.floor((listH - 6) / rowH));
     const cardY = narrow ? top + listH + 6 : top, cardH = narrow ? bottomBar - cardY - 4 : listH;
-    // keep the picked one in view
+    // the whole list within reach on every screen, however few rows show: up and down walk the pick through all of
+    // it (the rows in view follow it), the wheel and a drag scroll the rows (the pick follows them), and the arrows at
+    // the ends say there is more and scroll a page when touched
+    const input = this.input, visible = Math.min(rows, FORGE.length), most = Math.max(0, FORGE.length - rows);
+    const onRow = input.mode !== "touch" && this.menu.focus < visible;
+    if (onRow && input.pressed("down") && this.forgeSel < FORGE.length - 1) (this.forgeSel++, this.menu.hold());
+    else if (onRow && input.pressed("up") && this.forgeSel > 0) (this.forgeSel--, this.menu.hold());
     this.forgeSel = Math.max(0, Math.min(FORGE.length - 1, this.forgeSel));
     if (this.forgeSel < this.forgeScroll) this.forgeScroll = this.forgeSel;
     if (this.forgeSel >= this.forgeScroll + rows) this.forgeScroll = this.forgeSel - rows + 1;
+    const listB = top + rows * rowH + 6, c = input.click, inList = (p: { x: number; y: number } | null) => !!p && p.x >= listX && p.x < listX + listW && p.y >= top && p.y < listB;
+    this.forgeDrag += input.drag;
+    const steps = Math.trunc(this.forgeDrag / rowH);
+    this.forgeDrag -= steps * rowH;
+    let shift = (inList(input.mouse) || input.mode === "touch" ? input.wheel : 0) + steps;
+    const upA = this.forgeScroll > 0, downA = this.forgeScroll < most, ax = listX + listW - 26;
+    if (c && upA && c.x >= ax - 4 && c.x < ax + 26 && c.y >= top - 6 && c.y < top + 6) shift -= rows - 1;
+    if (c && downA && c.x >= ax - 4 && c.x < ax + 26 && c.y >= listB - 6 && c.y < listB + 6) shift += rows - 1;
+    if (shift) {
+      this.forgeScroll = Math.max(0, Math.min(most, this.forgeScroll + shift));
+      this.forgeSel = Math.max(this.forgeScroll, Math.min(this.forgeScroll + rows - 1, this.forgeSel));
+    }
+    if (onRow) this.menu.focus = this.forgeSel - this.forgeScroll;
     frame(ui, listX, top, listW, rows * rowH + 6);
     // (each item's higher levels open as the tower is gone down: the first two from the start, the third with tier II
     // reached, the fourth with tier III, the fifth with tier IV)
@@ -3446,7 +3478,9 @@ export class Game {
       const k = this.forgeScroll + r, item = FORGE[k], lv = f[item.id] ?? 0, maxed = lv >= item.costs.length, y = top + 3 + r * rowH;
       const { focused, hit } = this.menu.item(listX + 3, y, listW - 6, rowH - 1, now);
       if (focused && this.input.mode !== "touch") this.forgeSel = k;
-      if (hit) k === this.forgeSel ? buyItem(k) : (this.forgeSel = k);
+      // (a second click or Enter on the picked one buys it; a touch only picks: a finger that comes down to drag the
+      // list must not buy what it lands on, the button under the card buys)
+      if (hit) k === this.forgeSel && input.mode !== "touch" ? buyItem(k) : (this.forgeSel = k);
       const sel = k === this.forgeSel;
       if (sel) ui.rect(listX + 3, y, listW - 6, rowH - 1, rgba("#3a2e1a", 0.9));
       if (sel) ui.rect(listX + 3, y, 2, rowH - 1, C.gold);
@@ -3468,10 +3502,21 @@ export class Game {
         text(ui, cost, listX + listW - 8, y + 4, { align: "right", font: "mini", color: afford ? C.gold : C.dim });
       }
     }
-    // a little bar that shows where in the list the view is
+    // a little bar that shows where in the list the view is, and an arrow at each end with more beyond it
     if (FORGE.length > rows) {
-      const bh = Math.max(10, Math.round(((rows * rowH) * rows) / FORGE.length)), by = top + 3 + Math.round(((rows * rowH - bh) * this.forgeScroll) / (FORGE.length - rows));
-      ui.rect(listX + listW - 3, by, 2, bh, C.goldDim);
+      const bh = Math.max(10, Math.round(((rows * rowH) * rows) / FORGE.length)), sy = top + 3 + Math.round(((rows * rowH - bh) * this.forgeScroll) / (FORGE.length - rows));
+      ui.rect(listX + listW - 3, sy, 2, bh, C.goldDim);
+      const arrow = (y: number, up: boolean, n: number) => {
+        frame(ui, ax, y - 5, 22, 10, { edge: C.goldDim });
+        // a small triangle, pointing the way the rest lies
+        for (let q = 0; q < 3; q++) {
+          const half = up ? q : 2 - q;
+          ui.rect(ax + 7 - half, y - 1 + q, 1 + 2 * half, 1, C.gold);
+        }
+        text(ui, String(n), ax + 18, y - 3, { font: "mini", align: "right", color: C.goldLight });
+      };
+      if (upA) arrow(top, true, this.forgeScroll);
+      if (downA) arrow(listB, false, FORGE.length - this.forgeScroll - rows);
     }
 
     // ---- the card of the one picked
@@ -3479,12 +3524,14 @@ export class Game {
     const flash = Math.max(0, 1 - (now - this.forgeFlash) / 0.5);
     frame(ui, cardX, cardY, cardW, cardH, { edge: maxed ? C.gold : undefined });
     if (flash > 0) glowUi(ui, cardX + cardW / 2, cardY + 30, cardW * 0.4, 30, C.gold, 0.5 * flash);
-    const bx = cardX + (narrow ? 23 : cardW / 2), by = cardY + (narrow ? 23 : 31);
-    if (!narrow) glowUi(ui, bx, by, 30, 26, C.gold, 0.18);
+    // (the badge above the words where the card is tall enough for both and the button, else beside them)
+    const descH = wrap(tx(item.desc), cardW - 24).length * 10, compact = narrow || 58 + 12 + descH + 4 + 10 + 10 + 28 > cardH;
+    const bx = cardX + (compact ? 23 : cardW / 2), by = cardY + (compact ? 23 : 31);
+    if (!compact) glowUi(ui, bx, by, 30, 26, C.gold, 0.18);
     ui.image(icon("items", item.item), bx, by);
-    let y = narrow ? cardY + 8 : cardY + 58;
-    const tx0 = narrow ? cardX + 46 : cardX + 12, tw = narrow ? cardW - 56 : cardW - 24, align = narrow ? "left" : "center", mid = narrow ? tx0 : cardX + cardW / 2;
-    text(ui, tx(item.name), mid, y, { align, color: C.gold, shadow: C.ink, scale: narrow ? 1 : 1 });
+    let y = compact ? cardY + 8 : cardY + 58;
+    const tx0 = compact ? cardX + 46 : cardX + 12, tw = compact ? cardW - 56 : cardW - 24, align = compact ? "left" : "center", mid = compact ? tx0 : cardX + cardW / 2;
+    text(ui, tx(item.name), mid, y, { align, color: C.gold, shadow: C.ink });
     y += 12;
     y += para(ui, tx(item.desc), tx0, y, tw, C.text, align) + 4;
     text(ui, `${t("forgeLevel")} ${lv}/${item.costs.length}`, mid, y, { align, font: "mini", color: C.goldDim });
@@ -3568,14 +3615,24 @@ export class Game {
     const big = H >= 300 ? 2 : 1, ty = Math.round(H * (H >= 300 ? 0.1 : 0.05));
     const sub = pk.kind === "level" ? `${t("level")} ${w.hero.level} · ${t("pickOne")}` : t("pickOne");
     const th = this.heading(pk.kind === "level" ? t("levelUp") : t("startRelic"), ty - Math.round(out * 6), big, C.gold, a, sub);
-    const gap = 10, row = W >= n * 128 + (n - 1) * gap + 24;
+    const gap = 10, texts = pk.options.map((c) => this.describe(c));
+    // the cards side by side on a wide screen, one under another on a narrow one; and side by side too where a
+    // stack would not fit the height (a store's small frame, a phone held wide), so none runs off the screen
+    const plan = (row: boolean) => {
+      const cw = row ? Math.min(156, Math.floor((W - 24 - (n - 1) * gap) / n)) : Math.min(300, W - 24), inner = row ? cw - 16 : cw - 58;
+      const heights = texts.map((d) => (row ? 48 : 6) + 9 + wrap(d.name, inner).length * 10 + 5 + wrap(d.desc, inner).length * 10 + 8);
+      const ch = row ? Math.max(...heights) : Math.max(52, ...heights);
+      return { row, cw, inner, ch, total: row ? ch : n * ch + (n - 1) * 6 };
+    };
+    const room = H - 8 - (ty + th + 10) - (this.rerolls > 0 ? 26 : 0);
+    let P = plan(W >= n * 128 + (n - 1) * gap + 24);
+    if (!P.row && P.total > room && W >= n * 96 + (n - 1) * gap + 24) {
+      const R = plan(true);
+      if (R.total < P.total) P = R;
+    }
+    const { row, cw, inner, ch, total } = P;
     this.pickRow = row;
-    const cw = row ? Math.min(156, Math.floor((W - 24 - (n - 1) * gap) / n)) : Math.min(300, W - 24);
-    const texts = pk.options.map((c) => this.describe(c));
-    const inner = row ? cw - 16 : cw - 58;
-    const heights = texts.map((d) => (row ? 48 : 6) + 9 + wrap(d.name, inner).length * 10 + 5 + wrap(d.desc, inner).length * 10 + 8);
-    const ch = row ? Math.max(...heights) : Math.max(52, ...heights);
-    const total = row ? ch : n * ch + (n - 1) * 6, top = Math.max(ty + th + 10, Math.round(ty + th + 10 + (H - 8 - (ty + th + 10) - total) / 2.4));
+    const top = Math.max(ty + th + 10, Math.round(ty + th + 10 + (H - 8 - (ty + th + 10) - total) / 2.4));
     pk.options.forEach((c, k) => {
       const x0 = row ? Math.round(W / 2 - (n * cw + (n - 1) * gap) / 2 + k * (cw + gap)) : Math.round(W / 2 - cw / 2);
       const y0 = row ? top : top + k * (ch + 6);

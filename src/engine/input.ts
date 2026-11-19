@@ -38,6 +38,12 @@ export class Input {
   firing = false;
   /** A tap or click this frame, in game pixels (menus use it). */
   click: { x: number; y: number } | null = null;
+  /** This frame's scrolling: mouse-wheel notches (down positive), and how far a held finger or mouse dragged the
+   *  content up, in game pixels (a list scrolls by it). */
+  wheel = 0;
+  drag = 0;
+  private dragId = -1;
+  private dragLast = 0;
   left: Stick = { active: false, id: -1, ox: 0, oy: 0, x: 0, y: 0 };
   right: Stick = { active: false, id: -1, ox: 0, oy: 0, x: 0, y: 0 };
   /** Round touch buttons on screen; a touch that starts on one presses it. The UI replaces the list as it draws. */
@@ -62,6 +68,10 @@ export class Input {
     window.addEventListener("pointermove", (e) => this.pointer(e, "move"), opts);
     window.addEventListener("pointerup", (e) => this.pointer(e, "up"), opts);
     window.addEventListener("pointercancel", (e) => this.pointer(e, "up"), opts);
+    canvas.addEventListener("wheel", (e) => {
+      e.preventDefault();
+      if (e.deltaY) this.wheel += e.deltaY > 0 ? 1 : -1;
+    }, opts);
   }
 
   /** Tell the input how big a game pixel is, so pointer positions come out in game pixels. */
@@ -104,6 +114,12 @@ export class Input {
 
   private pointer(e: PointerEvent, kind: "down" | "move" | "up"): void {
     const [x, y] = this.gamePos(e);
+    // a drag with a finger or a held button: its vertical travel scrolls a list
+    if (kind === "down") (this.dragId = e.pointerId), (this.dragLast = y);
+    else if (e.pointerId === this.dragId) {
+      if (kind === "move") (this.drag += this.dragLast - y), (this.dragLast = y);
+      else this.dragId = -1;
+    }
     if (e.pointerType === "touch") {
       e.preventDefault();
       this.mode = "touch";
@@ -242,6 +258,7 @@ export class Input {
   endFrame(): void {
     this.edges.clear();
     this.click = null;
+    this.wheel = this.drag = 0;
     this.mouse.moved = false;
   }
 }
